@@ -195,6 +195,18 @@
         "step": 1,
         "units": "°C",
         "description": "High temperature level",
-        "dependency": "notify-high-temp"
+        "tooltip": "Compared against the temperature shown in the panel. Switching the unit above converts this value.",
+        "dependency": "temp-unit=celsius"
+    },
+    "high-temp-threshold-fahrenheit": {
+        "type": "spinbutton",
+        "default": 194,
+        "min": 104,
+        "max": 248,
+        "step": 1,
+        "units": "°F",
+        "description": "High temperature level",
+        "tooltip": "Compared against the temperature shown in the panel. Switching the unit above converts this value.",
+        "dependency": "temp-unit=fahrenheit"
     }
 }

@@ -251,17 +251,21 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this.settings = new Settings.AppletSettings(this, UUID, this.instanceId);
 
         let plain = [
-            "temp-unit", "cpu-sensor-hint", "panel-icon-source",
+            "cpu-sensor-hint", "panel-icon-source",
             "panel-show-battery", "panel-show-temp", "panel-show-power",
             "panel-show-frequency", "panel-show-profile",
             "show-profiles", "show-cpu", "show-devices", "show-sensors",
             "show-all-sensors", "enable-privileged-controls",
             "scroll-action", "notify-low-battery", "low-battery-threshold",
             "critical-battery-threshold", "notify-peripheral-battery",
-            "peripheral-battery-threshold", "notify-high-temp", "high-temp-threshold",
+            "peripheral-battery-threshold", "notify-high-temp",
+            "high-temp-threshold", "high-temp-threshold-fahrenheit",
         ];
         for (let key of plain)
             this.settings.bind(key, this._propertyName(key), () => this._onSettingsChanged());
+
+        this.settings.bind("temp-unit", "tempUnit", () => this._onTempUnitChanged());
+        this._tempUnitInUse = this.tempUnit;
 
         this.settings.bind("refresh-interval", "refreshInterval", () => this._startPolling());
         /* Applied on its own, so that toggling any other setting does not fold
@@ -273,6 +277,34 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
     _propertyName(key) {
         return key.replace(/-([a-z])/g, (match, letter) => letter.toUpperCase());
+    }
+
+    /*
+     * The high temperature limit is kept as two settings, one per unit, so it
+     * is always typed in the unit the rest of the applet is showing; only the
+     * one matching the current unit is revealed by the settings window. They
+     * are two views of a single limit, so switching the unit carries the value
+     * across rather than leaving a stale number in the other key.
+     */
+    _onTempUnitChanged() {
+        let previous = this._tempUnitInUse;
+        this._tempUnitInUse = this.tempUnit;
+        if (previous && previous !== this.tempUnit) {
+            if (this.tempUnit === "fahrenheit")
+                this.settings.setValue("high-temp-threshold-fahrenheit",
+                                       Math.round(this.highTempThreshold * 9 / 5 + 32));
+            else
+                this.settings.setValue("high-temp-threshold",
+                                       Math.round((this.highTempThresholdFahrenheit - 32) * 5 / 9));
+        }
+        this._onSettingsChanged();
+    }
+
+    /* Sensors are read in Celsius, so every comparison happens there. */
+    get highTempCelsius() {
+        if (this.tempUnit === "fahrenheit")
+            return (this.highTempThresholdFahrenheit - 32) * 5 / 9;
+        return this.highTempThreshold;
     }
 
     _onSettingsChanged() {
@@ -911,7 +943,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         if (data.cpuTemperature !== null) {
             this._cpuTempRow.setValue(Format.temperature(data.cpuTemperature, this.tempUnit, 1));
-            this._cpuTempRow.setWarning(data.cpuTemperature >= this.highTempThreshold);
+            this._cpuTempRow.setWarning(data.cpuTemperature >= this.highTempCelsius);
             this._cpuTempRow.actor.show();
         } else {
             this._cpuTempRow.actor.hide();
@@ -1250,13 +1282,13 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._tempAlerted = false;
             return;
         }
-        if (data.cpuTemperature >= this.highTempThreshold) {
+        if (data.cpuTemperature >= this.highTempCelsius) {
             if (!this._tempAlerted) {
                 this._tempAlerted = true;
                 Main.notify(_("High temperature"),
                             Format.temperature(data.cpuTemperature, this.tempUnit, 1));
             }
-        } else if (data.cpuTemperature < this.highTempThreshold - 5) {
+        } else if (data.cpuTemperature < this.highTempCelsius - 5) {
             this._tempAlerted = false;
         }
     }

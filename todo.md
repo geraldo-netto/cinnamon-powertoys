@@ -22,7 +22,6 @@ own — items that are genuinely a single change were left whole.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-12 | high | S | `high-temp-threshold` is always entered in °C while the whole UI can be showing °F. Either convert on read or label the spinner with the active unit. |
 | PT-13 | medium | S | The panel shows bare watts while the menu qualifies the same number as "(GPU)" or "(package)". On a desktop with no RAPL access the panel reads 54 W, which looks like whole-system draw but is the graphics card. Add a short marker or an explicit tooltip line. |
 | PT-14 | low | M | There is no AC adapter row. `lineDevices()` is already collected in `_collect()` and only used for a tooltip sentence; a row showing charger online/offline (and the adapter model, where UPower has it) is nearly free. |
 | PT-15 | medium | M | No brightness controls. The stock `power@cinnamon.org` applet carries screen and keyboard backlight sliders through `org.cinnamon.SettingsDaemon.Power.Screen` / `.Keyboard`; anyone replacing that applet with this one loses them. Two separate interfaces, so unpacked into PT-15a and PT-15b. |
