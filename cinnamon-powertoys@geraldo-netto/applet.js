@@ -352,6 +352,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
         menu.addMenuItem(this._cpuTempRow);
         menu.addMenuItem(this._cpuDriverRow);
 
+        /* Shown in place of the selectable items when the privileged controls
+         * are turned off: the values are still worth reading. */
+        this._governorRow = new InfoRow(_("Governor"), "");
+        this._energyRow = new InfoRow(_("Energy preference"), "");
+        this._boostRow = new InfoRow(_("Turbo boost"), "");
+        menu.addMenuItem(this._governorRow);
+        menu.addMenuItem(this._energyRow);
+        menu.addMenuItem(this._boostRow);
+
         this._governorSection = new PopupMenu.PopupMenuSection();
         menu.addMenuItem(this._governorSection);
 
@@ -862,6 +871,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._cpuDriverRow.setValue(driver);
 
         let allowed = this.enablePrivilegedControls;
+
+        this._governorRow.setValue(Format.governorLabel(data.cpu.governor));
+        this._governorRow.actor.visible = !allowed && !!data.cpu.governor;
+
+        this._energyRow.setValue(Format.energyPreferenceLabel(data.cpu.energyPreference));
+        this._energyRow.actor.visible = !allowed && !!data.cpu.energyPreference;
+
+        this._boostRow.setValue(data.cpu.boostEnabled ? _("On") : _("Off"));
+        this._boostRow.actor.visible = !allowed && data.cpu.boostEnabled !== null;
 
         this._syncSelectors(this._governorSection, "_governorItems", allowed ? data.cpu.governors : [],
                             data.cpu.governor, Format.governorLabel,
