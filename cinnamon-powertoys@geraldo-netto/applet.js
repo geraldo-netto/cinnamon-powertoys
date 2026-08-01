@@ -57,6 +57,9 @@ const PKEXEC_UNAUTHORISED = 127;
 /* Only the top level RAPL domains, adding the sub-domains would count twice. */
 const RAPL_PACKAGE = /^rapl:(intel|amd)-rapl:\d+$/;
 
+/* Charge limits offered in the menu, in percent. */
+const CHARGE_LIMITS = [60, 70, 80, 90, 95, 100];
+
 /* Sensors are listed in this order, so the interesting ones come first. */
 const SENSOR_KIND_ORDER = ["cpu", "gpu", "package", "battery", "board", "disk", "network", "other"];
 
@@ -238,6 +241,50 @@ class SelectorItem extends PopupMenu.PopupMenuItem {
     }
 }
 
+/*
+ * A radio group: an optional bold title, then one dot item per value.
+ *
+ * Power profiles, governors, energy preferences and charge limits are all the
+ * same widget, and the first three change their option list while the applet
+ * runs - the daemon appears, the scaling driver is swapped, the privileged
+ * controls are turned off - so the list rides on KeyedList and only the dots
+ * move on an ordinary update.
+ */
+class SelectorGroup {
+    constructor(section, labelFunction, onActivate, title) {
+        this._title = title || "";
+        this._list = new KeyedList(
+            section,
+            entry => entry.header
+                ? this._createHeader()
+                : new SelectorItem(labelFunction(entry.value), entry.value, false, onActivate),
+            (item, entry) => {
+                if (!entry.header)
+                    item.setSelected(entry.value === entry.active);
+            });
+    }
+
+    _createHeader() {
+        let header = new PopupMenu.PopupMenuItem(this._title, { reactive: false });
+        header.actor.add_style_class_name("powertoys-group-title");
+        return header;
+    }
+
+    /* An empty value list clears the group, which is how a section hides. */
+    sync(values, active) {
+        let entries = [];
+        if (values.length > 0 && this._title)
+            entries.push({ key: "title", header: true });
+        for (let value of values)
+            entries.push({ key: "v:" + value, value: value, active: active });
+        this._list.sync(entries);
+    }
+
+    get items() {
+        return this._list.items.filter(item => item instanceof SelectorItem);
+    }
+}
+
 class PowerToysApplet extends Applet.TextIconApplet {
     constructor(metadata, orientation, panelHeight, instanceId, backends) {
         super(orientation, panelHeight, instanceId);
@@ -252,10 +299,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._iconKey = null;
         this._alerted = new Map();
         this._tempAlerted = false;
-        this._profileItems = [];
-        this._governorItems = [];
-        this._energyItems = [];
-        this._profileKey = "";
         this._hotkeyIds = [];
 
         this._bindSettings();
@@ -343,7 +386,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     _onSettingsChanged() {
-        this._profileKey = "";
         this._iconKey = null;
         this._update();
     }
@@ -364,7 +406,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
                 this._onMenuOpened();
         });
 
-        this._profileKey = "";
         this._buildMenu();
     }
 
@@ -383,6 +424,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         this._profileSection = new PopupMenu.PopupMenuSection();
         this.menu.addMenuItem(this._profileSection);
+        this._profileGroup = new SelectorGroup(this._profileSection, Format.profileLabel,
+                                               value => this._setProfile(value), "");
 
         this._degradedRow = new InfoRow(_("Performance limited"), "");
         this._degradedRow.setWarning(true);
@@ -464,9 +507,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         this._governorSection = new PopupMenu.PopupMenuSection();
         menu.addMenuItem(this._governorSection);
+        this._governorGroup = new SelectorGroup(this._governorSection, Format.governorLabel,
+                                                value => this._runHelper(["governor", value]),
+                                                _("Governor"));
 
         this._energySection = new PopupMenu.PopupMenuSection();
         menu.addMenuItem(this._energySection);
+        this._energyGroup = new SelectorGroup(this._energySection, Format.energyPreferenceLabel,
+                                              value => this._runHelper(["epp", value]),
+                                              _("Energy preference"));
 
         this._boostSwitch = new PopupMenu.PopupSwitchMenuItem(_("Turbo boost"), false);
         this._boostSwitch.connect("toggled", (item, state) => {
@@ -476,14 +525,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     _buildChargeMenu() {
-        let menu = this._chargeMenu.menu;
-        this._chargeItems = [];
-        for (let limit of [60, 70, 80, 90, 95, 100]) {
-            let item = new SelectorItem(limit + "%", limit, false,
-                                        value => this._runHelper(["charge-threshold", value]));
-            this._chargeItems.push(item);
-            menu.addMenuItem(item);
-        }
+        this._chargeGroup = new SelectorGroup(this._chargeMenu.menu, limit => limit + "%",
+                                              value => this._runHelper(["charge-threshold", value]),
+                                              "");
     }
 
     /* ------------------------------------------------------------------ */
@@ -909,25 +953,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
     _updateProfileSection(data) {
         let show = this.showProfiles && data.profile.available && data.profile.list.length > 0;
-        let key = show ? data.profile.list.join(",") + "|" + data.profile.viaSysfs : "";
-
-        if (key !== this._profileKey) {
-            this._profileKey = key;
-            this._profileSection.removeAll();
-            this._profileItems = [];
-            if (show) {
-                for (let name of data.profile.list) {
-                    let item = new SelectorItem(Format.profileLabel(name), name,
-                                                name === data.profile.active,
-                                                value => this._setProfile(value));
-                    this._profileItems.push(item);
-                    this._profileSection.addMenuItem(item);
-                }
-            }
-        }
-
-        for (let item of this._profileItems)
-            item.setSelected(item.value === data.profile.active);
+        this._profileGroup.sync(show ? data.profile.list : [], data.profile.active);
 
         let notes = [];
         if (data.profile.degraded)
@@ -987,40 +1013,13 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._boostRow.setValue(data.cpu.boostEnabled ? _("On") : _("Off"));
         this._boostRow.actor.visible = !allowed && data.cpu.boostEnabled !== null;
 
-        this._syncSelectors(this._governorSection, "_governorItems", allowed ? data.cpu.governors : [],
-                            data.cpu.governor, Format.governorLabel,
-                            value => this._runHelper(["governor", value]), _("Governor"));
-
-        this._syncSelectors(this._energySection, "_energyItems", allowed ? data.cpu.energyPreferences : [],
-                            data.cpu.energyPreference, Format.energyPreferenceLabel,
-                            value => this._runHelper(["epp", value]), _("Energy preference"));
+        this._governorGroup.sync(allowed ? data.cpu.governors : [], data.cpu.governor);
+        this._energyGroup.sync(allowed ? data.cpu.energyPreferences : [], data.cpu.energyPreference);
 
         let boost = data.cpu.boostSupported && allowed;
         this._boostSwitch.actor.visible = boost;
         if (boost && data.cpu.boostEnabled !== null)
             this._boostSwitch.setToggleState(data.cpu.boostEnabled);
-    }
-
-    /* Rebuilds a titled group of radio items only when the option list changes. */
-    _syncSelectors(section, itemsProperty, values, active, labelFunction, onActivate, title) {
-        let key = values.join(",");
-        if (section._powertoysKey !== key) {
-            section._powertoysKey = key;
-            section.removeAll();
-            this[itemsProperty] = [];
-            if (values.length > 0) {
-                let header = new PopupMenu.PopupMenuItem(title, { reactive: false });
-                header.actor.add_style_class_name("powertoys-group-title");
-                section.addMenuItem(header);
-                for (let value of values) {
-                    let item = new SelectorItem(labelFunction(value), value, value === active, onActivate);
-                    this[itemsProperty].push(item);
-                    section.addMenuItem(item);
-                }
-            }
-        }
-        for (let item of this[itemsProperty])
-            item.setSelected(item.value === active);
     }
 
     _updateSensorSection(data) {
@@ -1071,8 +1070,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         let current = this._backends.readNumber(this._chargeControl.path);
         this._chargeMenu.label.set_text(_("Battery charge limit") +
                                         (current !== null ? "  " + current + "%" : ""));
-        for (let item of this._chargeItems)
-            item.setSelected(item.value === current);
+        this._chargeGroup.sync(CHARGE_LIMITS, current);
     }
 
     /* ------------------------------------------------------------------ */
