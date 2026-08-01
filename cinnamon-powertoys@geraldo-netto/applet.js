@@ -149,7 +149,7 @@ class DeviceRow extends PopupMenu.PopupBaseMenuItem {
 
         let low = device.percentage !== null &&
                   device.state === UPDeviceState.DISCHARGING &&
-                  device.percentage <= this._applet.lowBatteryThreshold;
+                  device.percentage <= this._applet.lowThresholdFor(device);
         if (low)
             this._details.add_style_class_name("powertoys-warning");
         else
@@ -722,6 +722,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
         return "";
     }
 
+    /*
+     * The level at which a device counts as low. A mouse at 18% is not a
+     * laptop at 18%, so peripherals carry their own limit; both the row colour
+     * and the notification read it from here.
+     */
+    lowThresholdFor(device) {
+        return device.powerSupply ? this.lowBatteryThreshold : this.peripheralBatteryThreshold;
+    }
+
     /* One line summary of a device, used in the menu rows. */
     describeDevice(device) {
         let parts = [];
@@ -1167,7 +1176,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
             let system = device.powerSupply;
             let enabled = system ? this.notifyLowBattery : this.notifyPeripheralBattery;
-            let threshold = system ? this.lowBatteryThreshold : this.peripheralBatteryThreshold;
+            let threshold = this.lowThresholdFor(device);
             let level = this._alerted.get(device.path) || "";
 
             if (!enabled || (system && device.state !== UPDeviceState.DISCHARGING)) {

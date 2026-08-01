@@ -8,7 +8,6 @@ Effort: **XS** minutes · **S** under an hour · **M** an hour or a few · **L**
 
 | id | effort | description |
 |----|--------|-------------|
-| PT-02 | S | The low-battery warning colour on a device row uses `lowBatteryThreshold` for every device ([applet.js:149](cinnamon-powertoys@geraldo-netto/applet.js#L149)), so a mouse at 18% turns orange under the system battery rule instead of `peripheralBatteryThreshold`. Pick the threshold from `device.powerSupply`, as `_checkAlerts` already does. |
 | PT-07 | S | Peripheral alerts ignore the device state ([applet.js:1058](cinnamon-powertoys@geraldo-netto/applet.js#L1058)): only system batteries are required to be discharging, so a controller that is charging on the dock can still raise "Battery low". Skip `CHARGING` and `FULLY_CHARGED` for peripherals as well. |
 | PT-08 | S | The per-device `g-properties-changed` handler is never disconnected ([lib/upower.js:170](cinnamon-powertoys@geraldo-netto/lib/upower.js#L170)); `DeviceRemoved` only drops the map entry and `destroy()` clears the map. Keep the handler id per proxy and disconnect it in both places. |
 | PT-12 | S | `high-temp-threshold` is always entered in °C while the whole UI can be showing °F. Either convert on read or label the spinner with the active unit. |
