@@ -206,14 +206,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
                                                 () => this._scheduleUpdate());
 
         this.menuManager = new PopupMenu.PopupMenuManager(this);
-        this.menu = new Applet.AppletPopupMenu(this, orientation);
-        this.menuManager.addMenu(this.menu);
-        this._buildMenu();
+        this._createMenu(orientation);
 
-        this.menu.connect("open-state-changed", (menu, open) => {
-            if (open)
-                this._onMenuOpened();
-        });
         this.actor.connect("scroll-event", (actor, event) => this._onScroll(actor, event));
 
         this._registerHotkeys();
@@ -259,6 +253,33 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
     /* ------------------------------------------------------------------ */
     /* menu construction                                                   */
+
+    /*
+     * Creating and throwing away the menu happens in one place: an orientation
+     * change replaces it wholesale, and it has to leave the menu manager as
+     * cleanly as it entered it.
+     */
+    _createMenu(orientation) {
+        this.menu = new Applet.AppletPopupMenu(this, orientation);
+        this.menuManager.addMenu(this.menu);
+        this.menu.connect("open-state-changed", (menu, open) => {
+            if (open)
+                this._onMenuOpened();
+        });
+
+        this._deviceKey = "";
+        this._sensorKey = "";
+        this._profileKey = "";
+        this._buildMenu();
+    }
+
+    _destroyMenu() {
+        if (!this.menu)
+            return;
+        this.menuManager.removeMenu(this.menu);
+        this.menu.destroy();
+        this.menu = null;
+    }
 
     _buildMenu() {
         this._summary = new InfoRow("", "");
@@ -1121,13 +1142,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     on_orientation_changed(orientation) {
-        this.menu.destroy();
-        this.menu = new Applet.AppletPopupMenu(this, orientation);
-        this.menuManager.addMenu(this.menu);
-        this._deviceKey = "";
-        this._sensorKey = "";
-        this._profileKey = "";
-        this._buildMenu();
+        this._destroyMenu();
+        this._createMenu(orientation);
         this._update();
     }
 
@@ -1143,6 +1159,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._idleId = 0;
         }
         this._removeHotkeys();
+        this._destroyMenu();
         if (this._profiles)
             this._profiles.destroy();
         if (this._upower)
