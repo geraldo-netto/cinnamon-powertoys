@@ -9,6 +9,7 @@
  */
 
 const Gio = imports.gi.Gio;
+const GLib = imports.gi.GLib;
 
 const BACKENDS = [
     { name: "net.hadess.PowerProfiles", path: "/net/hadess/PowerProfiles" },
@@ -53,6 +54,7 @@ var PowerProfilesClient = class PowerProfilesClient {
         this._propSignalId = 0;
         this._watchIds = [];
         this.busName = null;
+        this.busPath = null;
 
         this._connect();
 
@@ -83,6 +85,7 @@ var PowerProfilesClient = class PowerProfilesClient {
                     continue;
                 this._proxy = proxy;
                 this.busName = backend.name;
+                this.busPath = backend.path;
                 this._propSignalId = proxy.connect("g-properties-changed", () => this._onChanged());
                 return;
             } catch (e) {
@@ -102,6 +105,7 @@ var PowerProfilesClient = class PowerProfilesClient {
         this._proxy = null;
         this._propSignalId = 0;
         this.busName = null;
+        this.busPath = null;
     }
 
     get available() {
@@ -150,16 +154,35 @@ var PowerProfilesClient = class PowerProfilesClient {
         }));
     }
 
-    setProfile(name) {
-        if (!this._proxy)
-            return false;
-        try {
-            this._proxy.ActiveProfile = name;
-            return true;
-        } catch (e) {
-            global.logError("[powertoys] cannot set power profile: " + e);
+    /*
+     * The property setter the proxy wrapper generates fires the Set call and
+     * forgets about it, so a refusal - polkit says no, the daemon does not
+     * know the profile, it went away between the click and the call - never
+     * reaches the caller and the menu silently keeps its old selection.
+     * Issuing Set here keeps hold of the reply. onResult is called with null
+     * when the daemon accepted the change, and with the error when it did not.
+     */
+    setProfile(name, onResult) {
+        let done = onResult || function () {};
+        if (!this._proxy) {
+            done(new Error("power-profiles-daemon is not available"));
             return false;
         }
+
+        let target = new GLib.Variant("(ssv)",
+                                      [this.busName, "ActiveProfile", new GLib.Variant("s", name)]);
+        Gio.DBus.system.call(this.busName, this.busPath,
+                             "org.freedesktop.DBus.Properties", "Set", target,
+                             null, Gio.DBusCallFlags.NONE, -1, null,
+                             (connection, result) => {
+                                 try {
+                                     connection.call_finish(result);
+                                     done(null);
+                                 } catch (error) {
+                                     done(error);
+                                 }
+                             });
+        return true;
     }
 
     /* Stepping through profiles lives in the applet, which also has to handle

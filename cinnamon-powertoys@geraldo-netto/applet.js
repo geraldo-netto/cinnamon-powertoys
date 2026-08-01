@@ -1077,12 +1077,28 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
     _setProfile(name) {
         let data = this._latest;
-        if (data && data.profile.viaSysfs)
+        if (data && data.profile.viaSysfs) {
+            /* the helper reports its own failures */
             this._runHelper(["platform-profile", name]);
-        else
-            this._profiles.setProfile(name);
+        } else {
+            this._profiles.setProfile(name, error => {
+                if (error)
+                    this._notifyProfileError(name, error);
+                this._scheduleUpdate();
+            });
+        }
         this.menu.close();
         this._scheduleUpdate();
+    }
+
+    /* Gio prefixes a remote error with the D-Bus error name, which means
+     * nothing to the person reading the notification. */
+    _notifyProfileError(name, error) {
+        let detail = error && error.message ? error.message : String(error);
+        detail = detail.replace(/^GDBus\.Error:[^\s:]+:\s*/, "").trim();
+        Main.notifyError(_("Power Toys"),
+                         _("Could not switch to") + " " + Format.profileLabel(name) +
+                         (detail ? ": " + detail : ""));
     }
 
     /*
