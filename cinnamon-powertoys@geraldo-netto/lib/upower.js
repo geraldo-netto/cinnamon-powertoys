@@ -83,6 +83,7 @@ var UPowerMonitor = class UPowerMonitor {
         this._onChanged = onChanged || function () {};
         this._onReady = onReady || function () {};
         this._devices = new Map();
+        this._deviceSignals = new Map();
         this._manager = null;
         this._display = null;
         this._busSignalIds = [];
@@ -115,7 +116,7 @@ var UPowerMonitor = class UPowerMonitor {
             this._addDevice(path);
         }));
         this._busSignalIds.push(proxy.connectSignal("DeviceRemoved", (p, sender, [path]) => {
-            this._devices.delete(path);
+            this._removeDevice(path);
             this._onChanged();
         }));
         this._propSignalId = proxy.connect("g-properties-changed", () => this._onChanged());
@@ -167,13 +168,31 @@ var UPowerMonitor = class UPowerMonitor {
                     done();
                 return;
             }
-            proxy.connect("g-properties-changed", () => this._onChanged());
+            let signalId = proxy.connect("g-properties-changed", () => this._onChanged());
             this._devices.set(path, proxy);
+            this._deviceSignals.set(path, signalId);
             if (done)
                 done();
             else
                 this._onChanged();
         });
+    }
+
+    /* Devices come and go all the time (bluetooth, docks, USB), so the
+     * property handler has to go with them or it accumulates for the life of
+     * the session. */
+    _removeDevice(path) {
+        let proxy = this._devices.get(path);
+        let signalId = this._deviceSignals.get(path);
+        if (proxy && signalId) {
+            try {
+                proxy.disconnect(signalId);
+            } catch (e) {
+                /* the proxy is already gone */
+            }
+        }
+        this._devices.delete(path);
+        this._deviceSignals.delete(path);
     }
 
     get onBattery() {
@@ -302,7 +321,10 @@ var UPowerMonitor = class UPowerMonitor {
         }
         this._busSignalIds = [];
         this._propSignalId = 0;
-        this._devices.clear();
+
+        for (let path of Array.from(this._devices.keys()))
+            this._removeDevice(path);
+
         this._manager = null;
         this._display = null;
     }

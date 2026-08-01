@@ -8,7 +8,6 @@ Effort: **XS** minutes · **S** under an hour · **M** an hour or a few · **L**
 
 | id | effort | description |
 |----|--------|-------------|
-| PT-08 | S | The per-device `g-properties-changed` handler is never disconnected ([lib/upower.js:170](cinnamon-powertoys@geraldo-netto/lib/upower.js#L170)); `DeviceRemoved` only drops the map entry and `destroy()` clears the map. Keep the handler id per proxy and disconnect it in both places. |
 | PT-12 | S | `high-temp-threshold` is always entered in °C while the whole UI can be showing °F. Either convert on read or label the spinner with the active unit. |
 | PT-13 | S | The panel shows bare watts while the menu qualifies the same number as "(GPU)" or "(package)". On a desktop with no RAPL access the panel reads 54 W, which looks like whole-system draw but is the graphics card. Add a short marker or an explicit tooltip line. |
 | PT-14 | M | There is no AC adapter row. `lineDevices()` is already collected in `_collect()` and only used for a tooltip sentence; a row showing charger online/offline (and the adapter model, where UPower has it) is nearly free. |
