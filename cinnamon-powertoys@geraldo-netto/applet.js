@@ -96,6 +96,45 @@ function defaultBackends() {
     };
 }
 
+/*
+ * Menu rows that follow a list of values.
+ *
+ * Tearing a section down on every poll would drop whatever the pointer is
+ * over and make the menu flicker, so the widgets are rebuilt only when the set
+ * of keys changes; the rest of the time the rows that are already there are
+ * handed the new values. Each entry is an object carrying a "key" plus
+ * whatever create and update need.
+ */
+class KeyedList {
+    constructor(section, create, update) {
+        this._section = section;
+        this._create = create;
+        this._update = update || function () {};
+        this._key = null;
+        this._items = new Map();
+    }
+
+    sync(entries) {
+        let key = entries.map(entry => entry.key).join(",");
+        if (key !== this._key) {
+            this._key = key;
+            this._section.removeAll();
+            this._items = new Map();
+            for (let entry of entries) {
+                let item = this._create(entry);
+                this._items.set(entry.key, item);
+                this._section.addMenuItem(item);
+            }
+        }
+        for (let entry of entries)
+            this._update(this._items.get(entry.key), entry);
+    }
+
+    get items() {
+        return Array.from(this._items.values());
+    }
+}
+
 /* A non reactive "label ......... value" line. */
 class InfoRow extends PopupMenu.PopupBaseMenuItem {
     _init(label, value) {
@@ -213,13 +252,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._iconKey = null;
         this._alerted = new Map();
         this._tempAlerted = false;
-        this._deviceRows = new Map();
-        this._sensorRows = new Map();
         this._profileItems = [];
         this._governorItems = [];
         this._energyItems = [];
-        this._deviceKey = "";
-        this._sensorKey = "";
         this._profileKey = "";
         this._hotkeyIds = [];
 
@@ -308,8 +343,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     _onSettingsChanged() {
-        this._deviceKey = "";
-        this._sensorKey = "";
         this._profileKey = "";
         this._iconKey = null;
         this._update();
@@ -331,8 +364,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
                 this._onMenuOpened();
         });
 
-        this._deviceKey = "";
-        this._sensorKey = "";
         this._profileKey = "";
         this._buildMenu();
     }
@@ -362,6 +393,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this.menu.addMenuItem(this._deviceSeparator);
         this._deviceSection = new PopupMenu.PopupMenuSection();
         this.menu.addMenuItem(this._deviceSection);
+        this._deviceList = new KeyedList(this._deviceSection,
+                                         entry => new DeviceRow(entry.device, this),
+                                         (row, entry) => row.update(entry.device));
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
@@ -371,6 +405,12 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         this._sensorMenu = new PopupMenu.PopupSubMenuMenuItem(_("Sensors"));
         this.menu.addMenuItem(this._sensorMenu);
+        this._sensorList = new KeyedList(this._sensorMenu.menu,
+                                         entry => new InfoRow(entry.label, entry.value),
+                                         (row, entry) => {
+                                             row.setValue(entry.value);
+                                             row.setWarning(entry.warning);
+                                         });
 
         if (this._chargeControl) {
             this._chargeMenu = new PopupMenu.PopupSubMenuMenuItem(_("Battery charge limit"));
@@ -907,27 +947,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _updateDeviceSection(data) {
         let show = this.showDevices && data.devices.length > 0;
         this._deviceSeparator.actor.visible = show;
-
-        let key = show ? data.devices.map(device => device.path).join(",") : "";
-        if (key !== this._deviceKey) {
-            this._deviceKey = key;
-            this._deviceSection.removeAll();
-            this._deviceRows = new Map();
-            if (show) {
-                for (let device of data.devices) {
-                    let row = new DeviceRow(device, this);
-                    this._deviceRows.set(device.path, row);
-                    this._deviceSection.addMenuItem(row);
-                }
-            }
-            return;
-        }
-
-        for (let device of data.devices) {
-            let row = this._deviceRows.get(device.path);
-            if (row)
-                row.update(device);
-        }
+        this._deviceList.sync(show
+            ? data.devices.map(device => ({ key: device.path, device: device }))
+            : []);
     }
 
     _updateCpuSection(data) {
@@ -1024,38 +1046,19 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         let entries = [];
         for (let sensor of temperatures)
-            entries.push({ id: "t:" + sensor.id, label: sensor.label,
+            entries.push({ key: "t:" + sensor.id, label: sensor.label,
                            value: Format.temperature(sensor.celsius, this.tempUnit, 1),
                            warning: sensor.critical !== null && sensor.celsius >= sensor.critical - 5 });
         for (let fan of fans)
-            entries.push({ id: "f:" + fan.id, label: fan.label, value: Format.rpm(fan.rpm), warning: false });
+            entries.push({ key: "f:" + fan.id, label: fan.label, value: Format.rpm(fan.rpm), warning: false });
         for (let entry of powers)
-            entries.push({ id: "p:" + entry.id, label: entry.label,
+            entries.push({ key: "p:" + entry.id, label: entry.label,
                            value: Format.watts(entry.watts), warning: false });
 
-        let key = entries.map(entry => entry.id).join(",");
-        if (key !== this._sensorKey) {
-            this._sensorKey = key;
-            this._sensorMenu.menu.removeAll();
-            this._sensorRows = new Map();
-            if (entries.length === 0) {
-                this._sensorMenu.menu.addMenuItem(new InfoRow(_("No sensors found"), ""));
-            } else {
-                for (let entry of entries) {
-                    let row = new InfoRow(entry.label, entry.value);
-                    this._sensorRows.set(entry.id, row);
-                    this._sensorMenu.menu.addMenuItem(row);
-                }
-            }
-        }
+        if (entries.length === 0)
+            entries.push({ key: "empty", label: _("No sensors found"), value: "", warning: false });
 
-        for (let entry of entries) {
-            let row = this._sensorRows.get(entry.id);
-            if (!row)
-                continue;
-            row.setValue(entry.value);
-            row.setWarning(entry.warning);
-        }
+        this._sensorList.sync(entries);
     }
 
     _updateChargeSection() {
