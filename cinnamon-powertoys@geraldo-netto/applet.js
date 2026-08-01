@@ -45,6 +45,9 @@ const UPDeviceLevel = UPowerGlib.DeviceLevel;
 
 const HELPER = "powertoys-helper";
 const DEFAULT_ICON = "powertoys";
+/* pkexec exit codes: the dialog was closed, or authorisation was refused */
+const PKEXEC_DISMISSED = 126;
+const PKEXEC_UNAUTHORISED = 127;
 /* Only the top level RAPL domains, adding the sub-domains would count twice. */
 const RAPL_PACKAGE = /^rapl:(intel|amd)-rapl:\d+$/;
 
@@ -971,19 +974,35 @@ class PowerToysApplet extends Applet.TextIconApplet {
         let command = "pkexec " + GLib.shell_quote(helper) + " " +
                       args.map(argument => GLib.shell_quote(String(argument))).join(" ");
         try {
-            Util.spawnCommandLineAsync(command,
-                                       () => {
-                                           this._cpu.refresh();
-                                           this._update();
-                                           if (onDone)
-                                               onDone();
-                                       },
-                                       () => {
-                                           this._update();
-                                       });
+            Util.spawnCommandLineAsyncIO(command, (stdout, stderr, exitCode) => {
+                this._cpu.refresh();
+                this._update();
+
+                if (exitCode === 0) {
+                    if (onDone)
+                        onDone();
+                    return;
+                }
+
+                /* Nothing was changed and the user knows why: they closed the
+                 * dialog or the password did not check out. */
+                if (exitCode === PKEXEC_DISMISSED || exitCode === PKEXEC_UNAUTHORISED)
+                    return;
+
+                this._notifyHelperError(stderr);
+            });
         } catch (error) {
             global.logError("[powertoys] helper failed: " + error);
+            this._notifyHelperError(String(error));
         }
+    }
+
+    /* The helper explains itself on stderr, so the last line is the reason. */
+    _notifyHelperError(stderr) {
+        let lines = (stderr || "").split("\n").map(line => line.trim()).filter(line => line !== "");
+        let detail = lines.length > 0 ? lines[lines.length - 1] : "";
+        detail = detail.replace(/^powertoys-helper:\s*/, "");
+        Main.notifyError(_("Power Toys"), detail || _("The change could not be applied."));
     }
 
     /* A checkout or a zip download can lose the executable bit. */
