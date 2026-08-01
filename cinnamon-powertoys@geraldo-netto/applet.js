@@ -226,7 +226,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             "panel-show-battery", "panel-show-temp", "panel-show-power",
             "panel-show-frequency", "panel-show-profile",
             "show-profiles", "show-cpu", "show-devices", "show-sensors",
-            "show-all-sensors", "expand-sections", "enable-privileged-controls",
+            "show-all-sensors", "enable-privileged-controls",
             "scroll-action", "notify-low-battery", "low-battery-threshold",
             "critical-battery-threshold", "notify-peripheral-battery",
             "peripheral-battery-threshold", "notify-high-temp", "high-temp-threshold",
@@ -235,6 +235,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this.settings.bind(key, this._propertyName(key), () => this._onSettingsChanged());
 
         this.settings.bind("refresh-interval", "refreshInterval", () => this._startPolling());
+        /* Applied on its own, so that toggling any other setting does not fold
+         * a submenu the user opened by hand. */
+        this.settings.bind("expand-sections", "expandSections", () => this._applyExpandState());
         this.settings.bind("cycle-profile-hotkey", "cycleProfileHotkey", () => this._registerHotkeys());
         this.settings.bind("toggle-menu-hotkey", "toggleMenuHotkey", () => this._registerHotkeys());
     }
@@ -323,6 +326,20 @@ class PowerToysApplet extends Applet.TextIconApplet {
             Util.spawnCommandLine("cinnamon-settings applets " + UUID + " " + this.instanceId);
         });
         this.menu.addMenuItem(configure);
+
+        this._applyExpandState();
+    }
+
+    /* Submenus start folded; "expand-sections" asks for them open instead. */
+    _applyExpandState() {
+        for (let item of [this._cpuMenu, this._sensorMenu, this._chargeMenu]) {
+            if (!item)
+                continue;
+            if (this.expandSections)
+                item.menu.open(false);
+            else
+                item.menu.close(false);
+        }
     }
 
     _buildCpuMenu() {

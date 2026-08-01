@@ -8,7 +8,6 @@ Effort: **XS** minutes · **S** under an hour · **M** an hour or a few · **L**
 
 | id | effort | description |
 |----|--------|-------------|
-| PT-01 | S | `expand-sections` is bound in [applet.js:232](cinnamon-powertoys@geraldo-netto/applet.js#L232) but never read. The Processor and Sensors submenus always start collapsed, so the setting does nothing. Either open the submenus in `_buildMenu()` when it is set, or drop the key. |
 | PT-02 | S | The low-battery warning colour on a device row uses `lowBatteryThreshold` for every device ([applet.js:149](cinnamon-powertoys@geraldo-netto/applet.js#L149)), so a mouse at 18% turns orange under the system battery rule instead of `peripheralBatteryThreshold`. Pick the threshold from `device.powerSupply`, as `_checkAlerts` already does. |
 | PT-03 | S | The cycle-profile hotkey and the scroll action both guard on `this._profiles.available` ([applet.js:946](cinnamon-powertoys@geraldo-netto/applet.js#L946), [applet.js:1004](cinnamon-powertoys@geraldo-netto/applet.js#L1004)), so on a machine without power-profiles-daemon they silently do nothing even though the menu can switch the ACPI platform profile. Route both through `_setProfile()` and the `viaSysfs` path. |
 | PT-04 | S | Turning off *enable-privileged-controls* hides the governor and energy-preference lists entirely ([applet.js:825-831](cinnamon-powertoys@geraldo-netto/applet.js#L825-L831)), so the user loses the read-out too. Show the current values as `InfoRow`s and only drop the selectable items. |
