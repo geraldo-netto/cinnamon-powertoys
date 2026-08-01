@@ -63,6 +63,9 @@ const CHARGE_LIMITS = [60, 70, 80, 90, 95, 100];
 /* Sensors are listed in this order, so the interesting ones come first. */
 const SENSOR_KIND_ORDER = ["cpu", "gpu", "package", "battery", "board", "disk", "network", "other"];
 
+/* Kept when the menu is not asked to list every sensor on the machine. */
+const PRIMARY_SENSOR_KINDS = ["cpu", "gpu", "battery", "package"];
+
 function bySensorOrder(a, b) {
     let rankA = SENSOR_KIND_ORDER.indexOf(a.kind);
     let rankB = SENSOR_KIND_ORDER.indexOf(b.kind);
@@ -1030,37 +1033,49 @@ class PowerToysApplet extends Applet.TextIconApplet {
         }
     }
 
+    /* A temperature is worth flagging as it closes on the chip's own limit. */
+    _temperatureEntry(sensor) {
+        return {
+            key: "t:" + sensor.id,
+            label: sensor.label,
+            value: Format.temperature(sensor.celsius, this.tempUnit, 1),
+            warning: sensor.critical !== null && sensor.celsius >= sensor.critical - 5,
+        };
+    }
+
+    _fanEntry(fan) {
+        return { key: "f:" + fan.id, label: fan.label, value: Format.rpm(fan.rpm), warning: false };
+    }
+
+    _powerEntry(meter) {
+        return { key: "p:" + meter.id, label: meter.label,
+                 value: Format.watts(meter.watts), warning: false };
+    }
+
+    /*
+     * One kind of reading turned into menu entries: drop what cannot be read,
+     * drop the uninteresting kinds unless the menu was asked for all of them,
+     * then order them the way the menu lists sensors.
+     */
+    _sensorEntries(readings, isReadable, toEntry) {
+        let usable = readings.filter(isReadable);
+        if (!this.showAllSensors)
+            usable = usable.filter(reading => PRIMARY_SENSOR_KINDS.indexOf(reading.kind) >= 0);
+        return usable.sort(bySensorOrder).map(toEntry);
+    }
+
     _updateSensorSection(data) {
-        let show = this.showSensors;
-        this._sensorMenu.actor.visible = show;
-        if (!show)
+        this._sensorMenu.actor.visible = this.showSensors;
+        if (!this.showSensors)
             return;
 
-        let temperatures = data.temperatures.filter(sensor => sensor.celsius !== null);
-        let fans = data.fans.filter(fan => fan.rpm !== null && fan.rpm > 0);
-        let powers = data.powers;
-
-        if (!this.showAllSensors) {
-            let wanted = ["cpu", "gpu", "battery", "package"];
-            temperatures = temperatures.filter(sensor => wanted.indexOf(sensor.kind) >= 0);
-            fans = fans.filter(fan => wanted.indexOf(fan.kind) >= 0);
-            powers = powers.filter(entry => wanted.indexOf(entry.kind) >= 0);
-        }
-
-        temperatures.sort(bySensorOrder);
-        fans.sort(bySensorOrder);
-        powers.sort(bySensorOrder);
-
-        let entries = [];
-        for (let sensor of temperatures)
-            entries.push({ key: "t:" + sensor.id, label: sensor.label,
-                           value: Format.temperature(sensor.celsius, this.tempUnit, 1),
-                           warning: sensor.critical !== null && sensor.celsius >= sensor.critical - 5 });
-        for (let fan of fans)
-            entries.push({ key: "f:" + fan.id, label: fan.label, value: Format.rpm(fan.rpm), warning: false });
-        for (let entry of powers)
-            entries.push({ key: "p:" + entry.id, label: entry.label,
-                           value: Format.watts(entry.watts), warning: false });
+        let entries = [].concat(
+            this._sensorEntries(data.temperatures, sensor => sensor.celsius !== null,
+                                sensor => this._temperatureEntry(sensor)),
+            this._sensorEntries(data.fans, fan => fan.rpm !== null && fan.rpm > 0,
+                                fan => this._fanEntry(fan)),
+            this._sensorEntries(data.powers, () => true,
+                                meter => this._powerEntry(meter)));
 
         if (entries.length === 0)
             entries.push({ key: "empty", label: _("No sensors found"), value: "", warning: false });
