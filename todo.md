@@ -22,7 +22,6 @@ own — items that are genuinely a single change were left whole.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-29 | high | M | The libraries are pulled in as `imports.lib.sysfs` and friends after pushing the applet directory onto `imports.searchPath` ([applet.js:26-31](cinnamon-powertoys@geraldo-netto/applet.js#L26-L31)). That registers them under the global `lib.*` namespace, so they are cached for the life of the Cinnamon process — reloading the xlet re-runs applet.js but keeps the old library code, which cost real time during the fix pass — and any other xlet using the same `lib/` names would collide with ours. Load them under a namespace derived from the UUID, or through the extension loader, and confirm a reload picks up library edits. |
 | PT-12 | high | S | `high-temp-threshold` is always entered in °C while the whole UI can be showing °F. Either convert on read or label the spinner with the active unit. |
 | PT-13 | medium | S | The panel shows bare watts while the menu qualifies the same number as "(GPU)" or "(package)". On a desktop with no RAPL access the panel reads 54 W, which looks like whole-system draw but is the graphics card. Add a short marker or an explicit tooltip line. |
 | PT-14 | low | M | There is no AC adapter row. `lineDevices()` is already collected in `_collect()` and only used for a tooltip sentence; a row showing charger online/offline (and the adapter model, where UPower has it) is nearly free. |

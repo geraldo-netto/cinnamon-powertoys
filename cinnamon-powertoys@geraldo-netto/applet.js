@@ -21,14 +21,20 @@ const UPowerGlib = imports.gi.UPowerGlib;
 const Util = imports.misc.util;
 
 const UUID = "cinnamon-powertoys@geraldo-netto";
-const APPLET_PATH = imports.ui.appletManager.appletMeta[UUID].path;
 
-imports.searchPath.unshift(APPLET_PATH);
-const Sysfs = imports.lib.sysfs;
-const UPower = imports.lib.upower;
-const Profiles = imports.lib.profiles;
-const Format = imports.lib.format;
-imports.searchPath.shift();
+/*
+ * Cinnamon loads every xlet file through misc/fileUtils.js, which hands the
+ * module a require() already bound to the xlet's own directory. Using it
+ * instead of imports.searchPath keeps these libraries private to this applet,
+ * where imports.lib.* would have registered them under a global name any other
+ * xlet could collide with, and lets a reload pick up library edits: Cinnamon
+ * drops the cached modules for the directory when the xlet is unloaded, while
+ * the legacy importer caches them for the life of the process.
+ */
+const Sysfs = require("./lib/sysfs.js");
+const UPower = require("./lib/upower.js");
+const Profiles = require("./lib/profiles.js");
+const Format = require("./lib/format.js");
 
 Gettext.bindtextdomain(UUID, GLib.get_home_dir() + "/.local/share/locale");
 

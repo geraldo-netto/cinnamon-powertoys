@@ -2,10 +2,14 @@
 /*
  * Syntax checks the files given on the command line without running them.
  *
- * The applet sources cannot simply be executed outside Cinnamon: applet.js
- * reads imports.ui.appletManager at load time and dies. Handing the source to
+ * The applet sources cannot simply be executed outside Cinnamon: they call
+ * require() and reach for the session bus at load time. Handing the source to
  * new Function() parses it with the same engine Cinnamon uses and reports the
  * error with a line number, without evaluating a single statement.
+ *
+ * The wrapper mirrors misc/fileUtils.js, which is what Cinnamon actually
+ * evaluates an xlet file with: the same parameter names, and the same
+ * 'use strict' prefix, so a construct the loader would reject fails here too.
  */
 
 const GLib = imports.gi.GLib;
@@ -45,7 +49,8 @@ for (let path of ARGV) {
     }
 
     try {
-        new Function(decode(bytes));
+        new Function("require", "exports", "module", "__meta", "__dirname", "__filename",
+                     "'use strict';" + decode(bytes));
         print("parse ok    " + path);
     } catch (error) {
         printerr("parse FAIL  " + path + ": " + error);
