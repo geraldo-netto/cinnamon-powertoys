@@ -285,6 +285,37 @@ class SelectorGroup {
     }
 }
 
+/*
+ * One kernel setting in the menu.
+ *
+ * With the privileged controls on it is a radio group; with them off the value
+ * is still worth reading, so the same setting shows as a single
+ * "label ... value" row instead. Both belong to the control, so callers pass a
+ * list, the active value and whether it may be changed, rather than lining two
+ * widgets up against a visibility matrix themselves.
+ */
+class ChoiceControl {
+    constructor(menu, title, labelFunction, onActivate) {
+        this._labelFunction = labelFunction;
+        this._row = new InfoRow(title, "");
+        menu.addMenuItem(this._row);
+
+        let section = new PopupMenu.PopupMenuSection();
+        menu.addMenuItem(section);
+        this._group = new SelectorGroup(section, labelFunction, onActivate, title);
+    }
+
+    sync(values, active, editable) {
+        this._group.sync(editable ? values : [], active);
+        this._row.setValue(this._labelFunction(active));
+        this._row.actor.visible = !editable && !!active;
+    }
+
+    get items() {
+        return this._group.items;
+    }
+}
+
 class PowerToysApplet extends Applet.TextIconApplet {
     constructor(metadata, orientation, panelHeight, instanceId, backends) {
         super(orientation, panelHeight, instanceId);
@@ -496,27 +527,14 @@ class PowerToysApplet extends Applet.TextIconApplet {
         menu.addMenuItem(this._cpuTempRow);
         menu.addMenuItem(this._cpuDriverRow);
 
-        /* Shown in place of the selectable items when the privileged controls
-         * are turned off: the values are still worth reading. */
-        this._governorRow = new InfoRow(_("Governor"), "");
-        this._energyRow = new InfoRow(_("Energy preference"), "");
-        this._boostRow = new InfoRow(_("Turbo boost"), "");
-        menu.addMenuItem(this._governorRow);
-        menu.addMenuItem(this._energyRow);
-        menu.addMenuItem(this._boostRow);
+        this._governorControl = new ChoiceControl(menu, _("Governor"), Format.governorLabel,
+                                                  value => this._runHelper(["governor", value]));
+        this._energyControl = new ChoiceControl(menu, _("Energy preference"),
+                                                Format.energyPreferenceLabel,
+                                                value => this._runHelper(["epp", value]));
 
-        this._governorSection = new PopupMenu.PopupMenuSection();
-        menu.addMenuItem(this._governorSection);
-        this._governorGroup = new SelectorGroup(this._governorSection, Format.governorLabel,
-                                                value => this._runHelper(["governor", value]),
-                                                _("Governor"));
-
-        this._energySection = new PopupMenu.PopupMenuSection();
-        menu.addMenuItem(this._energySection);
-        this._energyGroup = new SelectorGroup(this._energySection, Format.energyPreferenceLabel,
-                                              value => this._runHelper(["epp", value]),
-                                              _("Energy preference"));
-
+        /* The switch carries its own read-only mode, so unlike the two lists
+         * above it needs no second widget: insensitive still shows the state. */
         this._boostSwitch = new PopupMenu.PopupSwitchMenuItem(_("Turbo boost"), false);
         this._boostSwitch.connect("toggled", (item, state) => {
             this._runHelper(["boost", state ? "1" : "0"]);
@@ -989,12 +1007,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
             frequency += " / " + Format.frequency(data.cpu.maxFrequency);
         this._cpuFreqRow.setValue(frequency);
 
+        this._cpuTempRow.actor.visible = data.cpuTemperature !== null;
         if (data.cpuTemperature !== null) {
             this._cpuTempRow.setValue(Format.temperature(data.cpuTemperature, this.tempUnit, 1));
             this._cpuTempRow.setWarning(data.cpuTemperature >= this.highTempCelsius);
-            this._cpuTempRow.actor.show();
-        } else {
-            this._cpuTempRow.actor.hide();
         }
 
         let driver = data.cpu.driver || _("unknown");
@@ -1002,24 +1018,16 @@ class PowerToysApplet extends Applet.TextIconApplet {
             driver += " (" + data.cpu.amdPstateStatus + ")";
         this._cpuDriverRow.setValue(driver);
 
-        let allowed = this.enablePrivilegedControls;
+        let editable = this.enablePrivilegedControls;
+        this._governorControl.sync(data.cpu.governors, data.cpu.governor, editable);
+        this._energyControl.sync(data.cpu.energyPreferences, data.cpu.energyPreference, editable);
 
-        this._governorRow.setValue(Format.governorLabel(data.cpu.governor));
-        this._governorRow.actor.visible = !allowed && !!data.cpu.governor;
-
-        this._energyRow.setValue(Format.energyPreferenceLabel(data.cpu.energyPreference));
-        this._energyRow.actor.visible = !allowed && !!data.cpu.energyPreference;
-
-        this._boostRow.setValue(data.cpu.boostEnabled ? _("On") : _("Off"));
-        this._boostRow.actor.visible = !allowed && data.cpu.boostEnabled !== null;
-
-        this._governorGroup.sync(allowed ? data.cpu.governors : [], data.cpu.governor);
-        this._energyGroup.sync(allowed ? data.cpu.energyPreferences : [], data.cpu.energyPreference);
-
-        let boost = data.cpu.boostSupported && allowed;
-        this._boostSwitch.actor.visible = boost;
-        if (boost && data.cpu.boostEnabled !== null)
-            this._boostSwitch.setToggleState(data.cpu.boostEnabled);
+        this._boostSwitch.actor.visible = data.cpu.boostSupported;
+        if (data.cpu.boostSupported) {
+            if (data.cpu.boostEnabled !== null)
+                this._boostSwitch.setToggleState(data.cpu.boostEnabled);
+            this._boostSwitch.setSensitive(editable);
+        }
     }
 
     _updateSensorSection(data) {
