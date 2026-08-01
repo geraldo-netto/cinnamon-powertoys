@@ -27,7 +27,17 @@ die() {
 }
 
 usage() {
-    sed -n '3,16p' "$0" >&2
+    cat >&2 <<'EOF'
+Usage:
+  powertoys-helper governor <name>
+  powertoys-helper epp <name>
+  powertoys-helper boost <0|1>
+  powertoys-helper platform-profile <name>
+  powertoys-helper charge-threshold <20-100>
+
+Every value is checked against the list the kernel advertises before it is
+written. Run through pkexec, the settings are owned by root.
+EOF
     exit 2
 }
 
