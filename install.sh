@@ -1,7 +1,8 @@
 #!/bin/sh
 #
 # Installs the Power Toys applet into the current user's Cinnamon applet
-# directory and restarts Cinnamon so the change is picked up.
+# directory. When Cinnamon is running the applet is reloaded in place, so a
+# session restart is only needed on the very first install.
 
 set -eu
 
@@ -17,7 +18,24 @@ cp -r "$SOURCE_DIR" "$TARGET_DIR"
 chmod +x "$TARGET_DIR/powertoys-helper"
 
 echo "Installed to $TARGET_DIR"
-echo
-echo "Next steps:"
-echo "  1. Restart Cinnamon (Alt+F2, then r) or log out and back in."
-echo "  2. Right click the panel, Applets, and enable \"Power Toys\"."
+
+# Reloading only works once the applet is enabled on a panel; on a first
+# install the call fails and the instructions below apply.
+reloaded=no
+if command -v gdbus > /dev/null 2>&1; then
+    if gdbus call --session \
+            --dest org.Cinnamon \
+            --object-path /org/Cinnamon \
+            --method org.Cinnamon.ReloadXlet "$UUID" APPLET > /dev/null 2>&1; then
+        reloaded=yes
+    fi
+fi
+
+if [ "$reloaded" = yes ]; then
+    echo "Reloaded the running applet, no restart needed."
+else
+    echo
+    echo "Next steps:"
+    echo "  1. Restart Cinnamon (Alt+F2, then r) or log out and back in."
+    echo "  2. Right click the panel, Applets, and enable \"Power Toys\"."
+fi
