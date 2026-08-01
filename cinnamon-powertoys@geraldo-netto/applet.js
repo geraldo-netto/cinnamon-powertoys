@@ -1001,15 +1001,58 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._scheduleUpdate();
     }
 
+    /*
+     * The profile block collected on the last poll, whether it comes from
+     * power-profiles-daemon or from the ACPI platform profile. Everything that
+     * changes a profile goes through this, so no caller has to know which
+     * backend is in use.
+     */
+    _profileState() {
+        let state = this._latest ? this._latest.profile : null;
+        if (!state || !state.available || state.list.length === 0)
+            return null;
+        return state;
+    }
+
+    /* Known names first, so stepping always runs power saver, balanced,
+     * performance, with anything unusual the backend offers appended. */
+    _orderedProfiles(state) {
+        let ordered = Profiles.PROFILE_ORDER.filter(name => state.list.indexOf(name) >= 0);
+        for (let name of state.list) {
+            if (ordered.indexOf(name) < 0)
+                ordered.push(name);
+        }
+        return ordered;
+    }
+
+    _stepProfile(step, wrap, announce) {
+        let state = this._profileState();
+        if (!state)
+            return false;
+
+        let ordered = this._orderedProfiles(state);
+        let index = ordered.indexOf(state.active);
+        if (index < 0)
+            index = 0;
+
+        let target = index + step;
+        if (wrap)
+            target = (target + ordered.length) % ordered.length;
+        else
+            target = Math.max(0, Math.min(ordered.length - 1, target));
+
+        let name = ordered[target];
+        if (name === state.active)
+            return false;
+
+        this._setProfile(name);
+        if (announce)
+            Main.notify(_("Power Toys"), _("Power profile") + ": " + Format.profileLabel(name));
+        return true;
+    }
+
     _cycleProfile() {
-        if (!this._profiles.available)
-            return;
-        let next = this._profiles.nextProfile();
-        if (!next)
-            return;
-        this._profiles.setProfile(next);
-        Main.notify(_("Power Toys"), _("Power profile") + ": " + Format.profileLabel(next));
-        this._scheduleUpdate();
+        this._stepProfile(1, true, true);
     }
 
     /*
@@ -1076,24 +1119,21 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     _onScroll(actor, event) {
-        if (this.scrollAction !== "profile" || !this._profiles.available)
-            return Clutter.EVENT_PROPAGATE;
-
-        let profiles = this._profiles.profiles;
-        let index = profiles.indexOf(this._profiles.active);
-        if (index < 0)
+        if (this.scrollAction !== "profile" || !this._profileState())
             return Clutter.EVENT_PROPAGATE;
 
         let direction = event.get_scroll_direction();
+        let step;
         if (direction === Clutter.ScrollDirection.UP)
-            index = Math.min(index + 1, profiles.length - 1);
+            step = 1;
         else if (direction === Clutter.ScrollDirection.DOWN)
-            index = Math.max(index - 1, 0);
+            step = -1;
         else
             return Clutter.EVENT_PROPAGATE;
 
-        this._profiles.setProfile(profiles[index]);
-        this._scheduleUpdate();
+        /* No wrapping here: the wheel should stop at the ends rather than
+         * jump from performance back to power saver. */
+        this._stepProfile(step, false, false);
         return Clutter.EVENT_STOP;
     }
 

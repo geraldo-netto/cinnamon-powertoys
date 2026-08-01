@@ -162,19 +162,9 @@ var PowerProfilesClient = class PowerProfilesClient {
         }
     }
 
-    /* Next profile in PROFILE_ORDER, skipping any the daemon does not offer. */
-    nextProfile() {
-        let profiles = this.profiles;
-        if (profiles.length === 0)
-            return null;
-        let ordered = PROFILE_ORDER.filter(name => profiles.indexOf(name) >= 0);
-        for (let name of profiles) {
-            if (ordered.indexOf(name) < 0)
-                ordered.push(name);
-        }
-        let index = ordered.indexOf(this.active);
-        return ordered[(index + 1) % ordered.length];
-    }
+    /* Stepping through profiles lives in the applet, which also has to handle
+     * the ACPI platform profile fallback; PROFILE_ORDER above is the shared
+     * part. */
 
     destroy() {
         this._disconnectProxy();
