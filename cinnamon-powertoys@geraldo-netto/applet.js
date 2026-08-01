@@ -74,6 +74,28 @@ function bySensorOrder(a, b) {
     return a.label < b.label ? -1 : 1;
 }
 
+/*
+ * Everything the applet reads the machine through, gathered in one bag. The
+ * applet holds no direct reference to the sysfs, UPower or profile modules, so
+ * handing it a different bag - a fixture directory, a stubbed bus - is enough
+ * to construct it without a real machine underneath. The indirection is here
+ * for the tests; at runtime this is always what gets passed.
+ */
+function defaultBackends() {
+    return {
+        discoverSensors: () => Sysfs.discoverSensors(),
+        energyMeters: () => Sysfs.discoverEnergyCounters()
+            .map(counter => new Sysfs.EnergyMeter(counter)),
+        cpuControl: () => new Sysfs.CpuControl(),
+        chargeControl: () => Sysfs.discoverChargeControl(),
+        platformProfile: () => Sysfs.platformProfile(),
+        profilesClient: onChanged => new Profiles.PowerProfilesClient(onChanged),
+        upowerMonitor: (onChanged, onReady) => new UPower.UPowerMonitor(onChanged, onReady),
+        readNumber: path => Sysfs.readNumber(path),
+        fileExists: path => Sysfs.exists(path),
+    };
+}
+
 /* A non reactive "label ......... value" line. */
 class InfoRow extends PopupMenu.PopupBaseMenuItem {
     _init(label, value) {
@@ -178,11 +200,12 @@ class SelectorItem extends PopupMenu.PopupMenuItem {
 }
 
 class PowerToysApplet extends Applet.TextIconApplet {
-    constructor(metadata, orientation, panelHeight, instanceId) {
+    constructor(metadata, orientation, panelHeight, instanceId, backends) {
         super(orientation, panelHeight, instanceId);
 
         this.metadata = metadata;
         this.instanceId = instanceId;
+        this._backends = backends || defaultBackends();
         this.setAllowedLayout(Applet.AllowedLayout.BOTH);
         this.set_show_label_in_vertical_panels(false);
 
@@ -202,14 +225,14 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         this._bindSettings();
 
-        this._sensors = Sysfs.discoverSensors();
-        this._energyMeters = Sysfs.discoverEnergyCounters().map(counter => new Sysfs.EnergyMeter(counter));
-        this._cpu = new Sysfs.CpuControl();
-        this._chargeControl = Sysfs.discoverChargeControl();
+        this._sensors = this._backends.discoverSensors();
+        this._energyMeters = this._backends.energyMeters();
+        this._cpu = this._backends.cpuControl();
+        this._chargeControl = this._backends.chargeControl();
 
-        this._profiles = new Profiles.PowerProfilesClient(() => this._scheduleUpdate());
-        this._upower = new UPower.UPowerMonitor(() => this._scheduleUpdate(),
-                                                () => this._scheduleUpdate());
+        this._profiles = this._backends.profilesClient(() => this._scheduleUpdate());
+        this._upower = this._backends.upowerMonitor(() => this._scheduleUpdate(),
+                                                    () => this._scheduleUpdate());
 
         this.menuManager = new PopupMenu.PopupMenuManager(this);
         this._createMenu(orientation);
@@ -409,7 +432,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         let temperatures = [];
         for (let sensor of this._sensors.temperatures) {
-            let raw = Sysfs.readNumber(sensor.path);
+            let raw = this._backends.readNumber(sensor.path);
             temperatures.push({
                 id: sensor.id,
                 chip: sensor.chip,
@@ -435,7 +458,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             id: fan.id,
             label: Format.sensorLabel(fan),
             kind: fan.kind,
-            rpm: Sysfs.readNumber(fan.path),
+            rpm: this._backends.readNumber(fan.path),
         }));
 
         let powers = [];
@@ -449,7 +472,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
                 packageWatts = (packageWatts || 0) + value;
         }
         for (let sensor of this._sensors.powerMeters) {
-            let raw = Sysfs.readNumber(sensor.path);
+            let raw = this._backends.readNumber(sensor.path);
             if (raw === null)
                 continue;
             powers.push({
@@ -494,7 +517,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             viaSysfs: false,
         };
         if (!profile.available) {
-            let platform = Sysfs.platformProfile();
+            let platform = this._backends.platformProfile();
             if (platform && platform.choices.length > 0) {
                 profile = {
                     available: true,
@@ -619,7 +642,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
     _onMenuOpened() {
         /* Sensors can appear at runtime (a USB device, a card waking up). */
-        this._sensors = Sysfs.discoverSensors();
+        this._sensors = this._backends.discoverSensors();
         this._cpu.refresh();
         if (this._upower.available)
             this._upower.refresh();
@@ -1010,7 +1033,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._chargeMenu.actor.visible = allowed;
         if (!allowed)
             return;
-        let current = Sysfs.readNumber(this._chargeControl.path);
+        let current = this._backends.readNumber(this._chargeControl.path);
         this._chargeMenu.label.set_text(_("Battery charge limit") +
                                         (current !== null ? "  " + current + "%" : ""));
         for (let item of this._chargeItems)
@@ -1093,7 +1116,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             return;
 
         let helper = this.metadata.path + "/" + HELPER;
-        if (!Sysfs.exists(helper)) {
+        if (!this._backends.fileExists(helper)) {
             Main.notifyError(_("Power Toys"), _("Helper script not found") + ": " + helper);
             return;
         }
@@ -1273,6 +1296,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 }
 
-function main(metadata, orientation, panelHeight, instanceId) {
-    return new PowerToysApplet(metadata, orientation, panelHeight, instanceId);
+/* Cinnamon calls this with four arguments; the fifth is for the tests. */
+function main(metadata, orientation, panelHeight, instanceId, backends) {
+    return new PowerToysApplet(metadata, orientation, panelHeight, instanceId, backends);
 }
