@@ -148,7 +148,7 @@ class DeviceRow extends PopupMenu.PopupBaseMenuItem {
         this._details.set_text(this._applet.describeDevice(device));
 
         let low = device.percentage !== null &&
-                  device.state === UPDeviceState.DISCHARGING &&
+                  this._applet.isDraining(device) &&
                   device.percentage <= this._applet.lowThresholdFor(device);
         if (low)
             this._details.add_style_class_name("powertoys-warning");
@@ -731,6 +731,20 @@ class PowerToysApplet extends Applet.TextIconApplet {
         return device.powerSupply ? this.lowBatteryThreshold : this.peripheralBatteryThreshold;
     }
 
+    /*
+     * Whether the device is spending its charge rather than taking it in.
+     * System batteries report a state that can be trusted; peripherals very
+     * often report none at all, so for those anything that is not explicitly
+     * on the cable counts as draining.
+     */
+    isDraining(device) {
+        if (device.powerSupply)
+            return device.state === UPDeviceState.DISCHARGING;
+        return device.state !== UPDeviceState.CHARGING &&
+               device.state !== UPDeviceState.FULLY_CHARGED &&
+               device.state !== UPDeviceState.PENDING_CHARGE;
+    }
+
     /* One line summary of a device, used in the menu rows. */
     describeDevice(device) {
         let parts = [];
@@ -1179,7 +1193,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             let threshold = this.lowThresholdFor(device);
             let level = this._alerted.get(device.path) || "";
 
-            if (!enabled || (system && device.state !== UPDeviceState.DISCHARGING)) {
+            if (!enabled || !this.isDraining(device)) {
                 this._alerted.delete(device.path);
                 continue;
             }
