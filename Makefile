@@ -24,14 +24,11 @@ uninstall:
 	@echo "removed $(TARGET)"
 
 check:
-	@for file in $(UUID)/applet.js $(UUID)/lib/*.js; do \
-		gjs -c "$$(cat $$file)" >/dev/null 2>&1 || \
-		cjs -c "$$(cat $$file)" >/dev/null 2>&1 || \
-		echo "skipped $$file (no gjs/cjs available)"; \
-	done
-	@sh -n $(UUID)/powertoys-helper && echo "helper script OK"
-	@python3 -c "import json,sys; [json.load(open(f)) for f in ['$(UUID)/metadata.json','$(UUID)/settings-schema.json']]" \
-		&& echo "json OK"
+	@command -v cjs >/dev/null 2>&1 || { echo "cjs not found, install the cjs package"; exit 1; }
+	@cjs tools/parse-check.js $(UUID)/applet.js $(UUID)/lib/*.js
+	@sh -n $(UUID)/powertoys-helper && echo "helper ok    $(UUID)/powertoys-helper"
+	@python3 -c "import json; [json.load(open(f)) for f in ['$(UUID)/metadata.json','$(UUID)/settings-schema.json']]" \
+		&& echo "json ok      $(UUID)/metadata.json $(UUID)/settings-schema.json"
 
 pot:
 	@cinnamon-xlet-makepot $(UUID)
