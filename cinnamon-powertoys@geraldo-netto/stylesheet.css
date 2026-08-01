@@ -1,0 +1,32 @@
+.powertoys-summary {
+    font-weight: bold;
+}
+
+.powertoys-info-label {
+    padding-right: 16px;
+}
+
+.powertoys-info-value {
+    opacity: 0.75;
+}
+
+.powertoys-device-header {
+    spacing: 6px;
+}
+
+.powertoys-device-details {
+    font-size: 0.9em;
+    opacity: 0.75;
+    padding-left: 22px;
+}
+
+.powertoys-group-title {
+    font-weight: bold;
+    padding-top: 6px;
+    opacity: 0.85;
+}
+
+.powertoys-warning {
+    color: #f57900;
+    opacity: 1.0;
+}

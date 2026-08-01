@@ -1,0 +1,309 @@
+/*
+ * cinnamon-powertoys - UPower client.
+ *
+ * Talks to org.freedesktop.UPower directly rather than through csd-power,
+ * because the settings daemon only forwards a fixed tuple and drops the
+ * interesting fields (energy rate, voltage, temperature, capacity, cycles).
+ */
+
+const Gio = imports.gi.Gio;
+const UPowerGlib = imports.gi.UPowerGlib;
+
+var BUS_NAME = "org.freedesktop.UPower";
+var MANAGER_PATH = "/org/freedesktop/UPower";
+var DISPLAY_DEVICE_PATH = "/org/freedesktop/UPower/devices/DisplayDevice";
+
+const MANAGER_XML = '<node>\
+<interface name="org.freedesktop.UPower">\
+    <method name="EnumerateDevices">\
+        <arg type="ao" direction="out" name="devices"/>\
+    </method>\
+    <method name="GetDisplayDevice">\
+        <arg type="o" direction="out" name="device"/>\
+    </method>\
+    <signal name="DeviceAdded"><arg type="o" name="device"/></signal>\
+    <signal name="DeviceRemoved"><arg type="o" name="device"/></signal>\
+    <property name="DaemonVersion" type="s" access="read"/>\
+    <property name="OnBattery" type="b" access="read"/>\
+    <property name="LidIsClosed" type="b" access="read"/>\
+    <property name="LidIsPresent" type="b" access="read"/>\
+</interface>\
+</node>';
+
+const DEVICE_XML = '<node>\
+<interface name="org.freedesktop.UPower.Device">\
+    <method name="Refresh"/>\
+    <property name="NativePath" type="s" access="read"/>\
+    <property name="Vendor" type="s" access="read"/>\
+    <property name="Model" type="s" access="read"/>\
+    <property name="Serial" type="s" access="read"/>\
+    <property name="UpdateTime" type="t" access="read"/>\
+    <property name="Type" type="u" access="read"/>\
+    <property name="PowerSupply" type="b" access="read"/>\
+    <property name="Online" type="b" access="read"/>\
+    <property name="Energy" type="d" access="read"/>\
+    <property name="EnergyEmpty" type="d" access="read"/>\
+    <property name="EnergyFull" type="d" access="read"/>\
+    <property name="EnergyFullDesign" type="d" access="read"/>\
+    <property name="EnergyRate" type="d" access="read"/>\
+    <property name="Voltage" type="d" access="read"/>\
+    <property name="ChargeCycles" type="i" access="read"/>\
+    <property name="Temperature" type="d" access="read"/>\
+    <property name="TimeToEmpty" type="x" access="read"/>\
+    <property name="TimeToFull" type="x" access="read"/>\
+    <property name="Percentage" type="d" access="read"/>\
+    <property name="IsPresent" type="b" access="read"/>\
+    <property name="State" type="u" access="read"/>\
+    <property name="IsRechargeable" type="b" access="read"/>\
+    <property name="Capacity" type="d" access="read"/>\
+    <property name="Technology" type="u" access="read"/>\
+    <property name="WarningLevel" type="u" access="read"/>\
+    <property name="BatteryLevel" type="u" access="read"/>\
+    <property name="IconName" type="s" access="read"/>\
+</interface>\
+</node>';
+
+const ManagerProxy = Gio.DBusProxy.makeProxyWrapper(MANAGER_XML);
+const DeviceProxy = Gio.DBusProxy.makeProxyWrapper(DEVICE_XML);
+
+const UPDeviceKind = UPowerGlib.DeviceKind;
+const UPDeviceState = UPowerGlib.DeviceState;
+const UPDeviceLevel = UPowerGlib.DeviceLevel;
+
+function _number(value) {
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+var UPowerMonitor = class UPowerMonitor {
+    /*
+     * onChanged is called whenever the device set or any device property
+     * changes; onReady once the initial enumeration is complete.
+     */
+    constructor(onChanged, onReady) {
+        this._onChanged = onChanged || function () {};
+        this._onReady = onReady || function () {};
+        this._devices = new Map();
+        this._manager = null;
+        this._display = null;
+        this._busSignalIds = [];
+        this._propSignalId = 0;
+        this.available = false;
+        this.destroyed = false;
+
+        try {
+            new ManagerProxy(Gio.DBus.system, BUS_NAME, MANAGER_PATH,
+                             (proxy, error) => this._onManagerReady(proxy, error));
+        } catch (e) {
+            global.logError("[powertoys] cannot reach UPower: " + e);
+        }
+    }
+
+    _onManagerReady(proxy, error) {
+        if (this.destroyed)
+            return;
+        if (error || !proxy) {
+            global.logError("[powertoys] UPower manager unavailable: " +
+                            (error ? error.message : "no proxy"));
+            this._onReady();
+            return;
+        }
+
+        this._manager = proxy;
+        this.available = true;
+
+        this._busSignalIds.push(proxy.connectSignal("DeviceAdded", (p, sender, [path]) => {
+            this._addDevice(path);
+        }));
+        this._busSignalIds.push(proxy.connectSignal("DeviceRemoved", (p, sender, [path]) => {
+            this._devices.delete(path);
+            this._onChanged();
+        }));
+        this._propSignalId = proxy.connect("g-properties-changed", () => this._onChanged());
+
+        new DeviceProxy(Gio.DBus.system, BUS_NAME, DISPLAY_DEVICE_PATH, (displayProxy, displayError) => {
+            if (!this.destroyed && !displayError)
+                this._display = displayProxy;
+        });
+
+        proxy.EnumerateDevicesRemote((result, enumError) => {
+            if (this.destroyed)
+                return;
+            if (enumError) {
+                global.logError("[powertoys] EnumerateDevices failed: " + enumError.message);
+                this._onReady();
+                return;
+            }
+            let paths = result[0] || [];
+            let pending = paths.length;
+            if (pending === 0) {
+                this._onReady();
+                this._onChanged();
+                return;
+            }
+            for (let path of paths)
+                this._addDevice(path, () => {
+                    if (--pending === 0) {
+                        this._onReady();
+                        this._onChanged();
+                    }
+                });
+        });
+    }
+
+    _addDevice(path, done) {
+        if (this._devices.has(path)) {
+            if (done)
+                done();
+            return;
+        }
+        new DeviceProxy(Gio.DBus.system, BUS_NAME, path, (proxy, error) => {
+            if (this.destroyed) {
+                if (done)
+                    done();
+                return;
+            }
+            if (error || !proxy) {
+                if (done)
+                    done();
+                return;
+            }
+            proxy.connect("g-properties-changed", () => this._onChanged());
+            this._devices.set(path, proxy);
+            if (done)
+                done();
+            else
+                this._onChanged();
+        });
+    }
+
+    get onBattery() {
+        return this._manager ? this._manager.OnBattery === true : false;
+    }
+
+    get lidPresent() {
+        return this._manager ? this._manager.LidIsPresent === true : false;
+    }
+
+    get lidClosed() {
+        return this._manager ? this._manager.LidIsClosed === true : false;
+    }
+
+    get daemonVersion() {
+        return this._manager ? this._manager.DaemonVersion : null;
+    }
+
+    /* Asks UPower to re-poll the batteries. Peripherals are left alone so we
+     * do not keep waking up bluetooth devices in the background. */
+    refresh() {
+        for (let proxy of this._devices.values()) {
+            if (proxy.PowerSupply === true) {
+                try {
+                    proxy.RefreshRemote(() => {});
+                } catch (e) {
+                    /* device disappeared between enumeration and refresh */
+                }
+            }
+        }
+    }
+
+    _describe(proxy, path) {
+        let kind = proxy.Type === undefined ? UPDeviceKind.UNKNOWN : proxy.Type;
+        return {
+            path: path,
+            kind: kind,
+            state: proxy.State === undefined ? UPDeviceState.UNKNOWN : proxy.State,
+            vendor: proxy.Vendor || "",
+            model: proxy.Model || "",
+            serial: proxy.Serial || "",
+            nativePath: proxy.NativePath || "",
+            icon: proxy.IconName || "",
+            powerSupply: proxy.PowerSupply === true,
+            online: proxy.Online === true,
+            present: proxy.IsPresent === true,
+            rechargeable: proxy.IsRechargeable === true,
+            percentage: _number(proxy.Percentage),
+            energy: _number(proxy.Energy),
+            energyFull: _number(proxy.EnergyFull),
+            energyFullDesign: _number(proxy.EnergyFullDesign),
+            energyRate: _number(proxy.EnergyRate),
+            voltage: _number(proxy.Voltage),
+            temperature: _number(proxy.Temperature),
+            capacity: _number(proxy.Capacity),
+            cycles: _number(proxy.ChargeCycles),
+            timeToEmpty: _number(proxy.TimeToEmpty),
+            timeToFull: _number(proxy.TimeToFull),
+            warningLevel: proxy.WarningLevel,
+            batteryLevel: proxy.BatteryLevel === undefined ? UPDeviceLevel.NONE : proxy.BatteryLevel,
+            updateTime: _number(proxy.UpdateTime),
+        };
+    }
+
+    /*
+     * Every device that carries a charge, batteries first, then peripherals.
+     * Line power adapters are reported separately through lineDevices().
+     */
+    snapshot() {
+        let devices = [];
+        for (let [path, proxy] of this._devices) {
+            if (proxy.Type === UPDeviceKind.LINE_POWER)
+                continue;
+            let device = this._describe(proxy, path);
+            if (!device.present && device.percentage === null)
+                continue;
+            if (device.state === UPDeviceState.UNKNOWN && device.percentage === null)
+                continue;
+            devices.push(device);
+        }
+        devices.sort((a, b) => {
+            if (a.powerSupply !== b.powerSupply)
+                return a.powerSupply ? -1 : 1;
+            if (a.kind !== b.kind)
+                return a.kind - b.kind;
+            return a.path < b.path ? -1 : 1;
+        });
+        return devices;
+    }
+
+    lineDevices() {
+        let devices = [];
+        for (let [path, proxy] of this._devices) {
+            if (proxy.Type === UPDeviceKind.LINE_POWER)
+                devices.push(this._describe(proxy, path));
+        }
+        return devices;
+    }
+
+    /* The composite battery UPower builds for the panel, when there is one. */
+    displayDevice() {
+        if (!this._display || this._display.Type !== UPDeviceKind.BATTERY)
+            return null;
+        if (this._display.IsPresent !== true)
+            return null;
+        return this._describe(this._display, DISPLAY_DEVICE_PATH);
+    }
+
+    destroy() {
+        this.destroyed = true;
+        if (this._manager) {
+            for (let id of this._busSignalIds) {
+                try {
+                    this._manager.disconnectSignal(id);
+                } catch (e) {
+                    /* already gone */
+                }
+            }
+            if (this._propSignalId) {
+                try {
+                    this._manager.disconnect(this._propSignalId);
+                } catch (e) {
+                    /* already gone */
+                }
+            }
+        }
+        this._busSignalIds = [];
+        this._propSignalId = 0;
+        this._devices.clear();
+        this._manager = null;
+        this._display = null;
+    }
+};

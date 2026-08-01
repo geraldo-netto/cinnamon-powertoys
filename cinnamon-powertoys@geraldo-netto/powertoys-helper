@@ -1,0 +1,171 @@
+#!/bin/sh
+#
+# cinnamon-powertoys privileged helper.
+#
+# Applies the power settings that are owned by root. Every value is checked
+# against what the kernel itself advertises, so the applet (or anything else
+# calling this through pkexec) cannot write arbitrary data into /sys.
+#
+# Usage:
+#   powertoys-helper governor <name>
+#   powertoys-helper epp <name>
+#   powertoys-helper boost <0|1>
+#   powertoys-helper platform-profile <name>
+#   powertoys-helper charge-threshold <20-100>
+
+set -eu
+
+CPU_DIR=/sys/devices/system/cpu
+CPUFREQ_DIR=$CPU_DIR/cpufreq
+POWER_SUPPLY_DIR=/sys/class/power_supply
+PLATFORM_PROFILE=/sys/firmware/acpi/platform_profile
+PLATFORM_PROFILE_CHOICES=/sys/firmware/acpi/platform_profile_choices
+
+die() {
+    echo "powertoys-helper: $1" >&2
+    exit 1
+}
+
+usage() {
+    sed -n '3,16p' "$0" >&2
+    exit 2
+}
+
+contains() {
+    needle=$1
+    shift
+    for word in "$@"; do
+        if [ "$word" = "$needle" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+first_policy() {
+    for policy in "$CPUFREQ_DIR"/policy*; do
+        if [ -d "$policy" ]; then
+            echo "$policy"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# write_policies <node name> <value>
+write_policies() {
+    node=$1
+    value=$2
+    written=0
+    for policy in "$CPUFREQ_DIR"/policy*; do
+        if [ -f "$policy/$node" ]; then
+            # the subshell keeps a failed redirect quiet
+            if ( printf '%s\n' "$value" > "$policy/$node" ) 2>/dev/null; then
+                written=$((written + 1))
+            fi
+        fi
+    done
+    if [ "$written" -eq 0 ]; then
+        die "no cpufreq policy accepted $node=$value"
+    fi
+}
+
+set_governor() {
+    value=$1
+    policy=$(first_policy) || die "no cpufreq policy found"
+    available=$(cat "$policy/scaling_available_governors" 2>/dev/null || echo "")
+    [ -n "$available" ] || die "the scaling driver does not expose governors"
+    # shellcheck disable=SC2086
+    contains "$value" $available || die "unknown governor: $value"
+    write_policies scaling_governor "$value"
+}
+
+set_energy_preference() {
+    value=$1
+    policy=$(first_policy) || die "no cpufreq policy found"
+    available=$(cat "$policy/energy_performance_available_preferences" 2>/dev/null || echo "")
+    [ -n "$available" ] || die "the scaling driver does not expose energy preferences"
+    # shellcheck disable=SC2086
+    contains "$value" $available || die "unknown energy preference: $value"
+    write_policies energy_performance_preference "$value"
+}
+
+set_boost() {
+    value=$1
+    case "$value" in
+        0|1) ;;
+        *) die "boost expects 0 or 1" ;;
+    esac
+
+    if [ -f "$CPUFREQ_DIR/boost" ]; then
+        printf '%s\n' "$value" > "$CPUFREQ_DIR/boost"
+    elif [ -f "$CPU_DIR/intel_pstate/no_turbo" ]; then
+        # intel_pstate exposes the inverse switch
+        if [ "$value" = "1" ]; then
+            printf '0\n' > "$CPU_DIR/intel_pstate/no_turbo"
+        else
+            printf '1\n' > "$CPU_DIR/intel_pstate/no_turbo"
+        fi
+    else
+        die "this system does not expose a boost switch"
+    fi
+}
+
+set_platform_profile() {
+    value=$1
+    [ -f "$PLATFORM_PROFILE" ] || die "no ACPI platform profile on this system"
+    choices=$(cat "$PLATFORM_PROFILE_CHOICES" 2>/dev/null || echo "")
+    # shellcheck disable=SC2086
+    contains "$value" $choices || die "unknown platform profile: $value"
+    printf '%s\n' "$value" > "$PLATFORM_PROFILE"
+}
+
+set_charge_threshold() {
+    value=$1
+    case "$value" in
+        ''|*[!0-9]*) die "charge threshold expects a number" ;;
+    esac
+    if [ "$value" -lt 20 ] || [ "$value" -gt 100 ]; then
+        die "charge threshold must be between 20 and 100"
+    fi
+
+    written=0
+    for battery in "$POWER_SUPPLY_DIR"/*; do
+        end="$battery/charge_control_end_threshold"
+        [ -f "$end" ] || continue
+
+        start="$battery/charge_control_start_threshold"
+        if [ -f "$start" ]; then
+            current_start=$(cat "$start" 2>/dev/null || echo 0)
+            # the kernel rejects a start value that is not below the end value
+            if [ "$current_start" -ge "$value" ]; then
+                new_start=$((value - 5))
+                if [ "$new_start" -lt 0 ]; then
+                    new_start=0
+                fi
+                ( printf '%s\n' "$new_start" > "$start" ) 2>/dev/null || true
+            fi
+        fi
+
+        if ( printf '%s\n' "$value" > "$end" ) 2>/dev/null; then
+            written=$((written + 1))
+        fi
+    done
+    if [ "$written" -eq 0 ]; then
+        die "no battery accepted a charge threshold"
+    fi
+}
+
+[ $# -ge 2 ] || usage
+
+command=$1
+argument=$2
+
+case "$command" in
+    governor)          set_governor "$argument" ;;
+    epp)               set_energy_preference "$argument" ;;
+    boost)             set_boost "$argument" ;;
+    platform-profile)  set_platform_profile "$argument" ;;
+    charge-threshold)  set_charge_threshold "$argument" ;;
+    *)                 usage ;;
+esac

@@ -1,0 +1,200 @@
+{
+    "general-section": {
+        "type": "section",
+        "description": "General"
+    },
+    "refresh-interval": {
+        "type": "spinbutton",
+        "default": 4,
+        "min": 1,
+        "max": 60,
+        "step": 1,
+        "units": "seconds",
+        "description": "Refresh interval",
+        "tooltip": "How often sensors and battery levels are polled."
+    },
+    "temp-unit": {
+        "type": "combobox",
+        "default": "celsius",
+        "description": "Temperature unit",
+        "options": {
+            "Celsius": "celsius",
+            "Fahrenheit": "fahrenheit"
+        }
+    },
+    "cpu-sensor-hint": {
+        "type": "entry",
+        "default": "",
+        "description": "Preferred CPU sensor",
+        "tooltip": "Chip or label fragment of the sensor used for the panel temperature, e.g. 'Tctl' or 'k10temp'. Leave empty for automatic detection."
+    },
+
+    "panel-section": {
+        "type": "section",
+        "description": "Panel"
+    },
+    "panel-icon-source": {
+        "type": "combobox",
+        "default": "auto",
+        "description": "Panel icon",
+        "options": {
+            "Automatic": "auto",
+            "Battery level": "battery",
+            "Active power profile": "profile",
+            "Fixed icon": "static"
+        }
+    },
+    "panel-show-battery": {
+        "type": "switch",
+        "default": true,
+        "description": "Show battery percentage in the panel"
+    },
+    "panel-show-temp": {
+        "type": "switch",
+        "default": true,
+        "description": "Show temperature in the panel"
+    },
+    "panel-show-power": {
+        "type": "switch",
+        "default": false,
+        "description": "Show power draw in the panel"
+    },
+    "panel-show-frequency": {
+        "type": "switch",
+        "default": false,
+        "description": "Show CPU frequency in the panel"
+    },
+    "panel-show-profile": {
+        "type": "switch",
+        "default": false,
+        "description": "Show active power profile in the panel"
+    },
+
+    "menu-section": {
+        "type": "section",
+        "description": "Menu"
+    },
+    "show-profiles": {
+        "type": "switch",
+        "default": true,
+        "description": "Show power profiles"
+    },
+    "show-cpu": {
+        "type": "switch",
+        "default": true,
+        "description": "Show CPU section"
+    },
+    "show-devices": {
+        "type": "switch",
+        "default": true,
+        "description": "Show batteries and powered devices"
+    },
+    "show-sensors": {
+        "type": "switch",
+        "default": true,
+        "description": "Show temperatures, fans and power meters"
+    },
+    "show-all-sensors": {
+        "type": "switch",
+        "default": false,
+        "description": "Include disk, network and board sensors",
+        "tooltip": "When off, only CPU and GPU sensors are listed.",
+        "dependency": "show-sensors"
+    },
+    "expand-sections": {
+        "type": "switch",
+        "default": false,
+        "description": "Open the CPU and sensor sections by default"
+    },
+
+    "control-section": {
+        "type": "section",
+        "description": "Controls"
+    },
+    "enable-privileged-controls": {
+        "type": "switch",
+        "default": true,
+        "description": "Allow changing CPU governor, energy preference, boost and charge limit",
+        "tooltip": "These settings are owned by the kernel and are applied through pkexec, so an administrator password is requested."
+    },
+    "scroll-action": {
+        "type": "combobox",
+        "default": "none",
+        "description": "Mouse wheel over the applet",
+        "options": {
+            "Do nothing": "none",
+            "Change power profile": "profile"
+        }
+    },
+    "cycle-profile-hotkey": {
+        "type": "keybinding",
+        "default": "",
+        "description": "Shortcut to cycle the power profile"
+    },
+    "toggle-menu-hotkey": {
+        "type": "keybinding",
+        "default": "",
+        "description": "Shortcut to open the applet menu"
+    },
+
+    "alerts-section": {
+        "type": "section",
+        "description": "Alerts"
+    },
+    "notify-low-battery": {
+        "type": "switch",
+        "default": true,
+        "description": "Notify on low system battery"
+    },
+    "low-battery-threshold": {
+        "type": "spinbutton",
+        "default": 20,
+        "min": 5,
+        "max": 50,
+        "step": 1,
+        "units": "%",
+        "description": "Low battery level",
+        "dependency": "notify-low-battery"
+    },
+    "critical-battery-threshold": {
+        "type": "spinbutton",
+        "default": 7,
+        "min": 1,
+        "max": 30,
+        "step": 1,
+        "units": "%",
+        "description": "Critical battery level",
+        "dependency": "notify-low-battery"
+    },
+    "notify-peripheral-battery": {
+        "type": "switch",
+        "default": true,
+        "description": "Notify on low peripheral battery",
+        "tooltip": "Mice, keyboards, headsets, controllers and other connected devices."
+    },
+    "peripheral-battery-threshold": {
+        "type": "spinbutton",
+        "default": 15,
+        "min": 5,
+        "max": 50,
+        "step": 1,
+        "units": "%",
+        "description": "Low peripheral level",
+        "dependency": "notify-peripheral-battery"
+    },
+    "notify-high-temp": {
+        "type": "switch",
+        "default": false,
+        "description": "Notify on high temperature"
+    },
+    "high-temp-threshold": {
+        "type": "spinbutton",
+        "default": 90,
+        "min": 40,
+        "max": 120,
+        "step": 1,
+        "units": "°C",
+        "description": "High temperature level",
+        "dependency": "notify-high-temp"
+    }
+}
