@@ -35,7 +35,6 @@ these are things the code has been doing all along.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-119 | low | S | [`lib/backlight.js`](cinnamon-powertoys@geraldo-netto/lib/backlight.js#L78) and [`lib/profiles.js`](cinnamon-powertoys@geraldo-netto/lib/profiles.js#L85) build their D-Bus proxies themselves, and they are the only two backends that do. `ddc.js` takes a `run`, `bluez.js` a `call`, `privileged.js` a `spawn`, `cpu.js` and `power-supply.js` a runner plus the IO root — which is why each of those has real cases and these two have "it loads" and nothing else. `profiles.js` is reached by [`tests/cases/live.js`](tests/cases/live.js) where there is a system bus, which CI has not got, so on the runner it is never exercised at all. Give both the same seam the rest already have. |
 
 ## Packaging and supply chain
 

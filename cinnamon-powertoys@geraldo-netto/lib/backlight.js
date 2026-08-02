@@ -51,13 +51,37 @@ const INTERFACES = {};
 INTERFACES[SCREEN] = SCREEN_XML;
 INTERFACES[KEYBOARD] = KEYBOARD_XML;
 
+/*
+ * The one thing this module does on the bus, so that a caller can hand it
+ * something else.
+ *
+ * Every other backend here takes its way out as a parameter - ddc.js a `run`,
+ * bluez.js a `call`, privileged.js a `spawn`, cpu.js and power-supply.js a
+ * runner and the IO root - which is why each of them has cases that run
+ * anywhere. This one built its proxy itself, so nothing but a live settings
+ * daemon could exercise it and nothing ever did.
+ *
+ * A failure to build the proxy at all is reported the same way a failure to
+ * connect is, since to everything above they mean the same thing: there is no
+ * backlight to be had here.
+ */
+function connectProxy(xml, onDone) {
+    try {
+        let wrapper = Gio.DBusProxy.makeProxyWrapper(xml);
+        new wrapper(Gio.DBus.session, BUS_NAME, OBJECT_PATH, onDone);
+    } catch (error) {
+        onDone(null, error);
+    }
+}
+
 var BacklightControl = class BacklightControl {
     /*
      * onChanged fires when anything else moves this backlight - a function
      * key, the stock applet, the daemon dimming on idle. onReady fires once,
-     * when it is known whether there is a backlight here at all.
+     * when it is known whether there is a backlight here at all. `connect` is
+     * how the proxy is reached; see connectProxy above.
      */
-    constructor(kind, onChanged, onReady) {
+    constructor(kind, onChanged, onReady, connect) {
         this.kind = kind;
         this.available = false;
         this.percentage = null;
@@ -65,6 +89,7 @@ var BacklightControl = class BacklightControl {
 
         this._onChanged = onChanged || function () {};
         this._onReady = onReady || function () {};
+        this._connect = connect || connectProxy;
         this._proxy = null;
         this._signalId = 0;
 
@@ -74,23 +99,18 @@ var BacklightControl = class BacklightControl {
             return;
         }
 
-        try {
-            let wrapper = Gio.DBusProxy.makeProxyWrapper(xml);
-            new wrapper(Gio.DBus.session, BUS_NAME, OBJECT_PATH, (proxy, error) => {
-                if (this.destroyed)
-                    return;
-                if (error || !proxy) {
-                    this._onReady();
-                    return;
-                }
-                this._proxy = proxy;
-                this._signalId = proxy.connectSignal("Changed",
-                                                     () => this.refresh(() => this._onChanged()));
-                this.refresh(() => this._onReady());
-            });
-        } catch (e) {
-            this._onReady();
-        }
+        this._connect(xml, (proxy, error) => {
+            if (this.destroyed)
+                return;
+            if (error || !proxy) {
+                this._onReady();
+                return;
+            }
+            this._proxy = proxy;
+            this._signalId = proxy.connectSignal("Changed",
+                                                 () => this.refresh(() => this._onChanged()));
+            this.refresh(() => this._onReady());
+        });
     }
 
     /* Asks the daemon where the backlight is now. An error here is the

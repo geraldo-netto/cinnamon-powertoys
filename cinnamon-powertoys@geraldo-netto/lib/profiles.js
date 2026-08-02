@@ -47,9 +47,55 @@ function _unpackVariantDict(entry) {
     return result;
 }
 
+/*
+ * Everything this client does on the system bus, gathered so that a caller can
+ * hand it something else.
+ *
+ * Every other backend here takes its way out as a parameter - ddc.js a `run`,
+ * bluez.js a `call`, privileged.js a `spawn`, cpu.js and power-supply.js a
+ * runner and the IO root - which is why each of them has cases that run
+ * anywhere. This one reached for the bus in three places, so the only thing
+ * that could ever exercise it was a machine with the daemon actually running,
+ * and CI has neither.
+ *
+ * Three calls rather than one, because they are three different moments: the
+ * proxy is built once per name, the watches outlive the proxy, and the write
+ * is a call in its own right whose reply the caller needs - see setProfile.
+ */
+function systemBus() {
+    return {
+        proxy: function (backend) {
+            let wrapper = Gio.DBusProxy.makeProxyWrapper(_interfaceXml(backend.name));
+            return new wrapper(Gio.DBus.system, backend.name, backend.path);
+        },
+        watch: function (name, onAppeared, onVanished) {
+            return Gio.bus_watch_name(Gio.BusType.SYSTEM, name,
+                                      Gio.BusNameWatcherFlags.NONE, onAppeared, onVanished);
+        },
+        unwatch: function (id) {
+            Gio.bus_unwatch_name(id);
+        },
+        setProperty: function (name, path, property, value, onDone) {
+            let target = new GLib.Variant("(ssv)",
+                                          [name, property, new GLib.Variant("s", value)]);
+            Gio.DBus.system.call(name, path, "org.freedesktop.DBus.Properties", "Set", target,
+                                 null, Gio.DBusCallFlags.NONE, -1, null,
+                                 (connection, result) => {
+                                     try {
+                                         connection.call_finish(result);
+                                         onDone(null);
+                                     } catch (error) {
+                                         onDone(error);
+                                     }
+                                 });
+        },
+    };
+}
+
 var PowerProfilesClient = class PowerProfilesClient {
-    constructor(onChanged) {
+    constructor(onChanged, bus) {
         this._onChanged = onChanged || function () {};
+        this._bus = bus || systemBus();
         this._proxy = null;
         this._propSignalId = 0;
         this._watchIds = [];
@@ -62,8 +108,8 @@ var PowerProfilesClient = class PowerProfilesClient {
         this._connect();
 
         for (let backend of BACKENDS) {
-            this._watchIds.push(Gio.bus_watch_name(
-                Gio.BusType.SYSTEM, backend.name, Gio.BusNameWatcherFlags.NONE,
+            this._watchIds.push(this._bus.watch(
+                backend.name,
                 () => {
                     if (!this._proxy) {
                         this._connect();
@@ -82,9 +128,8 @@ var PowerProfilesClient = class PowerProfilesClient {
     _connect() {
         for (let backend of BACKENDS) {
             try {
-                let wrapper = Gio.DBusProxy.makeProxyWrapper(_interfaceXml(backend.name));
-                let proxy = new wrapper(Gio.DBus.system, backend.name, backend.path);
-                if (!proxy.Profiles || proxy.Profiles.length === 0)
+                let proxy = this._bus.proxy(backend);
+                if (!proxy || !proxy.Profiles || proxy.Profiles.length === 0)
                     continue;
                 this._proxy = proxy;
                 this.busName = backend.name;
@@ -150,11 +195,18 @@ var PowerProfilesClient = class PowerProfilesClient {
         return this._proxy ? this._proxy.Version : null;
     }
 
-    /* Profile names, in daemon order (power-saver first). */
+    /*
+     * Profile names, in daemon order (power-saver first).
+     *
+     * The property is read into a local first. Reading it twice - once to ask
+     * whether it is there and once to walk it - is two unpacks of an array of
+     * dictionaries, which is the cost snapshot() exists to keep down.
+     */
     get profiles() {
-        if (!this._proxy || !this._proxy.Profiles)
+        let entries = this._proxy ? this._proxy.Profiles : null;
+        if (!entries)
             return [];
-        return this._proxy.Profiles.map(entry => {
+        return entries.map(entry => {
             let value = entry.Profile;
             return (value && typeof value.unpack === "function") ? value.unpack() : value;
         }).filter(name => typeof name === "string");
@@ -171,11 +223,13 @@ var PowerProfilesClient = class PowerProfilesClient {
         return this._proxy.PerformanceDegraded || this._proxy.PerformanceInhibited || "";
     }
 
-    /* Applications currently forcing a profile, e.g. a game or a video call. */
+    /* Applications currently forcing a profile, e.g. a game or a video call.
+     * Read into a local for the reason given above profiles(). */
     get holds() {
-        if (!this._proxy || !this._proxy.ActiveProfileHolds)
+        let entries = this._proxy ? this._proxy.ActiveProfileHolds : null;
+        if (!entries)
             return [];
-        return this._proxy.ActiveProfileHolds.map(_unpackVariantDict).map(hold => ({
+        return entries.map(_unpackVariantDict).map(hold => ({
             application: hold.ApplicationId || "",
             profile: hold.Profile || "",
             reason: hold.Reason || "",
@@ -197,19 +251,7 @@ var PowerProfilesClient = class PowerProfilesClient {
             return false;
         }
 
-        let target = new GLib.Variant("(ssv)",
-                                      [this.busName, "ActiveProfile", new GLib.Variant("s", name)]);
-        Gio.DBus.system.call(this.busName, this.busPath,
-                             "org.freedesktop.DBus.Properties", "Set", target,
-                             null, Gio.DBusCallFlags.NONE, -1, null,
-                             (connection, result) => {
-                                 try {
-                                     connection.call_finish(result);
-                                     done(null);
-                                 } catch (error) {
-                                     done(error);
-                                 }
-                             });
+        this._bus.setProperty(this.busName, this.busPath, "ActiveProfile", name, done);
         return true;
     }
 
@@ -221,7 +263,7 @@ var PowerProfilesClient = class PowerProfilesClient {
         this._disconnectProxy();
         for (let id of this._watchIds) {
             try {
-                Gio.bus_unwatch_name(id);
+                this._bus.unwatch(id);
             } catch (e) {
                 /* already gone */
             }
