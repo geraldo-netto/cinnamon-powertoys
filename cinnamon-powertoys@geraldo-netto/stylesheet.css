@@ -26,8 +26,22 @@
     opacity: 0.85;
 }
 
+/*
+ * Cinnamon's stylesheet language has no variables and no way to read a value
+ * out of the active theme, so an applet cannot ask for "whatever this theme
+ * calls a warning" - the themes that define one scope it to their own
+ * selectors. This is the colour Mint's own themes use for exactly that, so on
+ * the desktop this applet will most often be seen on it is the same orange
+ * the rest of the shell warns in.
+ *
+ * It is deliberately not the only signal. A high contrast theme, or one whose
+ * background this does not stand out against, would leave the colour saying
+ * nothing, so a warning is also bold. That reads on any theme, and to anyone
+ * who does not separate those two colours at all.
+ */
 .powertoys-warning {
-    color: #f57900;
+    color: #f27835;
+    font-weight: bold;
     opacity: 1.0;
 }
 
