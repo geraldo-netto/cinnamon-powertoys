@@ -1,5 +1,28 @@
+/*
+ * Bold means one thing in this menu: something is wrong.
+ *
+ * It used to mark four - the summary line, the panel titles, the group
+ * headings and a warning - and a signal spent on the ordinary furniture of a
+ * menu is not a signal any more. The warning is the only one that has to be
+ * found without being looked for, so it keeps the weight, and the structure
+ * is told apart by size instead: the summary and the panel titles a fifth
+ * larger than the rows, the group headings the same size as them but
+ * quieter. That is a hierarchy, which is all those three were ever drawing.
+ *
+ * Size, not letter spacing, because size is what reaches the text. St applies
+ * letter-spacing from the actor's own node only, and these classes are on the
+ * menu item rather than the label inside it, so a spaced heading measures as
+ * spaced and draws unchanged. Font size and opacity do inherit.
+ *
+ * The numbers look wrong and are not. St resolves a font size against the
+ * inherited size in pixels and then applies the result as points, so every
+ * unit comes out four thirds larger than it reads: measured in this menu,
+ * where the inherited size is 10, "1em" gives 13.33 and so do "100%" and
+ * "9pt". Multiplying by 0.75 undoes it, which is why a tenth larger than the
+ * rows is written 0.83em and a tenth smaller is written 0.68em.
+ */
 .powertoys-summary {
-    font-weight: bold;
+    font-size: 0.9em;
 }
 
 .powertoys-info-label {
@@ -14,35 +37,28 @@
     spacing: 6px;
 }
 
+/* 0.9em would have drawn this a tenth bigger than the title above it rather
+ * than smaller; see the note on units at the top. */
 .powertoys-device-details {
-    font-size: 0.9em;
+    font-size: 0.68em;
     opacity: 0.75;
     padding-left: 22px;
 }
 
-/*
- * The three panels side by side.
- *
- * Each one is given a width rather than being left to size itself, for two
- * reasons. A column that fits its widest row is a column that changes width
- * whenever a reading gains a digit or a device is switched on, and a menu
- * whose contents shuffle sideways under the pointer is worse than one that is
- * a little wider than it needs to be. And three columns of different widths
- * do not read as three of anything.
- */
+/* The three panels side by side. */
 .powertoys-columns {
     padding-top: 4px;
     padding-bottom: 4px;
 }
 
 /*
- * Every panel carries the rule, including the one that does not show it.
+ * A panel takes the width of its own longest line, with a floor so that a
+ * short one does not look starved beside a long one.
  *
- * A border only on the panels that are ruled would make those panels a pixel
- * wider than the leftmost, and the code equalises the columns by measuring
- * them - so each measurement would come back a pixel over the last and the
- * menu would widen by a pixel on every poll for as long as it was open. One
- * transparent border keeps all three the same size and the arithmetic still.
+ * Every panel carries the rule, including the leftmost, whose is transparent.
+ * A border on only some of them would make those a pixel wider than the rest,
+ * and a pixel of difference between columns that are otherwise the same shape
+ * is the sort of thing that is seen without being noticed.
  */
 .powertoys-panel {
     min-width: 210px;
@@ -63,14 +79,14 @@
 }
 
 .powertoys-panel-title {
-    font-weight: bold;
-    padding-bottom: 2px;
+    font-size: 0.9em;
+    padding-bottom: 4px;
 }
 
 .powertoys-group-title {
-    font-weight: bold;
-    padding-top: 6px;
-    opacity: 0.85;
+    font-size: 0.75em;
+    padding-top: 8px;
+    opacity: 0.7;
 }
 
 /*
