@@ -360,6 +360,7 @@ var UPowerMonitor = class UPowerMonitor {
         let devices = this.snapshot();
         let readings = this._sensorReadings(devices);
         return {
+            available: this.available,
             devices: devices,
             primary: this._primaryDevice(devices),
             onBattery: this.onBattery,

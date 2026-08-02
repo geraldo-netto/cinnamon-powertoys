@@ -103,6 +103,37 @@ function deviceLowThreshold(device, systemLevel, peripheralLevel) {
     return device.powerSupply ? systemLevel : peripheralLevel;
 }
 
+/* How long the device has left, or how long until it is full. */
+function remainingText(device) {
+    if (device.state === UPDeviceState.DISCHARGING && device.timeToEmpty)
+        return Format.duration(device.timeToEmpty) + " " + _("remaining");
+    if (device.state === UPDeviceState.CHARGING && device.timeToFull)
+        return Format.duration(device.timeToFull) + " " + _("until full");
+    return "";
+}
+
+/*
+ * The power figure is not one thing: on battery it is what the battery is
+ * losing, on a desktop it is the CPU package or the graphics card. They are
+ * different enough that showing the number without saying which would be
+ * misleading, so the source is always named alongside it.
+ */
+function powerSourceLabel(source) {
+    switch (source) {
+        case "battery": return _("battery");
+        case "package": return _("package");
+        case "gpu": return _("GPU");
+        default: return "";
+    }
+}
+
+function powerText(data) {
+    if (data.systemWatts === null)
+        return "";
+    let label = powerSourceLabel(data.systemWattsSource);
+    return Format.watts(data.systemWatts) + (label ? " (" + label + ")" : "");
+}
+
 /*
  * When to say something, and how not to say it twice.
  *
@@ -180,6 +211,108 @@ class AlertPolicy {
         } else if (celsius < limits.highTempCelsius - 5) {
             this._tempAlerted = false;
         }
+    }
+}
+
+/*
+ * The panel item: the text beside the icon, the icon, and the tooltip.
+ *
+ * It is given the applet only to reach the four calls that put something on
+ * the panel - label, symbolic icon, icon actor and tooltip - and reads
+ * nothing back out of it. What to show arrives with each update.
+ */
+class PanelPresenter {
+    constructor(applet) {
+        this._applet = applet;
+        this._iconKey = null;
+    }
+
+    update(data, options) {
+        this._applet.set_applet_label(this._labelText(data, options));
+        this._updateIcon(data, options.iconSource);
+        this._applet.set_applet_tooltip(this._tooltipText(data, options));
+    }
+
+    /* The icon actor is rebuilt from scratch by a panel resize or an
+     * orientation change, so the cache has to be dropped with it. */
+    invalidateIcon() {
+        this._iconKey = null;
+    }
+
+    _labelText(data, options) {
+        let parts = [];
+        if (options.showBattery && data.primary && data.primary.percentage !== null)
+            parts.push(Format.percent(data.primary.percentage));
+        if (options.showTemp && data.cpuTemperature !== null)
+            parts.push(Format.temperature(data.cpuTemperature, options.tempUnit, 0));
+        if (options.showPower && data.systemWatts !== null)
+            parts.push(Format.watts(data.systemWatts));
+        if (options.showFrequency && data.cpu.averageFrequency !== null)
+            parts.push(Format.frequency(data.cpu.averageFrequency));
+        if (options.showProfile && data.profile.active)
+            parts.push(Format.profileLabel(data.profile.active));
+        return parts.join(" ");
+    }
+
+    _updateIcon(data, source) {
+        source = source || "auto";
+        if (source === "auto")
+            source = data.primary ? "battery" : (data.profile.active ? "profile" : "static");
+
+        if (source === "battery" && data.primary) {
+            let icon = data.primary.icon;
+            let key = "battery:" + icon;
+            if (key === this._iconKey)
+                return;
+            this._iconKey = key;
+            this._applet.set_applet_icon_symbolic_name("xsi-battery-level-100");
+            if (icon)
+                this._applet._applet_icon.gicon = Gio.icon_new_for_string(icon);
+            return;
+        }
+
+        let name = DEFAULT_ICON;
+        if (source === "profile" && data.profile.active)
+            name = Format.profileIconName(data.profile.active);
+        let key = "symbolic:" + name;
+        if (key === this._iconKey)
+            return;
+        this._iconKey = key;
+        this._applet.set_applet_icon_symbolic_name(name);
+    }
+
+    _tooltipText(data, options) {
+        let lines = [];
+
+        if (data.primary) {
+            lines.push(Format.deviceKindName(data.primary.kind) + " " +
+                       Format.percent(data.primary.percentage) + " - " +
+                       Format.deviceStateName(data.primary.state));
+            let remaining = remainingText(data.primary);
+            if (remaining)
+                lines.push(remaining);
+        } else if (data.lineOnline || !data.upowerAvailable) {
+            lines.push(_("Running on AC power"));
+        }
+
+        if (data.profile.active)
+            lines.push(_("Profile") + ": " + Format.profileLabel(data.profile.active));
+        if (data.cpu.governor)
+            lines.push(_("Governor") + ": " + Format.governorLabel(data.cpu.governor));
+        if (data.cpuTemperature !== null)
+            lines.push(_("Temperature") + ": " +
+                       Format.temperature(data.cpuTemperature, options.tempUnit, 1));
+        if (data.systemWatts !== null)
+            lines.push(_("Power draw") + ": " + powerText(data));
+
+        let peripherals = data.devices.filter(device => !device.powerSupply &&
+                                                        device.percentage !== null);
+        for (let device of peripherals)
+            lines.push(Format.deviceTitle(device) + ": " + Format.percent(device.percentage));
+
+        if (lines.length === 0)
+            lines.push(_("Power Toys"));
+        return lines.join("\n");
     }
 }
 
@@ -411,8 +544,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this.set_show_label_in_vertical_panels(false);
 
         this._timerId = 0;
-        this._iconKey = null;
         this._alerts = new AlertPolicy();
+        this._panel = new PanelPresenter(this);
         this._hotkeyIds = [];
 
         this._bindSettings();
@@ -499,7 +632,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     _onSettingsChanged() {
-        this._iconKey = null;
+        this._panel.invalidateIcon();
         this._update();
     }
 
@@ -648,6 +781,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         let power = this._pickPower(upower.primary, readings.packageWatts, powers);
 
         return {
+            upowerAvailable: upower.available,
             devices: upower.devices,
             primary: upower.primary,
             onBattery: upower.onBattery,
@@ -748,22 +882,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
         return { watts: null, source: null };
     }
 
-    _powerSourceLabel(source) {
-        switch (source) {
-            case "battery": return _("battery");
-            case "package": return _("package");
-            case "gpu": return _("GPU");
-            default: return "";
-        }
-    }
-
-    _powerText(data) {
-        if (data.systemWatts === null)
-            return "";
-        let label = this._powerSourceLabel(data.systemWattsSource);
-        return Format.watts(data.systemWatts) + (label ? " (" + label + ")" : "");
-    }
-
     /* ------------------------------------------------------------------ */
     /* update                                                              */
 
@@ -812,9 +930,21 @@ class PowerToysApplet extends Applet.TextIconApplet {
             return;
         }
         this._latest = data;
-        this._updatePanel(data);
+        this._panel.update(data, this._panelOptions());
         this._updateMenu(data);
         this._alerts.check(data, this._alertLimits());
+    }
+
+    _panelOptions() {
+        return {
+            showBattery: this.panelShowBattery,
+            showTemp: this.panelShowTemp,
+            showPower: this.panelShowPower,
+            showFrequency: this.panelShowFrequency,
+            showProfile: this.panelShowProfile,
+            iconSource: this.panelIconSource,
+            tempUnit: this.tempUnit,
+        };
     }
 
     _alertLimits() {
@@ -828,94 +958,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
             highTempCelsius: this.highTempCelsius,
             tempUnit: this.tempUnit,
         };
-    }
-
-    /* ------------------------------------------------------------------ */
-    /* panel                                                               */
-
-    _updatePanel(data) {
-        let parts = [];
-        if (this.panelShowBattery && data.primary && data.primary.percentage !== null)
-            parts.push(Format.percent(data.primary.percentage));
-        if (this.panelShowTemp && data.cpuTemperature !== null)
-            parts.push(Format.temperature(data.cpuTemperature, this.tempUnit, 0));
-        if (this.panelShowPower && data.systemWatts !== null)
-            parts.push(Format.watts(data.systemWatts));
-        if (this.panelShowFrequency && data.cpu.averageFrequency !== null)
-            parts.push(Format.frequency(data.cpu.averageFrequency));
-        if (this.panelShowProfile && data.profile.active)
-            parts.push(Format.profileLabel(data.profile.active));
-        this.set_applet_label(parts.join(" "));
-
-        this._updateIcon(data);
-        this.set_applet_tooltip(this._buildTooltip(data));
-    }
-
-    _updateIcon(data) {
-        let source = this.panelIconSource || "auto";
-        if (source === "auto")
-            source = data.primary ? "battery" : (data.profile.active ? "profile" : "static");
-
-        if (source === "battery" && data.primary) {
-            let icon = data.primary.icon;
-            let key = "battery:" + icon;
-            if (key === this._iconKey)
-                return;
-            this._iconKey = key;
-            this.set_applet_icon_symbolic_name("xsi-battery-level-100");
-            if (icon)
-                this._applet_icon.gicon = Gio.icon_new_for_string(icon);
-            return;
-        }
-
-        let name = DEFAULT_ICON;
-        if (source === "profile" && data.profile.active)
-            name = Format.profileIconName(data.profile.active);
-        let key = "symbolic:" + name;
-        if (key === this._iconKey)
-            return;
-        this._iconKey = key;
-        this.set_applet_icon_symbolic_name(name);
-    }
-
-    _buildTooltip(data) {
-        let lines = [];
-
-        if (data.primary) {
-            lines.push(Format.deviceKindName(data.primary.kind) + " " +
-                       Format.percent(data.primary.percentage) + " - " +
-                       Format.deviceStateName(data.primary.state));
-            let remaining = this._remainingText(data.primary);
-            if (remaining)
-                lines.push(remaining);
-        } else if (data.lineOnline || !this._upower.available) {
-            lines.push(_("Running on AC power"));
-        }
-
-        if (data.profile.active)
-            lines.push(_("Profile") + ": " + Format.profileLabel(data.profile.active));
-        if (data.cpu.governor)
-            lines.push(_("Governor") + ": " + Format.governorLabel(data.cpu.governor));
-        if (data.cpuTemperature !== null)
-            lines.push(_("Temperature") + ": " + Format.temperature(data.cpuTemperature, this.tempUnit, 1));
-        if (data.systemWatts !== null)
-            lines.push(_("Power draw") + ": " + this._powerText(data));
-
-        let peripherals = data.devices.filter(device => !device.powerSupply && device.percentage !== null);
-        for (let device of peripherals)
-            lines.push(Format.deviceTitle(device) + ": " + Format.percent(device.percentage));
-
-        if (lines.length === 0)
-            lines.push(_("Power Toys"));
-        return lines.join("\n");
-    }
-
-    _remainingText(device) {
-        if (device.state === UPDeviceState.DISCHARGING && device.timeToEmpty)
-            return Format.duration(device.timeToEmpty) + " " + _("remaining");
-        if (device.state === UPDeviceState.CHARGING && device.timeToFull)
-            return Format.duration(device.timeToFull) + " " + _("until full");
-        return "";
     }
 
     /* Both of these are the settings applied to the rules above, and are what
@@ -939,7 +981,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         else
             parts.push(Format.deviceStateName(device.state));
 
-        let remaining = this._remainingText(device);
+        let remaining = remainingText(device);
         if (remaining)
             parts.push(remaining);
         if (device.energyRate)
@@ -975,7 +1017,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._summary.setLabel(Format.deviceKindName(data.primary.kind) + " " +
                                    Format.percent(data.primary.percentage));
             let detail = Format.deviceStateName(data.primary.state);
-            let remaining = this._remainingText(data.primary);
+            let remaining = remainingText(data.primary);
             if (remaining)
                 detail += " · " + remaining;
             this._summary.setValue(detail);
@@ -985,7 +1027,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             if (data.cpuTemperature !== null)
                 detail.push(Format.temperature(data.cpuTemperature, this.tempUnit, 1));
             if (data.systemWatts !== null)
-                detail.push(this._powerText(data));
+                detail.push(powerText(data));
             this._summary.setValue(detail.join(" · "));
         }
     }
@@ -1324,7 +1366,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     on_panel_height_changed() {
-        this._iconKey = null;
+        this._panel.invalidateIcon();
         this._update();
     }
 
