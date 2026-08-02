@@ -53,11 +53,6 @@
         "default": false,
         "description": "Show power draw in the panel"
     },
-    "panel-show-frequency": {
-        "type": "switch",
-        "default": false,
-        "description": "Show CPU frequency in the panel"
-    },
     "panel-show-profile": {
         "type": "switch",
         "default": false,

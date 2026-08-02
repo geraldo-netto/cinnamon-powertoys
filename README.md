@@ -109,10 +109,13 @@ thresholds for peripherals, and an optional high temperature warning. All with
 hysteresis, so a value sitting on the limit does not spam the tray.
 
 **Panel.** Choose what appears next to the icon: battery percentage, power
-draw, CPU frequency, active profile, any combination. Temperature is in the
-tooltip and the menu rather than the panel, where a figure that moves every few
-seconds pulls the eye without ever being worth acting on. The
-icon follows the battery level, the active profile, or stays fixed. The wheel
+draw, active power profile, any combination, separated by a dot. Temperature
+and CPU frequency are in the menu rather than the panel, where a figure that
+moves every few seconds pulls the eye without ever being worth acting on — a
+charge and a draw move slowly and say something at a glance, and a profile does
+not move unless you move it. The icon follows the battery level, the active
+profile, or stays fixed, and it shows a profile change the moment you ask for
+it rather than when the daemon gets round to confirming it. The wheel
 over the applet changes screen brightness — every monitor together, since the
 gesture names no screen — and a middle click toggles the keyboard backlight,
 as they do on the applet this one can replace; either can be pointed at the
