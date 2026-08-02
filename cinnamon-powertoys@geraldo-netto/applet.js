@@ -1544,9 +1544,21 @@ class PowerToysApplet extends Applet.TextIconApplet {
             return;
         this.settings.setValue("introduced", true);
 
-        Main.notify(_("Power Toys"),
-                    _("Power profiles, processor settings, batteries and sensors " +
-                      "are in this menu. Right click the panel to configure it."));
+        /*
+         * Inside a try because this is the last thing the constructor does and
+         * it is the least important thing the applet does. Main.notify with
+         * two arguments throws on Cinnamon 6.6.9 - somewhere under
+         * MessageTray, not here - and an exception in the constructor is an
+         * applet that never reaches the panel. Nobody should lose the applet
+         * over a greeting they were going to dismiss.
+         */
+        try {
+            Main.notify(_("Power Toys"),
+                        _("Power profiles, processor settings, batteries and sensors " +
+                          "are in this menu. Right click the panel to configure it."));
+        } catch (error) {
+            Log.error("could not show the first-run notification: " + error);
+        }
     }
 
     /*
