@@ -292,6 +292,34 @@ function profileIconName(name) {
 }
 
 /*
+ * The same three gauges from the icon theme, where the theme has them.
+ *
+ * The applet ships its own, and they carry colour, which is why they are
+ * loaded by path rather than as symbolic names - a theme asked for them
+ * symbolically would repaint all three in the panel foreground and make them
+ * identical. That is right for a menu and wrong for the panel: on a laptop the
+ * applet draws a symbolic battery and on a desktop, where the profile is what
+ * the icon settles on, it drew a coloured picture. One applet speaking two
+ * visual languages, and on the desktop that icon is the only thing naming it.
+ *
+ * adwaita and the xapp set both carry power-profile-*-symbolic, which are the
+ * icons the rest of the desktop uses for exactly these three. Where they are
+ * installed the panel uses them and is drawn in the panel's own colour like
+ * everything beside it; where they are not, the shipped SVGs still are.
+ */
+const PROFILE_SYMBOLIC = {
+    "powertoys-powersaver": "power-profile-power-saver-symbolic",
+    "powertoys-performance": "power-profile-performance-symbolic",
+    "powertoys-balanced": "power-profile-balanced-symbolic",
+};
+
+function profileSymbolicName(name) {
+    let shipped = profileIconName(name);
+    let symbolic = shipped ? PROFILE_SYMBOLIC[shipped] : null;
+    return symbolic ? iconName([symbolic, null]) : null;
+}
+
+/*
  * The cpufreq drivers, in words.
  *
  * "amd-pstate-epp" is what the kernel calls it and means nothing to anyone

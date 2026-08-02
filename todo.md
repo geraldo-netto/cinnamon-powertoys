@@ -20,7 +20,6 @@ in the pass before this one and is not revisited here.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-111 | low | S | **Law of similarity.** With the icon on *Automatic* a laptop shows a symbolic battery and a desktop shows a coloured profile SVG. One applet, two visual languages, and on the desktop that icon is the only thing identifying it in the panel. Either the profile gauges get symbolic siblings for this case, or `auto` keeps the symbolic icon and says the profile some other way. |
 | PT-112 | low | M | **Hick's law.** The *Panel* settings section is five controls — the icon source and four independent toggles — which is sixteen arrangements of the panel text, and almost everybody wants one of three. A single *Panel text* list with those three and a *Custom* entry that reveals the toggles would leave the same reach with less to decide. Low priority: the defaults are already the common case. |
 
 ## Documentation drift

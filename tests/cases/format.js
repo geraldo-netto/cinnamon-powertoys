@@ -148,6 +148,35 @@ cases["a profile this applet has no icon for gets none"] = function () {
     Harness.equal(Format.profileIconName(null), null, "nothing active");
 };
 
+cases["the theme's own profile gauges are preferred to the shipped ones"] = function () {
+    Format.setIconLookup(name => name.indexOf("power-profile-") === 0);
+    try {
+        Harness.equal(Format.profileSymbolicName("power-saver"),
+                      "power-profile-power-saver-symbolic", "the theme has it");
+        Harness.equal(Format.profileSymbolicName("quiet"),
+                      "power-profile-power-saver-symbolic",
+                      "a firmware name that means the same thing");
+        Harness.equal(Format.profileSymbolicName("balanced"),
+                      "power-profile-balanced-symbolic", "balanced");
+        Harness.equal(Format.profileSymbolicName("something-a-vendor-invented"), null,
+                      "nothing to map it to");
+    } finally {
+        Format.setIconLookup(null);
+    }
+};
+
+cases["a theme without them falls back to what the applet ships"] = function () {
+    Format.setIconLookup(() => false);
+    try {
+        Harness.equal(Format.profileSymbolicName("performance"), null,
+                      "so the caller uses profileIconName and loads the SVG by path");
+        Harness.equal(Format.profileIconName("performance"), "powertoys-performance",
+                      "which is still there");
+    } finally {
+        Format.setIconLookup(null);
+    }
+};
+
 cases["a scaling driver is named in words, with the kernel's own name kept"] = function () {
     Harness.equal(Format.driverLabel("amd-pstate-epp", "active"),
                   "AMD (amd-pstate-epp)",

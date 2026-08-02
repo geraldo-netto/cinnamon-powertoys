@@ -502,19 +502,26 @@ class PanelPresenter {
         let profileIcon = source === "profile" && profile
             ? Format.profileIconName(profile) : null;
         if (profileIcon) {
-            let key = "profile:" + profileIcon;
+            /*
+             * The theme's own gauge for this profile if it has one, so that the
+             * applet draws in the panel's colour like everything beside it -
+             * see profileSymbolicName. Failing that, the applet's own, loaded
+             * from its directory by path rather than by name: those three carry
+             * colour, so asking for them as symbolic names would have the theme
+             * repaint all three in the panel foreground and make them
+             * identical, and asking by name at all depends on the icon theme
+             * having noticed the applet's directory, which it does not always
+             * do until something makes it rescan.
+             */
+            let symbolic = Format.profileSymbolicName(profile);
+            let key = "profile:" + (symbolic || profileIcon);
             if (key === this._iconKey)
                 return;
             this._iconKey = key;
-            /*
-             * Loaded from the applet's own directory by path rather than by
-             * name. These three carry colour, so asking for them as symbolic
-             * names would have the theme repaint all three in the panel
-             * foreground and make them identical; asking by name at all
-             * depends on the icon theme having noticed the applet's directory,
-             * which it does not always do until something makes it rescan.
-             */
-            this._applet.set_applet_icon_path(this._iconDir + "/" + profileIcon + ".svg");
+            if (symbolic)
+                this._applet.set_applet_icon_symbolic_name(symbolic);
+            else
+                this._applet.set_applet_icon_path(this._iconDir + "/" + profileIcon + ".svg");
             return;
         }
 
