@@ -548,6 +548,280 @@ class ChoiceControl {
     }
 }
 
+/*
+ * The menu, from the summary line at the top to the settings entry at the
+ * bottom.
+ *
+ * It owns its widgets and updates them from a reading plus the options that
+ * say what to show. It reads no setting and touches no backend: what the user
+ * clicks is reported through the actions it was handed, and everything it
+ * displays arrives as an argument.
+ *
+ * The exception is `host`, which the device rows still ask for the sentence
+ * under a device and for the limit that colours it. PT-33 is what replaces
+ * that with a view model.
+ */
+class MenuPresenter {
+    constructor(menu, actions, host, capabilities) {
+        this._menu = menu;
+        this._actions = actions;
+        this._host = host;
+        this._build(capabilities || {});
+    }
+
+    _build(capabilities) {
+        this._summary = new InfoRow("", "");
+        this._summary.actor.add_style_class_name("powertoys-summary");
+        this._menu.addMenuItem(this._summary);
+
+        let profileSection = new PopupMenu.PopupMenuSection();
+        this._menu.addMenuItem(profileSection);
+        this._profileGroup = new SelectorGroup(profileSection, Format.profileLabel,
+                                               value => this._actions.setProfile(value), "");
+
+        this._degradedRow = new InfoRow(_("Performance limited"), "");
+        this._degradedRow.setWarning(true);
+        this._degradedRow.actor.hide();
+        this._menu.addMenuItem(this._degradedRow);
+
+        this._deviceSeparator = new PopupMenu.PopupSeparatorMenuItem();
+        this._menu.addMenuItem(this._deviceSeparator);
+        let deviceSection = new PopupMenu.PopupMenuSection();
+        this._menu.addMenuItem(deviceSection);
+        this._deviceList = new KeyedList(deviceSection,
+                                         entry => new DeviceRow(entry.device, this._host),
+                                         (row, entry) => row.update(entry.device));
+
+        this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        this._cpuMenu = new PopupMenu.PopupSubMenuMenuItem(_("Processor"));
+        this._menu.addMenuItem(this._cpuMenu);
+        this._buildCpuSection();
+
+        this._sensorMenu = new PopupMenu.PopupSubMenuMenuItem(_("Sensors"));
+        this._menu.addMenuItem(this._sensorMenu);
+        this._sensorList = new KeyedList(this._sensorMenu.menu,
+                                         entry => new InfoRow(entry.label, entry.value),
+                                         (row, entry) => {
+                                             row.setValue(entry.value);
+                                             row.setWarning(entry.warning);
+                                         });
+
+        if (capabilities.chargeLimit) {
+            this._chargeMenu = new PopupMenu.PopupSubMenuMenuItem(_("Battery charge limit"));
+            this._menu.addMenuItem(this._chargeMenu);
+            this._chargeGroup = new SelectorGroup(this._chargeMenu.menu, limit => limit + "%",
+                                                  value => this._actions.setChargeLimit(value), "");
+        }
+
+        this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this._menu.addSettingsAction(_("System power settings"), "power");
+
+        let configure = new PopupMenu.PopupIconMenuItem(_("Configure Power Toys"),
+                                                        "system-run", St.IconType.SYMBOLIC);
+        configure.connect("activate", () => this._actions.configure());
+        this._menu.addMenuItem(configure);
+    }
+
+    _buildCpuSection() {
+        let menu = this._cpuMenu.menu;
+
+        this._cpuFreqRow = new InfoRow(_("Frequency"), "");
+        this._cpuTempRow = new InfoRow(_("Temperature"), "");
+        this._cpuDriverRow = new InfoRow(_("Scaling driver"), "");
+        menu.addMenuItem(this._cpuFreqRow);
+        menu.addMenuItem(this._cpuTempRow);
+        menu.addMenuItem(this._cpuDriverRow);
+
+        this._governorControl = new ChoiceControl(menu, _("Governor"), Format.governorLabel,
+                                                  value => this._actions.setGovernor(value));
+        this._energyControl = new ChoiceControl(menu, _("Energy preference"),
+                                                Format.energyPreferenceLabel,
+                                                value => this._actions.setEnergyPreference(value));
+
+        /* The switch carries its own read-only mode, so unlike the two lists
+         * above it needs no second widget: insensitive still shows the state. */
+        this._boostSwitch = new PopupMenu.PopupSwitchMenuItem(_("Turbo boost"), false);
+        this._boostSwitch.connect("toggled", (item, state) => this._actions.setBoost(state));
+        menu.addMenuItem(this._boostSwitch);
+    }
+
+    /* Submenus start folded; "expand-sections" asks for them open instead. */
+    applyExpandState(expand) {
+        for (let item of [this._cpuMenu, this._sensorMenu, this._chargeMenu]) {
+            if (!item)
+                continue;
+            if (expand)
+                item.menu.open(false);
+            else
+                item.menu.close(false);
+        }
+    }
+
+    update(data, options) {
+        this._updateSummary(data, options);
+        this._updateProfiles(data, options);
+        this._updateDevices(data, options);
+        this._updateCpu(data, options);
+        this._updateSensors(data, options);
+        this._updateCharge(data, options);
+    }
+
+    _updateSummary(data, options) {
+        if (data.primary) {
+            this._summary.setLabel(Format.deviceKindName(data.primary.kind) + " " +
+                                   Format.percent(data.primary.percentage));
+            let detail = Format.deviceStateName(data.primary.state);
+            let remaining = remainingText(data.primary);
+            if (remaining)
+                detail += " · " + remaining;
+            this._summary.setValue(detail);
+        } else {
+            this._summary.setLabel(_("On AC power"));
+            let detail = [];
+            if (data.cpuTemperature !== null)
+                detail.push(Format.temperature(data.cpuTemperature, options.tempUnit, 1));
+            if (data.systemWatts !== null)
+                detail.push(powerText(data));
+            this._summary.setValue(detail.join(" · "));
+        }
+    }
+
+    _updateProfiles(data, options) {
+        let show = options.showProfiles && data.profile.available && data.profile.list.length > 0;
+        this._profileGroup.sync(show ? data.profile.list : [], data.profile.active);
+
+        let notes = [];
+        if (data.profile.degraded)
+            notes.push(data.profile.degraded.replace(/-/g, " "));
+        for (let hold of data.profile.holds) {
+            let application = hold.application || _("an application");
+            notes.push(application + " → " + Format.profileLabel(hold.profile));
+        }
+        if (show && notes.length > 0) {
+            this._degradedRow.setValue(notes.join(", "));
+            this._degradedRow.actor.show();
+        } else {
+            this._degradedRow.actor.hide();
+        }
+    }
+
+    _updateDevices(data, options) {
+        let show = options.showDevices && data.devices.length > 0;
+        this._deviceSeparator.actor.visible = show;
+        this._deviceList.sync(show
+            ? data.devices.map(device => ({ key: device.path, device: device }))
+            : []);
+    }
+
+    _updateCpu(data, options) {
+        let show = options.showCpu && data.cpu.available;
+        this._cpuMenu.actor.visible = show;
+        if (!show)
+            return;
+
+        let frequency = Format.frequency(data.cpu.averageFrequency);
+        if (data.cpu.maxFrequency)
+            frequency += " / " + Format.frequency(data.cpu.maxFrequency);
+        this._cpuFreqRow.setValue(frequency);
+
+        this._cpuTempRow.actor.visible = data.cpuTemperature !== null;
+        if (data.cpuTemperature !== null) {
+            this._cpuTempRow.setValue(Format.temperature(data.cpuTemperature, options.tempUnit, 1));
+            this._cpuTempRow.setWarning(data.cpuTemperature >= options.highTempCelsius);
+        }
+
+        let driver = data.cpu.driver || _("unknown");
+        if (data.cpu.amdPstateStatus)
+            driver += " (" + data.cpu.amdPstateStatus + ")";
+        this._cpuDriverRow.setValue(driver);
+
+        this._governorControl.sync(data.cpu.governors, data.cpu.governor, options.privileged);
+        this._energyControl.sync(data.cpu.energyPreferences, data.cpu.energyPreference,
+                                 options.privileged);
+
+        this._boostSwitch.actor.visible = data.cpu.boostSupported;
+        if (data.cpu.boostSupported) {
+            if (data.cpu.boostEnabled !== null)
+                this._boostSwitch.setToggleState(data.cpu.boostEnabled);
+            this._boostSwitch.setSensitive(options.privileged);
+        }
+    }
+
+    /*
+     * A menu key unique across the three lists. Ids are unique within one of
+     * them but not between them: a battery that reports both a temperature
+     * and a draw carries the same UPower path in each, and what tells the two
+     * readings apart is what they measure.
+     */
+    _entryKey(reading) {
+        return reading.measure + ":" + reading.id;
+    }
+
+    /* A temperature is worth flagging as it closes on the chip's own limit. */
+    _temperatureEntry(sensor, options) {
+        return {
+            key: this._entryKey(sensor),
+            label: sensor.label,
+            value: Format.temperature(sensor.celsius, options.tempUnit, 1),
+            warning: sensor.critical !== null && sensor.celsius >= sensor.critical - 5,
+        };
+    }
+
+    _fanEntry(fan) {
+        return { key: this._entryKey(fan), label: fan.label,
+                 value: Format.rpm(fan.rpm), warning: false };
+    }
+
+    _powerEntry(meter) {
+        return { key: this._entryKey(meter), label: meter.label,
+                 value: Format.watts(meter.watts), warning: false };
+    }
+
+    /*
+     * One kind of reading turned into menu entries: drop what cannot be read,
+     * drop the uninteresting kinds unless the menu was asked for all of them,
+     * then order them the way the menu lists sensors.
+     */
+    _sensorEntries(readings, showAll, isReadable, toEntry) {
+        let usable = readings.filter(isReadable);
+        if (!showAll)
+            usable = usable.filter(reading => Sensors.isPrimaryKind(reading.kind));
+        return usable.sort(Sensors.bySensorOrder).map(toEntry);
+    }
+
+    _updateSensors(data, options) {
+        this._sensorMenu.actor.visible = options.showSensors;
+        if (!options.showSensors)
+            return;
+
+        let all = options.showAllSensors;
+        let entries = [].concat(
+            this._sensorEntries(data.temperatures, all, sensor => sensor.celsius !== null,
+                                sensor => this._temperatureEntry(sensor, options)),
+            this._sensorEntries(data.fans, all, fan => fan.rpm !== null && fan.rpm > 0,
+                                fan => this._fanEntry(fan)),
+            this._sensorEntries(data.powers, all, () => true,
+                                meter => this._powerEntry(meter)));
+
+        if (entries.length === 0)
+            entries.push({ key: "empty", label: _("No sensors found"), value: "", warning: false });
+
+        this._sensorList.sync(entries);
+    }
+
+    _updateCharge(data, options) {
+        if (!this._chargeMenu)
+            return;
+        this._chargeMenu.actor.visible = options.privileged;
+        if (!options.privileged)
+            return;
+        this._chargeMenu.label.set_text(_("Battery charge limit") +
+                                        (data.chargeLimit !== null ? "  " + data.chargeLimit + "%" : ""));
+        this._chargeGroup.sync(CHARGE_LIMITS, data.chargeLimit);
+    }
+}
+
 class PowerToysApplet extends Applet.TextIconApplet {
     constructor(metadata, orientation, panelHeight, instanceId, backends) {
         super(orientation, panelHeight, instanceId);
@@ -609,7 +883,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this.settings.bind("refresh-interval", "refreshInterval", () => this._startPolling());
         /* Applied on its own, so that toggling any other setting does not fold
          * a submenu the user opened by hand. */
-        this.settings.bind("expand-sections", "expandSections", () => this._applyExpandState());
+        this.settings.bind("expand-sections", "expandSections",
+                           () => this._menuPresenter.applyExpandState(this.expandSections));
         this.settings.bind("cycle-profile-hotkey", "cycleProfileHotkey", () => this._registerHotkeys());
         this.settings.bind("toggle-menu-hotkey", "toggleMenuHotkey", () => this._registerHotkeys());
     }
@@ -667,7 +942,36 @@ class PowerToysApplet extends Applet.TextIconApplet {
                 this._onMenuOpened();
         });
 
-        this._buildMenu();
+        this._menuPresenter = new MenuPresenter(this.menu, this._menuActions(), this,
+                                               { chargeLimit: !!this._chargeControl });
+        this._menuPresenter.applyExpandState(this.expandSections);
+    }
+
+    /* What the menu is allowed to ask for. Every one of these ends in a write
+     * the applet is responsible for, which is why the menu does not do them. */
+    _menuActions() {
+        return {
+            setProfile: name => this._setProfile(name),
+            setGovernor: value => this._cpu.setGovernor(value),
+            setEnergyPreference: value => this._cpu.setEnergyPreference(value),
+            setBoost: state => this._cpu.setBoost(state),
+            setChargeLimit: value => this._runHelper(["charge-threshold", value]),
+            configure: () => Util.spawnCommandLine("cinnamon-settings applets " +
+                                                   UUID + " " + this.instanceId),
+        };
+    }
+
+    _menuOptions() {
+        return {
+            tempUnit: this.tempUnit,
+            showProfiles: this.showProfiles,
+            showDevices: this.showDevices,
+            showCpu: this.showCpu,
+            showSensors: this.showSensors,
+            showAllSensors: this.showAllSensors,
+            privileged: this.enablePrivilegedControls,
+            highTempCelsius: this.highTempCelsius,
+        };
     }
 
     _destroyMenu() {
@@ -676,104 +980,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this.menuManager.removeMenu(this.menu);
         this.menu.destroy();
         this.menu = null;
-    }
-
-    _buildMenu() {
-        this._summary = new InfoRow("", "");
-        this._summary.actor.add_style_class_name("powertoys-summary");
-        this.menu.addMenuItem(this._summary);
-
-        this._profileSection = new PopupMenu.PopupMenuSection();
-        this.menu.addMenuItem(this._profileSection);
-        this._profileGroup = new SelectorGroup(this._profileSection, Format.profileLabel,
-                                               value => this._setProfile(value), "");
-
-        this._degradedRow = new InfoRow(_("Performance limited"), "");
-        this._degradedRow.setWarning(true);
-        this._degradedRow.actor.hide();
-        this.menu.addMenuItem(this._degradedRow);
-
-        this._deviceSeparator = new PopupMenu.PopupSeparatorMenuItem();
-        this.menu.addMenuItem(this._deviceSeparator);
-        this._deviceSection = new PopupMenu.PopupMenuSection();
-        this.menu.addMenuItem(this._deviceSection);
-        this._deviceList = new KeyedList(this._deviceSection,
-                                         entry => new DeviceRow(entry.device, this),
-                                         (row, entry) => row.update(entry.device));
-
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-        this._cpuMenu = new PopupMenu.PopupSubMenuMenuItem(_("Processor"));
-        this.menu.addMenuItem(this._cpuMenu);
-        this._buildCpuMenu();
-
-        this._sensorMenu = new PopupMenu.PopupSubMenuMenuItem(_("Sensors"));
-        this.menu.addMenuItem(this._sensorMenu);
-        this._sensorList = new KeyedList(this._sensorMenu.menu,
-                                         entry => new InfoRow(entry.label, entry.value),
-                                         (row, entry) => {
-                                             row.setValue(entry.value);
-                                             row.setWarning(entry.warning);
-                                         });
-
-        if (this._chargeControl) {
-            this._chargeMenu = new PopupMenu.PopupSubMenuMenuItem(_("Battery charge limit"));
-            this.menu.addMenuItem(this._chargeMenu);
-            this._buildChargeMenu();
-        }
-
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        this.menu.addSettingsAction(_("System power settings"), "power");
-
-        let configure = new PopupMenu.PopupIconMenuItem(_("Configure Power Toys"),
-                                                        "system-run", St.IconType.SYMBOLIC);
-        configure.connect("activate", () => {
-            Util.spawnCommandLine("cinnamon-settings applets " + UUID + " " + this.instanceId);
-        });
-        this.menu.addMenuItem(configure);
-
-        this._applyExpandState();
-    }
-
-    /* Submenus start folded; "expand-sections" asks for them open instead. */
-    _applyExpandState() {
-        for (let item of [this._cpuMenu, this._sensorMenu, this._chargeMenu]) {
-            if (!item)
-                continue;
-            if (this.expandSections)
-                item.menu.open(false);
-            else
-                item.menu.close(false);
-        }
-    }
-
-    _buildCpuMenu() {
-        let menu = this._cpuMenu.menu;
-
-        this._cpuFreqRow = new InfoRow(_("Frequency"), "");
-        this._cpuTempRow = new InfoRow(_("Temperature"), "");
-        this._cpuDriverRow = new InfoRow(_("Scaling driver"), "");
-        menu.addMenuItem(this._cpuFreqRow);
-        menu.addMenuItem(this._cpuTempRow);
-        menu.addMenuItem(this._cpuDriverRow);
-
-        this._governorControl = new ChoiceControl(menu, _("Governor"), Format.governorLabel,
-                                                  value => this._cpu.setGovernor(value));
-        this._energyControl = new ChoiceControl(menu, _("Energy preference"),
-                                                Format.energyPreferenceLabel,
-                                                value => this._cpu.setEnergyPreference(value));
-
-        /* The switch carries its own read-only mode, so unlike the two lists
-         * above it needs no second widget: insensitive still shows the state. */
-        this._boostSwitch = new PopupMenu.PopupSwitchMenuItem(_("Turbo boost"), false);
-        this._boostSwitch.connect("toggled", (item, state) => this._cpu.setBoost(state));
-        menu.addMenuItem(this._boostSwitch);
-    }
-
-    _buildChargeMenu() {
-        this._chargeGroup = new SelectorGroup(this._chargeMenu.menu, limit => limit + "%",
-                                              value => this._runHelper(["charge-threshold", value]),
-                                              "");
+        this._menuPresenter = null;
     }
 
     /* ------------------------------------------------------------------ */
@@ -807,6 +1014,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
             packageWatts: readings.packageWatts,
             cpu: this._cpu.snapshot(),
             profile: this._collectProfile(),
+            chargeLimit: this._chargeControl
+                ? this._backends.readNumber(this._chargeControl.path) : null,
             cpuTemperature: this._pickTemperature(temperatures),
             systemWatts: power.watts,
             systemWattsSource: power.source,
@@ -946,7 +1155,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         }
         this._latest = data;
         this._panel.update(data, this._panelOptions());
-        this._updateMenu(data);
+        this._menuPresenter.update(data, this._menuOptions());
         this._alerts.check(data, this._alertLimits());
     }
 
@@ -1013,173 +1222,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
             parts.push(Format.energy(device.energy) + " / " + Format.energy(device.energyFull));
 
         return parts.filter(part => part !== "").join(" · ");
-    }
-
-    /* ------------------------------------------------------------------ */
-    /* menu contents                                                       */
-
-    _updateMenu(data) {
-        this._updateSummary(data);
-        this._updateProfileSection(data);
-        this._updateDeviceSection(data);
-        this._updateCpuSection(data);
-        this._updateSensorSection(data);
-        this._updateChargeSection();
-    }
-
-    _updateSummary(data) {
-        if (data.primary) {
-            this._summary.setLabel(Format.deviceKindName(data.primary.kind) + " " +
-                                   Format.percent(data.primary.percentage));
-            let detail = Format.deviceStateName(data.primary.state);
-            let remaining = remainingText(data.primary);
-            if (remaining)
-                detail += " · " + remaining;
-            this._summary.setValue(detail);
-        } else {
-            this._summary.setLabel(_("On AC power"));
-            let detail = [];
-            if (data.cpuTemperature !== null)
-                detail.push(Format.temperature(data.cpuTemperature, this.tempUnit, 1));
-            if (data.systemWatts !== null)
-                detail.push(powerText(data));
-            this._summary.setValue(detail.join(" · "));
-        }
-    }
-
-    _updateProfileSection(data) {
-        let show = this.showProfiles && data.profile.available && data.profile.list.length > 0;
-        this._profileGroup.sync(show ? data.profile.list : [], data.profile.active);
-
-        let notes = [];
-        if (data.profile.degraded)
-            notes.push(data.profile.degraded.replace(/-/g, " "));
-        for (let hold of data.profile.holds) {
-            let application = hold.application || _("an application");
-            notes.push(application + " → " + Format.profileLabel(hold.profile));
-        }
-        if (show && notes.length > 0) {
-            this._degradedRow.setValue(notes.join(", "));
-            this._degradedRow.actor.show();
-        } else {
-            this._degradedRow.actor.hide();
-        }
-    }
-
-    _updateDeviceSection(data) {
-        let show = this.showDevices && data.devices.length > 0;
-        this._deviceSeparator.actor.visible = show;
-        this._deviceList.sync(show
-            ? data.devices.map(device => ({ key: device.path, device: device }))
-            : []);
-    }
-
-    _updateCpuSection(data) {
-        let show = this.showCpu && data.cpu.available;
-        this._cpuMenu.actor.visible = show;
-        if (!show)
-            return;
-
-        let frequency = Format.frequency(data.cpu.averageFrequency);
-        if (data.cpu.maxFrequency)
-            frequency += " / " + Format.frequency(data.cpu.maxFrequency);
-        this._cpuFreqRow.setValue(frequency);
-
-        this._cpuTempRow.actor.visible = data.cpuTemperature !== null;
-        if (data.cpuTemperature !== null) {
-            this._cpuTempRow.setValue(Format.temperature(data.cpuTemperature, this.tempUnit, 1));
-            this._cpuTempRow.setWarning(data.cpuTemperature >= this.highTempCelsius);
-        }
-
-        let driver = data.cpu.driver || _("unknown");
-        if (data.cpu.amdPstateStatus)
-            driver += " (" + data.cpu.amdPstateStatus + ")";
-        this._cpuDriverRow.setValue(driver);
-
-        let editable = this.enablePrivilegedControls;
-        this._governorControl.sync(data.cpu.governors, data.cpu.governor, editable);
-        this._energyControl.sync(data.cpu.energyPreferences, data.cpu.energyPreference, editable);
-
-        this._boostSwitch.actor.visible = data.cpu.boostSupported;
-        if (data.cpu.boostSupported) {
-            if (data.cpu.boostEnabled !== null)
-                this._boostSwitch.setToggleState(data.cpu.boostEnabled);
-            this._boostSwitch.setSensitive(editable);
-        }
-    }
-
-    /*
-     * A menu key unique across the three lists. Ids are unique within one of
-     * them but not between them: a battery that reports both a temperature
-     * and a draw carries the same UPower path in each, and what tells the two
-     * readings apart is what they measure.
-     */
-    _entryKey(reading) {
-        return reading.measure + ":" + reading.id;
-    }
-
-    /* A temperature is worth flagging as it closes on the chip's own limit. */
-    _temperatureEntry(sensor) {
-        return {
-            key: this._entryKey(sensor),
-            label: sensor.label,
-            value: Format.temperature(sensor.celsius, this.tempUnit, 1),
-            warning: sensor.critical !== null && sensor.celsius >= sensor.critical - 5,
-        };
-    }
-
-    _fanEntry(fan) {
-        return { key: this._entryKey(fan), label: fan.label,
-                 value: Format.rpm(fan.rpm), warning: false };
-    }
-
-    _powerEntry(meter) {
-        return { key: this._entryKey(meter), label: meter.label,
-                 value: Format.watts(meter.watts), warning: false };
-    }
-
-    /*
-     * One kind of reading turned into menu entries: drop what cannot be read,
-     * drop the uninteresting kinds unless the menu was asked for all of them,
-     * then order them the way the menu lists sensors.
-     */
-    _sensorEntries(readings, isReadable, toEntry) {
-        let usable = readings.filter(isReadable);
-        if (!this.showAllSensors)
-            usable = usable.filter(reading => Sensors.isPrimaryKind(reading.kind));
-        return usable.sort(Sensors.bySensorOrder).map(toEntry);
-    }
-
-    _updateSensorSection(data) {
-        this._sensorMenu.actor.visible = this.showSensors;
-        if (!this.showSensors)
-            return;
-
-        let entries = [].concat(
-            this._sensorEntries(data.temperatures, sensor => sensor.celsius !== null,
-                                sensor => this._temperatureEntry(sensor)),
-            this._sensorEntries(data.fans, fan => fan.rpm !== null && fan.rpm > 0,
-                                fan => this._fanEntry(fan)),
-            this._sensorEntries(data.powers, () => true,
-                                meter => this._powerEntry(meter)));
-
-        if (entries.length === 0)
-            entries.push({ key: "empty", label: _("No sensors found"), value: "", warning: false });
-
-        this._sensorList.sync(entries);
-    }
-
-    _updateChargeSection() {
-        if (!this._chargeMenu)
-            return;
-        let allowed = this.enablePrivilegedControls;
-        this._chargeMenu.actor.visible = allowed;
-        if (!allowed)
-            return;
-        let current = this._backends.readNumber(this._chargeControl.path);
-        this._chargeMenu.label.set_text(_("Battery charge limit") +
-                                        (current !== null ? "  " + current + "%" : ""));
-        this._chargeGroup.sync(CHARGE_LIMITS, current);
     }
 
     /* ------------------------------------------------------------------ */
