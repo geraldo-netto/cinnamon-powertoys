@@ -106,9 +106,47 @@ the profile and to open the menu.
 
 ## Install
 
+### Dependencies
+
+There are none to install to make it run. Cinnamon, UPower and polkit are what
+a Cinnamon desktop is built on, and the two GObject introspection pieces the
+applet opens with — `gir1.2-upowerglib-1.0` for batteries and
+`xapp-symbolic-icons` for the device icons — are already Cinnamon 6.6's own
+dependencies. On a machine that can run Cinnamon, this runs.
+
+The optional packages each buy one feature and are inert until you install
+them; the applet finds them at runtime and shows nothing where they are
+missing. On Debian, Ubuntu and Mint:
+
 ```sh
+sudo apt install ddcutil hwdata power-profiles-daemon
+```
+
+| package | what it buys | without it |
+|---------|--------------|------------|
+| `ddcutil` | brightness for monitors on a cable, over DDC/CI | no monitor sliders — and it needs the `i2c` group as well, see [External monitor brightness](#external-monitor-brightness) |
+| `hwdata` | `pci.ids` and `pnp.ids`, the tables that name the hardware | sensor groups headed by the driver's name, monitors by their EDID code |
+| `power-profiles-daemon` | the **Power profile** control | falls back to the ACPI platform profile, and where the firmware has none the control is not shown |
+
+`hwdata` depends on `pci.ids`, so it brings both tables; `ddcutil` and
+`pciutils` pull in `pci.ids` on their own but not `pnp.ids`. On Fedora and
+Arch both files are in `hwdata` alone. Elsewhere, search for the upstream
+names rather than these — every one of them is its own project.
+
+### The applet
+
+```sh
+git clone https://github.com/geraldo-netto/cinnamon-powertoys.git
+cd cinnamon-powertoys
 ./install.sh          # or: make install
 ```
+
+It copies into `~/.local/share/cinnamon/applets/`, compiles any translations
+into `~/.local/share/locale/`, and touches nothing else — no root, and nothing
+written outside your home directory. `PREFIX` and `DESTDIR` are honoured if
+you are packaging it. The one part that does go to `/usr` is optional, asks
+for root explicitly and is described under
+[One prompt instead of one per change](#one-prompt-instead-of-one-per-change).
 
 On a first install, restart Cinnamon (`Alt+F2`, `r`, Enter) and enable **Power
 Toys** from *Right click panel → Applets*. After that the script reloads the
@@ -119,6 +157,20 @@ To remove it:
 ```sh
 make uninstall
 ```
+
+### To work on it
+
+```sh
+sudo apt install cjs gettext gir1.2-upowerglib-1.0
+make check
+```
+
+`cjs` is Cinnamon's own JavaScript interpreter and is what the tests and the
+parse check run under, so they fail for the same reasons the shell would.
+`gettext` is for the translations, and the typelib is what four of the
+libraries open with. `cinnamon-xlet-makepot`, which `make pot` calls, ships in
+the `cinnamon` package itself and so is already there on the desktop this is
+written for.
 
 ## Permissions
 
@@ -247,21 +299,24 @@ settings.
   Two things the applet leans on are not Cinnamon's at all and are older than
   any of this: `Gio.File.load_contents_async`, which takes the sensor reads off
   the compositor's thread, and `Gtk.IconTheme`'s `changed` signal.
-- UPower, for battery and device data
-- `xapp-symbolic-icons`, optional. Device and battery icons prefer that set,
-  which Cinnamon's own power applet only started using in 6.6; where it is not
-  installed the applet falls back to the freedesktop names every icon theme
-  has carried for twenty years.
+- UPower, for battery and device data, through `gir1.2-upowerglib-1.0`
+- `xapp-symbolic-icons`, optional in the sense that the code copes without it:
+  device and battery icons prefer that set, and where it is absent the applet
+  falls back to the freedesktop names every icon theme has carried for twenty
+  years. Cinnamon 6.6 depends on it, so on the desktops this is written for it
+  is already installed; the fallback is for the older ones, whose power applet
+  did not use those names yet.
 - `ddcutil`, optional, only for external monitor brightness, and it needs a
   group of its own before it works — see
   [External monitor brightness](#external-monitor-brightness). Never probed on
   a machine that has a backlight of its own, and can be turned off entirely
   with *Control external monitor brightness*
-- `hwdata` or `pciutils`, optional, for `pci.ids` and `pnp.ids` — the tables
-  that turn `03:00.0` into a graphics card and `DEL` into Dell. One or the
-  other is installed almost everywhere, since `lspci` needs the first; without
-  them a sensor group is headed by the driver's name and a monitor by its EDID
-  code, which is what those were before
+- `hwdata`, optional, for `pci.ids` and `pnp.ids` — the tables that turn
+  `03:00.0` into a graphics card and `DEL` into Dell. `pci.ids` alone is on
+  almost every machine already, because `pciutils` and `ddcutil` both depend on
+  it, so in practice it is the monitor half that is missing. Without either, a
+  sensor group is headed by the driver's own name and a monitor by its EDID
+  code, which is what both were before the tables were read at all
 - power-profiles-daemon, optional, for profile switching
 - polkit, optional, for the privileged controls
 
