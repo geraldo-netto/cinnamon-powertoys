@@ -287,6 +287,16 @@ class PanelPresenter {
         this._applet = applet;
         this._iconDir = iconDir;
         this._iconKey = null;
+
+        /*
+         * Themes centre tooltips, which is right for the one-line label most
+         * applets have and wrong for a stack of "Governor: Performance"
+         * lines, where centring leaves every colon in a different place. An
+         * inline style beats the theme rule.
+         */
+        let tooltip = applet._applet_tooltip;
+        if (tooltip && tooltip._tooltip)
+            tooltip._tooltip.set_style("text-align: left;");
     }
 
     update(data, options) {
