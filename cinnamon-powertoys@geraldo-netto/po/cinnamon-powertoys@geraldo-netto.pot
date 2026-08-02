@@ -44,7 +44,7 @@ msgstr ""
 msgid "Turbo boost off"
 msgstr ""
 
-#: applet.js:230 applet.js:1164 applet.js:2440
+#: applet.js:230 applet.js:1164 applet.js:2469
 msgid "Power profile"
 msgstr ""
 
@@ -81,8 +81,8 @@ msgid "Power draw"
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:520 applet.js:1804 applet.js:2389 applet.js:2440 applet.js:2487
-#: applet.js:2496
+#: applet.js:520 applet.js:1817 applet.js:2418 applet.js:2469 applet.js:2516
+#: applet.js:2525
 msgid "Power Toys"
 msgstr ""
 
@@ -167,21 +167,21 @@ msgstr ""
 msgid "No sensors found"
 msgstr ""
 
-#: applet.js:1805
+#: applet.js:1818
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "Right click the panel to configure it."
 msgstr ""
 
-#: applet.js:2374
+#: applet.js:2403
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2390
+#: applet.js:2419
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:2497
+#: applet.js:2526
 msgid "The change could not be applied."
 msgstr ""
 
@@ -567,8 +567,8 @@ msgstr ""
 #. settings-schema.json->cpu-sensor-hint->tooltip
 msgid ""
 "Chip or label fragment of the sensor shown as the machine's temperature, in "
-"the tooltip, the menu summary and the Performance panel, e.g. 'Tctl' or "
-"'k10temp'. Leave empty for automatic detection."
+"the tooltip, in the line at the top of the menu and in Processor, e.g. "
+"'Tctl' or 'k10temp'. Leave empty for automatic detection."
 msgstr ""
 
 #. settings-schema.json->panel-section->description
@@ -616,19 +616,29 @@ msgid "Menu"
 msgstr ""
 
 #. settings-schema.json->show-profiles->description
-msgid "Show power profiles"
+msgid "Show Power profile"
 msgstr ""
 
 #. settings-schema.json->show-cpu->description
-msgid "Show CPU section"
+msgid "Show Processor"
 msgstr ""
 
 #. settings-schema.json->show-devices->description
-msgid "Show batteries and powered devices"
+msgid "Show Devices"
+msgstr ""
+
+#. settings-schema.json->show-devices->tooltip
+msgid "Batteries, chargers and anything else connected that carries a charge."
 msgstr ""
 
 #. settings-schema.json->show-sensors->description
-msgid "Show temperatures, fans and power meters"
+msgid "Show Sensors"
+msgstr ""
+
+#. settings-schema.json->show-sensors->tooltip
+msgid ""
+"Temperatures, fans and power meters, under the name of the chip each came "
+"off."
 msgstr ""
 
 #. settings-schema.json->show-all-sensors->description
@@ -666,6 +676,13 @@ msgstr ""
 
 #. settings-schema.json->scroll-action->description
 msgid "Mouse wheel over the applet"
+msgstr ""
+
+#. settings-schema.json->scroll-action->tooltip
+msgid ""
+"The wheel has no screen in mind, so where the brightness of monitors on a "
+"cable is what it moves, it moves all of them together. The sliders in the "
+"menu are one per monitor."
 msgstr ""
 
 #. settings-schema.json->scroll-action->options

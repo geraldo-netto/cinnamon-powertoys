@@ -26,7 +26,7 @@
         "type": "entry",
         "default": "",
         "description": "Preferred temperature sensor",
-        "tooltip": "Chip or label fragment of the sensor shown as the machine's temperature, in the tooltip, the menu summary and the Performance panel, e.g. 'Tctl' or 'k10temp'. Leave empty for automatic detection."
+        "tooltip": "Chip or label fragment of the sensor shown as the machine's temperature, in the tooltip, in the line at the top of the menu and in Processor, e.g. 'Tctl' or 'k10temp'. Leave empty for automatic detection."
     },
     "panel-section": {
         "type": "section",
@@ -70,22 +70,24 @@
     "show-profiles": {
         "type": "switch",
         "default": true,
-        "description": "Show power profiles"
+        "description": "Show Power profile"
     },
     "show-cpu": {
         "type": "switch",
         "default": true,
-        "description": "Show CPU section"
+        "description": "Show Processor"
     },
     "show-devices": {
         "type": "switch",
         "default": true,
-        "description": "Show batteries and powered devices"
+        "description": "Show Devices",
+        "tooltip": "Batteries, chargers and anything else connected that carries a charge."
     },
     "show-sensors": {
         "type": "switch",
         "default": true,
-        "description": "Show temperatures, fans and power meters"
+        "description": "Show Sensors",
+        "tooltip": "Temperatures, fans and power meters, under the name of the chip each came off."
     },
     "show-all-sensors": {
         "type": "switch",
@@ -114,6 +116,7 @@
         "type": "combobox",
         "default": "brightness",
         "description": "Mouse wheel over the applet",
+        "tooltip": "The wheel has no screen in mind, so where the brightness of monitors on a cable is what it moves, it moves all of them together. The sliders in the menu are one per monitor.",
         "options": {
             "Change screen brightness": "brightness",
             "Change power profile": "profile",
