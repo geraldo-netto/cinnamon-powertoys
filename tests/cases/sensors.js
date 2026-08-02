@@ -14,18 +14,28 @@
 
 const Harness = imports.harness;
 
+const Hardware = Harness.requireXlet("./lib/hardware.js");
 const IO = Harness.requireXlet("./lib/io.js");
 const Sensors = Harness.requireXlet("./lib/sensors.js");
 const Cpu = Harness.requireXlet("./lib/cpu.js");
 const PowerSupply = Harness.requireXlet("./lib/power-supply.js");
 
-/* Runs body with the layer pointed at a fixture, and puts it back after. */
+/*
+ * Runs body with the layer pointed at a fixture, and puts it back after.
+ *
+ * The hardware names are cached, because a PCI address does not change what it
+ * means while the applet runs - but the machine underneath does change here,
+ * between one case and the next, so the cache is dropped on the way in and on
+ * the way out.
+ */
 function on(machine, body) {
+    Hardware.forget();
     IO.setRoot(Harness.fixture(machine));
     try {
         return body();
     } finally {
         IO.setRoot("");
+        Hardware.forget();
     }
 }
 
@@ -72,6 +82,65 @@ cases["a PCI slot loses its leading domain"] = function () {
         let found = Sensors.discoverSensors();
         Harness.equal(byId(found.temperatures, "hwmon:hwmon3:temp1").identity,
                       "03:00.0", "0000:03:00.0 reads better without the domain");
+    });
+};
+
+cases["a group is named after the hardware, not after where it is plugged in"] = function () {
+    on("machine", function () {
+        let found = Sensors.discoverSensors();
+        Harness.equal(byId(found.temperatures, "hwmon:hwmon0:temp1").groupLabel,
+                      "AMD Ryzen 7 5800X", "the processor comes from /proc/cpuinfo");
+        Harness.equal(byId(found.temperatures, "hwmon:hwmon3:temp1").groupLabel,
+                      "Radeon RX 6600/6600 XT/6600M",
+                      "the card comes from pci.ids, by way of its device id");
+        Harness.equal(byId(found.powerMeters, "hwmon:hwmon4:power1").groupLabel,
+                      "nct6798", "a chip on neither keeps the driver's own name");
+    });
+};
+
+cases["two chips with the same name make two groups, told apart"] = function () {
+    on("machine", function () {
+        let found = Sensors.discoverSensors();
+        Harness.equal(byId(found.temperatures, "hwmon:hwmon2:temp1").group,
+                      "hwmon:hwmon2", "one group per chip");
+        Harness.equal(byId(found.temperatures, "hwmon:hwmon2:temp1").groupLabel,
+                      "drivetemp (sda)", "first disk");
+        Harness.equal(byId(found.temperatures, "hwmon:hwmon10:temp1").groupLabel,
+                      "drivetemp (sdb)", "second disk");
+    });
+};
+
+cases["a row under a named group drops the chip and the address"] = function () {
+    on("machine", function () {
+        let found = Sensors.discoverSensors();
+        Harness.equal(byId(found.temperatures, "hwmon:hwmon0:temp1").short,
+                      "Tctl", "a label the driver already gave");
+        Harness.equal(byId(found.temperatures, "hwmon:hwmon0:temp2").short,
+                      "CCD 1", "an abbreviation nobody outside the driver reads");
+        Harness.equal(byId(found.temperatures, "hwmon:hwmon3:temp1").short,
+                      "Edge", "lower case as the driver writes it, capitalised here");
+        Harness.equal(byId(found.fans, "hwmon:hwmon3:fan1").short,
+                      "Fan", "a reading the driver never labelled");
+        Harness.equal(byId(found.temperatures, "hwmon:hwmon2:temp1").short,
+                      "Temperature", "and the disks, whose chips are told apart by the group");
+    });
+};
+
+cases["everything one chip says stays together, in kind order"] = function () {
+    on("machine", function () {
+        let found = Sensors.discoverSensors();
+        let sorted = found.temperatures.concat(found.fans, found.powerMeters)
+            .sort(Sensors.bySensorOrder)
+            .map(entry => entry.group);
+        let seen = [];
+        for (let group of sorted) {
+            if (seen[seen.length - 1] !== group)
+                seen.push(group);
+        }
+        Harness.equal(seen.length, new Set(seen).size,
+                      "no group is left and come back to: " + seen.join(","));
+        Harness.equal(seen[0], "hwmon:hwmon0", "the processor first");
+        Harness.equal(seen[1], "hwmon:hwmon3", "then the graphics card");
     });
 };
 

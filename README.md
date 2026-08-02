@@ -3,9 +3,11 @@
 A Cinnamon applet that puts a single power icon in the panel and, from one
 menu, monitors and configures power management for the whole machine.
 
-The menu is three panels — **Performance**, **Batteries and devices**,
-**Sensors** — and each says what is inside it without being opened: the active
-profile, the battery level, the processor temperature.
+One strip across the top says what the machine is running on, then a
+brightness slider per screen, then two columns: the left is how hard the
+machine is being asked to work — **Power profile**, **Processor**,
+**Devices** — and the right is what that is doing to it, **Sensors**. Nothing
+is folded away, and every figure is stated once.
 
 ![The menu](docs/menu.png)
 
@@ -13,11 +15,11 @@ The panel item, between the other applets:
 
 ![The panel item](docs/panel.png)
 
-Captured on a desktop, so two things are not in the shot because that machine
-does not have them: the charger row, which needs a UPower line power device,
-and the backlight sliders, which need a backlight. Both hide themselves. The
-panel shot also predates temperature being taken out of the panel label, so
-the °C beside the icon is no longer shown there.
+Both shots are older than the menu they show: they were taken on a desktop
+with one column of panels, before the sliders, the segmented profile control
+and the two column layout. The panel shot also predates temperature being
+taken out of the panel label, so the °C beside the icon is no longer shown
+there.
 
 ## Features
 
@@ -37,9 +39,12 @@ nothing connected rather than just being empty.
 driven through `org.cinnamon.SettingsDaemon.Power.Screen` and `.Keyboard`, so
 the wheel over one moves in the same steps the brightness keys do. A machine
 with no backlight of its own — a desktop, or a laptop with the lid shut on an
-external screen — gets a monitor slider instead, over DDC/CI through `ddcutil`,
-which moves every monitor together. Each slider is hidden where there is
-nothing behind it.
+external screen — gets one slider per monitor instead, over DDC/CI through
+`ddcutil`, each named after the monitor it moves: make and model out of the
+EDID, the socket appended where two monitors are the same model. Up to ten,
+and the eleventh is a line saying so rather than nothing. The wheel over the
+panel icon has no monitor in mind and so still moves all of them. Each slider
+is hidden where there is nothing behind it.
 
 **Power profiles.** Reads and switches profiles through power-profiles-daemon
 (both the `net.hadess.PowerProfiles` and `org.freedesktop.UPower.PowerProfiles`
@@ -48,15 +53,19 @@ application is holding a profile. On machines without the daemon it falls back
 to the ACPI platform profile in `/sys/firmware/acpi/platform_profile`.
 
 **CPU.** Current and maximum frequency, scaling driver (including the
-`amd_pstate` mode), governor, energy performance preference and turbo boost.
-Governor, energy preference, boost and the battery charge limit are kernel
-owned, so they are applied through a small validating helper launched with
-`pkexec`.
+`amd_pstate` mode) and turbo boost, with the governor and the energy
+performance preference behind *Advanced* — they are what a power profile sets,
+so they are worth reading and rarely worth changing by hand. Governor, energy
+preference, boost and the battery charge limit are kernel owned, so they are
+applied through a small validating helper launched with `pkexec`.
 
 **Temperature and power.** Every hwmon and thermal zone sensor plus fan speeds,
 hwmon power meters (for example the amdgpu GPU package power) and RAPL package
-power when the kernel allows reading it. Sensors are grouped and can be limited
-to CPU and GPU only.
+power when the kernel allows reading it. Readings are grouped by the chip they
+came off, and the chip is named rather than addressed: the processor from
+`/proc/cpuinfo`, anything on the PCI bus from `pci.ids`, so two graphics cards
+read as *Radeon RX 6600/6600 XT/6600M* and *AMD Raphael* instead of as
+`03:00.0` and `08:00.0`. The list can be limited to CPU and GPU only.
 
 **Alerts.** Configurable low and critical battery notifications, separate
 thresholds for peripherals, and an optional high temperature warning. All with
@@ -187,10 +196,17 @@ settings.
   the Cinnamon sources for every call this applet makes, and re-checked against
   5.4.0 whenever that set changes: the xlet `require()` loader,
   `PopupMenuSection` and the fact that its actor *is* its box, which is what
-  lets the three menu panels sit side by side, `PopupMenuBase.getColumnWidths`
-  and `setColumnWidths`, which the panels override so their columns line up
-  with themselves and not with the whole menu, `PopupSwitchMenuItem`,
-  `PopupSliderMenuItem`, `PopupIconMenuItem`, `addActor`, `removeActor`,
+  lets the two menu columns sit side by side, `PopupMenuBase.getColumnWidths`
+  and `setColumnWidths`, which the columns override so their rows line up
+  with themselves and not with the whole menu — and which the segmented
+  profile control overrides for the opposite reason, so that a row spanning
+  every column does not set the width of the first one,
+  `PopupSubMenuMenuItem` and its `menu`, which is what *Advanced* is,
+  `PopupSwitchMenuItem`, `PopupSliderMenuItem`, `PopupIconMenuItem`,
+  `PopupBaseMenuItem`'s `{ activate: false, hover: false }`, which is how a
+  row of buttons takes key focus without being a menu entry itself,
+  `St.Button` and its `clicked`, `St.BoxLayout.add` with the `expand`,
+  `x_fill` and `y_align` child properties, `addActor`, `removeActor`,
   `setShowDot`, `addSettingsAction`, class-based applets, `AllowedLayout`,
   `set_show_label_in_vertical_panels`, `set_applet_icon_path`,
   `AppletSettings.bind`, `spawnCommandLineAsyncIO`, `Tooltips.Tooltip` with its
@@ -209,6 +225,11 @@ settings.
   [External monitor brightness](#external-monitor-brightness). Never probed on
   a machine that has a backlight of its own, and can be turned off entirely
   with *Control external monitor brightness*
+- `hwdata` or `pciutils`, optional, for `pci.ids` and `pnp.ids` — the tables
+  that turn `03:00.0` into a graphics card and `DEL` into Dell. One or the
+  other is installed almost everywhere, since `lspci` needs the first; without
+  them a sensor group is headed by the driver's name and a monitor by its EDID
+  code, which is what those were before
 - power-profiles-daemon, optional, for profile switching
 - polkit, optional, for the privileged controls
 
@@ -218,6 +239,7 @@ settings.
 cinnamon-powertoys@geraldo-netto/
 ├── applet.js            panel item, menu, polling, alerts
 ├── lib/io.js            file reads, rooted so a captured /sys can stand in
+├── lib/hardware.js      what a chip, a card and a monitor are called
 ├── lib/sensors.js       hwmon, thermal and powercap discovery
 ├── lib/backlight.js     screen and keyboard backlight through csd
 ├── lib/ddc.js           external monitor brightness through ddcutil

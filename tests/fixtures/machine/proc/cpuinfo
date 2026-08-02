@@ -1,0 +1,17 @@
+processor	: 0
+vendor_id	: AuthenticAMD
+cpu family	: 25
+model		: 33
+model name	: AMD Ryzen 7 5800X 8-Core Processor
+stepping	: 2
+cpu MHz		: 2200.000
+cache size	: 512 KB
+
+processor	: 1
+vendor_id	: AuthenticAMD
+cpu family	: 25
+model		: 33
+model name	: AMD Ryzen 7 5800X 8-Core Processor
+stepping	: 2
+cpu MHz		: 2200.000
+cache size	: 512 KB

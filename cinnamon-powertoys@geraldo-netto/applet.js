@@ -741,15 +741,137 @@ class ChoiceControl {
     }
 }
 
+/*
+ * The power profile as one row of buttons with the active one filled.
+ *
+ * As a list of three dotted rows it was three lines of the menu all reading
+ * the same word - "Performance", "Performance", "Performance" - where only the
+ * dot said anything, and the dot is four pixels at the far left of a row whose
+ * text is at the right. As a row of buttons the choice is one object, the
+ * options are read across in one movement instead of down in three, and the
+ * one in force is the one that is filled in.
+ *
+ * The fill is grey rather than the theme's selection colour. Cinnamon's
+ * stylesheet language cannot read a value out of the active theme, so an
+ * applet that wants "whatever this theme highlights with" has to guess at it,
+ * and a wrong guess is a coloured block that belongs to no theme at all. Grey
+ * at two opacities is a difference on a light theme and on a dark one without
+ * claiming to know either.
+ *
+ * Clicking one does not close the menu. The point of filling the active
+ * segment is that the change can be seen, and it cannot be seen from a menu
+ * that has just shut.
+ */
+class SegmentedControl extends PopupMenu.PopupBaseMenuItem {
+    _init(labelFunction, onActivate) {
+        /* Reactive, so the row takes key focus and the arrow keys reach it;
+         * not activatable, because the row itself does nothing - the buttons
+         * in it do. */
+        super._init.call(this, { activate: false, hover: false });
+
+        this._labelFunction = labelFunction;
+        this._onActivate = onActivate;
+        this._values = [];
+        this._active = null;
+        this._buttons = new Map();
+
+        this._box = new St.BoxLayout({ style_class: "powertoys-segmented" });
+        this.addActor(this._box, { span: -1, expand: true });
+
+        this.actor.connect("key-press-event", (actor, event) => this._onKeyPressEvent(actor, event));
+    }
+
+    /*
+     * This row takes the width of its column; it does not set it.
+     *
+     * A menu item that spans every column still counts as being in the first
+     * one when the column widths are worked out, so three buttons side by side
+     * made the first column as wide as all three - and every label in the
+     * column, which is only ever one word, was given that width with the value
+     * pushed out beyond it. The menu came out a third wider than it had rows
+     * for. Answering nothing here leaves the widths to the rows that mean
+     * something by them, and the buttons divide up whatever that came to.
+     */
+    getColumnWidths() {
+        return [];
+    }
+
+    sync(values, active) {
+        if (values.join("\u0000") !== this._values.join("\u0000")) {
+            this._values = values.slice();
+            for (let child of this._box.get_children())
+                child.destroy();
+            this._buttons = new Map();
+            for (let value of values) {
+                let button = new St.Button({ label: this._labelFunction(value),
+                                             style_class: "powertoys-segment",
+                                             can_focus: true });
+                button.connect("clicked", () => this._onActivate(value));
+                this._box.add(button, { expand: true, x_fill: true });
+                this._buttons.set(value, button);
+            }
+        }
+
+        this._active = active;
+        for (let [value, button] of this._buttons) {
+            if (value === active)
+                button.add_style_class_name("powertoys-segment-active");
+            else
+                button.remove_style_class_name("powertoys-segment-active");
+        }
+    }
+
+    /*
+     * Left and right along the row, the way a slider takes them. Up and down
+     * are the menu's, so they are left alone and the row is one stop in the
+     * menu rather than three.
+     */
+    _onKeyPressEvent(actor, event) {
+        let symbol = event.get_key_symbol();
+        let step = 0;
+        if (symbol === Clutter.KEY_Right)
+            step = 1;
+        else if (symbol === Clutter.KEY_Left)
+            step = -1;
+        if (step === 0 || this._values.length === 0)
+            return false;
+        if (this.actor.get_direction() === St.TextDirection.RTL)
+            step = -step;
+
+        let at = this._values.indexOf(this._active);
+        let next = at < 0 ? 0 : Math.max(0, Math.min(this._values.length - 1, at + step));
+        if (this._values[next] !== this._active)
+            this._onActivate(this._values[next]);
+        return true;
+    }
+
+    get items() {
+        return Array.from(this._buttons.values());
+    }
+}
+
 /* Brightness moves in steps a panel can actually show; asking for every value
  * the pointer passes over would be a D-Bus call per motion event. */
 const BACKLIGHT_STEP = 5;
 
 /*
- * A backlight as a menu row: an icon, a slider, and the value in the tooltip.
+ * A backlight as a menu row: an icon, whose screen it is, the slider, and the
+ * value.
  *
  * The row stays hidden until the daemon has confirmed there is a backlight
  * behind it, so a desktop with none never sees a slider that does nothing.
+ *
+ * The name is on the row rather than only in the tooltip because there can be
+ * several of these now - one per monitor - and a column of identical tracks
+ * that only say which screen they belong to after a second of hovering is a
+ * guessing game. The tooltip is kept anyway: it is where the value goes while
+ * the pointer is on the row, which is exactly when the pointer is covering it.
+ *
+ * The row is one box rather than four menu columns because the value has to
+ * sit at the right hand edge. Menu columns are as wide as their widest member
+ * anywhere in the section, so the last column would have started wherever the
+ * longest monitor name ended and the percentages would have been a ragged
+ * line down the middle of the menu.
  */
 class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
     _init(label, iconName, control) {
@@ -762,9 +884,16 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
 
         this._icon = new St.Icon({ icon_name: iconName, icon_type: St.IconType.SYMBOLIC,
                                    icon_size: 16 });
+        this._label = new St.Label({ text: label, style_class: "powertoys-slider-name" });
+        this._reading = new St.Label({ text: "", style_class: "powertoys-slider-value" });
+
         this.removeActor(this._slider);
-        this.addActor(this._icon, { span: 0 });
-        this.addActor(this._slider, { span: -1, expand: true });
+        let row = new St.BoxLayout({ style_class: "powertoys-slider-row" });
+        row.add(this._icon, { y_fill: false, y_align: St.Align.MIDDLE });
+        row.add(this._label, { y_fill: false, y_align: St.Align.MIDDLE });
+        row.add(this._slider, { expand: true, x_fill: true });
+        row.add(this._reading, { y_fill: false, y_align: St.Align.MIDDLE });
+        this.addActor(row, { span: -1, expand: true });
 
         this.tooltip = new Tooltips.Tooltip(this.actor, label);
 
@@ -795,10 +924,10 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
     }
 
     _showValue() {
-        let text = this._name;
-        if (this._control.percentage !== null)
-            text += ": " + this._control.percentage + "%";
-        this.tooltip.set_text(text);
+        let percentage = this._control.percentage;
+        this._reading.set_text(percentage === null ? "" : percentage + "%");
+        this.tooltip.set_text(percentage === null ? this._name
+                                                  : this._name + ": " + percentage + "%");
     }
 
     /* The daemon owns the notch size, and it is the one the brightness keys
@@ -819,15 +948,16 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
  * across the whole menu: before it measures, the menu asks every item how wide
  * its columns want to be, takes the widest of each, and hands that back down to
  * all of them. In one column of rows that is what makes labels and values line
- * up; with the panels side by side it made each of the three as wide as the
- * widest row anywhere in the menu, so one long scaling driver name in the first
- * panel set the width of all three and the menu came out over a thousand pixels
- * across.
+ * up; with the columns side by side it made each of them as wide as the widest
+ * row anywhere in the menu, so one long scaling driver name in the left column
+ * set the width of both and the menu came out over a thousand pixels across.
+ * The brightness sliders are in one of these for the same reason, so that a
+ * monitor's name does not have to line up with a sensor's.
  *
- * Breaking the chain at the panel boundary is two lines: tell the menu nothing,
- * and ignore what it says in favour of what this panel's own rows need. Rows
- * inside a panel still align with each other, including the ones in the nested
- * sections the lists live in, because those are untouched.
+ * Breaking the chain at the boundary is two lines: tell the menu nothing, and
+ * ignore what it says in favour of what this section's own rows need. Rows
+ * inside a column still align with each other, including the ones in the
+ * nested sections the lists live in, because those are untouched.
  */
 class PanelSection extends PopupMenu.PopupMenuSection {
     getColumnWidths() {
@@ -840,31 +970,57 @@ class PanelSection extends PopupMenu.PopupMenuSection {
 }
 
 /*
- * One column of the menu: a title carrying a summary of what is under it,
- * then the rows themselves.
+ * The name of a group of rows.
+ *
+ * Not a menu item that does anything, and deliberately not the same weight as
+ * the rows it heads: a heading is furniture, and what is read in this menu is
+ * the numbers.
+ */
+function headingItem(text) {
+    let heading = new PopupMenu.PopupMenuItem(text, { reactive: false });
+    heading.actor.add_style_class_name("powertoys-group-title");
+    return heading;
+}
+
+/*
+ * One column of the menu.
  *
  * A PopupMenuSection's actor is its own box, so a section is a container the
  * rest of the menu machinery already understands - items added to it are laid
- * out inside it rather than in the menu, and hiding its actor hides the
- * column and its title together.
+ * out inside it rather than in the menu, and hiding its actor hides the whole
+ * column.
  *
- * It answers to actor, label and menu, which is all the panels ever asked of
- * the submenu item this replaced, so what changed is where the rows are drawn
- * and not one line of what draws them.
+ * A column used to carry a title of its own with a summary beside it:
+ * "Performance   Balanced", "Sensors   80.8 °C". Those read well until the
+ * rows under them were open all the time, at which point every title was
+ * repeating the first row beneath it and the temperature was on screen four
+ * times over. What is left is a plain container; the headings inside it name
+ * the groups, and the numbers are stated once each.
  */
-class Panel {
-    constructor(parent, title) {
+class Column {
+    constructor(parent) {
         this._section = new PanelSection();
         this._section.actor.add_style_class_name("powertoys-panel");
         parent.addMenuItem(this._section);
 
-        this._title = new PopupMenu.PopupMenuItem(title, { reactive: false });
-        this._title.actor.add_style_class_name("powertoys-panel-title");
-        this._section.addMenuItem(this._title);
-
         this.menu = this._section;
         this.actor = this._section.actor;
-        this.label = this._title.label;
+    }
+
+    /* A heading plus the section its rows go in, hidden and shown together. */
+    group(title) {
+        let heading = headingItem(title);
+        this._section.addMenuItem(heading);
+        let section = new PopupMenu.PopupMenuSection();
+        this._section.addMenuItem(section);
+        return {
+            heading: heading,
+            menu: section,
+            setVisible: visible => {
+                heading.actor.visible = visible;
+                section.actor.visible = visible;
+            },
+        };
     }
 }
 
@@ -886,43 +1042,29 @@ class MenuPresenter {
     }
 
     /*
-     * One panel per subject, side by side.
+     * Two columns, with the full width strip and the sliders above them and
+     * the settings rows below.
      *
-     * The menu used to be one column of everything: the summary, three
-     * sliders, the profiles, the chargers, the devices, then two submenus and
-     * a third for the charge limit. Grouping that into three panels answered
-     * what belongs with what, but stacked they were three folded rows that
-     * still had to be opened one at a time, and opening one pushed the two
-     * below it down the screen.
+     * The menu used to be one column of everything, then three side by side.
+     * Three answered what belongs with what, but the widths told a different
+     * story from the contents: the sensors are ten rows and the devices on a
+     * desktop are one, so a third of the menu was an empty column beside a
+     * full one. Two columns hold the same rows in the same order at close to
+     * the same height, which is the shape the eye reads down rather than
+     * hunting across.
      *
-     * Side by side they are all open at once. Nothing is behind a click,
-     * nothing moves when a panel is read, and the three questions this applet
-     * exists for are answered in the three places the eye goes. Each panel
-     * still carries a summary in its title, because a title that says
-     * "Performance   Balanced" is worth reading even with the rows beneath it.
-     *
-     * The sliders stay above the columns, full width: they are the controls in
-     * here that get used most, and they read as a track, not as a column.
+     * The left column is the machine as it is being asked to work - the
+     * profile, the processor, what is plugged into it - and the right is what
+     * that is doing to the temperature. The strip and the sliders stay full
+     * width above them: they are what most visits here are for, and a slider
+     * reads as a track rather than as a column.
      */
     _build(capabilities, backlights) {
         this._summary = new InfoRow("", "");
         this._summary.actor.add_style_class_name("powertoys-summary");
         this._menu.addMenuItem(this._summary);
 
-        /* Brightness sits at the top because it is the control in here that
-         * gets used most, and because that is where the applet this one can
-         * replace keeps it. Each slider hides itself when there is no such
-         * backlight. */
-        this._backlightSliders = [];
-        if (backlights.screen)
-            this._addBacklight(_("Brightness"), "display-brightness", backlights.screen);
-        if (backlights.monitor)
-            this._addBacklight(_("Monitor brightness"), "display-brightness",
-                               backlights.monitor);
-        if (backlights.keyboard)
-            this._addBacklight(_("Keyboard backlight"), "keyboard-brightness",
-                               backlights.keyboard);
-
+        this._buildBrightness(backlights);
         this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         /* A section laid out the other way round is a row of columns. */
@@ -931,14 +1073,59 @@ class MenuPresenter {
         this._columns.actor.add_style_class_name("powertoys-columns");
         this._menu.addMenuItem(this._columns);
 
-        this._buildPerformancePanel();
-        this._buildDevicePanel(capabilities);
-        this._buildSensorPanel();
-        this._panels = [this._performancePanel, this._devicePanel, this._sensorPanel];
+        this._leftColumn = new Column(this._columns);
+        this._rightColumn = new Column(this._columns);
+        this._columnList = [this._leftColumn, this._rightColumn];
+
+        this._buildProfileGroup();
+        this._buildCpuGroup();
+        this._buildDeviceGroup(capabilities);
+        this._buildSensorGroup();
 
         this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this._menu.addSettingsAction(_("System power settings"), "power");
         this._addConfigureRow(capabilities.version);
+    }
+
+    /*
+     * Brightness sits at the top because it is the control in here that gets
+     * used most, and because that is where the applet this one can replace
+     * keeps it. Each slider hides itself when there is no such backlight.
+     *
+     * The monitors are a list rather than three fixed rows: how many there are
+     * is not known when the menu is built, because finding out means spawning
+     * ddcutil and waiting for hardware that answers in tenths of a second. The
+     * section they live in belongs to them alone, since it is emptied and
+     * refilled whenever a monitor is plugged in or unplugged.
+     *
+     * The whole lot is in a section of its own so that its columns line up
+     * with each other rather than with the summary line and the settings rows,
+     * which have nothing to do with a slider.
+     */
+    _buildBrightness(backlights) {
+        this._backlightSliders = [];
+        this._brightness = new PanelSection();
+        this._menu.addMenuItem(this._brightness);
+
+        if (backlights.screen)
+            this._addBacklight(_("Brightness"), "display-brightness", backlights.screen);
+
+        this._monitors = backlights.monitor || null;
+        let monitorSection = new PopupMenu.PopupMenuSection();
+        this._brightness.addMenuItem(monitorSection);
+        this._monitorList = new KeyedList(
+            monitorSection,
+            entry => entry.note
+                ? new InfoRow(entry.label, "")
+                : new BacklightSlider(entry.label, "display-brightness", entry.control),
+            (row, entry) => {
+                if (!entry.note)
+                    row.sync();
+            });
+
+        if (backlights.keyboard)
+            this._addBacklight(_("Keyboard backlight"), "keyboard-brightness",
+                               backlights.keyboard);
     }
 
     /*
@@ -970,39 +1157,70 @@ class MenuPresenter {
     }
 
     /*
-     * Everything about how hard the machine is being asked to work: which
-     * power profile is in force, and the processor settings underneath it.
-     * They belong together because they are two levels of the same decision -
-     * the profile is what most people will touch, the governor and the energy
-     * preference are what it sets.
+     * Which power profile is in force: the one control in this menu that most
+     * visits are for, so it is the first thing in the first column.
      */
-    _buildPerformancePanel() {
-        this._performancePanel = new Panel(this._columns, _("Performance"));
-        let menu = this._performancePanel.menu;
+    _buildProfileGroup() {
+        this._profileGroup = this._leftColumn.group(_("Power profile"));
 
-        let profileSection = new PopupMenu.PopupMenuSection();
-        menu.addMenuItem(profileSection);
-        this._profileGroup = new SelectorGroup(profileSection, Format.profileLabel,
-                                               value => this._actions.setProfile(value),
-                                               _("Power profile"));
+        this._profileControl = new SegmentedControl(
+            Format.profileLabel, value => this._actions.setProfile(value));
+        this._profileGroup.menu.addMenuItem(this._profileControl);
 
         this._degradedRow = new InfoRow(_("Performance limited"), "");
         this._degradedRow.setWarning(true);
         this._degradedRow.actor.hide();
-        menu.addMenuItem(this._degradedRow);
+        this._profileGroup.menu.addMenuItem(this._degradedRow);
+    }
 
-        this._cpuSection = new PopupMenu.PopupMenuSection();
-        menu.addMenuItem(this._cpuSection);
-        this._buildCpuSection(this._cpuSection);
+    /*
+     * What the processor is doing, and what it has been told to do.
+     *
+     * The profile above is what most people will ever touch; the governor and
+     * the energy preference are what a profile sets, and setting them by hand
+     * means overriding a daemon that will set them back. They are worth having
+     * and they are not worth four rows of a menu that is read at a glance, so
+     * they are behind Advanced.
+     */
+    _buildCpuGroup() {
+        this._cpuGroup = this._leftColumn.group(_("Processor"));
+        let menu = this._cpuGroup.menu;
+
+        this._cpuFreqRow = new InfoRow(_("Frequency"), "");
+        this._cpuTempRow = new InfoRow(_("Temperature"), "");
+        this._cpuDriverRow = new InfoRow(_("Scaling driver"), "");
+        menu.addMenuItem(this._cpuFreqRow);
+        menu.addMenuItem(this._cpuTempRow);
+        menu.addMenuItem(this._cpuDriverRow);
+
+        /* The switch carries its own read-only mode, so unlike the two lists
+         * below it needs no second widget: insensitive still shows the state. */
+        this._boostSwitch = new PopupMenu.PopupSwitchMenuItem(_("Turbo boost"), false);
+        this._boostSwitch.connect("toggled", (item, state) => this._actions.setBoost(state));
+        menu.addMenuItem(this._boostSwitch);
+
+        this._advanced = new PopupMenu.PopupSubMenuMenuItem(_("Advanced"));
+        menu.addMenuItem(this._advanced);
+        this._governorControl = new ChoiceControl(this._advanced.menu, _("Governor"),
+                                                  Format.governorLabel,
+                                                  value => this._actions.setGovernor(value));
+        this._energyControl = new ChoiceControl(this._advanced.menu, _("Energy preference"),
+                                                Format.energyPreferenceLabel,
+                                                value => this._actions.setEnergyPreference(value));
     }
 
     /*
      * Anything with a charge in it, and the one setting that governs how full
      * a battery is allowed to get.
+     *
+     * Called "Devices" rather than "Batteries and devices" because the second
+     * half of that title always covered the first: everything listed here is a
+     * device, and on a desktop where the only entry is a headset a heading
+     * promising batteries is promising something that is not there.
      */
-    _buildDevicePanel(capabilities) {
-        this._devicePanel = new Panel(this._columns, _("Batteries and devices"));
-        let menu = this._devicePanel.menu;
+    _buildDeviceGroup(capabilities) {
+        this._deviceGroup = this._leftColumn.group(_("Devices"));
+        let menu = this._deviceGroup.menu;
 
         /* The charger goes above the batteries: whether it is plugged in is
          * the first thing anyone opening this on a laptop wants. */
@@ -1021,7 +1239,7 @@ class MenuPresenter {
                                          entry => new DeviceRow(entry.model),
                                          (row, entry) => row.update(entry.model));
 
-        /* An empty panel is indistinguishable from a broken one. Say which. */
+        /* An empty group is indistinguishable from a broken one. Say which. */
         this._noDevicesRow = new InfoRow(_("Nothing with a battery is connected"), "");
         this._noDevicesRow.actor.hide();
         menu.addMenuItem(this._noDevicesRow);
@@ -1035,8 +1253,8 @@ class MenuPresenter {
         }
     }
 
-    _buildSensorPanel() {
-        this._sensorPanel = new Panel(this._columns, _("Sensors"));
+    _buildSensorGroup() {
+        this._sensorGroup = this._rightColumn.group(_("Sensors"));
 
         /* Only ever shown when the preferred sensor setting names something
          * this machine does not have. Somebody who typed a name has no other
@@ -1044,7 +1262,7 @@ class MenuPresenter {
         this._hintRow = new InfoRow("", "");
         this._hintRow.setWarning(true);
         this._hintRow.actor.hide();
-        this._sensorPanel.menu.addMenuItem(this._hintRow);
+        this._sensorGroup.menu.addMenuItem(this._hintRow);
 
         /*
          * The rows live in a section of their own, because KeyedList clears
@@ -1052,7 +1270,7 @@ class MenuPresenter {
          * else sharing that menu would be destroyed along with them.
          */
         let listSection = new PopupMenu.PopupMenuSection();
-        this._sensorPanel.menu.addMenuItem(listSection);
+        this._sensorGroup.menu.addMenuItem(listSection);
         this._sensorList = new KeyedList(listSection,
                                          entry => entry.heading
                                              ? this._createHeading(entry.label)
@@ -1075,48 +1293,64 @@ class MenuPresenter {
     syncBacklights() {
         for (let slider of this._backlightSliders)
             slider.sync();
+        this._syncMonitors();
+    }
+
+    /*
+     * One slider per monitor, rebuilt when the set of them changes.
+     *
+     * The set is not known when the menu is built and can change while it is
+     * open - a monitor is plugged in, one that was asleep starts answering -
+     * so this runs on every backlight change and the list only tears itself
+     * down when the monitors are really different.
+     *
+     * A monitor past the tenth gets a line saying so rather than nothing.
+     * Silently showing nine of eleven sliders looks exactly like a monitor
+     * that does not do DDC/CI, and the two want different things done about
+     * them.
+     */
+    _syncMonitors() {
+        if (!this._monitors)
+            return;
+
+        let entries = this._monitors.monitors
+            .filter(monitor => monitor.available)
+            .map(monitor => ({ key: "monitor:" + monitor.id, label: monitor.name,
+                               control: monitor }));
+
+        if (this._monitors.hidden > 0)
+            entries.push({
+                key: "hidden",
+                note: true,
+                /* The limit rather than the overflow, because the limit is the
+                 * part that is worth knowing: it is the same next time. */
+                label: _("Only the first %d monitors have a slider")
+                    .replace("%d", String(Ddc.MAX_DISPLAYS)),
+            });
+
+        this._monitorList.sync(entries);
     }
 
     _createHeading(text) {
         let heading = new PopupMenu.PopupMenuItem(text, { reactive: false });
-        heading.actor.add_style_class_name("powertoys-group-title");
+        heading.actor.add_style_class_name("powertoys-subgroup-title");
         return heading;
     }
 
     _addBacklight(label, iconName, control) {
         let slider = new BacklightSlider(label, iconName, control);
-        this._menu.addMenuItem(slider);
+        this._brightness.addMenuItem(slider);
         this._backlightSliders.push(slider);
     }
 
-    _buildCpuSection(menu) {
-        this._cpuFreqRow = new InfoRow(_("Frequency"), "");
-        this._cpuTempRow = new InfoRow(_("Temperature"), "");
-        this._cpuDriverRow = new InfoRow(_("Scaling driver"), "");
-        menu.addMenuItem(this._cpuFreqRow);
-        menu.addMenuItem(this._cpuTempRow);
-        menu.addMenuItem(this._cpuDriverRow);
-
-        this._governorControl = new ChoiceControl(menu, _("Governor"), Format.governorLabel,
-                                                  value => this._actions.setGovernor(value));
-        this._energyControl = new ChoiceControl(menu, _("Energy preference"),
-                                                Format.energyPreferenceLabel,
-                                                value => this._actions.setEnergyPreference(value));
-
-        /* The switch carries its own read-only mode, so unlike the two lists
-         * above it needs no second widget: insensitive still shows the state. */
-        this._boostSwitch = new PopupMenu.PopupSwitchMenuItem(_("Turbo boost"), false);
-        this._boostSwitch.connect("toggled", (item, state) => this._actions.setBoost(state));
-        menu.addMenuItem(this._boostSwitch);
-    }
-
     /*
-     * The rule between the columns, on every visible one but the leftmost.
+     * A column is only there while something in it is, and the rule goes
+     * between the ones that are left.
      *
      * It is applied here rather than styled because St has no :first-child,
-     * and because which panel is leftmost is not fixed: a machine with no
-     * profiles and no processor controls, or a user who has switched the
-     * devices off, leaves a different one at the edge.
+     * and because which column is leftmost is not fixed: a machine with no
+     * profiles and no processor controls, and a user who has switched the
+     * devices off, leaves the left column empty and the sensors at the edge.
      *
      * The columns are not made equal. That was tried, by measuring the widest
      * and giving it to the others as a floor, and it cannot be done this way:
@@ -1129,12 +1363,17 @@ class MenuPresenter {
      * short one does not look starved.
      */
     _syncColumns() {
-        let visible = this._panels.filter(panel => panel.actor.visible);
-        visible.forEach((panel, index) => {
+        this._leftColumn.actor.visible = this._profileGroup.heading.actor.visible ||
+                                         this._cpuGroup.heading.actor.visible ||
+                                         this._deviceGroup.heading.actor.visible;
+        this._rightColumn.actor.visible = this._sensorGroup.heading.actor.visible;
+
+        let visible = this._columnList.filter(column => column.actor.visible);
+        visible.forEach((column, index) => {
             if (index === 0)
-                panel.actor.remove_style_class_name("powertoys-panel-divided");
+                column.actor.remove_style_class_name("powertoys-panel-divided");
             else
-                panel.actor.add_style_class_name("powertoys-panel-divided");
+                column.actor.add_style_class_name("powertoys-panel-divided");
         });
     }
 
@@ -1171,16 +1410,12 @@ class MenuPresenter {
 
     _updateProfiles(data, options) {
         let show = options.showProfiles && data.profile.available && data.profile.list.length > 0;
-        /* The dot follows what was asked for, not what has arrived: a
-         * selection that springs back for a second while the daemon thinks
+        /* The filled segment follows what was asked for, not what has arrived:
+         * a selection that springs back for a second while the daemon thinks
          * about it reads as the click having missed. */
         let active = options.pendingProfile || data.profile.active;
-        this._profileGroup.sync(show ? data.profile.list : [], active);
-
-        this._performancePanel.actor.visible = show || (options.showCpu && data.cpu.available);
-        this._setPanelSummary(this._performancePanel, _("Performance"),
-                              show ? Format.profileLabel(active)
-                                   : Format.governorLabel(data.cpu.governor));
+        this._profileGroup.setVisible(show);
+        this._profileControl.sync(show ? data.profile.list : [], active);
 
         let notes = [];
         if (data.profile.degraded)
@@ -1201,7 +1436,7 @@ class MenuPresenter {
         let lines = options.showDevices ? data.lines : [];
         let devices = options.showDevices ? data.devices : [];
 
-        this._devicePanel.actor.visible = options.showDevices;
+        this._deviceGroup.setVisible(options.showDevices);
         this._lineList.sync(lines.map(device => ({
             key: device.path,
             label: Format.deviceTitle(device),
@@ -1213,35 +1448,16 @@ class MenuPresenter {
         })));
 
         /*
-         * An empty panel and a broken one look the same, and on a desktop
-         * whose bluetooth mouse happens to be switched off this panel is
+         * An empty group and a broken one look the same, and on a desktop
+         * whose bluetooth mouse happens to be switched off this group is
          * empty for a perfectly good reason. Say which it is.
          */
         this._noDevicesRow.actor.visible = lines.length === 0 && devices.length === 0;
-
-        this._setPanelSummary(this._devicePanel, _("Batteries and devices"),
-                              this._deviceSummary(data, devices, lines));
-    }
-
-    _deviceSummary(data, devices, lines) {
-        if (data.primary && data.primary.percentage !== null)
-            return Format.percent(data.primary.percentage);
-        let counted = devices.length + lines.length;
-        return counted === 0 ? _("none") : String(counted);
-    }
-
-    /*
-     * A panel title says what the panel amounts to, so the three titles read
-     * across as an answer to the three questions, and the rows underneath are
-     * there for whoever wants the detail behind one of them.
-     */
-    _setPanelSummary(panel, title, value) {
-        panel.label.set_text(value ? title + "   " + value : title);
     }
 
     _updateCpu(data, options) {
         let show = options.showCpu && data.cpu.available;
-        this._cpuSection.actor.visible = show;
+        this._cpuGroup.setVisible(show);
         if (!show)
             return;
 
@@ -1265,6 +1481,19 @@ class MenuPresenter {
         this._governorControl.sync(data.cpu.governors, data.cpu.governor, editable);
         this._energyControl.sync(data.cpu.energyPreferences, data.cpu.energyPreference, editable);
 
+        /*
+         * Advanced is only there when there is something behind it. On a
+         * machine with no cpufreq governors to read, or with the privileged
+         * controls switched off and nothing to report either, it would open
+         * onto nothing - which is worse than not being offered.
+         */
+        let advanced = !!data.cpu.governor || !!data.cpu.energyPreference ||
+                       (editable && (data.cpu.governors.length > 0 ||
+                                     data.cpu.energyPreferences.length > 0));
+        this._advanced.actor.visible = advanced;
+        if (!advanced && this._advanced.menu.isOpen)
+            this._advanced.menu.close(false);
+
         this._boostSwitch.actor.visible = data.cpu.boostSupported;
         if (data.cpu.boostSupported) {
             if (data.cpu.boostEnabled !== null)
@@ -1283,13 +1512,27 @@ class MenuPresenter {
         return reading.measure + ":" + reading.id;
     }
 
+    /*
+     * A reading as a row.
+     *
+     * The label is the short one - "Edge", not "amdgpu edge (03:00.0)" -
+     * because the heading above the row already says which chip it came off.
+     * The long name is kept as a fallback for anything that arrived without a
+     * group, and for a machine whose libraries predate the short one.
+     */
+    _rowLabel(reading) {
+        return reading.shortLabel || reading.label;
+    }
+
     /* A temperature is worth flagging as it closes on the chip's own limit. */
     _temperatureEntry(sensor, options) {
         return {
             key: this._entryKey(sensor),
             kind: sensor.kind,
+            group: sensor.group,
+            groupLabel: sensor.groupLabel,
             measure: sensor.measure,
-            label: sensor.label,
+            label: this._rowLabel(sensor),
             value: Format.temperature(sensor.celsius, options.tempUnit, 1),
             warning: sensor.critical !== null && sensor.celsius >= sensor.critical - 5,
         };
@@ -1297,12 +1540,15 @@ class MenuPresenter {
 
     _fanEntry(fan) {
         return { key: this._entryKey(fan), kind: fan.kind, measure: fan.measure,
-                 label: fan.label, value: Format.rpm(fan.rpm), warning: false };
+                 group: fan.group, groupLabel: fan.groupLabel,
+                 label: this._rowLabel(fan), value: Format.rpm(fan.rpm), warning: false };
     }
 
     _powerEntry(meter) {
         return { key: this._entryKey(meter), kind: meter.kind, measure: meter.measure,
-                 label: meter.label, value: Format.watts(meter.watts), warning: false };
+                 group: meter.group, groupLabel: meter.groupLabel,
+                 label: this._rowLabel(meter), value: Format.watts(meter.watts),
+                 warning: false };
     }
 
     /*
@@ -1317,21 +1563,27 @@ class MenuPresenter {
     }
 
     /*
-     * A heading wherever the kind changes.
+     * A heading wherever the chip changes.
      *
-     * With every sensor shown this list is nineteen rows on the machine it
-     * was written on, and nineteen undifferentiated rows is a wall. Four
-     * headed groups of two to seven is a list. The names come from the kind
-     * table, which has carried them since PT-40 without anything rendering
-     * them.
+     * With every sensor shown this list is nineteen rows on the machine it was
+     * written on, and nineteen undifferentiated rows is a wall. Headed groups
+     * of two to seven are a list.
+     *
+     * The heading used to be the kind - "Processor", "Graphics" - which was a
+     * wall of its own on a machine with two graphics cards: one heading over
+     * seven rows, of which two belonged to a different card and said so only
+     * in a PCI address at the end of each row. It is the chip itself now, by
+     * name, so the address is gone from the rows and the two cards are two
+     * blocks.
      */
     _withHeadings(entries) {
         let out = [];
-        let kind = null;
+        let group = null;
         for (let entry of entries) {
-            if (entry.kind !== kind) {
-                kind = entry.kind;
-                out.push({ key: "heading:" + kind, heading: true, label: Sensors.kindLabel(kind) });
+            if (entry.group !== group) {
+                group = entry.group;
+                out.push({ key: "heading:" + group, heading: true,
+                           label: entry.groupLabel || Sensors.kindLabel(entry.kind) });
             }
             out.push(entry);
         }
@@ -1339,13 +1591,9 @@ class MenuPresenter {
     }
 
     _updateSensors(data, options) {
-        this._sensorPanel.actor.visible = options.showSensors;
+        this._sensorGroup.setVisible(options.showSensors);
         if (!options.showSensors)
             return;
-
-        this._setPanelSummary(this._sensorPanel, _("Sensors"),
-                              data.cpuTemperature === null ? ""
-                              : Format.temperature(data.cpuTemperature, options.tempUnit, 1));
 
         this._hintRow.actor.visible = data.hintMatched === false;
         if (data.hintMatched === false)
@@ -1370,8 +1618,8 @@ class MenuPresenter {
         this._sensorList.sync(this._withHeadings(entries));
     }
 
-    /* A group inside the devices panel now, so it is beside the battery it
-     * applies to rather than being a submenu of its own. */
+    /* Under the devices heading, so it is beside the battery it applies to
+     * rather than being a submenu of its own. */
     _updateCharge(data, options) {
         if (!this._chargeGroup)
             return;
@@ -1964,7 +2212,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * while it is shut, so without this the menu would be laid out with
          * whatever it last held - nothing at all, the first time - and filled
          * in a millisecond later when the asynchronous read answers. A
-         * millisecond is long enough to see: the panels appear, then find
+         * millisecond is long enough to see: the columns appear, then find
          * their size.
          */
         if (this._latest)

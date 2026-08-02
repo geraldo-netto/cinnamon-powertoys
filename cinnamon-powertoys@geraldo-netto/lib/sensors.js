@@ -9,6 +9,7 @@
 const GLib = imports.gi.GLib;
 
 const Format = require("./lib/format.js");
+const Hardware = require("./lib/hardware.js");
 const IO = require("./lib/io.js");
 
 const _ = Format._;
@@ -113,6 +114,15 @@ function bySensorOrder(a, b) {
     let byKind = kindRank(a.kind) - kindRank(b.kind);
     if (byKind !== 0)
         return byKind;
+    /*
+     * Then by which chip it came off, so that two graphics cards are two
+     * blocks rather than one interleaved list. Natural order, so hwmon9 comes
+     * before hwmon10 and the discrete card - which the kernel numbers first -
+     * stays above the one in the processor.
+     */
+    let byGroup = IO.naturalCompare(a.group || "", b.group || "");
+    if (byGroup !== 0)
+        return byGroup;
     let byMeasure = MEASURE_ORDER.indexOf(a.measure) - MEASURE_ORDER.indexOf(b.measure);
     if (byMeasure !== 0)
         return byMeasure;
@@ -142,6 +152,51 @@ function _hwmonIdentity(base) {
     return null;
 }
 
+/*
+ * What a sensor is called under a heading that already names the chip.
+ *
+ * "amdgpu edge" is two words of which one is the heading, so the chip comes
+ * off. What is left is the driver's own word for the reading, which is
+ * sometimes a word - edge, junction - and sometimes an abbreviation nobody
+ * outside the driver would recognise. Those few are spelled out; everything
+ * else is passed through with a capital on it, because guessing at a name is
+ * worse than showing the one the kernel uses.
+ *
+ * A reading the driver never labelled is named after what it measures, which
+ * under the chip's own heading is all there is left to say about it.
+ */
+const SHORT_LABELS = [
+    [/^tccd(\d+)$/i, "CCD $1"],
+    [/^tdie$/i, "Die"],
+    [/^tccd$/i, "CCD"],
+    [/^mem$/i, _("Memory")],
+    [/^vddgfx$/i, _("Core voltage")],
+    [/^ppt$/i, _("Power")],
+];
+
+const MEASURE_NAMES = {
+    temperature: _("Temperature"),
+    fan: _("Fan"),
+    power: _("Power"),
+};
+
+function _shortName(entry) {
+    let label = entry.rawLabel;
+    if (!label) {
+        let measure = MEASURE_NAMES[entry.measure] || entry.chip;
+        return entry.siblings > 1 ? measure + " " + entry.index : measure;
+    }
+
+    if (label.toLowerCase().indexOf(entry.chip.toLowerCase()) === 0)
+        label = label.slice(entry.chip.length).trim() || label;
+
+    for (let [pattern, replacement] of SHORT_LABELS) {
+        if (pattern.test(label))
+            return label.replace(pattern, replacement);
+    }
+    return Format.capitalize(label);
+}
+
 /* "k10temp Tctl" rather than "Tctl", and "drivetemp 1" where a chip has
  * several of something and names none of them. */
 function _displayName(entry) {
@@ -168,7 +223,10 @@ function _displayName(entry) {
  * longer; they are already told apart by being in RPM and in watts.
  */
 function _finalizeNames(entries) {
-    let named = entries.map(entry => Object.assign({}, entry, { display: _displayName(entry) }));
+    let named = entries.map(entry => Object.assign({}, entry, {
+        display: _displayName(entry),
+        short: _shortName(entry),
+    }));
 
     let counts = {};
     for (let entry of named) {
@@ -182,6 +240,56 @@ function _finalizeNames(entries) {
             return Object.assign({}, entry, { display: entry.display + " (" + entry.identity + ")" });
         return entry;
     });
+}
+
+/*
+ * What the chip a reading came off is called, in the words somebody would use
+ * for it.
+ *
+ * The kernel identifies a chip by its driver and its address - "amdgpu" at
+ * 03:00.0 - and neither says which of the two cards in the machine it is. The
+ * processor is named from /proc/cpuinfo and anything on the PCI bus from
+ * pci.ids; a chip that is on neither keeps the driver's own name, which is at
+ * least the name its documentation uses.
+ *
+ * The address is still the answer when there is no table to look it up in,
+ * because a name that cannot be found is not a reason to show nothing.
+ */
+function _groupName(entry, pciNames, cpuName) {
+    if (entry.kind === "cpu" && cpuName)
+        return cpuName;
+    if (entry.pciAddress && pciNames[entry.pciAddress])
+        return pciNames[entry.pciAddress];
+    return entry.chip;
+}
+
+/*
+ * Names every group, and tells apart the ones that came out alike.
+ *
+ * Two identical cards resolve to one name, and two headings reading "Radeon RX
+ * 6600" over different numbers is worse than no heading at all, so whatever
+ * told the chips apart in the first place is appended - the PCI slot, the
+ * block device, the thermal zone.
+ */
+function _nameGroups(groups) {
+    let cpuName = Hardware.cpuModelName();
+    let pciNames = Hardware.pciDeviceNames(groups.map(group => group.pciAddress));
+
+    let named = groups.map(group => Object.assign({}, group, {
+        label: _groupName(group, pciNames, cpuName),
+    }));
+
+    let counts = {};
+    for (let group of named)
+        counts[group.label] = (counts[group.label] || 0) + 1;
+
+    let labels = {};
+    for (let group of named) {
+        labels[group.key] = counts[group.label] > 1 && group.identity
+            ? group.label + " (" + group.identity + ")"
+            : group.label;
+    }
+    return labels;
 }
 
 /*
@@ -234,13 +342,18 @@ const NODE_KINDS = [
 function discoverSensors() {
     let found = { temperatures: [], fans: [], powerMeters: [] };
     let chips = new Set();
+    let groups = [];
 
     for (let entry of IO.listDir(HWMON_DIR)) {
         let base = HWMON_DIR + "/" + entry;
         let chip = IO.readString(base + "/name") || entry;
         let kind = classifyChip(chip);
         let identity = _hwmonIdentity(base);
+        let pciAddress = Hardware.pciAddressIn(IO.readLink(base + "/device"));
+        let group = "hwmon:" + entry;
         chips.add(chip);
+        groups.push({ key: group, chip: chip, kind: kind, identity: identity,
+                      pciAddress: pciAddress });
 
         let ofThisChip = { temperatures: [], fans: [], powerMeters: [] };
 
@@ -260,6 +373,7 @@ function discoverSensors() {
                     source: "hwmon",
                     chip: chip,
                     kind: kind,
+                    group: group,
                     index: index,
                     identity: identity,
                     rawLabel: _label(base, nodeKind.prefix, index),
@@ -290,12 +404,15 @@ function discoverSensors() {
         if (!type || chips.has(type))
             continue;
         chips.add(type);
+        groups.push({ key: "thermal:" + entry, chip: type, kind: classifyChip(type),
+                      identity: entry, pciAddress: null });
         found.temperatures.push({
             id: "thermal:" + entry,
             measure: "temperature",
             source: "thermal",
             chip: type,
             kind: classifyChip(type),
+            group: "thermal:" + entry,
             index: "1",
             siblings: 1,
             identity: entry,
@@ -306,7 +423,9 @@ function discoverSensors() {
     }
 
     /* One pass over everything, then split back out by what it measures. */
-    let named = _finalizeNames(found.temperatures.concat(found.fans, found.powerMeters));
+    let groupLabels = _nameGroups(groups);
+    let named = _finalizeNames(found.temperatures.concat(found.fans, found.powerMeters))
+        .map(entry => Object.assign({}, entry, { groupLabel: groupLabels[entry.group] || "" }));
     return {
         temperatures: named.filter(entry => entry.measure === "temperature"),
         fans: named.filter(entry => entry.measure === "fan"),
@@ -354,6 +473,9 @@ function discoverEnergyCounters() {
             id: "rapl:" + entry,
             measure: "power",
             kind: "package",
+            /* Not a chip, so it has no chip's name to be grouped under; the
+             * kind is what these have in common and all they have. */
+            group: "rapl",
             label: IO.readString(base + "/name") || entry,
             path: energyPath,
             maxRange: IO.readNumber(base + "/max_energy_range_uj"),
@@ -372,6 +494,7 @@ var EnergyMeter = class EnergyMeter {
         this.measure = counter.measure;
         this.kind = counter.kind;
         this.label = counter.label;
+        this.group = counter.group;
         this.domain = counter.domain;
         /* whether this counter may be added into a whole-package total */
         this.topLevel = counter.topLevel;
@@ -485,6 +608,11 @@ var SensorSet = class SensorSet {
             rawLabel: sensor.rawLabel,
             kind: sensor.kind,
             label: Format.sensorLabel(sensor),
+            /* what the chip is called, and what this reading is called under
+             * that heading; see _groupName and _shortName */
+            group: sensor.group,
+            groupLabel: sensor.groupLabel,
+            shortLabel: sensor.short,
             critical: sensor.critical,
             celsius: raw === null ? null : raw / 1000,
         };
@@ -497,6 +625,9 @@ var SensorSet = class SensorSet {
             chip: sensor.chip,
             kind: sensor.kind,
             label: Format.sensorLabel(sensor),
+            group: sensor.group,
+            groupLabel: sensor.groupLabel,
+            shortLabel: sensor.short,
             rpm: readNumber(sensor.path),
         };
     }
@@ -516,6 +647,9 @@ var SensorSet = class SensorSet {
                 measure: meter.measure,
                 kind: meter.kind,
                 label: meter.label,
+                group: meter.group,
+                groupLabel: kindLabel(meter.kind),
+                shortLabel: meter.label,
                 watts: meter.watts,
             });
             /* The sub-domains are inside the top level ones, so adding both
@@ -535,6 +669,9 @@ var SensorSet = class SensorSet {
                 measure: sensor.measure,
                 kind: sensor.kind,
                 label: Format.sensorLabel(sensor),
+                group: sensor.group,
+                groupLabel: sensor.groupLabel,
+                shortLabel: sensor.short,
                 /* hwmon reports microwatts */
                 watts: raw / 1000000,
             });

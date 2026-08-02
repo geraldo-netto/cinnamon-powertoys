@@ -1,13 +1,14 @@
 /*
  * Bold means one thing in this menu: something is wrong.
  *
- * It used to mark four - the summary line, the panel titles, the group
+ * It used to mark four - the summary line, the column titles, the group
  * headings and a warning - and a signal spent on the ordinary furniture of a
  * menu is not a signal any more. The warning is the only one that has to be
  * found without being looked for, so it keeps the weight, and the structure
- * is told apart by size instead: the summary and the panel titles a fifth
- * larger than the rows, the group headings the same size as them but
- * quieter. That is a hierarchy, which is all those three were ever drawing.
+ * is told apart by size instead: the summary a fifth larger than the rows,
+ * the group headings a tenth larger and quieter, the chip names inside the
+ * sensors quieter again. That is a hierarchy, which is all of them were ever
+ * drawing.
  *
  * Size, not letter spacing, because size is what reaches the text. St applies
  * letter-spacing from the actor's own node only, and these classes are on the
@@ -37,6 +38,27 @@
     spacing: 6px;
 }
 
+/*
+ * A brightness row: icon, which screen, the track, the value.
+ *
+ * The name has a width of its own so that a column of monitors lines up, and
+ * the value has one so that 5% and 100% end in the same place rather than the
+ * track growing and shrinking by a character as the number does.
+ */
+.powertoys-slider-row {
+    spacing: 8px;
+}
+
+.powertoys-slider-name {
+    min-width: 100px;
+}
+
+.powertoys-slider-value {
+    min-width: 40px;
+    text-align: right;
+    opacity: 0.75;
+}
+
 /* 0.9em would have drawn this a tenth bigger than the title above it rather
  * than smaller; see the note on units at the top. */
 .powertoys-device-details {
@@ -45,17 +67,17 @@
     padding-left: 22px;
 }
 
-/* The three panels side by side. */
+/* The two columns side by side. */
 .powertoys-columns {
     padding-top: 4px;
     padding-bottom: 4px;
 }
 
 /*
- * A panel takes the width of its own longest line, with a floor so that a
+ * A column takes the width of its own longest line, with a floor so that a
  * short one does not look starved beside a long one.
  *
- * Every panel carries the rule, including the leftmost, whose is transparent.
+ * Every column carries the rule, including the leftmost, whose is transparent.
  * A border on only some of them would make those a pixel wider than the rest,
  * and a pixel of difference between columns that are otherwise the same shape
  * is the sort of thing that is seen without being noticed.
@@ -68,7 +90,7 @@
 }
 
 /*
- * Applied in code to every visible panel but the leftmost, since which one
+ * Applied in code to every visible column but the leftmost, since which one
  * that is depends on what the machine has and what the user has switched on.
  * Grey at a third opacity rather than a colour of its own, so it reads as a
  * division on a light theme and on a dark one without either theme having
@@ -78,15 +100,63 @@
     border-left: 1px solid rgba(127, 127, 127, 0.35);
 }
 
-.powertoys-panel-title {
-    font-size: 0.9em;
+/*
+ * What a group of rows is: the profile, the processor, the devices, the
+ * sensors. A shade quieter than the rows it heads, because a heading is
+ * furniture and the numbers are what is read.
+ */
+.powertoys-group-title {
+    font-size: 0.83em;
+    padding-top: 8px;
+    padding-bottom: 2px;
+    opacity: 0.85;
+}
+
+/* Which chip a run of sensor rows came off, inside the sensors group. Smaller
+ * again, so the two levels are told apart without a second colour. */
+.powertoys-subgroup-title {
+    font-size: 0.68em;
+    padding-top: 8px;
+    opacity: 0.65;
+}
+
+/*
+ * The power profile as one row of buttons.
+ *
+ * The fill on the active one is grey at two opacities rather than the theme's
+ * own selection colour, for the reason set out beside the warning below: an
+ * applet cannot read a value out of the active theme, and a guessed colour is
+ * a block that belongs to no theme at all. Grey over the menu's background
+ * darkens on a light theme and lightens on a dark one, which is a difference
+ * either way round.
+ */
+.powertoys-segmented {
+    spacing: 4px;
+    padding-top: 2px;
     padding-bottom: 4px;
 }
 
-.powertoys-group-title {
-    font-size: 0.75em;
-    padding-top: 8px;
-    opacity: 0.7;
+.powertoys-segment {
+    background-color: rgba(127, 127, 127, 0.14);
+    border: 1px solid rgba(127, 127, 127, 0.10);
+    border-radius: 4px;
+    padding: 5px 8px;
+    opacity: 0.75;
+}
+
+.powertoys-segment:hover {
+    background-color: rgba(127, 127, 127, 0.28);
+    opacity: 1.0;
+}
+
+.powertoys-segment:focus {
+    border: 1px solid rgba(127, 127, 127, 0.65);
+}
+
+.powertoys-segment-active {
+    background-color: rgba(127, 127, 127, 0.42);
+    border: 1px solid rgba(127, 127, 127, 0.30);
+    opacity: 1.0;
 }
 
 /*
