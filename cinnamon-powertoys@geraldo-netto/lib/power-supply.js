@@ -67,3 +67,75 @@ function platformProfile() {
         choices: IO.readWords(PLATFORM_PROFILE_CHOICES),
     };
 }
+
+/*
+ * The ACPI platform profile, wearing the same face as PowerProfilesClient.
+ *
+ * The two are not alike underneath - one is a daemon on the system bus, the
+ * other is two files in /sys written through a root helper - and the applet
+ * used to know that, unioning their two shapes behind a flag and then reading
+ * that flag back to decide how to write. Given the same surface, it does not
+ * have to: it holds one of these and asks it.
+ */
+var PlatformProfileClient = class PlatformProfileClient {
+    constructor(runner) {
+        this._runner = runner || function () {};
+    }
+
+    /* Read every time: the firmware moves this on its own - a lid closed, a
+     * charger unplugged - and vendor tools write it too. */
+    _read() {
+        return platformProfile();
+    }
+
+    get available() {
+        let profile = this._read();
+        return profile !== null && profile.choices.length > 0;
+    }
+
+    /* What this backend is, for a reading that wants to say where its
+     * profiles came from. */
+    get busName() {
+        return "acpi-platform-profile";
+    }
+
+    get active() {
+        let profile = this._read();
+        return profile === null ? null : profile.active;
+    }
+
+    get profiles() {
+        let profile = this._read();
+        return profile === null ? [] : profile.choices;
+    }
+
+    /* The firmware says nothing about either of these; the daemon does. */
+    get degraded() {
+        return "";
+    }
+
+    get holds() {
+        return [];
+    }
+
+    /*
+     * Writing needs root, so it goes through the same runner every other
+     * privileged setting uses. The helper checks the value against the
+     * firmware's own list before writing it.
+     */
+    setProfile(name, onResult) {
+        let done = onResult || function () {};
+        this._runner(["platform-profile", String(name)], outcome => {
+            if (!outcome || outcome.applied)
+                done(null);
+            else if (outcome.cancelled)
+                done(new Error("cancelled"));
+            else
+                done(new Error(outcome.error || "the change could not be applied"));
+        });
+        return true;
+    }
+
+    destroy() {
+    }
+};

@@ -427,3 +427,55 @@ cases["a filter that says no to everything reads nothing"] = function () {
         Harness.equal(readings.packageWatts, null, "and no package total");
     });
 };
+
+/* ---------------------------------------------------------------- */
+/* the platform profile as a backend                                 */
+
+cases["the platform profile answers the same questions the daemon does"] = function () {
+    on("machine", function () {
+        let client = new PowerSupply.PlatformProfileClient();
+        Harness.equal(client.available, true, "available");
+        Harness.equal(client.active, "balanced", "active");
+        Harness.deepEqual(client.profiles, ["quiet", "balanced", "performance"], "profiles");
+        Harness.equal(client.busName, "acpi-platform-profile", "which backend this is");
+        Harness.equal(client.degraded, "", "firmware says nothing about degradation");
+        Harness.deepEqual(client.holds, [], "or about applications holding a profile");
+    });
+};
+
+cases["a machine with no platform profile says it is unavailable"] = function () {
+    IO.setRoot("/nonexistent");
+    try {
+        let client = new PowerSupply.PlatformProfileClient();
+        Harness.equal(client.available, false, "available");
+        Harness.equal(client.active, null, "active");
+        Harness.deepEqual(client.profiles, [], "profiles");
+    } finally {
+        IO.setRoot("");
+    }
+};
+
+cases["the platform profile is written through the helper"] = function () {
+    on("machine", function () {
+        let sent = [];
+        let client = new PowerSupply.PlatformProfileClient(function (args, done) {
+            sent.push(args.join(" "));
+            done({ applied: true });
+        });
+        let error = "not called";
+        client.setProfile("quiet", e => { error = e; });
+        Harness.deepEqual(sent, ["platform-profile quiet"], "the helper's own vocabulary");
+        Harness.equal(error, null, "and it reported success");
+    });
+};
+
+cases["a refused platform profile reports the refusal"] = function () {
+    on("machine", function () {
+        let client = new PowerSupply.PlatformProfileClient(
+            (args, done) => done({ applied: false, error: "unknown platform profile: nonsense" }));
+        let error = null;
+        client.setProfile("nonsense", e => { error = e; });
+        Harness.ok(error, "an error");
+        Harness.equal(error.message, "unknown platform profile: nonsense", "with the reason");
+    });
+};
