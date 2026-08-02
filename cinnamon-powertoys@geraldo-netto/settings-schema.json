@@ -26,7 +26,7 @@
         "type": "entry",
         "default": "",
         "description": "Preferred temperature sensor",
-        "tooltip": "Chip or label fragment of the sensor shown as the machine's temperature, in the tooltip, in the line at the top of the menu and in Processor, e.g. 'Tctl' or 'k10temp'. Leave empty for automatic detection."
+        "tooltip": "Chip or label fragment of the sensor taken as the machine's temperature - the one in the panel tooltip, and the one the high temperature alert is measured against, e.g. 'Tctl' or 'k10temp'. Leave empty for automatic detection."
     },
     "panel-section": {
         "type": "section",
@@ -75,7 +75,8 @@
     "show-cpu": {
         "type": "switch",
         "default": true,
-        "description": "Show Processor"
+        "description": "Show Processor",
+        "tooltip": "Turbo boost, governor and energy preference. The processor's frequency, scaling driver and temperature are readings and are under Sensors."
     },
     "show-devices": {
         "type": "switch",
@@ -87,7 +88,7 @@
         "type": "switch",
         "default": true,
         "description": "Show Sensors",
-        "tooltip": "Temperatures, fans and power meters, under the name of the chip each came off."
+        "tooltip": "Temperatures, fans and power meters, under the name of the chip each came off, and what the processor is running at."
     },
     "show-all-sensors": {
         "type": "switch",
@@ -201,7 +202,7 @@
         "step": 1,
         "units": "°C",
         "description": "High temperature level",
-        "tooltip": "Compared against the temperature shown in the panel. Switching the unit above converts this value.",
+        "tooltip": "Compared against the same sensor the applet tooltip shows - the preferred one above, or the processor's own where none is set. Switching the unit above converts this value.",
         "dependency": "temp-unit=celsius"
     },
     "high-temp-threshold-fahrenheit": {
@@ -212,7 +213,7 @@
         "step": 1,
         "units": "°F",
         "description": "High temperature level",
-        "tooltip": "Compared against the temperature shown in the panel. Switching the unit above converts this value.",
+        "tooltip": "Compared against the same sensor the applet tooltip shows - the preferred one above, or the processor's own where none is set. Switching the unit above converts this value.",
         "dependency": "temp-unit=fahrenheit"
     },
     "introduced": {

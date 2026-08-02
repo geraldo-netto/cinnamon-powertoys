@@ -12,6 +12,7 @@
  * the name of the setting being spelled out again at the call site.
  */
 
+const Hardware = require("./lib/hardware.js");
 const IO = require("./lib/io.js");
 
 var CPU_DIR = "/sys/devices/system/cpu";
@@ -56,6 +57,10 @@ var CpuControl = class CpuControl {
         this.energyPreferences = this.reference
             ? IO.readWords(this.reference + "/energy_performance_available_preferences") : [];
         this.amdPstateStatus = IO.readString(CPU_DIR + "/amd_pstate/status");
+
+        /* What the chip is called, so a reading can be filed under the same
+         * heading the sensors off that chip are filed under. */
+        this.model = Hardware.cpuModelName();
 
         /*
          * The ceiling the silicon was built with. It is read here with the
@@ -156,6 +161,7 @@ var CpuControl = class CpuControl {
             boostSupported: this.boostSupported,
             maxFrequency: this.maxFrequency(),
             amdPstateStatus: this.amdPstateStatus,
+            model: this.model,
         };
 
         /*

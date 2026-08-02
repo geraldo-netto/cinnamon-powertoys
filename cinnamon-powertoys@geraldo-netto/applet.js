@@ -1227,10 +1227,15 @@ class MenuPresenter {
     }
 
     /*
-     * What the processor is doing, and what it has been told to do.
+     * What the processor has been told to do. Only that.
      *
-     * All of it, in the order it is asked about: the three readings, then the
-     * three things that can be changed.
+     * It used to open with the frequency, the temperature and the scaling
+     * driver, which are three readings and not three settings. The
+     * temperature was the same number as Tctl under the chip's own name in
+     * the sensors, stated twice in one menu; the other two are readings about
+     * that same chip and are filed with it now, under its name, where the
+     * question "what is this processor doing" is already answered. What is
+     * left here is the three things that can be changed.
      *
      * The governor and the energy preference were behind an *Advanced*
      * disclosure, on the reasoning that they are what a profile sets and are
@@ -1243,13 +1248,6 @@ class MenuPresenter {
     _buildCpuGroup() {
         this._cpuGroup = this._performanceColumn.group(_("Processor"));
         let menu = this._cpuGroup.menu;
-
-        this._cpuFreqRow = new InfoRow(_("Frequency"), "");
-        this._cpuTempRow = new InfoRow(_("Temperature"), "");
-        this._cpuDriverRow = new InfoRow(_("Scaling driver"), "");
-        menu.addMenuItem(this._cpuFreqRow);
-        menu.addMenuItem(this._cpuTempRow);
-        menu.addMenuItem(this._cpuDriverRow);
 
         /* The switch carries its own read-only mode, so unlike the two lists
          * below it needs no second widget: insensitive still shows the state. */
@@ -1573,19 +1571,6 @@ class MenuPresenter {
         if (!show)
             return;
 
-        let frequency = Format.frequency(data.cpu.averageFrequency);
-        if (data.cpu.maxFrequency)
-            frequency += " / " + Format.frequency(data.cpu.maxFrequency);
-        this._cpuFreqRow.setValue(frequency);
-
-        this._cpuTempRow.actor.visible = data.cpuTemperature !== null;
-        if (data.cpuTemperature !== null) {
-            this._cpuTempRow.setValue(Format.temperature(data.cpuTemperature, options.tempUnit, 1));
-            this._cpuTempRow.setWarning(data.cpuTemperature >= options.highTempCelsius);
-        }
-
-        this._cpuDriverRow.setValue(Format.driverLabel(data.cpu.driver, data.cpu.amdPstateStatus));
-
         /* While a privileged change is in flight there is a password dialog
          * on screen and a second click can only queue behind it, so the
          * controls say so rather than pretending to be ready. */
@@ -1691,18 +1676,74 @@ class MenuPresenter {
      * name, so the address is gone from the rows and the two cards are two
      * blocks.
      */
-    _withHeadings(entries) {
+    _withHeadings(entries, leadIn) {
         let out = [];
         let group = null;
+        let placed = !leadIn || leadIn.rows.length === 0;
+
         for (let entry of entries) {
             if (entry.group !== group) {
                 group = entry.group;
                 out.push({ key: "heading:" + group, heading: true,
                            label: entry.groupLabel || Sensors.kindLabel(entry.kind) });
+                if (!placed && group === leadIn.group) {
+                    for (let row of leadIn.rows)
+                        out.push(row);
+                    placed = true;
+                }
             }
             out.push(entry);
         }
+
+        /* The chip the lead-in belongs to reported nothing readable, so it has
+         * no group of its own here. It still has a name and the rows still say
+         * something, so they get a heading of their own at the front. */
+        if (!placed) {
+            out = [{ key: "heading:" + leadIn.group, heading: true, label: leadIn.groupLabel }]
+                .concat(leadIn.rows, out);
+        }
         return out;
+    }
+
+    /*
+     * What the processor says about itself, filed with the readings off the
+     * same chip.
+     *
+     * The frequency and the scaling driver were rows in the Processor group,
+     * where they sat above the governor and the boost switch as though they
+     * were settings. They are not: they are what the chip is doing and what is
+     * doing it, which is the same kind of thing as its temperature. So they go
+     * under the chip's own name, ahead of its temperatures, and the Processor
+     * group is left holding only what can be changed.
+     *
+     * They attach to whichever sensor group came off the processor. Where the
+     * machine reports no processor temperature at all there is no such group,
+     * and the name from /proc/cpuinfo heads one for them.
+     */
+    _cpuReadingRows(data) {
+        if (!data.cpu.available)
+            return null;
+
+        let host = data.temperatures.find(sensor => sensor.kind === "cpu" && sensor.group);
+        let rows = [];
+
+        let frequency = Format.frequency(data.cpu.averageFrequency);
+        if (data.cpu.maxFrequency)
+            frequency += " / " + Format.frequency(data.cpu.maxFrequency);
+        if (frequency)
+            rows.push({ key: "cpu:frequency", label: _("Frequency"),
+                        value: frequency, warning: false });
+
+        let driver = Format.driverLabel(data.cpu.driver, data.cpu.amdPstateStatus);
+        if (data.cpu.driver)
+            rows.push({ key: "cpu:driver", label: _("Scaling driver"),
+                        value: driver, warning: false });
+
+        return {
+            group: host ? host.group : "cpu:processor",
+            groupLabel: host ? host.groupLabel : (data.cpu.model || Sensors.kindLabel("cpu")),
+            rows: rows,
+        };
     }
 
     _updateSensors(data, options) {
@@ -1723,14 +1764,16 @@ class MenuPresenter {
             this._sensorEntries(data.powers, all, () => true,
                                 meter => this._powerEntry(meter)));
 
-        if (entries.length === 0) {
+        let leadIn = this._cpuReadingRows(data);
+
+        if (entries.length === 0 && (!leadIn || leadIn.rows.length === 0)) {
             this._sensorList.sync([{ key: "empty", label: _("No sensors found"),
                                      value: "", warning: false }]);
             return;
         }
 
         entries.sort(Sensors.bySensorOrder);
-        this._sensorList.sync(this._withHeadings(entries));
+        this._sensorList.sync(this._withHeadings(entries, leadIn));
     }
 
     /* Under the devices heading, so it is beside the battery it applies to

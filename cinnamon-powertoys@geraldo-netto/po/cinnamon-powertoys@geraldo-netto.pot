@@ -28,11 +28,11 @@ msgstr ""
 msgid "GPU"
 msgstr ""
 
-#: applet.js:224 applet.js:507 applet.js:1279
+#: applet.js:224 applet.js:507 applet.js:1277
 msgid "Governor"
 msgstr ""
 
-#: applet.js:226 applet.js:1282
+#: applet.js:226 applet.js:1280
 msgid "Energy preference"
 msgstr ""
 
@@ -44,11 +44,11 @@ msgstr ""
 msgid "Turbo boost off"
 msgstr ""
 
-#: applet.js:230 applet.js:1217 applet.js:2584
+#: applet.js:230 applet.js:1217 applet.js:2627
 msgid "Power profile"
 msgstr ""
 
-#: applet.js:232 applet.js:1327
+#: applet.js:232 applet.js:1325
 msgid "Charge limit"
 msgstr ""
 
@@ -72,7 +72,7 @@ msgstr ""
 msgid "Profile"
 msgstr ""
 
-#: applet.js:509 applet.js:1248 lib/format.js:382
+#: applet.js:509 lib/format.js:391
 msgid "Temperature"
 msgstr ""
 
@@ -81,8 +81,8 @@ msgid "Power draw"
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:520 applet.js:1932 applet.js:2533 applet.js:2584 applet.js:2631
-#: applet.js:2640
+#: applet.js:520 applet.js:1975 applet.js:2576 applet.js:2627 applet.js:2674
+#: applet.js:2683
 msgid "Power Toys"
 msgstr ""
 
@@ -106,82 +106,82 @@ msgstr ""
 msgid "Performance limited"
 msgstr ""
 
-#: applet.js:1244 lib/sensors.js:36
+#: applet.js:1249 lib/sensors.js:36
 msgid "Processor"
 msgstr ""
 
-#: applet.js:1247
-msgid "Frequency"
-msgstr ""
-
-#: applet.js:1249
-msgid "Scaling driver"
-msgstr ""
-
-#: applet.js:1256
+#: applet.js:1254
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1276
+#: applet.js:1274
 msgid "Governor and energy preference follow the power profile"
 msgstr ""
 
-#: applet.js:1297
+#: applet.js:1295
 msgid "Devices"
 msgstr ""
 
-#: applet.js:1318
+#: applet.js:1316
 msgid "Nothing with a battery is connected"
 msgstr ""
 
-#: applet.js:1346
+#: applet.js:1344
 msgid "Sensors"
 msgstr ""
 
-#: applet.js:1421
+#: applet.js:1419
 #, javascript-format
 msgid "Only the first %d monitors have a slider"
 msgstr ""
 
-#: applet.js:1518
+#: applet.js:1516
 msgid "On AC power"
 msgstr ""
 
-#: applet.js:1536
+#: applet.js:1534
 msgid "an application"
 msgstr ""
 
-#: applet.js:1555
+#: applet.js:1553
 msgid "Connected"
 msgstr ""
 
-#: applet.js:1555
+#: applet.js:1553
 msgid "Disconnected"
 msgstr ""
 
-#: applet.js:1715
+#: applet.js:1734
+msgid "Frequency"
+msgstr ""
+
+#: applet.js:1739
+msgid "Scaling driver"
+msgstr ""
+
+#: applet.js:1756
 msgid "No sensor matches"
 msgstr ""
 
-#: applet.js:1727
+#: applet.js:1770
 msgid "No sensors found"
 msgstr ""
 
-#: applet.js:1933
+#: applet.js:1976
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "Right click the panel to configure it."
 msgstr ""
 
-#: applet.js:2518
+#: applet.js:2561
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2534
+#: applet.js:2577
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:2641
+#: applet.js:2684
 msgid "The change could not be applied."
 msgstr ""
 
@@ -381,7 +381,7 @@ msgstr ""
 msgid "Balanced performance"
 msgstr ""
 
-#: lib/format.js:239 lib/format.js:340 lib/format.js:358
+#: lib/format.js:239 lib/format.js:349 lib/format.js:367
 msgid "Performance"
 msgstr ""
 
@@ -397,11 +397,7 @@ msgstr ""
 msgid "Cool"
 msgstr ""
 
-#: lib/format.js:303
-msgid "AMD, hardware managed"
-msgstr ""
-
-#: lib/format.js:304
+#: lib/format.js:303 lib/format.js:304
 msgid "AMD"
 msgstr ""
 
@@ -445,51 +441,51 @@ msgstr ""
 msgid "kernel managed"
 msgstr ""
 
-#: lib/format.js:327
+#: lib/format.js:336
 msgid "unknown"
 msgstr ""
 
-#: lib/format.js:341
+#: lib/format.js:350
 msgid "Power save"
 msgstr ""
 
-#: lib/format.js:342
+#: lib/format.js:351
 msgid "On demand"
 msgstr ""
 
-#: lib/format.js:343
+#: lib/format.js:352
 msgid "Conservative"
 msgstr ""
 
-#: lib/format.js:344
+#: lib/format.js:353
 msgid "Scheduler guided"
 msgstr ""
 
-#: lib/format.js:345
+#: lib/format.js:354
 msgid "Userspace"
 msgstr ""
 
-#: lib/format.js:357
+#: lib/format.js:366
 msgid "Default"
 msgstr ""
 
-#: lib/format.js:359
+#: lib/format.js:368
 msgid "Balance performance"
 msgstr ""
 
-#: lib/format.js:360
+#: lib/format.js:369
 msgid "Balance power"
 msgstr ""
 
-#: lib/format.js:361
+#: lib/format.js:370
 msgid "Power saving"
 msgstr ""
 
-#: lib/format.js:383
+#: lib/format.js:392
 msgid "Fan"
 msgstr ""
 
-#: lib/format.js:384 lib/sensors.js:180
+#: lib/format.js:393 lib/sensors.js:180
 msgid "Power"
 msgstr ""
 
@@ -574,9 +570,10 @@ msgstr ""
 
 #. settings-schema.json->cpu-sensor-hint->tooltip
 msgid ""
-"Chip or label fragment of the sensor shown as the machine's temperature, in "
-"the tooltip, in the line at the top of the menu and in Processor, e.g. "
-"'Tctl' or 'k10temp'. Leave empty for automatic detection."
+"Chip or label fragment of the sensor taken as the machine's temperature - "
+"the one in the panel tooltip, and the one the high temperature alert is "
+"measured against, e.g. 'Tctl' or 'k10temp'. Leave empty for automatic "
+"detection."
 msgstr ""
 
 #. settings-schema.json->panel-section->description
@@ -631,6 +628,12 @@ msgstr ""
 msgid "Show Processor"
 msgstr ""
 
+#. settings-schema.json->show-cpu->tooltip
+msgid ""
+"Turbo boost, governor and energy preference. The processor's frequency, "
+"scaling driver and temperature are readings and are under Sensors."
+msgstr ""
+
 #. settings-schema.json->show-devices->description
 msgid "Show Devices"
 msgstr ""
@@ -646,7 +649,7 @@ msgstr ""
 #. settings-schema.json->show-sensors->tooltip
 msgid ""
 "Temperatures, fans and power meters, under the name of the chip each came "
-"off."
+"off, and what the processor is running at."
 msgstr ""
 
 #. settings-schema.json->show-all-sensors->description
@@ -776,7 +779,8 @@ msgstr ""
 #. settings-schema.json->high-temp-threshold->tooltip
 #. settings-schema.json->high-temp-threshold-fahrenheit->tooltip
 msgid ""
-"Compared against the temperature shown in the panel. Switching the unit "
+"Compared against the same sensor the applet tooltip shows - the preferred "
+"one above, or the processor's own where none is set. Switching the unit "
 "above converts this value."
 msgstr ""
 

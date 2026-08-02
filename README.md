@@ -63,20 +63,27 @@ names are supported). Shows when the firmware degrades performance and which
 application is holding a profile. On machines without the daemon it falls back
 to the ACPI platform profile in `/sys/firmware/acpi/platform_profile`.
 
-**CPU.** Current and maximum frequency, scaling driver (including the
-`amd_pstate` mode), turbo boost, governor and energy performance preference —
-all of it on screen, none of it behind a disclosure. The last two are what a
-power profile sets, so where power-profiles-daemon is running the menu says
-which of them it is writing: without that line the profile and the two
-settings below it read the same word for no stated reason, which looks like
-three copies of one control rather than one control and its two outputs. They
-stay changeable — a governor set by hand holds until the next profile change
-or mains transition — but nothing pretends the daemon has stopped writing
-them. Where a setting has only one value to offer, and `amd_pstate` narrows
-the energy preferences to exactly one, it is shown as a value rather than as a
-choice of one. Governor, energy preference, boost and the battery charge limit
-are kernel owned, so they are applied through a small validating helper
-launched with `pkexec`.
+**CPU.** *Processor* holds the three things that can be changed — turbo boost,
+governor and energy performance preference — and nothing else, none of it
+behind a disclosure. What the processor is *doing* is a reading and is filed
+with its other readings: the current and maximum frequency and the scaling
+driver sit under the chip's own name in **Sensors**, above its temperatures.
+Its temperature is not repeated at all; it was the same number as `Tctl` three
+rows below.
+
+The governor and the energy preference are what a power profile sets, so where
+power-profiles-daemon is running the menu says which of them it is writing:
+without that line the profile and the two settings below it read the same word
+for no stated reason, which looks like three copies of one control rather than
+one control and its two outputs. They stay changeable — a governor set by hand
+holds until the next profile change or mains transition — but nothing pretends
+the daemon has stopped writing them. Where a setting has only one value to
+offer, and `amd_pstate` narrows the energy preferences to exactly one, it is
+shown as a value rather than as a choice of one.
+
+Governor, energy preference, boost and the battery charge limit are kernel
+owned, so they are applied through a small validating helper launched with
+`pkexec`.
 
 **Temperature and power.** Every hwmon and thermal zone sensor plus fan speeds,
 hwmon power meters (for example the amdgpu GPU package power), RAPL package
@@ -87,7 +94,9 @@ bus from `pci.ids`, a battery by what UPower calls it. So two graphics cards
 read as *Radeon RX 6600/6600 XT/6600M* and *AMD Raphael* rather than as
 `03:00.0` and `08:00.0`, and the rows under each say only what they measure —
 *Edge*, *Junction*, *Fan* — because the heading has already said whose they
-are. The list can be limited to CPU and GPU only.
+are. The processor's frequency and scaling driver head its own group, since
+they are readings off that chip like the rest of them. The list can be limited
+to CPU and GPU only.
 
 **Alerts.** Configurable low and critical battery notifications, separate
 thresholds for peripherals, and an optional high temperature warning. All with

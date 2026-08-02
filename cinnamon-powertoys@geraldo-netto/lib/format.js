@@ -300,7 +300,7 @@ function profileIconName(name) {
  * no longer the whole of what the row says.
  */
 var DRIVER_LABELS = {
-    "amd-pstate-epp": _("AMD, hardware managed"),
+    "amd-pstate-epp": _("AMD"),
     "amd-pstate": _("AMD"),
     "acpi-cpufreq": _("ACPI"),
     "intel_pstate": _("Intel"),
@@ -322,17 +322,26 @@ var PSTATE_MODES = {
     "passive": _("kernel managed"),
 };
 
+/*
+ * "AMD (amd-pstate-epp)": whose driver it is, then the driver.
+ *
+ * The mode is only added where the driver's own name does not already carry
+ * it. A driver ending in -epp is amd_pstate in its active mode and can be no
+ * other, so "AMD, hardware managed (amd-pstate-epp)" said the same thing three
+ * times in one row; plain amd-pstate is the guided or the passive mode and
+ * there the word is the only way to tell which.
+ */
 function driverLabel(name, pstateMode) {
     if (!name)
         return _("unknown");
 
     let text = DRIVER_LABELS[name] || name;
-    /* Only worth adding where it says something the driver name does not. */
-    if (pstateMode && PSTATE_MODES[pstateMode] &&
+    let impliedByName = /-epp$/.test(name);
+    if (!impliedByName && pstateMode && PSTATE_MODES[pstateMode] &&
         text.indexOf(PSTATE_MODES[pstateMode]) < 0)
         text += ", " + PSTATE_MODES[pstateMode];
     if (text !== name)
-        text += "  (" + name + ")";
+        text += " (" + name + ")";
     return text;
 }
 

@@ -150,13 +150,15 @@ cases["a profile this applet has no icon for gets none"] = function () {
 
 cases["a scaling driver is named in words, with the kernel's own name kept"] = function () {
     Harness.equal(Format.driverLabel("amd-pstate-epp", "active"),
-                  "AMD, hardware managed  (amd-pstate-epp)",
-                  "the mode is already in the label, so it is not repeated");
+                  "AMD (amd-pstate-epp)",
+                  "a driver ending in -epp is the active mode and can be no other");
     Harness.equal(Format.driverLabel("amd-pstate", "passive"),
-                  "AMD, kernel managed  (amd-pstate)", "the mode says something here");
+                  "AMD, kernel managed (amd-pstate)", "the mode says something here");
+    Harness.equal(Format.driverLabel("amd-pstate", "guided"),
+                  "AMD, guided (amd-pstate)", "and here");
     Harness.equal(Format.driverLabel("intel_pstate", null),
-                  "Intel  (intel_pstate)", "no pstate mode to add");
-    Harness.equal(Format.driverLabel("acpi-cpufreq", null), "ACPI  (acpi-cpufreq)", "acpi");
+                  "Intel (intel_pstate)", "no pstate mode to add");
+    Harness.equal(Format.driverLabel("acpi-cpufreq", null), "ACPI (acpi-cpufreq)", "acpi");
 };
 
 cases["a driver nobody has heard of is shown as it is"] = function () {
