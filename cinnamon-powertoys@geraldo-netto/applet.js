@@ -154,7 +154,7 @@ const SETTINGS = [
     { key: "show-devices", property: "showDevices" },
     { key: "show-sensors", property: "showSensors" },
     { key: "show-all-sensors", property: "showAllSensors" },
-    { key: "monitor-brightness", property: "monitorBrightness" },
+    { key: "monitor-brightness", property: "monitorBrightness", onChange: "monitor" },
 
     /* Not shown anywhere: whether this install has introduced itself yet. */
     { key: "introduced", property: "introduced" },
@@ -1512,6 +1512,12 @@ class PowerToysApplet extends Applet.TextIconApplet {
             },
             poll: () => this._startPolling(),
             unit: () => this._onTempUnitChanged(),
+            /* Switching it on has to send the applet looking for a monitor;
+             * nothing else would, until a reload. */
+            monitor: () => {
+                this._considerMonitorBacklight();
+                this._update();
+            },
             hotkeys: () => this._registerHotkeys(),
         };
 
@@ -1556,9 +1562,24 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * screen there is, and DDC/CI is the only way to reach it.
      */
     _onScreenBacklightKnown() {
+        this._considerMonitorBacklight();
+        this._onBacklightChanged();
+    }
+
+    /*
+     * Whether to go looking for a monitor on a cable, asked both when the
+     * settings daemon answers and whenever the setting is switched.
+     *
+     * It used to be asked only on the first of those, so somebody who turned
+     * *Control external monitor brightness* on got nothing until they
+     * reloaded the applet - the one thing a person who has just switched
+     * something on will not think to do. start() is guarded against being
+     * called twice, so asking again costs nothing when the probe has already
+     * happened.
+     */
+    _considerMonitorBacklight() {
         if (this.monitorBrightness && !this._backlights.screen.available)
             this._backlights.monitor.start();
-        this._onBacklightChanged();
     }
 
     /*

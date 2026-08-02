@@ -94,7 +94,7 @@ cases["a setting that needs more than a repaint says so"] = function () {
     let source = readFile(Harness.xletDir() + "/applet.js");
     let table = source.slice(source.indexOf("const SETTINGS = ["),
                              source.indexOf("];", source.indexOf("const SETTINGS = [")));
-    for (let key of ["refresh-interval", "temp-unit",
+    for (let key of ["refresh-interval", "temp-unit", "monitor-brightness",
                      "cycle-profile-hotkey", "toggle-menu-hotkey", "panel-icon-source"]) {
         let line = table.split("\n").find(text => text.indexOf('"' + key + '"') >= 0);
         Harness.ok(line && line.indexOf("onChange") >= 0,
