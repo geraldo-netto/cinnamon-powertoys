@@ -2413,6 +2413,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._destroyMenu();
         if (this._profiles)
             this._profiles.destroy();
+        if (this._platformProfiles)
+            this._platformProfiles.destroy();
         if (this._upower)
             this._upower.destroy();
         if (this._bluetooth)

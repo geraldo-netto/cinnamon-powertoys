@@ -157,6 +157,11 @@ var PlatformProfileClient = class PlatformProfileClient {
         return true;
     }
 
+    /*
+     * Nothing to release: this backend is two files and a runner it was
+     * handed. It exists so that the applet can tear every backend down the
+     * same way, without knowing which of them happen to hold something.
+     */
     destroy() {
     }
 };
