@@ -13,9 +13,11 @@
  * menu. It is a row at the top of a column now and is drawn as one.
  *
  * Size, not letter spacing, because size is what reaches the text. St applies
- * letter-spacing from the actor's own node only, and these classes are on the
- * menu item rather than the label inside it, so a spaced heading measures as
- * spaced and draws unchanged. Font size and opacity do inherit.
+ * letter-spacing from the actor's own node only, and the classes that mark a
+ * row sit on the menu item rather than on the label inside it, so a spaced
+ * heading measured as spaced and drew unchanged. Font size and opacity do
+ * inherit - though the sizes are set on the labels themselves anyway, for the
+ * reason set out over the group heading below.
  *
  * The numbers look wrong and are not. St resolves a font size against the
  * inherited size in pixels and then applies the result as points, so every
@@ -134,13 +136,32 @@
  * says nothing about either.
  *
  * Only the two paddings are named, so the horizontal one stays the theme's and
- * a heading goes on lining up with the rows under it.
+ * a heading lines up with the rows under it. That last part did not follow,
+ * and it took measuring the running applet to see why.
+ *
+ * The theme's padding is `1.75em`, and em resolves against each node's own
+ * font size - so a font-size on the menu item shrank its horizontal padding
+ * along with its text. Measured against Mint-Y-Dark-Aqua: a row indents 23px,
+ * a group heading at 0.83em indented 19px, and a chip heading at 0.68em
+ * indented 16px. Three left edges in one column, and the more deeply nested a
+ * heading was the further left it stuck out, which is the hierarchy upside
+ * down. Four pixels is not much to look at and is plenty to make a column read
+ * as ragged without saying why.
+ *
+ * So the size goes on the label and everything else stays on the row. The row
+ * keeps the inherited font size, and with it whatever the theme's horizontal
+ * padding comes to, so the headings line up with their rows on a theme that
+ * says 1.75em and on one that says something else. Nothing here needs to know
+ * the number.
  */
 .popup-menu-item.powertoys-group-title {
-    font-size: 0.83em;
     padding-top: 8px;
     padding-bottom: 2px;
     opacity: 0.85;
+}
+
+.powertoys-group-title-text {
+    font-size: 0.83em;
 }
 
 /*
@@ -161,11 +182,15 @@
  * again, so the two levels are told apart without a second colour. Two class
  * names for the same reason as the group heading above: alone, its padding
  * computed to the theme's 4px and the gap between one chip's rows and the
- * next's was the gap between any two rows. */
+ * next's was the gap between any two rows. The size is on the label, which is
+ * what stops the smallest text in the menu being the least indented. */
 .popup-menu-item.powertoys-subgroup-title {
-    font-size: 0.68em;
     padding-top: 8px;
     opacity: 0.65;
+}
+
+.powertoys-subgroup-title-text {
+    font-size: 0.68em;
 }
 
 /*
@@ -174,8 +199,11 @@
  * more monitor with a very long name.
  */
 .powertoys-note {
-    font-size: 0.68em;
     opacity: 0.6;
+}
+
+.powertoys-note-text {
+    font-size: 0.68em;
 }
 
 /*

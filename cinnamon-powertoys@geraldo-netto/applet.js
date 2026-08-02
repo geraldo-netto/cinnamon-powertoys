@@ -439,6 +439,15 @@ class InfoRow extends PopupMenu.PopupBaseMenuItem {
         else
             this._value.remove_style_class_name("powertoys-warning");
     }
+
+    /* A row drawn at some other size than a reading - a heading - puts that
+     * size on its text and not on itself, so that the row keeps the theme's
+     * own font size and with it the theme's horizontal padding. See the
+     * stylesheet, which is where the reason is spelled out. */
+    addTextStyleClass(name) {
+        this._label.add_style_class_name(name);
+        this._value.add_style_class_name(name);
+    }
 }
 
 /*
@@ -457,6 +466,7 @@ class NoteRow extends PopupMenu.PopupBaseMenuItem {
         super._init.call(this, { reactive: false });
         this.actor.add_style_class_name("powertoys-note");
         this._label = new St.Label({ text: text });
+        this._label.add_style_class_name("powertoys-note-text");
         this.addActor(this._label, { span: -1, expand: true });
     }
 
@@ -570,6 +580,7 @@ class SelectorGroup {
     _createHeader() {
         let header = new InfoRow(this._title, "");
         header.actor.add_style_class_name("powertoys-group-title");
+        header.addTextStyleClass("powertoys-group-title-text");
         return header;
     }
 
@@ -945,6 +956,9 @@ class PanelSection extends PopupMenu.PopupMenuSection {
 function headingItem(text) {
     let heading = new PopupMenu.PopupMenuItem(text, { reactive: false });
     heading.actor.add_style_class_name("powertoys-group-title");
+    /* The size goes on the label, the padding and the opacity on the row; see
+     * the stylesheet for what putting both on the row cost. */
+    heading.label.add_style_class_name("powertoys-group-title-text");
     return heading;
 }
 
@@ -1332,6 +1346,7 @@ class MenuPresenter {
     _createHeading(text) {
         let heading = new PopupMenu.PopupMenuItem(text, { reactive: false });
         heading.actor.add_style_class_name("powertoys-subgroup-title");
+        heading.label.add_style_class_name("powertoys-subgroup-title-text");
         return heading;
     }
 
