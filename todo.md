@@ -11,32 +11,17 @@ row keeps the effort for the whole and is done when its parts are. Parts were
 only split out where each one can be written, reviewed and committed on its
 own — items that are genuinely a single change were left whole.
 
-## Twelfth pass — state machines, in-flight work, lifetimes
-
-GJS has one thread for the code and several underneath it: every D-Bus call,
-every spawned process and every `load_contents_async` answers later, on a main
-loop that has gone on running in between. So this pass asked what is in flight,
-what can start twice, what can be replaced while something is still holding the
-old one, and which flags have no way back. The libraries hold nine small state
-machines between them; these are the ones with a hole in.
-
-## State machines
-
-| id | severity | effort | description |
-|----|----------|--------|-------------|
-
-## Concurrency
-
-| id | severity | effort | description |
-|----|----------|--------|-------------|
-
-## Architecture
-
-| id | severity | effort | description |
-|----|----------|--------|-------------|
-| PT-138 | low | S | [`KeyedList`](cinnamon-powertoys@geraldo-netto/applet.js#L423) is the last thing in `applet.js` that decides something rather than drawing it, and it decides the one thing that keeps the menu from flickering: whether a section is rebuilt or its rows updated in place. It needs nothing of a menu but `removeAll` and `addMenuItem`. Its [`_signature`](cinnamon-powertoys@geraldo-netto/applet.js#L442) length-prefixes each key specifically so that no two different sets can produce the same string — the keys are device paths, sensor ids and profile names, none of which promises to avoid a separator — and that argument is asserted nowhere. `lib/keyed-list.js`, with a stub section that records what it was told. |
+Nothing open.
 
 ## Closed
+
+The twelfth pass asked what is in flight, what can start twice, what can be
+replaced while something still holds the old one, and which flags have no way
+back. Its six rows are closed between `4c780b9` and the commit that follows
+this line. Four were races that only open when two asynchronous things slip
+past each other, which is why none of them had ever been seen: a queued pkexec
+outliving the applet, two ddcutil calls on one bus, a wheel flick outrunning a
+monitor, and a rediscovery landing inside a reading.
 
 The eleventh pass asked where the seams are, what has to agree with what, and
 what is wired to nothing. Its seven rows are closed between `286327a` and

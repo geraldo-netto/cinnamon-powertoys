@@ -36,6 +36,7 @@ const Cpu = require("./lib/cpu.js");
 const Ddc = require("./lib/ddc.js");
 const Device = require("./lib/device.js");
 const IO = require("./lib/io.js");
+const KeyedList = require("./lib/keyed-list.js");
 const Log = require("./lib/log.js");
 const PendingProfile = require("./lib/pending-profile.js");
 const PowerSupply = require("./lib/power-supply.js");
@@ -412,59 +413,6 @@ class PanelPresenter {
     }
 }
 
-/*
- * Menu rows that follow a list of values.
- *
- * Tearing a section down on every poll would drop whatever the pointer is
- * over and make the menu flicker, so the widgets are rebuilt only when the set
- * of keys changes; the rest of the time the rows that are already there are
- * handed the new values. Each entry is an object carrying a "key" plus
- * whatever create and update need.
- */
-class KeyedList {
-    constructor(section, create, update) {
-        this._section = section;
-        this._create = create;
-        this._update = update || function () {};
-        this._key = null;
-        this._items = new Map();
-    }
-
-    /*
-     * The set of keys, as one string that cannot be forged.
-     *
-     * Joining the keys with a separator is only safe while no key contains
-     * one, and these keys are device paths, sensor ids and profile names -
-     * none of which promises that. Counting each key's length in front of it
-     * means no two different sets can produce the same string, whatever is in
-     * them, so a set that has really changed can never read as unchanged and
-     * leave the rows as they were.
-     */
-    _signature(entries) {
-        return entries.map(entry => String(entry.key).length + ":" + entry.key).join("");
-    }
-
-    sync(entries) {
-        let key = this._signature(entries);
-        if (key !== this._key) {
-            this._key = key;
-            this._section.removeAll();
-            this._items = new Map();
-            for (let entry of entries) {
-                let item = this._create(entry);
-                this._items.set(entry.key, item);
-                this._section.addMenuItem(item);
-            }
-        }
-        for (let entry of entries)
-            this._update(this._items.get(entry.key), entry);
-    }
-
-    get items() {
-        return Array.from(this._items.values());
-    }
-}
-
 /* A non reactive "label ......... value" line. */
 class InfoRow extends PopupMenu.PopupBaseMenuItem {
     _init(label, value) {
@@ -602,7 +550,7 @@ class SelectorGroup {
     constructor(section, labelFunction, onActivate, title) {
         this._title = title || "";
         this._labelFunction = labelFunction;
-        this._list = new KeyedList(
+        this._list = new KeyedList.KeyedList(
             section,
             entry => entry.header
                 ? this._createHeader()
@@ -1141,7 +1089,7 @@ class MenuPresenter {
         this._monitors = backlights.monitor || null;
         let monitorSection = new PopupMenu.PopupMenuSection();
         this._brightness.addMenuItem(monitorSection);
-        this._monitorList = new KeyedList(
+        this._monitorList = new KeyedList.KeyedList(
             monitorSection,
             entry => entry.note
                 ? this._createNote(entry.label)
@@ -1241,7 +1189,7 @@ class MenuPresenter {
          * the first thing anyone opening this on a laptop wants. */
         let lineSection = new PopupMenu.PopupMenuSection();
         menu.addMenuItem(lineSection);
-        this._lineList = new KeyedList(lineSection,
+        this._lineList = new KeyedList.KeyedList(lineSection,
                                        entry => new InfoRow(entry.label, entry.value),
                                        (row, entry) => {
                                            row.setLabel(entry.label);
@@ -1250,7 +1198,7 @@ class MenuPresenter {
 
         let deviceSection = new PopupMenu.PopupMenuSection();
         menu.addMenuItem(deviceSection);
-        this._deviceList = new KeyedList(deviceSection,
+        this._deviceList = new KeyedList.KeyedList(deviceSection,
                                          entry => new DeviceRow(entry.model),
                                          (row, entry) => row.update(entry.model));
 
@@ -1316,7 +1264,7 @@ class MenuPresenter {
          */
         let listSection = new PopupMenu.PopupMenuSection();
         this._sensorGroup.menu.addMenuItem(listSection);
-        this._sensorList = new KeyedList(listSection,
+        this._sensorList = new KeyedList.KeyedList(listSection,
                                          entry => entry.heading
                                              ? this._createHeading(entry.label)
                                              : new InfoRow(entry.label, entry.value),
