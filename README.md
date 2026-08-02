@@ -324,8 +324,8 @@ settings.
   starts using something of Cinnamon's that a 5.4 desktop might not have had,
   that call is looked up in the 5.4.0 sources before the change lands. Those
   are the ones named below; the rest of what an applet touches — a menu item,
-  a separator, spawning a command — is older than any version this supports
-  and is not tracked here.
+  a separator, an icon by name — is older than any version this supports and
+  is not tracked here.
 
   The xlet `require()` loader. `PopupMenuSection` and the fact that its actor
   *is* its box, which is what lets the three menu columns sit side by side.
@@ -333,23 +333,25 @@ settings.
   override so their rows line up with themselves and not with the whole menu —
   and which the segmented profile control and the note lines override for the
   opposite reason, so that a row spanning every column does not set the width
-  of the first one. `PopupSwitchMenuItem`, `PopupSliderMenuItem`,
-  `PopupIconMenuItem`. `PopupBaseMenuItem`'s `{ activate: false, hover:
+  of the first one. `PopupSwitchMenuItem` and `PopupSliderMenuItem`.
+  `PopupBaseMenuItem`'s `{ activate: false, hover:
   false }`, which is how a row of buttons takes key focus without being a menu
   entry itself. `St.Button` and its `clicked`. `St.BoxLayout.add` with the
   `expand`, `x_fill` and `y_align` child properties. `addActor`, `removeActor`,
   `setShowDot`, `addSettingsAction`. Class-based applets, `AllowedLayout`,
-  `set_show_label_in_vertical_panels`, `set_applet_icon_path`,
-  `AppletSettings.bind`, `Util.spawnCommandLine`. `Tooltips.Tooltip` with its
+  `set_show_label_in_vertical_panels`, `set_applet_icon_path` and
+  `AppletSettings.bind`. `Tooltips.Tooltip` with its
   `show` and `visible`. `keybindingManager.addHotKey`, `notify`,
   `notifyError` and `criticalNotify`. `Main.layoutManager`'s
   `monitors-changed`, which is when the monitor sliders are looked for again.
   And the `=` operator in a settings-schema `dependency`. All of them are in
   5.4.0.
 
-  Two things the applet leans on are not Cinnamon's at all and are older than
+  Three things the applet leans on are not Cinnamon's at all and are older than
   any of this: `Gio.File.load_contents_async`, which takes the sensor reads off
-  the compositor's thread, and `Gtk.IconTheme`'s `changed` signal.
+  the compositor's thread, `Gtk.IconTheme`'s `changed` signal, and
+  `Pango.EllipsizeMode`, which is what lets a monitor's name give way when its
+  brightness row is wider than the column.
 - UPower, for battery and device data, through `gir1.2-upowerglib-1.0`
 - `xapp-symbolic-icons`, optional in the sense that the code copes without it:
   device and battery icons prefer that set, and where it is absent the applet
