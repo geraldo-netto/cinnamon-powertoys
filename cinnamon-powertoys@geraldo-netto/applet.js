@@ -707,6 +707,20 @@ class MenuPresenter {
         this._build(capabilities || {}, backlights || {});
     }
 
+    /*
+     * One panel per subject.
+     *
+     * The menu used to be one column of everything: the summary, three
+     * sliders, the profiles, the chargers, the devices, then two submenus and
+     * a third for the charge limit. Fifteen rows at rest, and the boundaries
+     * between what belongs with what were separators and nothing else.
+     *
+     * Now there are three panels - Performance, Devices, Sensors - and each
+     * carries a summary of itself in its own label, so the menu at rest reads
+     * as three lines that answer the three questions this applet exists for.
+     * The sliders stay outside because a slider you have to open a panel to
+     * reach is a slider nobody uses.
+     */
     _build(capabilities, backlights) {
         this._summary = new InfoRow("", "");
         this._summary.actor.add_style_class_name("powertoys-summary");
@@ -726,57 +740,11 @@ class MenuPresenter {
             this._addBacklight(_("Keyboard backlight"), "keyboard-brightness",
                                backlights.keyboard);
 
-        let profileSection = new PopupMenu.PopupMenuSection();
-        this._menu.addMenuItem(profileSection);
-        this._profileGroup = new SelectorGroup(profileSection, Format.profileLabel,
-                                               value => this._actions.setProfile(value), "");
-
-        this._degradedRow = new InfoRow(_("Performance limited"), "");
-        this._degradedRow.setWarning(true);
-        this._degradedRow.actor.hide();
-        this._menu.addMenuItem(this._degradedRow);
-
-        this._deviceSeparator = new PopupMenu.PopupSeparatorMenuItem();
-        this._menu.addMenuItem(this._deviceSeparator);
-
-        /* The charger goes above the batteries: whether it is plugged in is
-         * the first thing anyone opening this menu on a laptop wants. */
-        let lineSection = new PopupMenu.PopupMenuSection();
-        this._menu.addMenuItem(lineSection);
-        this._lineList = new KeyedList(lineSection,
-                                       entry => new InfoRow(entry.label, entry.value),
-                                       (row, entry) => {
-                                           row.setLabel(entry.label);
-                                           row.setValue(entry.value);
-                                       });
-
-        let deviceSection = new PopupMenu.PopupMenuSection();
-        this._menu.addMenuItem(deviceSection);
-        this._deviceList = new KeyedList(deviceSection,
-                                         entry => new DeviceRow(entry.model),
-                                         (row, entry) => row.update(entry.model));
-
         this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        this._cpuMenu = new PopupMenu.PopupSubMenuMenuItem(_("Processor"));
-        this._menu.addMenuItem(this._cpuMenu);
-        this._buildCpuSection();
-
-        this._sensorMenu = new PopupMenu.PopupSubMenuMenuItem(_("Sensors"));
-        this._menu.addMenuItem(this._sensorMenu);
-        this._sensorList = new KeyedList(this._sensorMenu.menu,
-                                         entry => new InfoRow(entry.label, entry.value),
-                                         (row, entry) => {
-                                             row.setValue(entry.value);
-                                             row.setWarning(entry.warning);
-                                         });
-
-        if (capabilities.chargeLimit) {
-            this._chargeMenu = new PopupMenu.PopupSubMenuMenuItem(_("Battery charge limit"));
-            this._menu.addMenuItem(this._chargeMenu);
-            this._chargeGroup = new SelectorGroup(this._chargeMenu.menu, limit => limit + "%",
-                                                  value => this._actions.setChargeLimit(value), "");
-        }
+        this._buildPerformancePanel();
+        this._buildDevicePanel(capabilities);
+        this._buildSensorPanel();
 
         this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this._menu.addSettingsAction(_("System power settings"), "power");
@@ -796,15 +764,92 @@ class MenuPresenter {
         }
     }
 
+    /*
+     * Everything about how hard the machine is being asked to work: which
+     * power profile is in force, and the processor settings underneath it.
+     * They belong together because they are two levels of the same decision -
+     * the profile is what most people will touch, the governor and the energy
+     * preference are what it sets.
+     */
+    _buildPerformancePanel() {
+        this._performanceMenu = new PopupMenu.PopupSubMenuMenuItem(_("Performance"));
+        this._menu.addMenuItem(this._performanceMenu);
+        let menu = this._performanceMenu.menu;
+
+        let profileSection = new PopupMenu.PopupMenuSection();
+        menu.addMenuItem(profileSection);
+        this._profileGroup = new SelectorGroup(profileSection, Format.profileLabel,
+                                               value => this._actions.setProfile(value),
+                                               _("Power profile"));
+
+        this._degradedRow = new InfoRow(_("Performance limited"), "");
+        this._degradedRow.setWarning(true);
+        this._degradedRow.actor.hide();
+        menu.addMenuItem(this._degradedRow);
+
+        this._cpuSection = new PopupMenu.PopupMenuSection();
+        menu.addMenuItem(this._cpuSection);
+        this._buildCpuSection(this._cpuSection);
+    }
+
+    /*
+     * Anything with a charge in it, and the one setting that governs how full
+     * a battery is allowed to get.
+     */
+    _buildDevicePanel(capabilities) {
+        this._deviceMenu = new PopupMenu.PopupSubMenuMenuItem(_("Batteries and devices"));
+        this._menu.addMenuItem(this._deviceMenu);
+        let menu = this._deviceMenu.menu;
+
+        /* The charger goes above the batteries: whether it is plugged in is
+         * the first thing anyone opening this on a laptop wants. */
+        let lineSection = new PopupMenu.PopupMenuSection();
+        menu.addMenuItem(lineSection);
+        this._lineList = new KeyedList(lineSection,
+                                       entry => new InfoRow(entry.label, entry.value),
+                                       (row, entry) => {
+                                           row.setLabel(entry.label);
+                                           row.setValue(entry.value);
+                                       });
+
+        let deviceSection = new PopupMenu.PopupMenuSection();
+        menu.addMenuItem(deviceSection);
+        this._deviceList = new KeyedList(deviceSection,
+                                         entry => new DeviceRow(entry.model),
+                                         (row, entry) => row.update(entry.model));
+
+        /* An empty panel is indistinguishable from a broken one. Say which. */
+        this._noDevicesRow = new InfoRow(_("Nothing with a battery is connected"), "");
+        this._noDevicesRow.actor.hide();
+        menu.addMenuItem(this._noDevicesRow);
+
+        if (capabilities.chargeLimit) {
+            let chargeSection = new PopupMenu.PopupMenuSection();
+            menu.addMenuItem(chargeSection);
+            this._chargeGroup = new SelectorGroup(chargeSection, limit => limit + "%",
+                                                  value => this._actions.setChargeLimit(value),
+                                                  _("Charge limit"));
+        }
+    }
+
+    _buildSensorPanel() {
+        this._sensorMenu = new PopupMenu.PopupSubMenuMenuItem(_("Sensors"));
+        this._menu.addMenuItem(this._sensorMenu);
+        this._sensorList = new KeyedList(this._sensorMenu.menu,
+                                         entry => new InfoRow(entry.label, entry.value),
+                                         (row, entry) => {
+                                             row.setValue(entry.value);
+                                             row.setWarning(entry.warning);
+                                         });
+    }
+
     _addBacklight(label, iconName, control) {
         let slider = new BacklightSlider(label, iconName, control);
         this._menu.addMenuItem(slider);
         this._backlightSliders.push(slider);
     }
 
-    _buildCpuSection() {
-        let menu = this._cpuMenu.menu;
-
+    _buildCpuSection(menu) {
         this._cpuFreqRow = new InfoRow(_("Frequency"), "");
         this._cpuTempRow = new InfoRow(_("Temperature"), "");
         this._cpuDriverRow = new InfoRow(_("Scaling driver"), "");
@@ -827,7 +872,7 @@ class MenuPresenter {
 
     /* Submenus start folded; "expand-sections" asks for them open instead. */
     applyExpandState(expand) {
-        for (let item of [this._cpuMenu, this._sensorMenu, this._chargeMenu]) {
+        for (let item of [this._performanceMenu, this._deviceMenu, this._sensorMenu]) {
             if (!item)
                 continue;
             if (expand)
@@ -872,6 +917,11 @@ class MenuPresenter {
         let show = options.showProfiles && data.profile.available && data.profile.list.length > 0;
         this._profileGroup.sync(show ? data.profile.list : [], data.profile.active);
 
+        this._performanceMenu.actor.visible = show || (options.showCpu && data.cpu.available);
+        this._setPanelSummary(this._performanceMenu, _("Performance"),
+                              show ? Format.profileLabel(data.profile.active)
+                                   : Format.governorLabel(data.cpu.governor));
+
         let notes = [];
         if (data.profile.degraded)
             notes.push(data.profile.degraded.replace(/-/g, " "));
@@ -891,7 +941,7 @@ class MenuPresenter {
         let lines = options.showDevices ? data.lines : [];
         let devices = options.showDevices ? data.devices : [];
 
-        this._deviceSeparator.actor.visible = lines.length > 0 || devices.length > 0;
+        this._deviceMenu.actor.visible = options.showDevices;
         this._lineList.sync(lines.map(device => ({
             key: device.path,
             label: Format.deviceTitle(device),
@@ -901,11 +951,36 @@ class MenuPresenter {
             key: device.path,
             model: Device.viewModel(device, options),
         })));
+
+        /*
+         * An empty panel and a broken one look the same, and on a desktop
+         * whose bluetooth mouse happens to be switched off this panel is
+         * empty for a perfectly good reason. Say which it is.
+         */
+        this._noDevicesRow.actor.visible = lines.length === 0 && devices.length === 0;
+
+        this._setPanelSummary(this._deviceMenu, _("Batteries and devices"),
+                              this._deviceSummary(data, devices, lines));
+    }
+
+    _deviceSummary(data, devices, lines) {
+        if (data.primary && data.primary.percentage !== null)
+            return Format.percent(data.primary.percentage);
+        let counted = devices.length + lines.length;
+        return counted === 0 ? _("none") : String(counted);
+    }
+
+    /*
+     * A panel says what is inside it without being opened. Three closed rows
+     * that each answer a question beats three that each promise an answer.
+     */
+    _setPanelSummary(item, title, value) {
+        item.label.set_text(value ? title + "   " + value : title);
     }
 
     _updateCpu(data, options) {
         let show = options.showCpu && data.cpu.available;
-        this._cpuMenu.actor.visible = show;
+        this._cpuSection.actor.visible = show;
         if (!show)
             return;
 
@@ -984,6 +1059,10 @@ class MenuPresenter {
         if (!options.showSensors)
             return;
 
+        this._setPanelSummary(this._sensorMenu, _("Sensors"),
+                              data.cpuTemperature === null ? ""
+                              : Format.temperature(data.cpuTemperature, options.tempUnit, 1));
+
         let all = options.showAllSensors;
         let entries = [].concat(
             this._sensorEntries(data.temperatures, all, sensor => sensor.celsius !== null,
@@ -999,15 +1078,12 @@ class MenuPresenter {
         this._sensorList.sync(entries);
     }
 
+    /* A group inside the devices panel now, so it is beside the battery it
+     * applies to rather than being a submenu of its own. */
     _updateCharge(data, options) {
-        if (!this._chargeMenu)
+        if (!this._chargeGroup)
             return;
-        this._chargeMenu.actor.visible = options.privileged;
-        if (!options.privileged)
-            return;
-        this._chargeMenu.label.set_text(_("Battery charge limit") +
-                                        (data.chargeLimit !== null ? "  " + data.chargeLimit + "%" : ""));
-        this._chargeGroup.sync(CHARGE_LIMITS, data.chargeLimit);
+        this._chargeGroup.sync(options.privileged ? CHARGE_LIMITS : [], data.chargeLimit);
     }
 }
 

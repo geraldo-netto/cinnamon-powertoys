@@ -3,6 +3,10 @@
 A Cinnamon applet that puts a single power icon in the panel and, from one
 menu, monitors and configures power management for the whole machine.
 
+The menu is three panels — **Performance**, **Batteries and devices**,
+**Sensors** — and each says what is inside it without being opened: the active
+profile, the battery level, the processor temperature.
+
 ![The menu](docs/menu.png)
 
 The panel item, between the other applets:
