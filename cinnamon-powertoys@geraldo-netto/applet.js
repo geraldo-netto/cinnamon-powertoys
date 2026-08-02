@@ -901,8 +901,12 @@ class MenuPresenter {
         let listSection = new PopupMenu.PopupMenuSection();
         this._sensorMenu.menu.addMenuItem(listSection);
         this._sensorList = new KeyedList(listSection,
-                                         entry => new InfoRow(entry.label, entry.value),
+                                         entry => entry.heading
+                                             ? this._createHeading(entry.label)
+                                             : new InfoRow(entry.label, entry.value),
                                          (row, entry) => {
+                                             if (entry.heading)
+                                                 return;
                                              row.setValue(entry.value);
                                              row.setWarning(entry.warning);
                                          });
@@ -918,6 +922,12 @@ class MenuPresenter {
     syncBacklights() {
         for (let slider of this._backlightSliders)
             slider.sync();
+    }
+
+    _createHeading(text) {
+        let heading = new PopupMenu.PopupMenuItem(text, { reactive: false });
+        heading.actor.add_style_class_name("powertoys-group-title");
+        return heading;
     }
 
     _addBacklight(label, iconName, control) {
@@ -1106,6 +1116,8 @@ class MenuPresenter {
     _temperatureEntry(sensor, options) {
         return {
             key: this._entryKey(sensor),
+            kind: sensor.kind,
+            measure: sensor.measure,
             label: sensor.label,
             value: Format.temperature(sensor.celsius, options.tempUnit, 1),
             warning: sensor.critical !== null && sensor.celsius >= sensor.critical - 5,
@@ -1113,25 +1125,66 @@ class MenuPresenter {
     }
 
     _fanEntry(fan) {
-        return { key: this._entryKey(fan), label: fan.label,
-                 value: Format.rpm(fan.rpm), warning: false };
+        return { key: this._entryKey(fan), kind: fan.kind, measure: fan.measure,
+                 label: fan.label, value: Format.rpm(fan.rpm), warning: false };
     }
 
     _powerEntry(meter) {
-        return { key: this._entryKey(meter), label: meter.label,
-                 value: Format.watts(meter.watts), warning: false };
+        return { key: this._entryKey(meter), kind: meter.kind, measure: meter.measure,
+                 label: meter.label, value: Format.watts(meter.watts), warning: false };
     }
 
     /*
      * One kind of reading turned into menu entries: drop what cannot be read,
-     * drop the uninteresting kinds unless the menu was asked for all of them,
-     * then order them the way the menu lists sensors.
+     * drop the uninteresting kinds unless the menu was asked for all of them.
      */
     _sensorEntries(readings, showAll, isReadable, toEntry) {
         let usable = readings.filter(isReadable);
         if (!showAll)
             usable = usable.filter(reading => Sensors.isPrimaryKind(reading.kind));
-        return usable.sort(Sensors.bySensorOrder).map(toEntry);
+        return usable.map(toEntry);
+    }
+
+    /*
+     * Everything a card or a chip has to say, together.
+     *
+     * Kind first, so the processor's readings are in one place and the
+     * graphics card's in another; then temperature, fan, power within a kind,
+     * because that is the order of interest; then by name. Sorting the three
+     * measures separately would have put a card's fan speed several rows
+     * below its temperature with another chip's readings in between.
+     */
+    _bySensorGroup(a, b) {
+        let byKind = Sensors.kindRank(a.kind) - Sensors.kindRank(b.kind);
+        if (byKind !== 0)
+            return byKind;
+        const ORDER = ["temperature", "fan", "power"];
+        let byMeasure = ORDER.indexOf(a.measure) - ORDER.indexOf(b.measure);
+        if (byMeasure !== 0)
+            return byMeasure;
+        return a.label === b.label ? 0 : (a.label < b.label ? -1 : 1);
+    }
+
+    /*
+     * A heading wherever the kind changes.
+     *
+     * With every sensor shown this list is nineteen rows on the machine it
+     * was written on, and nineteen undifferentiated rows is a wall. Four
+     * headed groups of two to seven is a list. The names come from the kind
+     * table, which has carried them since PT-40 without anything rendering
+     * them.
+     */
+    _withHeadings(entries) {
+        let out = [];
+        let kind = null;
+        for (let entry of entries) {
+            if (entry.kind !== kind) {
+                kind = entry.kind;
+                out.push({ key: "heading:" + kind, heading: true, label: Sensors.kindLabel(kind) });
+            }
+            out.push(entry);
+        }
+        return out;
     }
 
     _updateSensors(data, options) {
@@ -1156,10 +1209,14 @@ class MenuPresenter {
             this._sensorEntries(data.powers, all, () => true,
                                 meter => this._powerEntry(meter)));
 
-        if (entries.length === 0)
-            entries.push({ key: "empty", label: _("No sensors found"), value: "", warning: false });
+        if (entries.length === 0) {
+            this._sensorList.sync([{ key: "empty", label: _("No sensors found"),
+                                     value: "", warning: false }]);
+            return;
+        }
 
-        this._sensorList.sync(entries);
+        entries.sort((x, y) => this._bySensorGroup(x, y));
+        this._sensorList.sync(this._withHeadings(entries));
     }
 
     /* A group inside the devices panel now, so it is beside the battery it
