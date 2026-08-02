@@ -7,6 +7,11 @@
     the hub are dark enough to read against the band whatever the panel
     behind it is doing.
 
+    The dial face inside the ring is filled rather than left transparent. The
+    needle is dark, and where it crosses the middle of the dial there is
+    nothing behind it but the panel - which on Mint's default theme is black,
+    so a dark needle simply vanished there.
+
     Performance is this same gauge in red with the needle swung round to the
     right; keeping the two shapes identical is what makes the colour and the
     angle the thing you notice.
@@ -15,6 +20,7 @@
         fill="#fdd835"/>
   <path d="M1.4 12.4A6.6 6.6 0 0 1 4.5 6.8L6 9.4A3.6 3.6 0 0 0 4.4 12.4Z"
         fill="#f9a825"/>
-  <path d="M6.5 12.4 8 4.9 9.5 12.4Z" fill="#37474f"/>
+  <path d="M4.4 12.4A3.6 3.6 0 0 1 11.6 12.4Z" fill="#eceff1"/>
+  <path d="M6.5 12.4 8 6.1 9.5 12.4Z" fill="#37474f"/>
   <circle cx="8" cy="12.4" r="1.8" fill="#37474f"/>
 </svg>

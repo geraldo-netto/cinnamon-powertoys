@@ -2,6 +2,9 @@
   <!--
     Performance: the balanced gauge in red, with the needle swung right.
 
+    The dial face is filled for the same reason it is on balanced: a dark
+    needle crossing a transparent middle disappears against a black panel.
+
     Deliberately the same shape and the same geometry as powertoys-balanced.
     Two profiles that differ by degree should differ by degree in the panel
     too: same dial, further round, hotter colour. Drawing them as unrelated
@@ -12,8 +15,9 @@
         fill="#e53935"/>
   <path d="M1.4 12.4A6.6 6.6 0 0 1 4.5 6.8L6 9.4A3.6 3.6 0 0 0 4.4 12.4Z"
         fill="#b71c1c"/>
+  <path d="M4.4 12.4A3.6 3.6 0 0 1 11.6 12.4Z" fill="#eceff1"/>
   <g transform="rotate(52 8 12.4)">
-    <path d="M6.5 12.4 8 4.9 9.5 12.4Z" fill="#37474f"/>
+    <path d="M6.5 12.4 8 6.1 9.5 12.4Z" fill="#37474f"/>
   </g>
   <circle cx="8" cy="12.4" r="1.8" fill="#37474f"/>
 </svg>
