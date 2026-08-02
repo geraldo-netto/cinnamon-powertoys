@@ -1082,34 +1082,25 @@ class MenuPresenter {
     }
 
     /*
-     * The columns made the same width, and ruled apart.
+     * The rule between the columns, on every visible one but the leftmost.
      *
-     * Equal widths cannot be asked for in the stylesheet. A column sizes to
-     * its own content, and what that content is depends on the machine, on
-     * the theme's font and on the translation, so the number cannot be
-     * written down anywhere - it has to be measured. The widest is measured
-     * and the others are given it as a floor, which is a floor rather than a
-     * width so that nothing can ever be clipped by it.
+     * It is applied here rather than styled because St has no :first-child,
+     * and because which panel is leftmost is not fixed: a machine with no
+     * profiles and no processor controls, or a user who has switched the
+     * devices off, leaves a different one at the edge.
      *
-     * The measurement clears the last one first, or each would return the
-     * one before it and the columns would only ever grow.
-     *
-     * The rule between them is applied here rather than styled because St has
-     * no :first-child, and because which panel is leftmost is not fixed: a
-     * machine with no profiles and no processor controls, or a user who has
-     * switched the devices off, leaves a different one at the edge.
+     * The columns are not made equal. That was tried, by measuring the widest
+     * and giving it to the others as a floor, and it cannot be done this way:
+     * Clutter caches a preferred size until the next layout pass, so clearing
+     * the last floor and measuring again in the same turn reads back the
+     * floor rather than the content, and each poll set a floor a little wider
+     * than the last. Every column ended up as wide as the widest thing in the
+     * menu, which is what the measuring was meant to avoid. A column is
+     * allowed its own width now, with a floor from the stylesheet so that a
+     * short one does not look starved.
      */
     _syncColumns() {
         let visible = this._panels.filter(panel => panel.actor.visible);
-
-        let widest = 0;
-        for (let panel of visible) {
-            panel.actor.set_style(null);
-            widest = Math.max(widest, panel.actor.get_preferred_width(-1)[1]);
-        }
-        for (let panel of visible)
-            panel.actor.set_style("min-width: " + Math.ceil(widest) + "px;");
-
         visible.forEach((panel, index) => {
             if (index === 0)
                 panel.actor.remove_style_class_name("powertoys-panel-divided");
