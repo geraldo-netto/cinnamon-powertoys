@@ -252,12 +252,25 @@ cases["the interesting kinds are the ones the menu keeps"] = function () {
         Harness.equal(Sensors.isPrimaryKind(kind), false, kind);
 };
 
-cases["sensors sort by kind, then by name"] = function () {
+cases["sensors sort by kind, then by measure, then by name"] = function () {
     let list = [{ kind: "disk", label: "b" }, { kind: "cpu", label: "z" },
                 { kind: "cpu", label: "a" }, { kind: "nonsense", label: "a" }];
     list.sort(Sensors.bySensorOrder);
     Harness.deepEqual(list.map(e => e.kind + ":" + e.label),
-                      ["cpu:a", "cpu:z", "disk:b", "nonsense:a"], "order");
+                      ["cpu:a", "cpu:z", "disk:b", "nonsense:a"],
+                      "with no measure to compare, kind then name");
+
+    /* A card's fan belongs under its temperature, not several rows below it
+     * with another chip's readings in between. */
+    let card = [{ kind: "gpu", measure: "power", label: "amdgpu PPT" },
+                { kind: "gpu", measure: "fan", label: "amdgpu" },
+                { kind: "cpu", measure: "temperature", label: "k10temp Tctl" },
+                { kind: "gpu", measure: "temperature", label: "amdgpu edge" }];
+    card.sort(Sensors.bySensorOrder);
+    Harness.deepEqual(card.map(e => e.measure + ":" + e.label),
+                      ["temperature:k10temp Tctl", "temperature:amdgpu edge",
+                       "fan:amdgpu", "power:amdgpu PPT"],
+                      "the processor first, then everything the card says");
 };
 
 /* ---------------------------------------------------------------- */

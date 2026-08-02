@@ -23,7 +23,6 @@ that work rather than found surviving from before it.
 | PT-86 | low | XS | `install.sh` says "Reloaded the running applet, no restart needed", which is not true of `stylesheet.css`. Cinnamon keeps the old stylesheet loaded across an xlet reload, so a rule that was changed or deleted goes on applying until the theme is reloaded — verified while working on PT-63, where deleted `font-weight: bold` rules kept taking effect. Either reload the theme too or say which changes need more than a reload. |
 | PT-87 | low | XS | `KeyedList.sync()` decides whether to rebuild by joining the entry keys with commas, so two different sets whose joined form is identical read as unchanged and the rows are never rebuilt. No key contains a comma today, which is the only reason this is not a bug; it is a trap for whoever adds the next one. |
 | PT-88 | low | XS | `data.temperatureSensorId` is computed on every reading and read nowhere. |
-| PT-89 | low | XS | `Sensors.bySensorOrder` has no caller outside the case that tests it — the menu sorts with `MenuPresenter._bySensorGroup` instead. Either the menu should use it or it should go. |
 
 ## Documentation drift
 

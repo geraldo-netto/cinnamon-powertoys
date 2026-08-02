@@ -1303,26 +1303,6 @@ class MenuPresenter {
     }
 
     /*
-     * Everything a card or a chip has to say, together.
-     *
-     * Kind first, so the processor's readings are in one place and the
-     * graphics card's in another; then temperature, fan, power within a kind,
-     * because that is the order of interest; then by name. Sorting the three
-     * measures separately would have put a card's fan speed several rows
-     * below its temperature with another chip's readings in between.
-     */
-    _bySensorGroup(a, b) {
-        let byKind = Sensors.kindRank(a.kind) - Sensors.kindRank(b.kind);
-        if (byKind !== 0)
-            return byKind;
-        const ORDER = ["temperature", "fan", "power"];
-        let byMeasure = ORDER.indexOf(a.measure) - ORDER.indexOf(b.measure);
-        if (byMeasure !== 0)
-            return byMeasure;
-        return a.label === b.label ? 0 : (a.label < b.label ? -1 : 1);
-    }
-
-    /*
      * A heading wherever the kind changes.
      *
      * With every sensor shown this list is nineteen rows on the machine it
@@ -1372,7 +1352,7 @@ class MenuPresenter {
             return;
         }
 
-        entries.sort((x, y) => this._bySensorGroup(x, y));
+        entries.sort(Sensors.bySensorOrder);
         this._sensorList.sync(this._withHeadings(entries));
     }
 

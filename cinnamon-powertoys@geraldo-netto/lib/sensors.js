@@ -94,12 +94,28 @@ function sensorMatches(sensor, fragment) {
            (sensor.chip || "").toLowerCase().indexOf(wanted) >= 0;
 }
 
-/* Temperatures, fans and meters listed together, interesting kinds first. */
+/*
+ * Everything one chip has to say, together.
+ *
+ * Kind first, so the processor's readings are in one place and the graphics
+ * card's in another; then temperature, fan, power within a kind, because that
+ * is the order of interest; then by name. Sorting the three measures
+ * separately would have put a card's fan speed several rows below its
+ * temperature with another chip's readings in between.
+ *
+ * A reading with no measure - which is anything sorted before the three lists
+ * are joined - falls through to the name, which is what this did before the
+ * measure was part of it.
+ */
+const MEASURE_ORDER = ["temperature", "fan", "power"];
+
 function bySensorOrder(a, b) {
-    let rankA = kindRank(a.kind);
-    let rankB = kindRank(b.kind);
-    if (rankA !== rankB)
-        return rankA - rankB;
+    let byKind = kindRank(a.kind) - kindRank(b.kind);
+    if (byKind !== 0)
+        return byKind;
+    let byMeasure = MEASURE_ORDER.indexOf(a.measure) - MEASURE_ORDER.indexOf(b.measure);
+    if (byMeasure !== 0)
+        return byMeasure;
     if (a.label === b.label)
         return 0;
     return a.label < b.label ? -1 : 1;
