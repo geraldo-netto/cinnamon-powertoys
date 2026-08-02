@@ -163,6 +163,20 @@ cinnamon-powertoys@geraldo-netto/
 └── icons/
 ```
 
+## Tests
+
+```sh
+make check            # parse check, tests, helper, JSON, polkit action
+cjs tests/run.js      # tests only
+cjs tests/run.js io   # only cases whose name contains "io"
+```
+
+`tests/harness.js` loads the libraries exactly as Cinnamon does — strict mode,
+the same export collection, a `require()` bound to the xlet directory — so a
+test exercises what the shell actually runs. Cases live in `tests/cases/` and
+are plain objects of named functions that throw; there is no registration and
+no ordering.
+
 ## License
 
 MIT, see [LICENSE](LICENSE).

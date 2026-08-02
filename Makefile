@@ -20,7 +20,8 @@ help:
 	@echo "make install-policy   - (root) one password prompt per few minutes"
 	@echo "                        instead of one per change; see README"
 	@echo "make uninstall-policy - (root) remove it and go back to asking"
-	@echo "make check            - syntax check the JavaScript, helper, JSON and policy"
+	@echo "make check            - run the tests and check the JavaScript, helper,"
+	@echo "                        JSON and policy"
 	@echo "make pot              - regenerate the translation template"
 	@echo "make restart          - restart Cinnamon"
 
@@ -62,6 +63,7 @@ uninstall-policy:
 check:
 	@command -v cjs >/dev/null 2>&1 || { echo "cjs not found, install the cjs package"; exit 1; }
 	@cjs tools/parse-check.js $(UUID)/applet.js $(UUID)/lib/*.js
+	@cjs tests/run.js
 	@sh -n $(UUID)/powertoys-helper && echo "helper ok    $(UUID)/powertoys-helper"
 	@python3 -c "import json; [json.load(open(f)) for f in ['$(UUID)/metadata.json','$(UUID)/settings-schema.json']]" \
 		&& echo "json ok      $(UUID)/metadata.json $(UUID)/settings-schema.json"
