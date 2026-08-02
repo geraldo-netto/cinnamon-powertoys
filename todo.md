@@ -28,7 +28,6 @@ own — items that are genuinely a single change were left whole.
 | PT-21a | medium | XS | Run `cinnamon-xlet-makepot`, commit `po/cinnamon-powertoys@geraldo-netto.pot`, and document how to start a locale from it. |
 | PT-21b | medium | S | Nothing turns a `.po` into an installed `.mo`: both `install.sh` and `make install` copy the applet directory only, while the applet binds its text domain to `~/.local/share/locale` ([applet.js:33](cinnamon-powertoys@geraldo-netto/applet.js#L33)). Add `msgfmt` to the install path so a translation actually takes effect. |
 | PT-22 | medium | M | No polkit policy, so every governor, energy-preference, boost or charge-limit change asks for the password again. |
-| PT-22a | medium | S | Write the polkit action for the helper with `auth_admin_keep`, so one authentication covers a run of changes. |
 | PT-22b | medium | XS | Install and remove it from documented root targets (`make install-policy` / `make uninstall-policy`) under `/usr/share/polkit-1/actions`, leaving the current per-call prompt as the fallback when it is absent. |
 | PT-22c | low | XS | README section stating exactly what the action grants, and how to revoke it. |
 | PT-23 | medium | S | No CI. A small workflow running `sh -n` on the helper, JSON validation on the two schema files and the `cjs` parse check on the five JavaScript files would catch every class of error that showed up during development. |

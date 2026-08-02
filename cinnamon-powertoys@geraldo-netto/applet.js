@@ -54,6 +54,20 @@ const UPDeviceState = UPowerGlib.DeviceState;
 const UPDeviceLevel = UPowerGlib.DeviceLevel;
 
 const HELPER = "powertoys-helper";
+
+/*
+ * Where `make install-policy` puts a root owned copy of the helper, and the
+ * path the polkit action names. When it is there, one authentication covers a
+ * run of changes; when it is not, the applet runs its own copy and pkexec
+ * asks every time.
+ *
+ * The action deliberately does not name the copy inside the applet directory.
+ * That one lives under the user's home, and an authorisation that is kept for
+ * a few minutes must apply to a file its caller cannot rewrite in the
+ * meantime.
+ */
+const SYSTEM_HELPER = "/usr/local/lib/cinnamon-powertoys/powertoys-helper";
+
 const DEFAULT_ICON = "powertoys";
 /* pkexec exit codes: the dialog was closed, or authorisation was refused */
 const PKEXEC_DISMISSED = 126;
@@ -1453,12 +1467,16 @@ class PowerToysApplet extends Applet.TextIconApplet {
         if (!this.enablePrivilegedControls)
             return;
 
-        let helper = this.metadata.path + "/" + HELPER;
+        let helper = SYSTEM_HELPER;
         if (!this._backends.fileExists(helper)) {
-            Main.notifyError(_("Power Toys"), _("Helper script not found") + ": " + helper);
-            return;
+            helper = this.metadata.path + "/" + HELPER;
+            if (!this._backends.fileExists(helper)) {
+                Main.notifyError(_("Power Toys"), _("Helper script not found") + ": " + helper);
+                return;
+            }
+            /* Only ours is ours to repair; the system copy is root owned. */
+            this._ensureExecutable(helper);
         }
-        this._ensureExecutable(helper);
 
         let command = "pkexec " + GLib.shell_quote(helper) + " " +
                       args.map(argument => GLib.shell_quote(String(argument))).join(" ");

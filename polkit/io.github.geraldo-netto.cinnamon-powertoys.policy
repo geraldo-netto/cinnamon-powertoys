@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+
+<!--
+  Optional. Without this file every governor, energy preference, boost or
+  charge limit change asks for the administrator password again, because
+  pkexec falls back to org.freedesktop.policykit.exec, which never keeps an
+  authorisation. Changing three settings in one visit to the menu means three
+  password prompts.
+
+  With it, one authentication covers a run of changes: auth_admin_keep holds
+  for a few minutes, the same way a package manager session does.
+
+  The path below is deliberately not the helper inside the applet directory,
+  which lives under the user's home and which the user can rewrite. An action
+  that keeps its authorisation must point at a file its caller cannot change,
+  or those few minutes become a window in which anything running as that user
+  could put its own code in the helper and have pkexec run it as root without
+  asking again. `make install-policy` therefore installs a root owned copy of
+  the helper alongside this file, and the applet prefers that copy when it is
+  present.
+
+  To revoke: `make uninstall-policy`, or delete this file. The applet keeps
+  working and goes back to asking every time.
+-->
+
+<policyconfig>
+
+  <vendor>Cinnamon Power Toys</vendor>
+  <vendor_url>https://github.com/geraldo-netto/cinnamon-powertoys</vendor_url>
+
+  <action id="io.github.geraldo-netto.cinnamon-powertoys.apply">
+    <description>Apply a power setting</description>
+    <message>Authentication is required to change the CPU governor, energy performance preference, turbo boost, platform profile or battery charge limit.</message>
+    <icon_name>cs-power</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/lib/cinnamon-powertoys/powertoys-helper</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
+</policyconfig>
