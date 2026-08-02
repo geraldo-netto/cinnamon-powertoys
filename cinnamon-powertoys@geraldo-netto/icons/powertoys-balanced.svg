@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!--
+    Balanced: a gauge with the needle straight up.
+
+    A half ring rather than a stroked arc, because a filled band holds its
+    weight at 16 pixels where a thin line turns to grey mush. The needle and
+    the hub are dark enough to read against the band whatever the panel
+    behind it is doing.
+
+    Performance is this same gauge in red with the needle swung round to the
+    right; keeping the two shapes identical is what makes the colour and the
+    angle the thing you notice.
+  -->
+  <path d="M1.4 12.4A6.6 6.6 0 0 1 14.6 12.4H11.6A3.6 3.6 0 0 0 4.4 12.4Z"
+        fill="#fdd835"/>
+  <path d="M1.4 12.4A6.6 6.6 0 0 1 4.5 6.8L6 9.4A3.6 3.6 0 0 0 4.4 12.4Z"
+        fill="#f9a825"/>
+  <path d="M6.5 12.4 8 4.9 9.5 12.4Z" fill="#37474f"/>
+  <circle cx="8" cy="12.4" r="1.8" fill="#37474f"/>
+</svg>
