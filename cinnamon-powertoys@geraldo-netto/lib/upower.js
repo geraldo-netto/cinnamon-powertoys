@@ -26,28 +26,20 @@ const MANAGER_XML = '<node>\
     </method>\
     <signal name="DeviceAdded"><arg type="o" name="device"/></signal>\
     <signal name="DeviceRemoved"><arg type="o" name="device"/></signal>\
-    <property name="DaemonVersion" type="s" access="read"/>\
     <property name="OnBattery" type="b" access="read"/>\
-    <property name="LidIsClosed" type="b" access="read"/>\
-    <property name="LidIsPresent" type="b" access="read"/>\
 </interface>\
 </node>';
 
 const DEVICE_XML = '<node>\
 <interface name="org.freedesktop.UPower.Device">\
     <method name="Refresh"/>\
-    <property name="NativePath" type="s" access="read"/>\
     <property name="Vendor" type="s" access="read"/>\
     <property name="Model" type="s" access="read"/>\
-    <property name="Serial" type="s" access="read"/>\
-    <property name="UpdateTime" type="t" access="read"/>\
     <property name="Type" type="u" access="read"/>\
     <property name="PowerSupply" type="b" access="read"/>\
     <property name="Online" type="b" access="read"/>\
     <property name="Energy" type="d" access="read"/>\
-    <property name="EnergyEmpty" type="d" access="read"/>\
     <property name="EnergyFull" type="d" access="read"/>\
-    <property name="EnergyFullDesign" type="d" access="read"/>\
     <property name="EnergyRate" type="d" access="read"/>\
     <property name="Voltage" type="d" access="read"/>\
     <property name="ChargeCycles" type="i" access="read"/>\
@@ -57,10 +49,7 @@ const DEVICE_XML = '<node>\
     <property name="Percentage" type="d" access="read"/>\
     <property name="IsPresent" type="b" access="read"/>\
     <property name="State" type="u" access="read"/>\
-    <property name="IsRechargeable" type="b" access="read"/>\
     <property name="Capacity" type="d" access="read"/>\
-    <property name="Technology" type="u" access="read"/>\
-    <property name="WarningLevel" type="u" access="read"/>\
     <property name="BatteryLevel" type="u" access="read"/>\
     <property name="IconName" type="s" access="read"/>\
 </interface>\
@@ -201,18 +190,6 @@ var UPowerMonitor = class UPowerMonitor {
         return this._manager ? this._manager.OnBattery === true : false;
     }
 
-    get lidPresent() {
-        return this._manager ? this._manager.LidIsPresent === true : false;
-    }
-
-    get lidClosed() {
-        return this._manager ? this._manager.LidIsClosed === true : false;
-    }
-
-    get daemonVersion() {
-        return this._manager ? this._manager.DaemonVersion : null;
-    }
-
     /* Asks UPower to re-poll the batteries. Peripherals are left alone so we
      * do not keep waking up bluetooth devices in the background. */
     refresh() {
@@ -235,17 +212,13 @@ var UPowerMonitor = class UPowerMonitor {
             state: proxy.State === undefined ? UPDeviceState.UNKNOWN : proxy.State,
             vendor: proxy.Vendor || "",
             model: proxy.Model || "",
-            serial: proxy.Serial || "",
-            nativePath: proxy.NativePath || "",
             icon: proxy.IconName || "",
             powerSupply: proxy.PowerSupply === true,
             online: proxy.Online === true,
             present: proxy.IsPresent === true,
-            rechargeable: proxy.IsRechargeable === true,
             percentage: _number(proxy.Percentage),
             energy: _number(proxy.Energy),
             energyFull: _number(proxy.EnergyFull),
-            energyFullDesign: _number(proxy.EnergyFullDesign),
             energyRate: _number(proxy.EnergyRate),
             voltage: _number(proxy.Voltage),
             temperature: _number(proxy.Temperature),
@@ -253,9 +226,7 @@ var UPowerMonitor = class UPowerMonitor {
             cycles: _number(proxy.ChargeCycles),
             timeToEmpty: _number(proxy.TimeToEmpty),
             timeToFull: _number(proxy.TimeToFull),
-            warningLevel: proxy.WarningLevel,
             batteryLevel: proxy.BatteryLevel === undefined ? UPDeviceLevel.NONE : proxy.BatteryLevel,
-            updateTime: _number(proxy.UpdateTime),
         };
     }
 

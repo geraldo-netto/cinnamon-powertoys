@@ -132,13 +132,11 @@ cases["the averaged power node wins over the instantaneous one"] = function () {
     });
 };
 
-cases["a power cap node is recorded when the driver has one"] = function () {
+cases["a sensor carries no field nothing reads"] = function () {
     on("machine", function () {
-        let found = Sensors.discoverSensors();
-        Harness.equal(byId(found.powerMeters, "hwmon:hwmon3:power1").capPath,
-                      "/sys/class/hwmon/hwmon3/power1_cap", "the card has a cap");
-        Harness.equal(byId(found.powerMeters, "hwmon:hwmon4:power2").capPath, null,
-                      "the board chip has none");
+        let sensor = byId(Sensors.discoverSensors().powerMeters, "hwmon:hwmon3:power1");
+        Harness.equal(sensor.capPath, undefined,
+                      "the cap node was discovered for a feature that was never written");
     });
 };
 

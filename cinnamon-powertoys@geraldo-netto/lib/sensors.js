@@ -207,10 +207,6 @@ const NODE_KINDS = [
         skip: function (base, index, match) {
             return match[2] === "input" && IO.exists(base + "/power" + index + "_average");
         },
-        extra: function (base, index) {
-            let capPath = base + "/power" + index + "_cap";
-            return { capPath: IO.exists(capPath) ? capPath : null };
-        },
     },
 ];
 

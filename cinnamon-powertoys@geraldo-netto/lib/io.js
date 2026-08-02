@@ -21,10 +21,6 @@ function setRoot(path) {
     _root = path || "";
 }
 
-function getRoot() {
-    return _root;
-}
-
 function resolve(path) {
     return _root + path;
 }
@@ -80,17 +76,6 @@ function exists(path) {
 
 function isReadable(path) {
     return readString(path) !== null;
-}
-
-function isUserWritable(path) {
-    try {
-        let info = Gio.File.new_for_path(resolve(path)).query_info("access::can-write",
-                                                                   Gio.FileQueryInfoFlags.NONE,
-                                                                   null);
-        return info.get_attribute_boolean("access::can-write");
-    } catch (e) {
-        return false;
-    }
 }
 
 /* hwmon2 must sort before hwmon10 */

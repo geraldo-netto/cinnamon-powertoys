@@ -126,12 +126,6 @@ var PowerProfilesClient = class PowerProfilesClient {
         }).filter(name => typeof name === "string");
     }
 
-    get profileDetails() {
-        if (!this._proxy || !this._proxy.Profiles)
-            return [];
-        return this._proxy.Profiles.map(_unpackVariantDict);
-    }
-
     get active() {
         return this._proxy ? this._proxy.ActiveProfile : null;
     }

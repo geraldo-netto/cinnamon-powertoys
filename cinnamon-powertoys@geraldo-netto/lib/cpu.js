@@ -71,10 +71,6 @@ var CpuControl = class CpuControl {
         return this.policies.length > 0;
     }
 
-    get coreCount() {
-        return IO.listDir(CPU_DIR).filter(name => /^cpu\d+$/.test(name)).length;
-    }
-
     get governor() {
         return this.reference ? IO.readString(this.reference + "/scaling_governor") : null;
     }
