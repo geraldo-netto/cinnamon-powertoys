@@ -9,6 +9,8 @@
 const Gio = imports.gi.Gio;
 const UPowerGlib = imports.gi.UPowerGlib;
 
+const Format = require("./lib/format.js");
+
 var BUS_NAME = "org.freedesktop.UPower";
 var MANAGER_PATH = "/org/freedesktop/UPower";
 var DISPLAY_DEVICE_PATH = "/org/freedesktop/UPower/devices/DisplayDevice";
@@ -299,6 +301,72 @@ var UPowerMonitor = class UPowerMonitor {
         if (this._display.IsPresent !== true)
             return null;
         return this._describe(this._display, DISPLAY_DEVICE_PATH);
+    }
+
+    /*
+     * The device the panel speaks for. UPower composes one out of whatever
+     * batteries are fitted, but not on every machine and not always before
+     * the first poll, so the first system battery or UPS stands in.
+     */
+    _primaryDevice(devices) {
+        let display = this.displayDevice();
+        if (display)
+            return display;
+        for (let device of devices) {
+            if (device.powerSupply &&
+                (device.kind === UPDeviceKind.BATTERY || device.kind === UPDeviceKind.UPS))
+                return device;
+        }
+        return null;
+    }
+
+    /*
+     * What the batteries contribute to the sensor lists. A battery is a
+     * sensor as much as a hwmon chip is: it reports its own temperature, and
+     * the rate it is charging or draining at is a power meter.
+     */
+    _sensorReadings(devices) {
+        let temperatures = [];
+        let powers = [];
+
+        for (let device of devices) {
+            let title = Format.deviceTitle(device);
+            if (device.temperature)
+                temperatures.push({
+                    id: "upower:" + device.path,
+                    measure: "temperature",
+                    chip: title,
+                    kind: "battery",
+                    label: title,
+                    critical: null,
+                    celsius: device.temperature,
+                });
+            if (device.powerSupply && device.energyRate)
+                powers.push({
+                    id: "upower:" + device.path,
+                    measure: "power",
+                    kind: "battery",
+                    label: title,
+                    watts: device.energyRate,
+                    charging: device.state === UPDeviceState.CHARGING,
+                });
+        }
+
+        return { temperatures: temperatures, powers: powers };
+    }
+
+    /* Everything the applet takes from UPower, as of now. */
+    read() {
+        let devices = this.snapshot();
+        let readings = this._sensorReadings(devices);
+        return {
+            devices: devices,
+            primary: this._primaryDevice(devices),
+            onBattery: this.onBattery,
+            lineOnline: this.lineDevices().some(device => device.online),
+            temperatures: readings.temperatures,
+            powers: readings.powers,
+        };
     }
 
     destroy() {

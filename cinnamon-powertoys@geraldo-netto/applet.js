@@ -48,7 +48,6 @@ function _(text) {
     return Gettext.gettext(text);
 }
 
-const UPDeviceKind = UPowerGlib.DeviceKind;
 const UPDeviceState = UPowerGlib.DeviceState;
 const UPDeviceLevel = UPowerGlib.DeviceLevel;
 
@@ -531,46 +530,12 @@ class PowerToysApplet extends Applet.TextIconApplet {
     /* data collection                                                     */
 
     _collect() {
-        let devices = this._upower.available ? this._upower.snapshot() : [];
-        let primary = this._upower.available ? this._upower.displayDevice() : null;
-        if (!primary) {
-            for (let device of devices) {
-                if (device.powerSupply &&
-                    (device.kind === UPDeviceKind.BATTERY || device.kind === UPDeviceKind.UPS)) {
-                    primary = device;
-                    break;
-                }
-            }
-        }
-
+        let upower = this._upower.read();
         let readings = this._sensors.read();
-        let temperatures = readings.temperatures;
-        let fans = readings.fans;
-        let powers = readings.powers;
 
-        /* A battery is a sensor too: UPower reports its temperature and the
-         * rate it is charging or draining at. */
-        for (let device of devices) {
-            if (device.temperature)
-                temperatures.push({
-                    id: "upower:" + device.path,
-                    measure: "temperature",
-                    chip: Format.deviceTitle(device),
-                    kind: "battery",
-                    label: Format.deviceTitle(device),
-                    critical: null,
-                    celsius: device.temperature,
-                });
-            if (device.powerSupply && device.energyRate)
-                powers.push({
-                    id: "upower:" + device.path,
-                    measure: "power",
-                    label: Format.deviceTitle(device),
-                    kind: "battery",
-                    watts: device.energyRate,
-                    charging: device.state === UPDeviceState.CHARGING,
-                });
-        }
+        let temperatures = readings.temperatures.concat(upower.temperatures);
+        let fans = readings.fans;
+        let powers = readings.powers.concat(upower.powers);
 
         let cpu = this._cpu.snapshot();
 
@@ -599,10 +564,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
         }
 
         let data = {
-            devices: devices,
-            primary: primary,
-            onBattery: this._upower.onBattery,
-            lineOnline: this._upower.lineDevices().some(device => device.online),
+            devices: upower.devices,
+            primary: upower.primary,
+            onBattery: upower.onBattery,
+            lineOnline: upower.lineOnline,
             temperatures: temperatures,
             fans: fans,
             powers: powers,
