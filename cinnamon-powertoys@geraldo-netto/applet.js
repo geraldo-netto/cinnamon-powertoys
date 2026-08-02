@@ -1648,7 +1648,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             packageWatts: readings.packageWatts,
             cpu: this._cpu.snapshot(),
             profile: this._collectProfile(),
-            chargeLimit: this._chargeControl ? this._chargeControl.limit : null,
+            chargeLimit: this._readChargeLimit(),
             cpuTemperature: picked.sensor === null ? null : picked.sensor.celsius,
             /* which sensor that came from, and whether the user's hint is
              * the reason - false means they asked for one and it was not
@@ -1658,6 +1658,26 @@ class PowerToysApplet extends Applet.TextIconApplet {
             systemWatts: power.watts,
             systemWattsSource: power.source,
         };
+    }
+
+    /*
+     * The charge limit, read only when it could be looked at.
+     *
+     * It is deliberately a live read rather than something remembered: the
+     * firmware and other tools change it too. But it appears in one place -
+     * the device panel, behind the privileged controls - so with the menu shut
+     * or those controls off there is nobody it could be read for, and it was
+     * the last reading in the poll still being taken regardless.
+     *
+     * Opening the menu re-reads before anything is drawn, so what is on screen
+     * is never the value from the last time the menu happened to be open.
+     */
+    _readChargeLimit() {
+        if (!this._chargeControl || !this.enablePrivilegedControls)
+            return null;
+        if (!this.menu || !this.menu.isOpen)
+            return null;
+        return this._chargeControl.limit;
     }
 
     /*
