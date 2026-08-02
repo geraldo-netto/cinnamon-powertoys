@@ -33,8 +33,8 @@ const UUID = "cinnamon-powertoys@geraldo-netto";
  */
 const Cpu = require("./lib/cpu.js");
 const IO = require("./lib/io.js");
+const PowerSupply = require("./lib/power-supply.js");
 const Sensors = require("./lib/sensors.js");
-const Sysfs = require("./lib/sysfs.js");
 const UPower = require("./lib/upower.js");
 const Profiles = require("./lib/profiles.js");
 const Format = require("./lib/format.js");
@@ -96,8 +96,8 @@ function defaultBackends() {
         energyMeters: () => Sensors.discoverEnergyCounters()
             .map(counter => new Sensors.EnergyMeter(counter)),
         cpuControl: () => new Cpu.CpuControl(),
-        chargeControl: () => Sysfs.discoverChargeControl(),
-        platformProfile: () => Sysfs.platformProfile(),
+        chargeControl: () => PowerSupply.discoverChargeControl(),
+        platformProfile: () => PowerSupply.platformProfile(),
         profilesClient: onChanged => new Profiles.PowerProfilesClient(onChanged),
         upowerMonitor: (onChanged, onReady) => new UPower.UPowerMonitor(onChanged, onReady),
         readNumber: path => IO.readNumber(path),

@@ -1,11 +1,10 @@
 /*
- * cinnamon-powertoys - sysfs access layer.
+ * cinnamon-powertoys - power supply and firmware nodes.
  *
- * Reading and listing live in lib/io.js, sensor discovery in lib/sensors.js
- * and the scaling interface in lib/cpu.js; what is left here is the two power
- * supply lookups. Everything is best effort: a node that is missing, root-only
- * or busy yields null instead of throwing, so the caller can simply hide that
- * row.
+ * The battery charge limit exposed by the laptop vendor drivers, and the ACPI
+ * platform profile used when power-profiles-daemon is not running. Both are
+ * absent on most desktops, which is why each lookup answers null rather than
+ * throwing.
  */
 
 const IO = require("./lib/io.js");

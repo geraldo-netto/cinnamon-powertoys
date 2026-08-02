@@ -84,7 +84,7 @@ cinnamon-powertoys@geraldo-netto/
 ├── lib/io.js            file reads, rooted so a captured /sys can stand in
 ├── lib/sensors.js       hwmon, thermal and powercap discovery
 ├── lib/cpu.js           cpufreq scaling interface
-├── lib/sysfs.js         power supply nodes
+├── lib/power-supply.js  charge limit and ACPI platform profile nodes
 ├── lib/upower.js        UPower D-Bus client
 ├── lib/profiles.js      power-profiles-daemon client
 ├── lib/format.js        value formatting and UPower enum naming
