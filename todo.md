@@ -71,6 +71,5 @@ these rows are about.
 | id | severity | effort | description |
 |----|----------|--------|-------------|
 | PT-75 | medium | M | Everything runs on the compositor's main loop: ten milliseconds of synchronous `open`/`read`/`close` every four seconds, in the process that draws the desktop, on a machine where one of those reads can block for over a millisecond on a sleeping disk. `GLib.file_get_contents_async` exists. |
-| PT-77 | medium | S | A profile change has no pending state. Between the click and the daemon answering, the menu still shows the old selection, so a second click sends a second write for a change that is already in flight. The same is true of every helper-backed control. |
 | PT-79 | low | S | The reading is rebuilt from nothing on every poll and no one compares it to the last. With the menu closed the panel is the only consumer, and it re-formats identical text every four seconds. |
 | PT-81 | low | XS | Cinnamon's module loader is re-implemented twice — in [tools/parse-check.js](tools/parse-check.js) and in [tests/harness.js](tests/harness.js) — with the same two regexes and the same wrapper in both. One of them should use the other. |

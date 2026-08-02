@@ -937,11 +937,15 @@ class MenuPresenter {
 
     _updateProfiles(data, options) {
         let show = options.showProfiles && data.profile.available && data.profile.list.length > 0;
-        this._profileGroup.sync(show ? data.profile.list : [], data.profile.active);
+        /* The dot follows what was asked for, not what has arrived: a
+         * selection that springs back for a second while the daemon thinks
+         * about it reads as the click having missed. */
+        let active = options.pendingProfile || data.profile.active;
+        this._profileGroup.sync(show ? data.profile.list : [], active);
 
         this._performanceMenu.actor.visible = show || (options.showCpu && data.cpu.available);
         this._setPanelSummary(this._performanceMenu, _("Performance"),
-                              show ? Format.profileLabel(data.profile.active)
+                              show ? Format.profileLabel(active)
                                    : Format.governorLabel(data.cpu.governor));
 
         let notes = [];
@@ -1022,15 +1026,18 @@ class MenuPresenter {
             driver += " (" + data.cpu.amdPstateStatus + ")";
         this._cpuDriverRow.setValue(driver);
 
-        this._governorControl.sync(data.cpu.governors, data.cpu.governor, options.privileged);
-        this._energyControl.sync(data.cpu.energyPreferences, data.cpu.energyPreference,
-                                 options.privileged);
+        /* While a privileged change is in flight there is a password dialog
+         * on screen and a second click can only queue behind it, so the
+         * controls say so rather than pretending to be ready. */
+        let editable = options.privileged && !options.busy;
+        this._governorControl.sync(data.cpu.governors, data.cpu.governor, editable);
+        this._energyControl.sync(data.cpu.energyPreferences, data.cpu.energyPreference, editable);
 
         this._boostSwitch.actor.visible = data.cpu.boostSupported;
         if (data.cpu.boostSupported) {
             if (data.cpu.boostEnabled !== null)
                 this._boostSwitch.setToggleState(data.cpu.boostEnabled);
-            this._boostSwitch.setSensitive(options.privileged);
+            this._boostSwitch.setSensitive(editable);
         }
     }
 
@@ -1105,7 +1112,8 @@ class MenuPresenter {
     _updateCharge(data, options) {
         if (!this._chargeGroup)
             return;
-        this._chargeGroup.sync(options.privileged ? CHARGE_LIMITS : [], data.chargeLimit);
+        this._chargeGroup.sync(options.privileged && !options.busy ? CHARGE_LIMITS : [],
+                               data.chargeLimit);
     }
 }
 
@@ -1144,6 +1152,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._timerId = 0;
         this._scrollTimerId = 0;
         this._pendingScroll = 0;
+        this._pendingProfile = null;
         this._alerts = new AlertPolicy();
         this._panel = new PanelPresenter(this, metadata.path + "/icons");
         this._hotkeyIds = [];
@@ -1346,6 +1355,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
             /* what a device row colours itself against */
             lowLevel: this.lowBatteryThreshold,
             peripheralLevel: this.peripheralBatteryThreshold,
+            /* a change the machine has not confirmed yet */
+            pendingProfile: this._pendingProfile,
+            busy: this._helper.busy,
         };
     }
 
@@ -1575,6 +1587,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
             Log.error("collection failed: " + error);
             return;
         }
+        /* The machine has caught up with what was asked for. */
+        if (this._pendingProfile && data.profile.active === this._pendingProfile)
+            this._pendingProfile = null;
+
         this._latest = data;
         this._panel.update(data, this._panelOptions());
 
@@ -1618,15 +1634,33 @@ class PowerToysApplet extends Applet.TextIconApplet {
     /* ------------------------------------------------------------------ */
     /* actions                                                             */
 
+    /*
+     * Asking for a profile, and remembering that it was asked for.
+     *
+     * Neither backend answers immediately - the daemon replies over D-Bus,
+     * the ACPI path goes through a password dialog - and until one of them
+     * does, the menu was still showing the old selection. So the obvious
+     * thing to do was click again, which sent a second write for a change
+     * already in flight.
+     */
     _setProfile(name) {
+        if (name === this._pendingProfile)
+            return;
+        this._pendingProfile = name;
+
         let data = this._latest;
         if (data && data.profile.viaSysfs) {
             /* the helper reports its own failures */
-            this._runHelper(["platform-profile", name]);
+            this._runHelper(["platform-profile", name], outcome => {
+                if (!outcome.applied)
+                    this._pendingProfile = null;
+            });
         } else {
             this._profiles.setProfile(name, error => {
-                if (error)
+                if (error) {
+                    this._pendingProfile = null;
                     this._notifyProfileError(name, error);
+                }
                 this._scheduleUpdate();
             });
         }
@@ -1711,6 +1745,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _runHelper(args, onDone) {
         if (!this.enablePrivilegedControls)
             return;
+
+        /* So the menu shows the change as in flight straight away rather
+         * than when the helper answers. */
+        this._scheduleUpdate();
 
         this._helper.run(args, outcome => {
             if (this._destroyed)
