@@ -190,6 +190,18 @@ function setIconLookup(lookup) {
     _resolved = {};
 }
 
+/*
+ * Every answer so far, thrown away.
+ *
+ * Whether a name is in the theme is only true of the theme that was current
+ * when it was asked. Switching from a theme that carries the xapp set to one
+ * that does not, or back, changes every one of these answers at once, and the
+ * caller is the only thing that hears about the switch.
+ */
+function forgetIcons() {
+    _resolved = {};
+}
+
 function iconName(pair) {
     if (!_hasIcon)
         return pair[0];

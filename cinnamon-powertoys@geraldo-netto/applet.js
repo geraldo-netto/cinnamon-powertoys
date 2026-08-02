@@ -1416,6 +1416,16 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this.actor.connect("scroll-event", (actor, event) => this._onScroll(actor, event));
         this.actor.connect("button-press-event", (actor, event) => this._onButtonPress(actor, event));
 
+        /*
+         * Which icon names exist is a fact about the current theme, and both
+         * caches that hold one of those answers - the device names in Format,
+         * the panel's own icon - were only ever dropped on a reload. Someone
+         * switching to a theme without the xapp set got blank device rows
+         * until they restarted Cinnamon.
+         */
+        this._iconTheme = Gtk.IconTheme.get_default();
+        this._iconThemeId = this._iconTheme.connect("changed", () => this._onIconThemeChanged());
+
         this._registerHotkeys();
         this._startPolling();
         this._update();
@@ -2172,6 +2182,14 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._update();
     }
 
+    _onIconThemeChanged() {
+        if (this._destroyed)
+            return;
+        Format.forgetIcons();
+        this._panel.invalidateIcon();
+        this._update();
+    }
+
     on_applet_removed_from_panel() {
         this._destroyed = true;
         this._stopPolling();
@@ -2181,6 +2199,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._idleId = 0;
         }
         this._removeHotkeys();
+        if (this._iconThemeId) {
+            this._iconTheme.disconnect(this._iconThemeId);
+            this._iconThemeId = 0;
+        }
         this._destroyMenu();
         if (this._profiles)
             this._profiles.destroy();

@@ -61,6 +61,42 @@ cases["with no icon theme to ask, the preferred name is used"] = function () {
                   "nothing to check against, so no reason to give up the better name");
 };
 
+cases["a name is only asked about once"] = function () {
+    let asked = 0;
+    Format.setIconLookup(function (name) {
+        asked++;
+        return name === "xsi-input-mouse";
+    });
+    try {
+        Format.deviceIconName(Kind.MOUSE);
+        Format.deviceIconName(Kind.MOUSE);
+        Format.deviceIconName(Kind.MOUSE);
+        Harness.equal(asked, 1, "the theme is asked once and the answer kept");
+    } finally {
+        Format.setIconLookup(null);
+    }
+};
+
+cases["a theme change is not answered from the old theme"] = function () {
+    let installed = ["xsi-input-mouse"];
+    Format.setIconLookup(name => installed.indexOf(name) >= 0);
+    try {
+        Harness.equal(Format.deviceIconName(Kind.MOUSE), "xsi-input-mouse", "the xapp set is here");
+
+        /* The user switches to a theme without it. Nothing about the lookup
+         * changed - only what it now answers. */
+        installed = [];
+        Harness.equal(Format.deviceIconName(Kind.MOUSE), "xsi-input-mouse",
+                      "until it is told, the applet is still answering from the old theme");
+
+        Format.forgetIcons();
+        Harness.equal(Format.deviceIconName(Kind.MOUSE), "input-mouse",
+                      "and now it asks again and finds the name gone");
+    } finally {
+        Format.setIconLookup(null);
+    }
+};
+
 cases["an unknown kind gets whatever the caller offered"] = function () {
     withTheme([], function () {
         Harness.equal(Format.deviceIconName(Kind.MODEM, null), null, "no default asked for");
