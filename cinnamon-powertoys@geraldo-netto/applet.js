@@ -604,6 +604,30 @@ class InfoRow extends PopupMenu.PopupBaseMenuItem {
 }
 
 /*
+ * A line about the rows around it rather than a row among them: how many
+ * monitors get a slider, who else is writing the two settings below.
+ *
+ * It answers nothing when the menu asks how wide its columns want to be. A
+ * note is a sentence, and a sentence in the first column made that column as
+ * wide as the sentence, pushing every value in the group out to the right of
+ * it - one remark cost the menu a hundred and thirty pixels. It takes whatever
+ * width the rows that mean something came to, and is cut off if it does not
+ * fit, which is the right way round.
+ */
+class NoteRow extends PopupMenu.PopupBaseMenuItem {
+    _init(text) {
+        super._init.call(this, { reactive: false });
+        this.actor.add_style_class_name("powertoys-note");
+        this._label = new St.Label({ text: text });
+        this.addActor(this._label, { span: -1, expand: true });
+    }
+
+    getColumnWidths() {
+        return [];
+    }
+}
+
+/*
  * Two line entry for one powered device: title with icon, details below.
  *
  * It is handed a view model and sets what it is told. It used to be handed
@@ -1201,11 +1225,16 @@ class MenuPresenter {
     /*
      * What the processor is doing, and what it has been told to do.
      *
-     * The profile above is what most people will ever touch; the governor and
-     * the energy preference are what a profile sets, and setting them by hand
-     * means overriding a daemon that will set them back. They are worth having
-     * and they are not worth four rows of a menu that is read at a glance, so
-     * they are behind Advanced.
+     * All of it, in the order it is asked about: the three readings, then the
+     * three things that can be changed.
+     *
+     * The governor and the energy preference were behind an *Advanced*
+     * disclosure, on the reasoning that they are what a profile sets and are
+     * rarely worth changing by hand. What that produced was a menu which hid
+     * two of the processor's own settings behind a click and gave no hint of
+     * what was under it - and a disclosure is a promise that what is inside is
+     * different in kind, which these are not. They are two more processor
+     * settings. They are shown.
      */
     _buildCpuGroup() {
         this._cpuGroup = this._performanceColumn.group(_("Processor"));
@@ -1224,28 +1253,29 @@ class MenuPresenter {
         this._boostSwitch.connect("toggled", (item, state) => this._actions.setBoost(state));
         menu.addMenuItem(this._boostSwitch);
 
-        this._advanced = new PopupMenu.PopupSubMenuMenuItem(_("Advanced"));
-        menu.addMenuItem(this._advanced);
-
         /*
-         * Who owns these two, said once, where they are.
+         * Who owns the two below, said where they are.
          *
-         * The profile above and the governor and energy preference in here
-         * read the same word - "Performance", three times over - because the
-         * first is what wrote the other two. Nothing in the menu said so, and
-         * three controls agreeing for no stated reason read as three copies of
-         * one setting. Only shown where a daemon is really holding them: the
-         * ACPI platform profile writes firmware and never touches cpufreq, and
-         * on a machine with no profiles at all these are the only controls
-         * there are.
+         * The profile at the top of this column and these two read the same
+         * word - "Performance", three times over - because the first is what
+         * wrote the other two. Three controls agreeing for no stated reason
+         * read as three copies of one setting. Both are named rather than the
+         * line saying "these", because it now sits under the boost switch,
+         * which power-profiles-daemon does not necessarily touch and which
+         * this must not be read as covering.
+         *
+         * Only shown where a daemon is really holding them: the ACPI platform
+         * profile writes firmware and never goes near cpufreq, and on a machine
+         * with no profiles at all these are the only controls there are.
          */
-        this._advancedNote = this._createNote(_("Set by the power profile"));
-        this._advanced.menu.addMenuItem(this._advancedNote);
+        this._governorNote =
+            this._createNote(_("Governor and energy preference follow the power profile"));
+        menu.addMenuItem(this._governorNote);
 
-        this._governorControl = new ChoiceControl(this._advanced.menu, _("Governor"),
+        this._governorControl = new ChoiceControl(menu, _("Governor"),
                                                   Format.governorLabel,
                                                   value => this._actions.setGovernor(value));
-        this._energyControl = new ChoiceControl(this._advanced.menu, _("Energy preference"),
+        this._energyControl = new ChoiceControl(menu, _("Energy preference"),
                                                 Format.energyPreferenceLabel,
                                                 value => this._actions.setEnergyPreference(value));
     }
@@ -1378,17 +1408,10 @@ class MenuPresenter {
         return heading;
     }
 
-    /*
-     * A line about the list rather than a line in it.
-     *
-     * Drawn at the weight of a reading, "Only the first 10 monitors have a
-     * slider" reads as an eleventh monitor called that. It is a footnote, and
-     * the only one in this menu, so it is quieter than what it follows.
-     */
+    /* Drawn at the weight of a reading, "Only the first 10 monitors have a
+     * slider" reads as an eleventh monitor called that. See NoteRow. */
     _createNote(text) {
-        let note = new PopupMenu.PopupMenuItem(text, { reactive: false });
-        note.actor.add_style_class_name("powertoys-note");
-        return note;
+        return new NoteRow(text);
     }
 
     _addBacklight(label, iconName, control) {
@@ -1542,23 +1565,14 @@ class MenuPresenter {
          * here holds until then and no longer. The two are left changeable,
          * because until then it does work and some people want it; what they
          * were not was honest about who else is writing them.
+         *
+         * The line goes with them, so it is not there when they are not: a
+         * machine with no cpufreq has neither row for it to describe.
          */
-        this._advancedNote.actor.visible = data.profile.available &&
-                                           !!data.profile.backend &&
-                                           data.profile.backend !== PowerSupply.PLATFORM_BACKEND;
-
-        /*
-         * Advanced is only there when there is something behind it. On a
-         * machine with no cpufreq governors to read, or with the privileged
-         * controls switched off and nothing to report either, it would open
-         * onto nothing - which is worse than not being offered.
-         */
-        let advanced = !!data.cpu.governor || !!data.cpu.energyPreference ||
-                       (editable && (data.cpu.governors.length > 0 ||
-                                     data.cpu.energyPreferences.length > 0));
-        this._advanced.actor.visible = advanced;
-        if (!advanced && this._advanced.menu.isOpen)
-            this._advanced.menu.close(false);
+        let daemonOwned = data.profile.available && !!data.profile.backend &&
+                          data.profile.backend !== PowerSupply.PLATFORM_BACKEND;
+        this._governorNote.actor.visible = daemonOwned &&
+                                           (!!data.cpu.governor || !!data.cpu.energyPreference);
 
         this._boostSwitch.actor.visible = data.cpu.boostSupported;
         if (data.cpu.boostSupported) {
