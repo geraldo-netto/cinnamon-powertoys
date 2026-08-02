@@ -355,9 +355,19 @@ class PanelPresenter {
     }
 
     update(data, options) {
-        this._applet.set_applet_label(this._labelText(data, options));
-        this._updateIcon(data, options.iconSource);
+        let source = this._iconSource(data, options.iconSource);
+        this._applet.set_applet_label(this._labelText(data, options, source));
+        this._updateIcon(data, source);
         this._applet.set_applet_tooltip(this._tooltipText(data, options));
+    }
+
+    /* "auto" settled: the battery if there is one, otherwise the profile if
+     * there is one. The label needs to know as well as the icon does. */
+    _iconSource(data, wanted) {
+        let source = wanted || "auto";
+        if (source !== "auto")
+            return source;
+        return data.primary ? "battery" : (data.profile.active ? "profile" : "static");
     }
 
     /* The icon actor is rebuilt from scratch by a panel resize or an
@@ -375,7 +385,7 @@ class PanelPresenter {
      * on 61 rather than 59. It is still in the tooltip, in the menu summary
      * and in the processor section, where it is looked at on purpose.
      */
-    _labelText(data, options) {
+    _labelText(data, options, source) {
         let parts = [];
         if (options.showBattery && data.primary && data.primary.percentage !== null)
             parts.push(Format.percent(data.primary.percentage));
@@ -383,16 +393,29 @@ class PanelPresenter {
             parts.push(panelPowerText(data));
         if (options.showFrequency && data.cpu.averageFrequency !== null)
             parts.push(Format.frequency(data.cpu.averageFrequency));
-        if (options.showProfile && data.profile.active)
+        if (options.showProfile && this._profileNeedsSpelling(data, source))
             parts.push(Format.profileLabel(data.profile.active));
         return parts.join(" ");
     }
 
-    _updateIcon(data, source) {
-        source = source || "auto";
-        if (source === "auto")
-            source = data.primary ? "battery" : (data.profile.active ? "profile" : "static");
+    /*
+     * Whether the active profile still needs saying in words.
+     *
+     * On a desktop there is no battery, so the icon settles on the profile
+     * gauge - and "Balanced" printed beside the balanced gauge is one fact
+     * taking two pieces of the panel. Where two of the machine's own profiles
+     * draw the same gauge, though, the word is the only thing telling them
+     * apart, and it stays.
+     */
+    _profileNeedsSpelling(data, source) {
+        if (!data.profile.active)
+            return false;
+        if (source !== "profile")
+            return true;
+        return !Format.profileIconIsUnambiguous(data.profile.active, data.profile.list);
+    }
 
+    _updateIcon(data, source) {
         if (source === "battery" && data.primary) {
             let icon = data.primary.icon;
             let key = "battery:" + icon;

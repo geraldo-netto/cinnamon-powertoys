@@ -257,6 +257,23 @@ function profileLabel(name) {
  * names - so the caller shows the plain applet icon rather than pretending an
  * unknown profile is one of these three.
  */
+/*
+ * Whether this profile's icon tells it apart from the rest on offer.
+ *
+ * Several profiles share one: power-saver, low-power, quiet and cool all draw
+ * the leaf, and performance and balanced-performance both draw the red gauge.
+ * So an icon names a profile only when nothing else the machine offers draws
+ * the same one - which on a power-profiles-daemon machine is always, and on a
+ * firmware that offers both quiet and cool is not.
+ */
+function profileIconIsUnambiguous(name, available) {
+    let icon = profileIconName(name);
+    if (!icon)
+        return false;
+    return (available || []).every(other => other === name ||
+                                            profileIconName(other) !== icon);
+}
+
 function profileIconName(name) {
     switch (name) {
         case "power-saver":

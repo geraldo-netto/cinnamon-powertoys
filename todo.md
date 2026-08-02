@@ -41,7 +41,6 @@ A pass looking for things that are wrong rather than things that are untidy.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-73 | low | XS | The panel can say the same thing twice. With no battery the icon source resolves to `profile`, so the coloured gauge already shows which profile is active, and *Show active power profile in the panel* then repeats it in words beside it. |
 ## Architecture, performance and robustness
 
 A pass over shape rather than behaviour: coupling, cost, timing, teardown and

@@ -61,6 +61,24 @@ cases["with no icon theme to ask, the preferred name is used"] = function () {
                   "nothing to check against, so no reason to give up the better name");
 };
 
+cases["a gauge names a profile only when nothing else draws it"] = function () {
+    const DAEMON = ["power-saver", "balanced", "performance"];
+    for (let profile of DAEMON)
+        Harness.ok(Format.profileIconIsUnambiguous(profile, DAEMON),
+                   profile + " is the only one of its gauge on a daemon machine");
+
+    /* Firmware profiles are not so tidy: these two both draw the leaf. */
+    const FIRMWARE = ["quiet", "cool", "balanced", "performance"];
+    Harness.equal(Format.profileIconIsUnambiguous("quiet", FIRMWARE), false,
+                  "cool draws the same leaf, so the gauge does not say which");
+    Harness.equal(Format.profileIconIsUnambiguous("cool", FIRMWARE), false, "and the other way");
+    Harness.ok(Format.profileIconIsUnambiguous("balanced", FIRMWARE),
+               "balanced is still the only one of its own");
+
+    Harness.equal(Format.profileIconIsUnambiguous("something-new", ["something-new"]), false,
+                  "a profile with no gauge at all is never named by one");
+};
+
 cases["a name is only asked about once"] = function () {
     let asked = 0;
     Format.setIconLookup(function (name) {
