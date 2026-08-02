@@ -4,12 +4,13 @@ A Cinnamon applet that puts a single power icon in the panel and, from one
 menu, monitors and configures power management for the whole machine.
 
 One strip across the top says what the machine is running on, then a
-brightness slider per screen, then three columns, one subject each and in the
-order they answer to each other: what the machine has been told to do —
-**Power profile** and **Processor**, which are two levels of one decision —
-then what is plugged into it, **Devices**, then what all of that is doing to
-the temperature, **Sensors**. A column that has nothing in it is not there at
-all. Nothing is folded away, and every figure is stated once.
+brightness slider for each screen the machine can move and one for the
+keyboard backlight where there is one, then three columns, one subject each
+and in the order they answer to each other: what the machine has been told to
+do — **Power profile** and **Processor**, which are two levels of one
+decision — then what is plugged into it, **Devices**, then what all of that is
+doing to the temperature, **Sensors**. A column that has nothing in it is not
+there at all. Nothing is folded away, and every figure is stated once.
 
 ![The menu](docs/menu.png)
 
@@ -31,10 +32,13 @@ themselves rather than sitting there empty.
 just the laptop battery: mice, keyboards, headsets, game controllers, phones,
 tablets, UPS units, styluses. Each row shows charge, state, time remaining,
 draw in watts, voltage, temperature, health (capacity versus design capacity)
-and charge cycles when the device reports them. Devices that only report a
-coarse level (low / normal / high) are shown that way instead of a fake
-percentage. Chargers are listed above them, by model where UPower knows it,
-so whether the machine is on the cable is the first line under *Devices*.
+and charge cycles when the device reports them — a temperature of exactly zero
+counts as not reporting, because UPower publishes 0.0 °C for a device with no
+thermometer in it and offers nothing to tell that apart from one that is
+genuinely at freezing. Devices that only report a coarse level (low / normal /
+high) are shown that way instead of a fake percentage. Chargers are listed
+above them, by model where UPower knows it, so whether the machine is on the
+cable is the first line under *Devices*.
 Connected bluetooth devices are read from BlueZ as well as from UPower, which
 does not bridge all of them, and where nothing is connected the group says so
 in words rather than being empty.
@@ -176,7 +180,7 @@ change.
 A monitor on a cable has no kernel backlight. The only way to move it is DDC/CI
 over the display's I2C channel, which means read and write on `/dev/i2c-*`, and
 those are `root:i2c` on a stock install. Until your account is in that group the
-slider does not appear at all: the applet probes, `ddcutil` finds no bus it may
+sliders do not appear at all: the applet probes, `ddcutil` finds no bus it may
 open, and there is nothing to show. Nothing in the log says so either, because
 `ddcutil` reports the refusal on its output and still exits 0.
 
@@ -224,20 +228,21 @@ settings.
   *is* its box, which is what lets the three menu columns sit side by side.
   `PopupMenuBase.getColumnWidths` and `setColumnWidths`, which the columns
   override so their rows line up with themselves and not with the whole menu —
-  and which the segmented profile control overrides for the opposite reason, so
-  that a row spanning every column does not set the width of the first one.
-  `PopupSwitchMenuItem`, `PopupSliderMenuItem`, `PopupIconMenuItem`.
-  `PopupBaseMenuItem`'s `{ activate: false, hover: false }`, which is how a row
-  of buttons takes key focus without being a menu entry itself. `St.Button` and
-  its `clicked`. `St.BoxLayout.add` with the `expand`, `x_fill` and `y_align`
-  child properties. `addActor`, `removeActor`, `setShowDot`,
-  `addSettingsAction`. Class-based applets, `AllowedLayout`,
+  and which the segmented profile control and the note lines override for the
+  opposite reason, so that a row spanning every column does not set the width
+  of the first one. `PopupSwitchMenuItem`, `PopupSliderMenuItem`,
+  `PopupIconMenuItem`. `PopupBaseMenuItem`'s `{ activate: false, hover:
+  false }`, which is how a row of buttons takes key focus without being a menu
+  entry itself. `St.Button` and its `clicked`. `St.BoxLayout.add` with the
+  `expand`, `x_fill` and `y_align` child properties. `addActor`, `removeActor`,
+  `setShowDot`, `addSettingsAction`. Class-based applets, `AllowedLayout`,
   `set_show_label_in_vertical_panels`, `set_applet_icon_path`,
-  `AppletSettings.bind`, `spawnCommandLineAsyncIO`. `Tooltips.Tooltip` with its
-  `show` and `visible`. `keybindingManager.addHotKey`, `criticalNotify`.
-  `Main.layoutManager`'s `monitors-changed`, which is when the monitor sliders
-  are looked for again. And the `=` operator in a settings-schema `dependency`.
-  All of them are in 5.4.0.
+  `AppletSettings.bind`, `Util.spawnCommandLine`. `Tooltips.Tooltip` with its
+  `show` and `visible`. `keybindingManager.addHotKey`, `notify`,
+  `notifyError` and `criticalNotify`. `Main.layoutManager`'s
+  `monitors-changed`, which is when the monitor sliders are looked for again.
+  And the `=` operator in a settings-schema `dependency`. All of them are in
+  5.4.0.
 
   Two things the applet leans on are not Cinnamon's at all and are older than
   any of this: `Gio.File.load_contents_async`, which takes the sensor reads off
@@ -287,7 +292,7 @@ cinnamon-powertoys@geraldo-netto/
 ├── po/                  the translation template and any translations
 └── icons/
 
-tests/                   harness, runner and the cases
+tests/                   harness, runner, the cases and a captured machine
 tools/                   the loader emulation, parse check, translations
 polkit/                  the action for one prompt instead of one per change
 ```
@@ -318,7 +323,7 @@ diff.
 ## Tests
 
 ```sh
-make check            # parse check, tests, helper, JSON, polkit action
+make check            # parse check, tests, helper, JSON, policy, helper path
 cjs tests/run.js      # tests only
 cjs tests/run.js io   # only cases whose name contains "io"
 ```
