@@ -91,13 +91,12 @@ function defaultBackends() {
     return {
         sensors: () => new Sensors.SensorSet(),
         cpuControl: runner => new Cpu.CpuControl(runner),
-        chargeControl: () => PowerSupply.discoverChargeControl(),
+        chargeControl: runner => PowerSupply.discoverChargeControl(runner),
         platformProfile: () => PowerSupply.platformProfile(),
         profilesClient: onChanged => new Profiles.PowerProfilesClient(onChanged),
         backlight: (kind, onChanged, onReady) =>
             new Backlight.BacklightControl(kind, onChanged, onReady),
         upowerMonitor: (onChanged, onReady) => new UPower.UPowerMonitor(onChanged, onReady),
-        readNumber: path => IO.readNumber(path),
         fileExists: path => IO.exists(path),
     };
 }
@@ -993,7 +992,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         this._sensors = this._backends.sensors();
         this._cpu = this._backends.cpuControl((args, onDone) => this._runHelper(args, onDone));
-        this._chargeControl = this._backends.chargeControl();
+        this._chargeControl =
+            this._backends.chargeControl((args, onDone) => this._runHelper(args, onDone));
 
         this._backlights = {
             screen: this._backends.backlight(Backlight.SCREEN,
@@ -1118,7 +1118,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             setGovernor: value => this._cpu.setGovernor(value),
             setEnergyPreference: value => this._cpu.setEnergyPreference(value),
             setBoost: state => this._cpu.setBoost(state),
-            setChargeLimit: value => this._runHelper(["charge-threshold", value]),
+            setChargeLimit: value => this._chargeControl.setLimit(value),
             configure: () => Util.spawnCommandLine("cinnamon-settings applets " +
                                                    UUID + " " + this.instanceId),
         };
@@ -1178,8 +1178,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             packageWatts: readings.packageWatts,
             cpu: this._cpu.snapshot(),
             profile: this._collectProfile(),
-            chargeLimit: this._chargeControl
-                ? this._backends.readNumber(this._chargeControl.path) : null,
+            chargeLimit: this._chargeControl ? this._chargeControl.limit : null,
             cpuTemperature: this._pickTemperature(temperatures),
             systemWatts: power.watts,
             systemWattsSource: power.source,

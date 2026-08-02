@@ -386,3 +386,21 @@ cases["a reading carries the driver's own label"] = function () {
                       "a zone has none");
     });
 };
+
+cases["the charge limit is read fresh, not remembered"] = function () {
+    on("machine", function () {
+        let control = PowerSupply.discoverChargeControl();
+        Harness.equal(control.limit, 80, "as the fixture has it");
+        IO.setRoot("/nonexistent");
+        Harness.equal(control.limit, null, "and it notices when the node goes away");
+    });
+};
+
+cases["a charge limit is written through the runner"] = function () {
+    on("machine", function () {
+        let sent = [];
+        let control = PowerSupply.discoverChargeControl(args => sent.push(args.join(" ")));
+        control.setLimit(80);
+        Harness.deepEqual(sent, ["charge-threshold 80"], "the helper's own vocabulary");
+    });
+};

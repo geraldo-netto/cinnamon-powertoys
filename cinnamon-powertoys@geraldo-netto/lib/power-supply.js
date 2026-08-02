@@ -14,11 +14,38 @@ var PLATFORM_PROFILE = "/sys/firmware/acpi/platform_profile";
 var PLATFORM_PROFILE_CHOICES = "/sys/firmware/acpi/platform_profile_choices";
 
 /*
+ * The charge limit of one battery.
+ *
+ * `limit` is read every time it is asked for rather than captured once: the
+ * firmware, a vendor tool or another copy of this applet can move it, and a
+ * value remembered from startup would quietly disagree with the hardware.
+ *
+ * Writing it needs root, so it goes to a runner the caller supplies - in the
+ * applet, the pkexec helper - which keeps the read and the write of one
+ * setting in the same place.
+ */
+var ChargeControl = class ChargeControl {
+    constructor(battery, path, runner) {
+        this.battery = battery;
+        this.path = path;
+        this._runner = runner || function () {};
+    }
+
+    get limit() {
+        return IO.readNumber(this.path);
+    }
+
+    setLimit(percent, onDone) {
+        this._runner(["charge-threshold", String(percent)], onDone);
+    }
+};
+
+/*
  * Charge limit support, as exposed by thinkpad_acpi, asus-wmi, huawei-wmi and
  * friends. Only the end threshold is offered, it is the one that matters for
  * battery longevity.
  */
-function discoverChargeControl() {
+function discoverChargeControl(runner) {
     for (let name of IO.listDir(POWER_SUPPLY_DIR)) {
         let base = POWER_SUPPLY_DIR + "/" + name;
         if (IO.readString(base + "/type") !== "Battery")
@@ -26,11 +53,7 @@ function discoverChargeControl() {
         let endPath = base + "/charge_control_end_threshold";
         if (!IO.exists(endPath))
             continue;
-        return {
-            battery: name,
-            path: endPath,
-            value: IO.readNumber(endPath),
-        };
+        return new ChargeControl(name, endPath, runner);
     }
     return null;
 }
