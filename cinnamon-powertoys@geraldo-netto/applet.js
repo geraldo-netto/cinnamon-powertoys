@@ -1738,10 +1738,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
             profile: this._collectProfile(),
             chargeLimit: this._readChargeLimit(),
             cpuTemperature: picked.sensor === null ? null : picked.sensor.celsius,
-            /* which sensor that came from, and whether the user's hint is
-             * the reason - false means they asked for one and it was not
-             * found, which is worth saying out loud */
-            temperatureSensorId: picked.sensor === null ? null : picked.sensor.id,
+            /* whether the user's hint is the reason it came from there -
+             * false means they asked for a sensor and it was not found,
+             * which is worth saying out loud */
             hintMatched: picked.hintMatched,
             systemWatts: power.watts,
             systemWattsSource: power.source,
