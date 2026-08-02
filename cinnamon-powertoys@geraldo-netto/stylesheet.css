@@ -123,8 +123,20 @@
  * What a group of rows is: the profile, the processor, the devices, the
  * sensors. A shade quieter than the rows it heads, because a heading is
  * furniture and the numbers are what is read.
+ *
+ * Two class names, for the reason spelled out under the spaced rule below: a
+ * menu item is a .popup-menu-item, the theme sets padding on that, and the
+ * theme is loaded after this file. As one class this rule tied on specificity
+ * and lost on order, so both of its paddings were dead - measured on the
+ * running applet against Mint-Y-Dark-Aqua, which says `padding: .4em 1.75em`,
+ * a heading computed to 4px top and 4px bottom rather than the 8 and 2 asked
+ * for here. The font size and the opacity were applying all along; the theme
+ * says nothing about either.
+ *
+ * Only the two paddings are named, so the horizontal one stays the theme's and
+ * a heading goes on lining up with the rows under it.
  */
-.powertoys-group-title {
+.popup-menu-item.powertoys-group-title {
     font-size: 0.83em;
     padding-top: 8px;
     padding-bottom: 2px;
@@ -146,8 +158,11 @@
 }
 
 /* Which chip a run of sensor rows came off, inside the sensors group. Smaller
- * again, so the two levels are told apart without a second colour. */
-.powertoys-subgroup-title {
+ * again, so the two levels are told apart without a second colour. Two class
+ * names for the same reason as the group heading above: alone, its padding
+ * computed to the theme's 4px and the gap between one chip's rows and the
+ * next's was the gap between any two rows. */
+.popup-menu-item.powertoys-subgroup-title {
     font-size: 0.68em;
     padding-top: 8px;
     opacity: 0.65;

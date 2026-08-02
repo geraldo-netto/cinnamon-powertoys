@@ -25,12 +25,6 @@ these are things the code has been doing all along.
 | id | severity | effort | description |
 |----|----------|--------|-------------|
 
-## Presentation
-
-| id | severity | effort | description |
-|----|----------|--------|-------------|
-| PT-115 | medium | XS | Two heading rules in the stylesheet do nothing, for the reason `.powertoys-group-spaced` was already fixed for. [`.powertoys-group-title`](cinnamon-powertoys@geraldo-netto/stylesheet.css#L127) and [`.powertoys-subgroup-title`](cinnamon-powertoys@geraldo-netto/stylesheet.css#L150) are one class each; the theme sets padding on `.popup-menu-item`, which is also one class and is loaded after this file, so it ties on specificity and wins on order. Mint-Y-Dark-Aqua, the theme in use here, says `padding: .4em 1.75em` — so the 2px under a group heading is really the theme's, and neither `padding-top` has ever applied. Give both the two-class form the spaced rule already uses, then re-measure rather than assuming the numbers were right when they were written. |
-
 ## Code and tests
 
 | id | severity | effort | description |
