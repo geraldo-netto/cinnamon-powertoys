@@ -88,6 +88,20 @@ function deepEqual(actual, expected, what) {
         fail(what + ": expected " + b + ", got " + a);
 }
 
+/*
+ * This case cannot be run here, which is not the same as this case failed.
+ *
+ * A case that talks to a live daemon has nothing to say on a machine with no
+ * system bus, and a build that goes red for that reason teaches everybody to
+ * ignore red. The runner counts these separately and says what was skipped
+ * and why, so a case that is quietly never running anywhere is visible.
+ */
+function skip(why) {
+    let reason = new Error(why);
+    reason.skipped = true;
+    throw reason;
+}
+
 function throws(body, what) {
     try {
         body();

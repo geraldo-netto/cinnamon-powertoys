@@ -50,6 +50,7 @@ function caseFiles() {
 let filters = ARGV;
 let passed = 0;
 let failed = 0;
+let skipped = [];
 let failures = [];
 
 for (let file of caseFiles()) {
@@ -72,6 +73,12 @@ for (let file of caseFiles()) {
             passed++;
             print("  ok    " + label);
         } catch (error) {
+            /* A case that says it cannot run here is not a case that failed. */
+            if (error && error.skipped) {
+                skipped.push(label + " - " + error.message);
+                print("  skip  " + label);
+                continue;
+            }
             failed++;
             failures.push(label + "\n        " + error.message);
             print("  FAIL  " + label);
@@ -85,5 +92,15 @@ if (failures.length > 0) {
         printerr("  " + failure);
 }
 
-print("tests ok     " + passed + " passed" + (failed > 0 ? ", " + failed + " failed" : ""));
+/* Named rather than counted, so a case that has quietly stopped running
+ * everywhere is something you can see rather than something you can miss. */
+if (skipped.length > 0) {
+    print("");
+    for (let reason of skipped)
+        print("  skipped: " + reason);
+}
+
+print("tests ok     " + passed + " passed" +
+      (skipped.length > 0 ? ", " + skipped.length + " skipped" : "") +
+      (failed > 0 ? ", " + failed + " failed" : ""));
 System.exit(failed > 0 ? 1 : 0);

@@ -23,7 +23,6 @@ own — items that are genuinely a single change were left whole.
 | id | severity | effort | description |
 |----|----------|--------|-------------|
 | PT-27 | medium | M | No tests. The throwaway smoke script used during development (sensor discovery, CPU control read-out, profile client, UPower snapshot) covers the risky parts and runs under plain `cjs`; move it into `tests/` and wire it to `make check`. |
-| PT-27d | low | XS | A smoke case for the UPower monitor and the profile client against the live daemons, skipped rather than failed when they are not on the bus, so CI without a system bus stays green. |
 
 ## Laws of UX
 
