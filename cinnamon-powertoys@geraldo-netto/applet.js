@@ -529,58 +529,77 @@ class PowerToysApplet extends Applet.TextIconApplet {
     /* ------------------------------------------------------------------ */
     /* data collection                                                     */
 
+    /*
+     * One reading of the whole machine.
+     *
+     * Each backend describes its own part; what is left here is putting the
+     * parts side by side and answering the two questions that need more than
+     * one of them - which sensor the panel shows, and which of several
+     * numbers counts as the machine's power draw.
+     */
     _collect() {
         let upower = this._upower.read();
         let readings = this._sensors.read();
 
         let temperatures = readings.temperatures.concat(upower.temperatures);
-        let fans = readings.fans;
         let powers = readings.powers.concat(upower.powers);
+        let power = this._pickPower(upower.primary, readings.packageWatts, powers);
 
-        let cpu = this._cpu.snapshot();
-
-        let profile = {
-            available: this._profiles.available,
-            backend: this._profiles.busName,
-            active: this._profiles.active,
-            list: this._profiles.profiles,
-            degraded: this._profiles.degraded,
-            holds: this._profiles.holds,
-            viaSysfs: false,
-        };
-        if (!profile.available) {
-            let platform = this._backends.platformProfile();
-            if (platform && platform.choices.length > 0) {
-                profile = {
-                    available: true,
-                    backend: "acpi-platform-profile",
-                    active: platform.active,
-                    list: platform.choices,
-                    degraded: "",
-                    holds: [],
-                    viaSysfs: true,
-                };
-            }
-        }
-
-        let data = {
+        return {
             devices: upower.devices,
             primary: upower.primary,
             onBattery: upower.onBattery,
             lineOnline: upower.lineOnline,
             temperatures: temperatures,
-            fans: fans,
+            fans: readings.fans,
             powers: powers,
             packageWatts: readings.packageWatts,
-            cpu: cpu,
-            profile: profile,
+            cpu: this._cpu.snapshot(),
+            profile: this._collectProfile(),
+            cpuTemperature: this._pickTemperature(temperatures),
+            systemWatts: power.watts,
+            systemWattsSource: power.source,
         };
+    }
 
-        data.cpuTemperature = this._pickTemperature(temperatures);
-        let power = this._pickPower(data);
-        data.systemWatts = power.watts;
-        data.systemWattsSource = power.source;
-        return data;
+    /*
+     * Which profile backend is answering. power-profiles-daemon when it is
+     * running, otherwise the ACPI platform profile - which is read from sysfs
+     * and written through the helper, so the reading says which it was.
+     */
+    _collectProfile() {
+        if (this._profiles.available)
+            return {
+                available: true,
+                backend: this._profiles.busName,
+                active: this._profiles.active,
+                list: this._profiles.profiles,
+                degraded: this._profiles.degraded,
+                holds: this._profiles.holds,
+                viaSysfs: false,
+            };
+
+        let platform = this._backends.platformProfile();
+        if (platform && platform.choices.length > 0)
+            return {
+                available: true,
+                backend: "acpi-platform-profile",
+                active: platform.active,
+                list: platform.choices,
+                degraded: "",
+                holds: [],
+                viaSysfs: true,
+            };
+
+        return {
+            available: false,
+            backend: null,
+            active: null,
+            list: [],
+            degraded: "",
+            holds: [],
+            viaSysfs: false,
+        };
     }
 
     /* The sensor shown in the panel: user hint first, then a CPU sensor,
@@ -616,12 +635,12 @@ class PowerToysApplet extends Applet.TextIconApplet {
     /* Battery drain is the honest number while on battery; otherwise fall back
      * to the RAPL package counter and finally to the GPU meters. The source is
      * reported alongside the value, since these measure very different things. */
-    _pickPower(data) {
-        if (data.primary && data.primary.state === UPDeviceState.DISCHARGING && data.primary.energyRate)
-            return { watts: data.primary.energyRate, source: "battery" };
-        if (data.packageWatts !== null)
-            return { watts: data.packageWatts, source: "package" };
-        let gpus = data.powers.filter(entry => entry.kind === "gpu");
+    _pickPower(primary, packageWatts, powers) {
+        if (primary && primary.state === UPDeviceState.DISCHARGING && primary.energyRate)
+            return { watts: primary.energyRate, source: "battery" };
+        if (packageWatts !== null)
+            return { watts: packageWatts, source: "package" };
+        let gpus = powers.filter(entry => entry.kind === "gpu");
         if (gpus.length > 0)
             return { watts: gpus.reduce((total, entry) => total + entry.watts, 0), source: "gpu" };
         return { watts: null, source: null };
