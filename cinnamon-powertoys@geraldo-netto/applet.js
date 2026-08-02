@@ -449,7 +449,11 @@ class PanelPresenter {
             parts.push(Format.frequency(data.cpu.averageFrequency));
         if (options.showProfile && this._profileNeedsSpelling(data, source, profile))
             parts.push(Format.profileLabel(profile));
-        return parts.join(" ");
+        /* Four figures about four different things, joined by a space, read as
+         * one string: "97% 12 W 4.30 GHz Balanced". The dot is what says where
+         * each of them ends, and it is the one the menu's own summary line
+         * uses for the same job. */
+        return parts.join(" · ");
     }
 
     /*
