@@ -380,6 +380,32 @@ var DdcBacklight = class DdcBacklight {
     }
 
     /*
+     * Let every monitor go, and be ready to look again.
+     *
+     * Not destroy(), which is final and is what leaving the panel calls. This
+     * is the setting being switched off, which says stop talking to the I2C
+     * bus - not that this control will never be wanted again. Switching it
+     * back on probes from scratch, which is the right thing to do rather than
+     * a concession: monitors may well have been plugged or unplugged while it
+     * was off, and nothing was watching.
+     *
+     * A probe already in flight is disowned rather than waited for. _detect
+     * checks _started when it answers, so the monitors it found are dropped
+     * instead of quietly reappearing after the setting said no.
+     */
+    stop() {
+        if (!this._started)
+            return;
+        this._started = false;
+        for (let monitor of this.monitors)
+            monitor.destroy();
+        this.monitors = [];
+        this.hidden = 0;
+        this.available = false;
+        this.percentage = null;
+    }
+
+    /*
      * Look again, because the screens have changed.
      *
      * Detection used to happen once and never again, so a monitor plugged in,
@@ -437,7 +463,9 @@ var DdcBacklight = class DdcBacklight {
         this._detecting = true;
         this._run(["ddcutil", "--brief", "detect"], (output, status) => {
             this._detecting = false;
-            if (this.destroyed)
+            /* Stopped while this was in flight: the setting was switched off
+             * after the probe went out, and what it found is no longer wanted. */
+            if (this.destroyed || !this._started)
                 return;
             if (status !== 0) {
                 /* No ddcutil, no permission, or no display answered. */

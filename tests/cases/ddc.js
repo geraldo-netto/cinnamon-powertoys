@@ -469,6 +469,59 @@ cases["a step moves by one notch from wherever it is"] = function () {
     Harness.equal(each.run.calls[1], "ddcutil --display 1 setvcp 10 40", "and back down");
 };
 
+cases["stopping lets the monitors go without spawning anything"] = function () {
+    let each = started(DETECT_TWO, 0);
+    Harness.equal(each.control.available, true, "two monitors before");
+
+    each.run.calls.length = 0;
+    each.control.stop();
+    Harness.equal(each.control.available, false, "nothing to offer once it is off");
+    Harness.deepEqual(each.control.monitors, [], "and no monitor left to offer it");
+    Harness.equal(each.control.percentage, null, "nor a value to report for one");
+    Harness.deepEqual(each.run.calls, [], "letting go costs no ddcutil");
+};
+
+cases["switching it back on looks again"] = function () {
+    /* From scratch on purpose: monitors may well have been plugged or
+     * unplugged while it was off, and nothing was watching. */
+    let each = started(DETECT_TWO, 0);
+    each.control.stop();
+
+    each.run.calls.length = 0;
+    each.control.start();
+    Harness.equal(each.control.available, true, "back");
+    Harness.equal(each.control.monitors.length, 2, "and it found them again");
+    Harness.ok(each.run.calls.indexOf("ddcutil --brief detect") >= 0,
+               "by probing, not by remembering: " + each.run.calls.join(", "));
+};
+
+cases["a probe still in flight when it is stopped does not bring them back"] = function () {
+    let waiting = [];
+    let run = function (argv, onDone) {
+        waiting.push(() => onDone(DETECT_TWO, 0));
+    };
+    let control = new Ddc.DdcBacklight(null, null, run);
+
+    control.start();
+    control.stop();
+    /* ddcutil answers now, after the setting said no. */
+    waiting.forEach(answer => answer());
+
+    Harness.equal(control.available, false, "still off");
+    Harness.deepEqual(control.monitors, [],
+                      "or the sliders reappear a second after they were switched off");
+};
+
+cases["stopping something that was never started does nothing"] = function () {
+    let run = detecting(DETECT_TWO, 0);
+    let control = new Ddc.DdcBacklight(null, null, run);
+    control.stop();
+    Harness.deepEqual(run.calls, [], "nothing was spawned to be let go of");
+
+    control.start();
+    Harness.equal(control.available, true, "and it can still be started afterwards");
+};
+
 cases["a destroyed control stops claiming anything"] = function () {
     let each = started(DETECT_TWO, 0);
     Harness.equal(each.control.available, true, "before");

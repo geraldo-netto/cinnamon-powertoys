@@ -2082,10 +2082,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
             },
             poll: () => this._startPolling(),
             unit: () => this._onTempUnitChanged(),
-            /* Switching it on has to send the applet looking for a monitor;
-             * nothing else would, until a reload. */
+            /* Switching it either way has to reach the monitors: on sends the
+             * applet looking for one, off lets go of the ones it found, and
+             * nothing else would do either until a reload. The sliders are
+             * synced directly because this is changed from the settings
+             * window, with the menu shut, and _update only draws a menu that
+             * is open. */
             monitor: () => {
                 this._considerMonitorBacklight();
+                this._onBacklightChanged();
                 this._update();
             },
             hotkeys: () => this._registerHotkeys(),
@@ -2167,9 +2172,20 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * something on will not think to do. start() is guarded against being
      * called twice, so asking again costs nothing when the probe has already
      * happened.
+     *
+     * Off is the same story the other way round, and had the same hole in it:
+     * there was no off path at all, so switching the setting off left the
+     * sliders in the menu and the wheel still driving the monitors, against a
+     * setting that said not to. The setting's own tooltip offers it as the way
+     * to stop the probe, and the first thing somebody who has just switched it
+     * off will look at is whether the sliders went.
      */
     _considerMonitorBacklight() {
-        if (this.monitorBrightness && !this._backlights.screen.available)
+        if (!this.monitorBrightness) {
+            this._backlights.monitor.stop();
+            return;
+        }
+        if (!this._backlights.screen.available)
             this._backlights.monitor.start();
     }
 
