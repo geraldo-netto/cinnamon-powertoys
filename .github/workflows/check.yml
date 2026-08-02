@@ -23,10 +23,18 @@ jobs:
       # cjs is Cinnamon's JavaScript interpreter and is what the parse check
       # and the tests are run with, so that they fail here for the same
       # reasons they would fail in the shell.
-      - name: Install cjs and gettext
+      #
+      # The typelib matters as much as the interpreter. Four libraries open
+      # with `imports.gi.UPowerGlib`, which is a runtime lookup and not a
+      # dependency anything declares, so without gir1.2-upowerglib-1.0 they
+      # throw at load and take eleven cases down with them - which is what this
+      # job did on every run from the day it was added until it was noticed.
+      # Gio and GLib arrive with cjs; UPowerGlib is the only one that does not.
+      - name: Install cjs, its UPower typelib and gettext
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y cjs gettext
+          sudo apt-get install --no-install-recommends -y \
+            cjs gir1.2-upowerglib-1.0 gettext
 
       - name: Check
         run: make check
