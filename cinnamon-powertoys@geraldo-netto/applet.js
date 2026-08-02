@@ -57,8 +57,6 @@ const DEFAULT_ICON = "powertoys";
 /* pkexec exit codes: the dialog was closed, or authorisation was refused */
 const PKEXEC_DISMISSED = 126;
 const PKEXEC_UNAUTHORISED = 127;
-/* Only the top level RAPL domains, adding the sub-domains would count twice. */
-const RAPL_PACKAGE = /^rapl:(intel|amd)-rapl:\d+$/;
 
 /* Charge limits offered in the menu, in percent. */
 const CHARGE_LIMITS = [60, 70, 80, 90, 95, 100];
@@ -555,6 +553,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             let raw = this._backends.readNumber(sensor.path);
             temperatures.push({
                 id: sensor.id,
+                measure: sensor.measure,
                 chip: sensor.chip,
                 kind: sensor.kind,
                 label: Format.sensorLabel(sensor),
@@ -566,6 +565,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             if (device.temperature)
                 temperatures.push({
                     id: "upower:" + device.path,
+                    measure: "temperature",
                     chip: Format.deviceTitle(device),
                     kind: "battery",
                     label: Format.deviceTitle(device),
@@ -576,6 +576,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         let fans = this._sensors.fans.map(fan => ({
             id: fan.id,
+            measure: fan.measure,
             label: Format.sensorLabel(fan),
             kind: fan.kind,
             rpm: this._backends.readNumber(fan.path),
@@ -587,8 +588,11 @@ class PowerToysApplet extends Applet.TextIconApplet {
             let value = meter.sample();
             if (value === null)
                 continue;
-            powers.push({ id: meter.id, label: meter.label, kind: "package", watts: value });
-            if (RAPL_PACKAGE.test(meter.id))
+            powers.push({ id: meter.id, measure: meter.measure, label: meter.label,
+                          kind: meter.kind, watts: value });
+            /* the sub-domains are inside the top level ones, adding both
+             * would count the same joules twice */
+            if (meter.topLevel)
                 packageWatts = (packageWatts || 0) + value;
         }
         for (let sensor of this._sensors.powerMeters) {
@@ -597,6 +601,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
                 continue;
             powers.push({
                 id: sensor.id,
+                measure: sensor.measure,
                 label: Format.sensorLabel(sensor),
                 kind: sensor.kind,
                 watts: raw / 1000000,
@@ -606,6 +611,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             if (device.powerSupply && device.energyRate)
                 powers.push({
                     id: "upower:" + device.path,
+                    measure: "power",
                     label: Format.deviceTitle(device),
                     kind: "battery",
                     watts: device.energyRate,
@@ -1016,10 +1022,20 @@ class PowerToysApplet extends Applet.TextIconApplet {
         }
     }
 
+    /*
+     * A menu key unique across the three lists. Ids are unique within one of
+     * them but not between them: a battery that reports both a temperature
+     * and a draw carries the same UPower path in each, and what tells the two
+     * readings apart is what they measure.
+     */
+    _entryKey(reading) {
+        return reading.measure + ":" + reading.id;
+    }
+
     /* A temperature is worth flagging as it closes on the chip's own limit. */
     _temperatureEntry(sensor) {
         return {
-            key: "t:" + sensor.id,
+            key: this._entryKey(sensor),
             label: sensor.label,
             value: Format.temperature(sensor.celsius, this.tempUnit, 1),
             warning: sensor.critical !== null && sensor.celsius >= sensor.critical - 5,
@@ -1027,11 +1043,12 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     _fanEntry(fan) {
-        return { key: "f:" + fan.id, label: fan.label, value: Format.rpm(fan.rpm), warning: false };
+        return { key: this._entryKey(fan), label: fan.label,
+                 value: Format.rpm(fan.rpm), warning: false };
     }
 
     _powerEntry(meter) {
-        return { key: "p:" + meter.id, label: meter.label,
+        return { key: this._entryKey(meter), label: meter.label,
                  value: Format.watts(meter.watts), warning: false };
     }
 

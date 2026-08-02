@@ -168,6 +168,7 @@ function discoverSensors() {
                     critical = IO.readNumber(base + "/temp" + index + "_emergency");
                 chipTemperatures.push({
                     id: "hwmon:" + entry + ":temp" + index,
+                    measure: "temperature",
                     source: "hwmon",
                     chip: chip,
                     kind: kind,
@@ -185,6 +186,7 @@ function discoverSensors() {
                 let index = match[1];
                 chipFans.push({
                     id: "hwmon:" + entry + ":fan" + index,
+                    measure: "fan",
                     source: "hwmon",
                     chip: chip,
                     kind: kind,
@@ -205,6 +207,7 @@ function discoverSensors() {
                     continue;
                 chipPowerMeters.push({
                     id: "hwmon:" + entry + ":power" + index,
+                    measure: "power",
                     source: "hwmon",
                     chip: chip,
                     kind: kind,
@@ -237,6 +240,7 @@ function discoverSensors() {
         chips.add(type);
         temperatures.push({
             id: "thermal:" + entry,
+            measure: "temperature",
             source: "thermal",
             chip: type,
             kind: classifyChip(type),
@@ -272,6 +276,13 @@ function _criticalTripPoint(base) {
 }
 
 /*
+ * A RAPL domain directory is named intel-rapl:0 for a whole package and
+ * intel-rapl:0:1 for one of its parts, so the top level ones are exactly the
+ * domains that can be added up without counting the same joules twice.
+ */
+const RAPL_PACKAGE_DOMAIN = /^(intel|amd)-rapl:\d+$/;
+
+/*
  * RAPL / powercap energy counters. Since CVE-2020-8694 energy_uj is usually
  * 0400, so this returns an empty list on most systems - that is expected and
  * simply means no package power readout.
@@ -287,10 +298,13 @@ function discoverEnergyCounters() {
             continue;
         counters.push({
             id: "rapl:" + entry,
+            measure: "power",
+            kind: "package",
             label: IO.readString(base + "/name") || entry,
             path: energyPath,
             maxRange: IO.readNumber(base + "/max_energy_range_uj"),
             domain: entry,
+            topLevel: RAPL_PACKAGE_DOMAIN.test(entry),
         });
     }
     return counters;
@@ -301,7 +315,12 @@ var EnergyMeter = class EnergyMeter {
     constructor(counter) {
         this.counter = counter;
         this.id = counter.id;
+        this.measure = counter.measure;
+        this.kind = counter.kind;
         this.label = counter.label;
+        this.domain = counter.domain;
+        /* whether this counter may be added into a whole-package total */
+        this.topLevel = counter.topLevel;
         this.watts = null;
         this._lastValue = null;
         this._lastTime = 0;
