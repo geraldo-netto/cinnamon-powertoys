@@ -855,6 +855,18 @@ class MenuPresenter {
                                          });
     }
 
+    /*
+     * The sliders alone, without touching anything else.
+     *
+     * A backlight changing says nothing about batteries, sensors or the
+     * processor, and the control already knows its own new value, so there is
+     * nothing to go and read.
+     */
+    syncBacklights() {
+        for (let slider of this._backlightSliders)
+            slider.sync();
+    }
+
     _addBacklight(label, iconName, control) {
         let slider = new BacklightSlider(label, iconName, control);
         this._menu.addMenuItem(slider);
@@ -895,8 +907,7 @@ class MenuPresenter {
     }
 
     update(data, options) {
-        for (let slider of this._backlightSliders)
-            slider.sync();
+        this.syncBacklights();
         this._updateSummary(data, options);
         this._updateProfiles(data, options);
         this._updateDevices(data, options);
@@ -1139,11 +1150,11 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         this._backlights = {
             screen: this._backends.backlight(Backlight.SCREEN,
-                                             () => this._scheduleUpdate(),
+                                             () => this._onBacklightChanged(),
                                              () => this._onScreenBacklightKnown()),
             keyboard: this._backends.backlight(Backlight.KEYBOARD,
-                                               () => this._scheduleUpdate(),
-                                               () => this._scheduleUpdate()),
+                                               () => this._onBacklightChanged(),
+                                               () => this._onBacklightChanged()),
         };
         /*
          * Monitors on a cable have no kernel backlight and have to be talked
@@ -1152,8 +1163,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * it is told to - see _onScreenBacklightKnown().
          */
         this._backlights.monitor = this._backends.monitorBacklight(
-            () => this._scheduleUpdate(),
-            () => this._scheduleUpdate());
+            () => this._onBacklightChanged(),
+            () => this._onBacklightChanged());
 
         /* Bluetooth devices UPower does not bridge - which on some builds is
          * all of them - reported by BlueZ itself. */
@@ -1218,7 +1229,18 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _onScreenBacklightKnown() {
         if (this.monitorBrightness && !this._backlights.screen.available)
             this._backlights.monitor.start();
-        this._scheduleUpdate();
+        this._onBacklightChanged();
+    }
+
+    /*
+     * A backlight moved - a function key, the daemon dimming on idle, the
+     * slider itself. Only the sliders need to hear about it: nothing else in
+     * the menu or the panel depends on a backlight, and the control already
+     * knows its new value, so there is nothing to go and read.
+     */
+    _onBacklightChanged() {
+        if (this._menuPresenter)
+            this._menuPresenter.syncBacklights();
     }
 
     _reportUnboundSettings() {
