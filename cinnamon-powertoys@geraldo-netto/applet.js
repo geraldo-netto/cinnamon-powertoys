@@ -154,7 +154,6 @@ const SETTINGS = [
     { key: "show-devices", property: "showDevices" },
     { key: "show-sensors", property: "showSensors" },
     { key: "show-all-sensors", property: "showAllSensors" },
-    { key: "expand-sections", property: "expandSections", onChange: "expand" },
     { key: "monitor-brightness", property: "monitorBrightness" },
 
     /* Not shown anywhere: whether this install has introduced itself yet. */
@@ -744,6 +743,62 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
 }
 
 /*
+ * A section whose columns line up with itself and with nothing else.
+ *
+ * Everything in a popup menu is laid out in columns, and Cinnamon aligns them
+ * across the whole menu: before it measures, the menu asks every item how wide
+ * its columns want to be, takes the widest of each, and hands that back down to
+ * all of them. In one column of rows that is what makes labels and values line
+ * up; with the panels side by side it made each of the three as wide as the
+ * widest row anywhere in the menu, so one long scaling driver name in the first
+ * panel set the width of all three and the menu came out over a thousand pixels
+ * across.
+ *
+ * Breaking the chain at the panel boundary is two lines: tell the menu nothing,
+ * and ignore what it says in favour of what this panel's own rows need. Rows
+ * inside a panel still align with each other, including the ones in the nested
+ * sections the lists live in, because those are untouched.
+ */
+class PanelSection extends PopupMenu.PopupMenuSection {
+    getColumnWidths() {
+        return [];
+    }
+
+    setColumnWidths() {
+        super.setColumnWidths(super.getColumnWidths());
+    }
+}
+
+/*
+ * One column of the menu: a title carrying a summary of what is under it,
+ * then the rows themselves.
+ *
+ * A PopupMenuSection's actor is its own box, so a section is a container the
+ * rest of the menu machinery already understands - items added to it are laid
+ * out inside it rather than in the menu, and hiding its actor hides the
+ * column and its title together.
+ *
+ * It answers to actor, label and menu, which is all the panels ever asked of
+ * the submenu item this replaced, so what changed is where the rows are drawn
+ * and not one line of what draws them.
+ */
+class Panel {
+    constructor(parent, title) {
+        this._section = new PanelSection();
+        this._section.actor.add_style_class_name("powertoys-panel");
+        parent.addMenuItem(this._section);
+
+        this._title = new PopupMenu.PopupMenuItem(title, { reactive: false });
+        this._title.actor.add_style_class_name("powertoys-panel-title");
+        this._section.addMenuItem(this._title);
+
+        this.menu = this._section;
+        this.actor = this._section.actor;
+        this.label = this._title.label;
+    }
+}
+
+/*
  * The menu, from the summary line at the top to the settings entry at the
  * bottom.
  *
@@ -761,18 +816,23 @@ class MenuPresenter {
     }
 
     /*
-     * One panel per subject.
+     * One panel per subject, side by side.
      *
      * The menu used to be one column of everything: the summary, three
      * sliders, the profiles, the chargers, the devices, then two submenus and
-     * a third for the charge limit. Fifteen rows at rest, and the boundaries
-     * between what belongs with what were separators and nothing else.
+     * a third for the charge limit. Grouping that into three panels answered
+     * what belongs with what, but stacked they were three folded rows that
+     * still had to be opened one at a time, and opening one pushed the two
+     * below it down the screen.
      *
-     * Now there are three panels - Performance, Devices, Sensors - and each
-     * carries a summary of itself in its own label, so the menu at rest reads
-     * as three lines that answer the three questions this applet exists for.
-     * The sliders stay outside because a slider you have to open a panel to
-     * reach is a slider nobody uses.
+     * Side by side they are all open at once. Nothing is behind a click,
+     * nothing moves when a panel is read, and the three questions this applet
+     * exists for are answered in the three places the eye goes. Each panel
+     * still carries a summary in its title, because a title that says
+     * "Performance   Balanced" is worth reading even with the rows beneath it.
+     *
+     * The sliders stay above the columns, full width: they are the controls in
+     * here that get used most, and they read as a track, not as a column.
      */
     _build(capabilities, backlights) {
         this._summary = new InfoRow("", "");
@@ -795,9 +855,16 @@ class MenuPresenter {
 
         this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
+        /* A section laid out the other way round is a row of columns. */
+        this._columns = new PopupMenu.PopupMenuSection();
+        this._columns.actor.set_vertical(false);
+        this._columns.actor.add_style_class_name("powertoys-columns");
+        this._menu.addMenuItem(this._columns);
+
         this._buildPerformancePanel();
         this._buildDevicePanel(capabilities);
         this._buildSensorPanel();
+        this._panels = [this._performancePanel, this._devicePanel, this._sensorPanel];
 
         this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this._menu.addSettingsAction(_("System power settings"), "power");
@@ -825,9 +892,8 @@ class MenuPresenter {
      * preference are what it sets.
      */
     _buildPerformancePanel() {
-        this._performanceMenu = new PopupMenu.PopupSubMenuMenuItem(_("Performance"));
-        this._menu.addMenuItem(this._performanceMenu);
-        let menu = this._performanceMenu.menu;
+        this._performancePanel = new Panel(this._columns, _("Performance"));
+        let menu = this._performancePanel.menu;
 
         let profileSection = new PopupMenu.PopupMenuSection();
         menu.addMenuItem(profileSection);
@@ -850,9 +916,8 @@ class MenuPresenter {
      * a battery is allowed to get.
      */
     _buildDevicePanel(capabilities) {
-        this._deviceMenu = new PopupMenu.PopupSubMenuMenuItem(_("Batteries and devices"));
-        this._menu.addMenuItem(this._deviceMenu);
-        let menu = this._deviceMenu.menu;
+        this._devicePanel = new Panel(this._columns, _("Batteries and devices"));
+        let menu = this._devicePanel.menu;
 
         /* The charger goes above the batteries: whether it is plugged in is
          * the first thing anyone opening this on a laptop wants. */
@@ -886,8 +951,7 @@ class MenuPresenter {
     }
 
     _buildSensorPanel() {
-        this._sensorMenu = new PopupMenu.PopupSubMenuMenuItem(_("Sensors"));
-        this._menu.addMenuItem(this._sensorMenu);
+        this._sensorPanel = new Panel(this._columns, _("Sensors"));
 
         /* Only ever shown when the preferred sensor setting names something
          * this machine does not have. Somebody who typed a name has no other
@@ -895,7 +959,7 @@ class MenuPresenter {
         this._hintRow = new InfoRow("", "");
         this._hintRow.setWarning(true);
         this._hintRow.actor.hide();
-        this._sensorMenu.menu.addMenuItem(this._hintRow);
+        this._sensorPanel.menu.addMenuItem(this._hintRow);
 
         /*
          * The rows live in a section of their own, because KeyedList clears
@@ -903,7 +967,7 @@ class MenuPresenter {
          * else sharing that menu would be destroyed along with them.
          */
         let listSection = new PopupMenu.PopupMenuSection();
-        this._sensorMenu.menu.addMenuItem(listSection);
+        this._sensorPanel.menu.addMenuItem(listSection);
         this._sensorList = new KeyedList(listSection,
                                          entry => entry.heading
                                              ? this._createHeading(entry.label)
@@ -961,16 +1025,41 @@ class MenuPresenter {
         menu.addMenuItem(this._boostSwitch);
     }
 
-    /* Submenus start folded; "expand-sections" asks for them open instead. */
-    applyExpandState(expand) {
-        for (let item of [this._performanceMenu, this._deviceMenu, this._sensorMenu]) {
-            if (!item)
-                continue;
-            if (expand)
-                item.menu.open(false);
-            else
-                item.menu.close(false);
+    /*
+     * The columns made the same width, and ruled apart.
+     *
+     * Equal widths cannot be asked for in the stylesheet. A column sizes to
+     * its own content, and what that content is depends on the machine, on
+     * the theme's font and on the translation, so the number cannot be
+     * written down anywhere - it has to be measured. The widest is measured
+     * and the others are given it as a floor, which is a floor rather than a
+     * width so that nothing can ever be clipped by it.
+     *
+     * The measurement clears the last one first, or each would return the
+     * one before it and the columns would only ever grow.
+     *
+     * The rule between them is applied here rather than styled because St has
+     * no :first-child, and because which panel is leftmost is not fixed: a
+     * machine with no profiles and no processor controls, or a user who has
+     * switched the devices off, leaves a different one at the edge.
+     */
+    _syncColumns() {
+        let visible = this._panels.filter(panel => panel.actor.visible);
+
+        let widest = 0;
+        for (let panel of visible) {
+            panel.actor.set_style(null);
+            widest = Math.max(widest, panel.actor.get_preferred_width(-1)[1]);
         }
+        for (let panel of visible)
+            panel.actor.set_style("min-width: " + Math.ceil(widest) + "px;");
+
+        visible.forEach((panel, index) => {
+            if (index === 0)
+                panel.actor.remove_style_class_name("powertoys-panel-divided");
+            else
+                panel.actor.add_style_class_name("powertoys-panel-divided");
+        });
     }
 
     update(data, options) {
@@ -981,6 +1070,7 @@ class MenuPresenter {
         this._updateCpu(data, options);
         this._updateSensors(data, options);
         this._updateCharge(data, options);
+        this._syncColumns();
     }
 
     _updateSummary(data, options) {
@@ -1011,8 +1101,8 @@ class MenuPresenter {
         let active = options.pendingProfile || data.profile.active;
         this._profileGroup.sync(show ? data.profile.list : [], active);
 
-        this._performanceMenu.actor.visible = show || (options.showCpu && data.cpu.available);
-        this._setPanelSummary(this._performanceMenu, _("Performance"),
+        this._performancePanel.actor.visible = show || (options.showCpu && data.cpu.available);
+        this._setPanelSummary(this._performancePanel, _("Performance"),
                               show ? Format.profileLabel(active)
                                    : Format.governorLabel(data.cpu.governor));
 
@@ -1035,7 +1125,7 @@ class MenuPresenter {
         let lines = options.showDevices ? data.lines : [];
         let devices = options.showDevices ? data.devices : [];
 
-        this._deviceMenu.actor.visible = options.showDevices;
+        this._devicePanel.actor.visible = options.showDevices;
         this._lineList.sync(lines.map(device => ({
             key: device.path,
             label: Format.deviceTitle(device),
@@ -1053,7 +1143,7 @@ class MenuPresenter {
          */
         this._noDevicesRow.actor.visible = lines.length === 0 && devices.length === 0;
 
-        this._setPanelSummary(this._deviceMenu, _("Batteries and devices"),
+        this._setPanelSummary(this._devicePanel, _("Batteries and devices"),
                               this._deviceSummary(data, devices, lines));
     }
 
@@ -1065,11 +1155,12 @@ class MenuPresenter {
     }
 
     /*
-     * A panel says what is inside it without being opened. Three closed rows
-     * that each answer a question beats three that each promise an answer.
+     * A panel title says what the panel amounts to, so the three titles read
+     * across as an answer to the three questions, and the rows underneath are
+     * there for whoever wants the detail behind one of them.
      */
-    _setPanelSummary(item, title, value) {
-        item.label.set_text(value ? title + "   " + value : title);
+    _setPanelSummary(panel, title, value) {
+        panel.label.set_text(value ? title + "   " + value : title);
     }
 
     _updateCpu(data, options) {
@@ -1192,11 +1283,11 @@ class MenuPresenter {
     }
 
     _updateSensors(data, options) {
-        this._sensorMenu.actor.visible = options.showSensors;
+        this._sensorPanel.actor.visible = options.showSensors;
         if (!options.showSensors)
             return;
 
-        this._setPanelSummary(this._sensorMenu, _("Sensors"),
+        this._setPanelSummary(this._sensorPanel, _("Sensors"),
                               data.cpuTemperature === null ? ""
                               : Format.temperature(data.cpuTemperature, options.tempUnit, 1));
 
@@ -1346,9 +1437,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
             },
             poll: () => this._startPolling(),
             unit: () => this._onTempUnitChanged(),
-            /* on its own, so toggling anything else does not fold a submenu
-             * the user opened by hand */
-            expand: () => this._menuPresenter.applyExpandState(this.expandSections),
             hotkeys: () => this._registerHotkeys(),
         };
 
@@ -1372,15 +1460,14 @@ class PowerToysApplet extends Applet.TextIconApplet {
      *
      * Nobody reads a README before using a panel applet, and there is not
      * much to go on otherwise: on a desktop the applet is an icon with no
-     * text beside it, and everything it can do is behind three panels that
-     * are folded shut. So it says once what is in there, and opens them the
-     * first time the menu is used - showing being better than telling.
+     * text beside it. The menu itself now shows everything it can do as soon
+     * as it is opened, so this only has to say that the menu is worth opening
+     * and where the settings are.
      */
     _introduce() {
         if (this.introduced)
             return;
         this.settings.setValue("introduced", true);
-        this._openPanelsOnce = true;
 
         Main.notify(_("Power Toys"),
                     _("Power profiles, processor settings, batteries and sensors " +
@@ -1471,7 +1558,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
                                                { chargeLimit: !!this._chargeControl,
                                                  version: this.metadata.version },
                                                this._backlights);
-        this._menuPresenter.applyExpandState(this.expandSections);
     }
 
     /* What the menu is allowed to ask for. Every one of these ends in a write
@@ -1718,12 +1804,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
         for (let name in this._backlights)
             this._backlights[name].refresh(() => this._onBacklightChanged());
         this._update();
-
-        /* Only ever on the very first menu of a fresh install. */
-        if (this._openPanelsOnce) {
-            this._openPanelsOnce = false;
-            this._menuPresenter.applyExpandState(true);
-        }
     }
 
     _update() {

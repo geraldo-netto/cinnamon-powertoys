@@ -94,11 +94,6 @@
         "tooltip": "When off, only CPU and GPU sensors are listed.",
         "dependency": "show-sensors"
     },
-    "expand-sections": {
-        "type": "switch",
-        "default": false,
-        "description": "Open the CPU and sensor sections by default"
-    },
     "monitor-brightness": {
         "type": "switch",
         "default": true,

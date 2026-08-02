@@ -20,6 +20,53 @@
     padding-left: 22px;
 }
 
+/*
+ * The three panels side by side.
+ *
+ * Each one is given a width rather than being left to size itself, for two
+ * reasons. A column that fits its widest row is a column that changes width
+ * whenever a reading gains a digit or a device is switched on, and a menu
+ * whose contents shuffle sideways under the pointer is worse than one that is
+ * a little wider than it needs to be. And three columns of different widths
+ * do not read as three of anything.
+ */
+.powertoys-columns {
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+/*
+ * Every panel carries the rule, including the one that does not show it.
+ *
+ * A border only on the panels that are ruled would make those panels a pixel
+ * wider than the leftmost, and the code equalises the columns by measuring
+ * them - so each measurement would come back a pixel over the last and the
+ * menu would widen by a pixel on every poll for as long as it was open. One
+ * transparent border keeps all three the same size and the arithmetic still.
+ */
+.powertoys-panel {
+    min-width: 210px;
+    padding-left: 8px;
+    padding-right: 8px;
+    border-left: 1px solid rgba(0, 0, 0, 0);
+}
+
+/*
+ * Applied in code to every visible panel but the leftmost, since which one
+ * that is depends on what the machine has and what the user has switched on.
+ * Grey at a third opacity rather than a colour of its own, so it reads as a
+ * division on a light theme and on a dark one without either theme having
+ * been asked what it uses for the purpose.
+ */
+.powertoys-panel-divided {
+    border-left: 1px solid rgba(127, 127, 127, 0.35);
+}
+
+.powertoys-panel-title {
+    font-weight: bold;
+    padding-bottom: 2px;
+}
+
 .powertoys-group-title {
     font-weight: bold;
     padding-top: 6px;

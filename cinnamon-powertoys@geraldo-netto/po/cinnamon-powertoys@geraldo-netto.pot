@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-02 13:04+0200\n"
+"POT-Creation-Date: 2026-08-02 13:24+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,168 +17,172 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: applet.js:187
+#: applet.js:186
 msgid "battery"
 msgstr ""
 
-#: applet.js:188
+#: applet.js:187
 msgid "package"
 msgstr ""
 
-#: applet.js:189
+#: applet.js:188
 msgid "GPU"
 msgstr ""
 
-#: applet.js:225 applet.js:452 applet.js:951
+#: applet.js:224 applet.js:451 applet.js:1015
 msgid "Governor"
 msgstr ""
 
-#: applet.js:227 applet.js:953
+#: applet.js:226 applet.js:1017
 msgid "Energy preference"
 msgstr ""
 
-#: applet.js:229
+#: applet.js:228
 msgid "Turbo boost on"
 msgstr ""
 
-#: applet.js:229
+#: applet.js:228
 msgid "Turbo boost off"
 msgstr ""
 
-#: applet.js:231 applet.js:836 applet.js:1879
+#: applet.js:230 applet.js:902 applet.js:1970
 msgid "Power profile"
 msgstr ""
 
-#: applet.js:233 applet.js:884
+#: applet.js:232 applet.js:949
 msgid "Charge limit"
 msgstr ""
 
-#: applet.js:300
+#: applet.js:299
 msgid "Battery critically low"
 msgstr ""
 
-#: applet.js:307
+#: applet.js:306
 msgid "Battery low"
 msgstr ""
 
-#: applet.js:325
+#: applet.js:324
 msgid "High temperature"
 msgstr ""
 
-#: applet.js:446
+#: applet.js:445
 msgid "Running on AC power"
 msgstr ""
 
-#: applet.js:450
+#: applet.js:449
 msgid "Profile"
 msgstr ""
 
-#: applet.js:454 applet.js:945
+#: applet.js:453 applet.js:1009
 msgid "Temperature"
 msgstr ""
 
-#: applet.js:457
+#: applet.js:456
 msgid "Power draw"
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:465 applet.js:814 applet.js:1377 applet.js:1828 applet.js:1879
-#: applet.js:1926 applet.js:1935
+#: applet.js:464 applet.js:881 applet.js:1472 applet.js:1919 applet.js:1970
+#: applet.js:2017 applet.js:2026
 msgid "Power Toys"
 msgstr ""
 
-#: applet.js:788
+#: applet.js:848
 msgid "Brightness"
 msgstr ""
 
-#: applet.js:790
+#: applet.js:850
 msgid "Monitor brightness"
 msgstr ""
 
-#: applet.js:793
+#: applet.js:853
 msgid "Keyboard backlight"
 msgstr ""
 
-#: applet.js:803
+#: applet.js:870
 msgid "System power settings"
 msgstr ""
 
-#: applet.js:805
+#: applet.js:872
 msgid "Configure Power Toys"
 msgstr ""
 
-#: applet.js:828 applet.js:1015 lib/format.js:227 lib/format.js:311
+#: applet.js:895 applet.js:1105 lib/format.js:227 lib/format.js:311
 #: lib/format.js:329
 msgid "Performance"
 msgstr ""
 
-#: applet.js:838
+#: applet.js:904
 msgid "Performance limited"
 msgstr ""
 
-#: applet.js:853 applet.js:1056
+#: applet.js:919 applet.js:1146
 msgid "Batteries and devices"
 msgstr ""
 
-#: applet.js:875
+#: applet.js:940
 msgid "Nothing with a battery is connected"
 msgstr ""
 
-#: applet.js:889 applet.js:1199
+#: applet.js:954 applet.js:1290
 msgid "Sensors"
 msgstr ""
 
-#: applet.js:944
+#: applet.js:1008
 msgid "Frequency"
 msgstr ""
 
-#: applet.js:946
+#: applet.js:1010
 msgid "Scaling driver"
 msgstr ""
 
-#: applet.js:959
+#: applet.js:1023
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:996
+#: applet.js:1086
 msgid "On AC power"
 msgstr ""
 
-#: applet.js:1023
+#: applet.js:1113
 msgid "an application"
 msgstr ""
 
-#: applet.js:1042
+#: applet.js:1132
 msgid "Connected"
 msgstr ""
 
-#: applet.js:1042
+#: applet.js:1132
 msgid "Disconnected"
 msgstr ""
 
-#: applet.js:1064
+#: applet.js:1154
 msgid "none"
 msgstr ""
 
-#: applet.js:1205
+#: applet.js:1296
 msgid "No sensor matches"
 msgstr ""
 
-#: applet.js:1217
+#: applet.js:1308
 msgid "No sensors found"
 msgstr ""
 
-#: applet.js:1378
+#: applet.js:1473
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "Right click the panel to configure it."
 msgstr ""
 
-#: applet.js:1829
+#: applet.js:1904
+msgid "Privileged controls are turned off"
+msgstr ""
+
+#: applet.js:1920
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:1936
+#: applet.js:2027
 msgid "The change could not be applied."
 msgstr ""
 
@@ -614,10 +618,6 @@ msgstr ""
 
 #. settings-schema.json->show-all-sensors->tooltip
 msgid "When off, only CPU and GPU sensors are listed."
-msgstr ""
-
-#. settings-schema.json->expand-sections->description
-msgid "Open the CPU and sensor sections by default"
 msgstr ""
 
 #. settings-schema.json->monitor-brightness->description
