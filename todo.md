@@ -51,4 +51,3 @@ these rows are about.
 | id | severity | effort | description |
 |----|----------|--------|-------------|
 | PT-75 | medium | M | Everything runs on the compositor's main loop: ten milliseconds of synchronous `open`/`read`/`close` every four seconds, in the process that draws the desktop, on a machine where one of those reads can block for over a millisecond on a sleeping disk. `GLib.file_get_contents_async` exists. |
-| PT-79 | low | S | The reading is rebuilt from nothing on every poll and no one compares it to the last. With the menu closed the panel is the only consumer, and it re-formats identical text every four seconds. |

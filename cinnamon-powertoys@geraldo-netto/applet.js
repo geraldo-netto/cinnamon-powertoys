@@ -352,13 +352,46 @@ class PanelPresenter {
         let tooltip = applet._applet_tooltip;
         if (tooltip && tooltip._tooltip)
             tooltip._tooltip.set_style("text-align: left;");
+
+        /*
+         * The tooltip is composed when it is about to be shown, not when the
+         * reading arrives.
+         *
+         * It is six lines of formatted text and it is the whole of what the
+         * panel costs per poll - and it can only be read with the pointer
+         * resting on the applet, which is a fraction of the time the applet
+         * exists. Cinnamon calls show() on the tooltip after its own delay,
+         * whatever brought the pointer there, so that is the moment to write
+         * it: no guessing from enter events, and nothing stale, because a
+         * tooltip already on screen is rewritten by the poll below.
+         */
+        this._reading = null;
+        this._readingOptions = null;
+        if (tooltip) {
+            let show = tooltip.show.bind(tooltip);
+            tooltip.show = () => {
+                this._writeTooltip();
+                show();
+            };
+        }
     }
 
     update(data, options) {
         let source = this._iconSource(data, options.iconSource);
         this._applet.set_applet_label(this._labelText(data, options, source));
         this._updateIcon(data, source);
-        this._applet.set_applet_tooltip(this._tooltipText(data, options));
+
+        this._reading = data;
+        this._readingOptions = options;
+        let tooltip = this._applet._applet_tooltip;
+        if (tooltip && tooltip.visible)
+            this._writeTooltip();
+    }
+
+    _writeTooltip() {
+        if (this._reading)
+            this._applet.set_applet_tooltip(this._tooltipText(this._reading,
+                                                              this._readingOptions));
     }
 
     /* "auto" settled: the battery if there is one, otherwise the profile if
