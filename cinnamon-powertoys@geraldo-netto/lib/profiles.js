@@ -55,6 +55,9 @@ var PowerProfilesClient = class PowerProfilesClient {
         this._watchIds = [];
         this.busName = null;
         this.busPath = null;
+        /* Built on demand and dropped whenever the daemon says anything has
+         * changed - see snapshot(). */
+        this._snapshot = null;
 
         this._connect();
 
@@ -64,13 +67,13 @@ var PowerProfilesClient = class PowerProfilesClient {
                 () => {
                     if (!this._proxy) {
                         this._connect();
-                        this._onChanged();
+                        this._invalidate();
                     }
                 },
                 () => {
                     if (this.busName === backend.name) {
                         this._disconnectProxy();
-                        this._onChanged();
+                        this._invalidate();
                     }
                 }));
         }
@@ -86,7 +89,8 @@ var PowerProfilesClient = class PowerProfilesClient {
                 this._proxy = proxy;
                 this.busName = backend.name;
                 this.busPath = backend.path;
-                this._propSignalId = proxy.connect("g-properties-changed", () => this._onChanged());
+                this._propSignalId = proxy.connect("g-properties-changed",
+                                                   () => this._invalidate());
                 return;
             } catch (e) {
                 /* daemon not running under this name */
@@ -106,6 +110,36 @@ var PowerProfilesClient = class PowerProfilesClient {
         this._propSignalId = 0;
         this.busName = null;
         this.busPath = null;
+        this._snapshot = null;
+    }
+
+    /* The daemon has spoken, so what was worked out from it is stale. */
+    _invalidate() {
+        this._snapshot = null;
+        this._onChanged();
+    }
+
+    /*
+     * Everything a reading asks about the profile, worked out once.
+     *
+     * The getters below each unpack their own variants, and a poll wanted six
+     * of them - the profile list and the holds are arrays of dictionaries, and
+     * unpacking those was the largest single cost in a collection. None of it
+     * can change without the daemon saying so on g-properties-changed, and
+     * that is already listened to, so the answer is kept until it does.
+     */
+    snapshot() {
+        if (!this._snapshot) {
+            this._snapshot = {
+                available: this.available,
+                busName: this.busName,
+                active: this.active,
+                profiles: this.profiles,
+                degraded: this.degraded,
+                holds: this.holds,
+            };
+        }
+        return this._snapshot;
     }
 
     get available() {

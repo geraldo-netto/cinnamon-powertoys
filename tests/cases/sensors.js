@@ -549,3 +549,35 @@ cases["a refused platform profile reports the refusal"] = function () {
         Harness.equal(error.message, "unknown platform profile: nonsense", "with the reason");
     });
 };
+
+cases["the platform profile answers a whole reading from one look"] = function () {
+    on("machine", function () {
+        let client = new PowerSupply.PlatformProfileClient();
+        let state = client.snapshot();
+        Harness.equal(state.available, true, "available");
+        Harness.equal(state.busName, "acpi-platform-profile", "which backend");
+        Harness.equal(state.active, "balanced", "active");
+        Harness.deepEqual(state.profiles, ["quiet", "balanced", "performance"], "profiles");
+        Harness.equal(state.degraded, "", "the firmware says nothing about degradation");
+        Harness.deepEqual(state.holds, [], "or about applications holding a profile");
+
+        /* The same six answers the getters give, so a caller can use either. */
+        Harness.deepEqual(
+            state,
+            { available: client.available, busName: client.busName, active: client.active,
+              profiles: client.profiles, degraded: client.degraded, holds: client.holds },
+            "one look and six looks agree");
+    });
+};
+
+cases["a machine with no platform profile snapshots as unavailable"] = function () {
+    IO.setRoot("/nonexistent");
+    try {
+        let state = new PowerSupply.PlatformProfileClient().snapshot();
+        Harness.equal(state.available, false, "unavailable");
+        Harness.equal(state.active, null, "no active profile");
+        Harness.deepEqual(state.profiles, [], "and none to choose from");
+    } finally {
+        IO.setRoot("");
+    }
+};

@@ -1803,15 +1803,18 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._profileBackend = this._profiles;
     }
 
+    /* One look at whichever backend answers, rather than six. Each of them
+     * has its own reason for that mattering: the firmware one opens two files
+     * per property, the daemon one unpacks a variant per property. */
     _collectProfile() {
-        let backend = this._profileBackend;
+        let state = this._profileBackend.snapshot();
         return {
-            available: backend.available,
-            backend: backend.busName,
-            active: backend.active,
-            list: backend.profiles,
-            degraded: backend.degraded,
-            holds: backend.holds,
+            available: state.available,
+            backend: state.busName,
+            active: state.active,
+            list: state.profiles,
+            degraded: state.degraded,
+            holds: state.holds,
         };
     }
 

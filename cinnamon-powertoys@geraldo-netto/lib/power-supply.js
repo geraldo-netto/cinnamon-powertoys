@@ -119,6 +119,27 @@ var PlatformProfileClient = class PlatformProfileClient {
     }
 
     /*
+     * Everything a reading asks about the profile, from one look at the
+     * firmware.
+     *
+     * The getters above are each a fresh read, which is right when one of them
+     * is what you want and wrong when all of them are: a poll asking for six
+     * properties opened the same two files three times over. This is the call
+     * a poll makes.
+     */
+    snapshot() {
+        let profile = this._read();
+        return {
+            available: profile !== null && profile.choices.length > 0,
+            busName: this.busName,
+            active: profile === null ? null : profile.active,
+            profiles: profile === null ? [] : profile.choices,
+            degraded: "",
+            holds: [],
+        };
+    }
+
+    /*
      * Writing needs root, so it goes through the same runner every other
      * privileged setting uses. The helper checks the value against the
      * firmware's own list before writing it.
