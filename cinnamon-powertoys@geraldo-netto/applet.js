@@ -103,6 +103,53 @@ function defaultBackends() {
 }
 
 /*
+ * Every setting this applet binds, and what has to happen when it moves.
+ *
+ * The property names used to be produced from the keys by a string transform,
+ * so a key that was not in the schema bound to nothing and left an undefined
+ * property, which reads as "off" everywhere it is used - a switch that cannot
+ * be turned on, and no error to say why. Written out, the pair is checked
+ * once at bind time and a mismatch is reported instead of silently obeyed.
+ *
+ * Most of these only need the applet to draw itself again. The ones that do
+ * not say so, so that changing the temperature unit does not fold a submenu
+ * and picking a panel icon does not re-register the hotkeys.
+ */
+const SETTINGS = [
+    { key: "refresh-interval", property: "refreshInterval", onChange: "poll" },
+    { key: "temp-unit", property: "tempUnit", onChange: "unit" },
+    { key: "cpu-sensor-hint", property: "cpuSensorHint" },
+
+    { key: "panel-icon-source", property: "panelIconSource", onChange: "icon" },
+    { key: "panel-show-battery", property: "panelShowBattery" },
+    { key: "panel-show-temp", property: "panelShowTemp" },
+    { key: "panel-show-power", property: "panelShowPower" },
+    { key: "panel-show-frequency", property: "panelShowFrequency" },
+    { key: "panel-show-profile", property: "panelShowProfile" },
+
+    { key: "show-profiles", property: "showProfiles" },
+    { key: "show-cpu", property: "showCpu" },
+    { key: "show-devices", property: "showDevices" },
+    { key: "show-sensors", property: "showSensors" },
+    { key: "show-all-sensors", property: "showAllSensors" },
+    { key: "expand-sections", property: "expandSections", onChange: "expand" },
+
+    { key: "enable-privileged-controls", property: "enablePrivilegedControls" },
+    { key: "scroll-action", property: "scrollAction" },
+    { key: "cycle-profile-hotkey", property: "cycleProfileHotkey", onChange: "hotkeys" },
+    { key: "toggle-menu-hotkey", property: "toggleMenuHotkey", onChange: "hotkeys" },
+
+    { key: "notify-low-battery", property: "notifyLowBattery" },
+    { key: "low-battery-threshold", property: "lowBatteryThreshold" },
+    { key: "critical-battery-threshold", property: "criticalBatteryThreshold" },
+    { key: "notify-peripheral-battery", property: "notifyPeripheralBattery" },
+    { key: "peripheral-battery-threshold", property: "peripheralBatteryThreshold" },
+    { key: "notify-high-temp", property: "notifyHighTemp" },
+    { key: "high-temp-threshold", property: "highTempThreshold" },
+    { key: "high-temp-threshold-fahrenheit", property: "highTempThresholdFahrenheit" },
+];
+
+/*
  * The power figure is not one thing: on battery it is what the battery is
  * losing, on a desktop it is the CPU package or the graphics card. They are
  * different enough that showing the number without saying which would be
@@ -980,34 +1027,43 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _bindSettings() {
         this.settings = new Settings.AppletSettings(this, UUID, this.instanceId);
 
-        let plain = [
-            "cpu-sensor-hint", "panel-icon-source",
-            "panel-show-battery", "panel-show-temp", "panel-show-power",
-            "panel-show-frequency", "panel-show-profile",
-            "show-profiles", "show-cpu", "show-devices", "show-sensors",
-            "show-all-sensors", "enable-privileged-controls",
-            "scroll-action", "notify-low-battery", "low-battery-threshold",
-            "critical-battery-threshold", "notify-peripheral-battery",
-            "peripheral-battery-threshold", "notify-high-temp",
-            "high-temp-threshold", "high-temp-threshold-fahrenheit",
-        ];
-        for (let key of plain)
-            this.settings.bind(key, this._propertyName(key), () => this._onSettingsChanged());
+        let handlers = {
+            /* the default: the reading has not changed, only what is made of it */
+            redraw: () => this._update(),
+            icon: () => {
+                this._panel.invalidateIcon();
+                this._update();
+            },
+            poll: () => this._startPolling(),
+            unit: () => this._onTempUnitChanged(),
+            /* on its own, so toggling anything else does not fold a submenu
+             * the user opened by hand */
+            expand: () => this._menuPresenter.applyExpandState(this.expandSections),
+            hotkeys: () => this._registerHotkeys(),
+        };
 
-        this.settings.bind("temp-unit", "tempUnit", () => this._onTempUnitChanged());
+        for (let setting of SETTINGS) {
+            let handler = handlers[setting.onChange || "redraw"];
+            this.settings.bind(setting.key, setting.property, handler);
+        }
+
+        this._reportUnboundSettings();
         this._tempUnitInUse = this.tempUnit;
-
-        this.settings.bind("refresh-interval", "refreshInterval", () => this._startPolling());
-        /* Applied on its own, so that toggling any other setting does not fold
-         * a submenu the user opened by hand. */
-        this.settings.bind("expand-sections", "expandSections",
-                           () => this._menuPresenter.applyExpandState(this.expandSections));
-        this.settings.bind("cycle-profile-hotkey", "cycleProfileHotkey", () => this._registerHotkeys());
-        this.settings.bind("toggle-menu-hotkey", "toggleMenuHotkey", () => this._registerHotkeys());
     }
 
-    _propertyName(key) {
-        return key.replace(/-([a-z])/g, (match, letter) => letter.toUpperCase());
+    /*
+     * A key that is not in the schema binds without complaint and leaves its
+     * property undefined, and undefined reads as "off" at every one of the
+     * places that use it. Saying so once, at startup, is the difference
+     * between a five minute fix and a puzzling bug report.
+     */
+    _reportUnboundSettings() {
+        let missing = SETTINGS
+            .filter(setting => this[setting.property] === undefined)
+            .map(setting => setting.key);
+        if (missing.length > 0)
+            Log.error("these settings did not bind, so settings-schema.json and the " +
+                      "SETTINGS table disagree: " + missing.join(", "));
     }
 
     /*
@@ -1039,7 +1095,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     _onSettingsChanged() {
-        this._panel.invalidateIcon();
         this._update();
     }
 
