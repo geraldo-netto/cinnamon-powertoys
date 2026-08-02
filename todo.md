@@ -21,7 +21,6 @@ that work and were found by looking outside the applet for once.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-104 | low | XS | `DdcBacklight._onChanged` is stored in the constructor and never called from anywhere, while the applet passes it a live callback that would re-sync the sliders. Either the group should use it when a monitor's value moves under it - which is the only way a change made with the monitor's own buttons could ever reach the menu - or the parameter should go, because as it stands it promises a notification that never arrives. |
 
 ## Documentation drift
 

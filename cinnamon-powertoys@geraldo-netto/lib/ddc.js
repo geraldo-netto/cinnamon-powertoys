@@ -328,6 +328,13 @@ var DdcMonitor = class DdcMonitor {
  * would otherwise have picked.
  */
 var DdcBacklight = class DdcBacklight {
+    /*
+     * onReady is called once, when the first probe has finished and the caller
+     * can stop wondering whether this machine has any of this. onChanged is
+     * called whenever the monitors change afterwards without anyone having
+     * asked - which is what a re-detection is, and the only way the menu hears
+     * that a monitor has been plugged in.
+     */
     constructor(onChanged, onReady, run) {
         this.available = false;
         this.percentage = null;
@@ -379,7 +386,8 @@ var DdcBacklight = class DdcBacklight {
             this.start();
             return;
         }
-        this._detect(() => this._onReady());
+        /* Nobody asked for this one, so it is reported rather than returned. */
+        this._detect(() => this._onChanged());
     }
 
     /*

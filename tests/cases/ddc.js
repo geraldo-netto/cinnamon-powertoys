@@ -312,6 +312,22 @@ cases["a monitor that has never answered is not offered"] = function () {
     Harness.equal(each.control.monitors[0].available, false, "so there is nothing to move");
 };
 
+cases["a probe answers the caller; a re-detection tells them"] = function () {
+    let ready = 0;
+    let changed = 0;
+    let run = detecting(DETECT_TWO, 0);
+    let control = new Ddc.DdcBacklight(() => changed++, () => ready++, run);
+
+    control.start();
+    Harness.equal(ready, 1, "the caller asked for the probe and was answered");
+    Harness.equal(changed, 0, "and nothing had changed under it");
+
+    control.redetect();
+    Harness.equal(ready, 1, "the probe is only ready once");
+    Harness.equal(changed, 1,
+                  "but a monitor arriving is news, and this is how the menu hears it");
+};
+
 cases["a re-detection before the first one starts it instead"] = function () {
     let each = { run: detecting(DETECT_TWO, 0) };
     let control = new Ddc.DdcBacklight(null, null, each.run);
