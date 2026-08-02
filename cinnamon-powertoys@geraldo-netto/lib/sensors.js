@@ -138,14 +138,58 @@ function _finalizeNames(entries) {
 }
 
 /*
+ * The three kinds of hwmon node.
+ *
+ * They are the same scan: find nodeN_input, read the label beside it, record
+ * where to read the value. What differs is the name, and whether anything
+ * else has to be picked up along with it. Written out three times, the three
+ * copies drifted - "measure" was added to two of them before the third.
+ */
+const NODE_KINDS = [
+    {
+        prefix: "temp",
+        measure: "temperature",
+        list: "temperatures",
+        pattern: /^temp(\d+)_input$/,
+        /* The chip's own limit, which is what a reading gets flagged
+         * against. Some drivers only publish the emergency one. */
+        extra: function (base, index) {
+            let critical = IO.readNumber(base + "/temp" + index + "_crit");
+            if (critical === null)
+                critical = IO.readNumber(base + "/temp" + index + "_emergency");
+            return { critical: critical === null ? null : critical / 1000 };
+        },
+    },
+    {
+        prefix: "fan",
+        measure: "fan",
+        list: "fans",
+        pattern: /^fan(\d+)_input$/,
+    },
+    {
+        prefix: "power",
+        measure: "power",
+        list: "powerMeters",
+        /* powerN_average is the driver's own averaged value, powerN_input the
+         * instantaneous one. Both are microwatts. */
+        pattern: /^power(\d+)_(average|input)$/,
+        skip: function (base, index, match) {
+            return match[2] === "input" && IO.exists(base + "/power" + index + "_average");
+        },
+        extra: function (base, index) {
+            let capPath = base + "/power" + index + "_cap";
+            return { capPath: IO.exists(capPath) ? capPath : null };
+        },
+    },
+];
+
+/*
  * Discovers every temperature, fan and power meter exposed by hwmon plus any
  * thermal zone that hwmon does not already cover. Values are not read here,
  * only the paths to read later.
  */
 function discoverSensors() {
-    let temperatures = [];
-    let fans = [];
-    let powerMeters = [];
+    let found = { temperatures: [], fans: [], powerMeters: [] };
     let chips = new Set();
 
     for (let entry of IO.listDir(HWMON_DIR)) {
@@ -155,79 +199,44 @@ function discoverSensors() {
         let identity = _hwmonIdentity(base);
         chips.add(chip);
 
-        let chipTemperatures = [];
-        let chipFans = [];
-        let chipPowerMeters = [];
+        let ofThisChip = { temperatures: [], fans: [], powerMeters: [] };
 
         for (let node of IO.listDir(base)) {
-            let match = node.match(/^temp(\d+)_input$/);
-            if (match) {
-                let index = match[1];
-                let critical = IO.readNumber(base + "/temp" + index + "_crit");
-                if (critical === null)
-                    critical = IO.readNumber(base + "/temp" + index + "_emergency");
-                chipTemperatures.push({
-                    id: "hwmon:" + entry + ":temp" + index,
-                    measure: "temperature",
-                    source: "hwmon",
-                    chip: chip,
-                    kind: kind,
-                    index: index,
-                    identity: identity,
-                    rawLabel: _label(base, "temp", index),
-                    path: base + "/" + node,
-                    critical: critical === null ? null : critical / 1000,
-                });
-                continue;
-            }
-
-            match = node.match(/^fan(\d+)_input$/);
-            if (match) {
-                let index = match[1];
-                chipFans.push({
-                    id: "hwmon:" + entry + ":fan" + index,
-                    measure: "fan",
-                    source: "hwmon",
-                    chip: chip,
-                    kind: kind,
-                    index: index,
-                    identity: identity,
-                    rawLabel: _label(base, "fan", index),
-                    path: base + "/" + node,
-                });
-                continue;
-            }
-
-            /* powerN_average is the driver's own averaged value, powerN_input
-             * the instantaneous one. Both are microwatts. */
-            match = node.match(/^power(\d+)_(average|input)$/);
-            if (match) {
-                let index = match[1];
-                if (match[2] === "input" && IO.exists(base + "/power" + index + "_average"))
+            for (let nodeKind of NODE_KINDS) {
+                let match = node.match(nodeKind.pattern);
+                if (!match)
                     continue;
-                chipPowerMeters.push({
-                    id: "hwmon:" + entry + ":power" + index,
-                    measure: "power",
+
+                let index = match[1];
+                if (nodeKind.skip && nodeKind.skip(base, index, match))
+                    break;
+
+                let sensor = {
+                    id: "hwmon:" + entry + ":" + nodeKind.prefix + index,
+                    measure: nodeKind.measure,
                     source: "hwmon",
                     chip: chip,
                     kind: kind,
                     index: index,
                     identity: identity,
-                    rawLabel: _label(base, "power", index),
+                    rawLabel: _label(base, nodeKind.prefix, index),
                     path: base + "/" + node,
-                    capPath: IO.exists(base + "/power" + index + "_cap")
-                        ? base + "/power" + index + "_cap" : null,
-                });
+                };
+                if (nodeKind.extra)
+                    Object.assign(sensor, nodeKind.extra(base, index));
+
+                ofThisChip[nodeKind.list].push(sensor);
+                break;
             }
         }
 
-        for (let list of [chipTemperatures, chipFans, chipPowerMeters]) {
-            for (let sensor of list)
-                sensor.siblings = list.length;
+        /* How many of its own kind this chip has, which decides whether an
+         * unlabelled sensor needs its index in the name. */
+        for (let list in ofThisChip) {
+            for (let sensor of ofThisChip[list])
+                sensor.siblings = ofThisChip[list].length;
+            found[list] = found[list].concat(ofThisChip[list]);
         }
-        temperatures = temperatures.concat(chipTemperatures);
-        fans = fans.concat(chipFans);
-        powerMeters = powerMeters.concat(chipPowerMeters);
     }
 
     for (let entry of IO.listDir(THERMAL_DIR)) {
@@ -238,7 +247,7 @@ function discoverSensors() {
         if (!type || chips.has(type))
             continue;
         chips.add(type);
-        temperatures.push({
+        found.temperatures.push({
             id: "thermal:" + entry,
             measure: "temperature",
             source: "thermal",
@@ -254,9 +263,9 @@ function discoverSensors() {
     }
 
     return {
-        temperatures: _finalizeNames(temperatures),
-        fans: _finalizeNames(fans),
-        powerMeters: _finalizeNames(powerMeters),
+        temperatures: _finalizeNames(found.temperatures),
+        fans: _finalizeNames(found.fans),
+        powerMeters: _finalizeNames(found.powerMeters),
     };
 }
 
