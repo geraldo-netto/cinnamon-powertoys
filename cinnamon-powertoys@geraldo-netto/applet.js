@@ -31,6 +31,7 @@ const UUID = "cinnamon-powertoys@geraldo-netto";
  * drops the cached modules for the directory when the xlet is unloaded, while
  * the legacy importer caches them for the life of the process.
  */
+const Cpu = require("./lib/cpu.js");
 const IO = require("./lib/io.js");
 const Sensors = require("./lib/sensors.js");
 const Sysfs = require("./lib/sysfs.js");
@@ -94,7 +95,7 @@ function defaultBackends() {
         discoverSensors: () => Sensors.discoverSensors(),
         energyMeters: () => Sensors.discoverEnergyCounters()
             .map(counter => new Sensors.EnergyMeter(counter)),
-        cpuControl: () => new Sysfs.CpuControl(),
+        cpuControl: () => new Cpu.CpuControl(),
         chargeControl: () => Sysfs.discoverChargeControl(),
         platformProfile: () => Sysfs.platformProfile(),
         profilesClient: onChanged => new Profiles.PowerProfilesClient(onChanged),
