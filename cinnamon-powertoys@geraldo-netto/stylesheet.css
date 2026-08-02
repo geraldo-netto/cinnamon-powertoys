@@ -5,10 +5,12 @@
  * headings and a warning - and a signal spent on the ordinary furniture of a
  * menu is not a signal any more. The warning is the only one that has to be
  * found without being looked for, so it keeps the weight, and the structure
- * is told apart by size instead: the summary a fifth larger than the rows,
- * the group headings a tenth larger and quieter, the chip names inside the
- * sensors quieter again. That is a hierarchy, which is all of them were ever
- * drawing.
+ * is told apart by size instead: the group headings a tenth larger than the
+ * rows and quieter, the chip names inside the sensors quieter again. That is
+ * a hierarchy, which is all of them were ever drawing.
+ *
+ * The summary had a size of its own too, when it was a strip across the whole
+ * menu. It is a row at the top of a column now and is drawn as one.
  *
  * Size, not letter spacing, because size is what reaches the text. St applies
  * letter-spacing from the actor's own node only, and these classes are on the
@@ -22,10 +24,6 @@
  * "9pt". Multiplying by 0.75 undoes it, which is why a tenth larger than the
  * rows is written 0.83em and a tenth smaller is written 0.68em.
  */
-.powertoys-summary {
-    font-size: 0.9em;
-}
-
 .powertoys-info-label {
     padding-right: 16px;
 }

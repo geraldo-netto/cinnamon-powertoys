@@ -3,14 +3,14 @@
 A Cinnamon applet that puts a single power icon in the panel and, from one
 menu, monitors and configures power management for the whole machine.
 
-One strip across the top says what the machine is running on, then a
-brightness slider for each screen the machine can move and one for the
+A brightness slider for each screen the machine can move, and one for the
 keyboard backlight where there is one, then three columns, one subject each
 and in the order they answer to each other: what the machine has been told to
 do — **Power profile** and **Processor**, which are two levels of one
 decision — then what is plugged into it, **Devices**, then what all of that is
-doing to the temperature, **Sensors**. A column that has nothing in it is not
-there at all. Nothing is folded away, and every figure is stated once.
+doing to the temperature, **Sensors**, with the supply the machine is running
+on at the top of it. A column that has nothing in it is not there at all.
+Nothing is folded away, and every figure is stated once.
 
 ![The menu](docs/menu.png)
 

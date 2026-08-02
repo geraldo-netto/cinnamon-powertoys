@@ -1089,8 +1089,8 @@ class MenuPresenter {
     }
 
     /*
-     * Three columns, with the full width strip and the sliders above them and
-     * the settings rows below.
+     * Three columns, with the brightness sliders above them and the settings
+     * rows below.
      *
      * One subject each, left to right in the order they answer to each other:
      * what the machine has been told to do, what is plugged into it, and what
@@ -1098,9 +1098,8 @@ class MenuPresenter {
      * share the first because the profile is what sets the processor - they
      * are two levels of one decision, not two subjects.
      *
-     * The strip and the sliders stay full width above them: they are what most
-     * visits here are for, and a slider reads as a track rather than as a
-     * column.
+     * The sliders stay full width above them: they are what most visits here
+     * are for, and a slider reads as a track rather than as a column.
      *
      * A column is only there while something in it is, so a machine with no
      * profiles and no cpufreq, or a user who has switched the devices off,
@@ -1108,12 +1107,17 @@ class MenuPresenter {
      * been. See _syncColumns.
      */
     _build(capabilities, backlights) {
-        this._summary = new InfoRow("", "");
-        this._summary.actor.add_style_class_name("powertoys-summary");
-        this._menu.addMenuItem(this._summary);
-
         this._buildBrightness(backlights);
-        this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        /*
+         * The rule under the sliders, and only while there are any.
+         *
+         * On a machine with no backlight and no monitor this applet can reach,
+         * the block above it is empty, and a rule at the very top of a menu
+         * divides the menu from nothing.
+         */
+        this._brightnessRule = new PopupMenu.PopupSeparatorMenuItem();
+        this._menu.addMenuItem(this._brightnessRule);
 
         /* A section laid out the other way round is a row of columns. */
         this._columns = new PopupMenu.PopupMenuSection();
@@ -1325,6 +1329,20 @@ class MenuPresenter {
     }
 
     _buildSensorGroup() {
+        /*
+         * What the machine is running on, at the top of this column.
+         *
+         * It was a strip across the whole menu, and it carried the processor
+         * temperature and the power draw beside it - both of which are rows
+         * further down this very column, so the widest line in the menu was
+         * two numbers repeated from underneath it. What is left is the one
+         * thing the strip said that nothing else does: which supply the
+         * machine is on. It goes above the heading rather than under it,
+         * because it is not a sensor reading.
+         */
+        this._summary = new InfoRow("", "");
+        this._sensorColumn.menu.addMenuItem(this._summary);
+
         this._sensorGroup = this._sensorColumn.group(_("Sensors"));
 
         /* Only ever shown when the preferred sensor setting names something
@@ -1365,6 +1383,11 @@ class MenuPresenter {
         for (let slider of this._backlightSliders)
             slider.sync();
         this._syncMonitors();
+
+        /* Nothing above the rule means no rule; see _build. */
+        this._brightnessRule.actor.visible =
+            this._backlightSliders.some(slider => slider.actor.visible) ||
+            this._monitorList.items.length > 0;
     }
 
     /*
@@ -1443,7 +1466,10 @@ class MenuPresenter {
         this._performanceColumn.actor.visible = this._profileGroup.heading.actor.visible ||
                                                 this._cpuGroup.heading.actor.visible;
         this._deviceColumn.actor.visible = this._deviceGroup.heading.actor.visible;
-        this._sensorColumn.actor.visible = this._sensorGroup.heading.actor.visible;
+        /* The supply line lives at the top of this column and is worth having
+         * on its own, so switching the sensors off does not take it away. */
+        this._sensorColumn.actor.visible = this._sensorGroup.heading.actor.visible ||
+                                           this._summary.actor.visible;
 
         let visible = this._columnList.filter(column => column.actor.visible);
         visible.forEach((column, index) => {
@@ -1465,6 +1491,20 @@ class MenuPresenter {
         this._syncColumns();
     }
 
+    /*
+     * Which supply the machine is on, and nothing that is already elsewhere.
+     *
+     * This line used to carry the processor temperature and the power draw as
+     * well. Both are rows in the column it now sits at the top of - the
+     * temperature under the processor's own name, the watts under whichever
+     * chips are drawing them - so it was stating two figures a hand's width
+     * above the rows they came from, and it was the widest line in the menu
+     * for it.
+     *
+     * On battery the charge and the state stay, because the battery has
+     * somewhere else to be only if the devices column is switched on, and
+     * "two hours left" is the reason most people open this at all.
+     */
     _updateSummary(data, options) {
         if (data.primary) {
             this._summary.setLabel(Format.deviceKindName(data.primary.kind) + " " +
@@ -1476,12 +1516,7 @@ class MenuPresenter {
             this._summary.setValue(detail);
         } else {
             this._summary.setLabel(_("On AC power"));
-            let detail = [];
-            if (data.cpuTemperature !== null)
-                detail.push(Format.temperature(data.cpuTemperature, options.tempUnit, 1));
-            if (data.systemWatts !== null)
-                detail.push(powerText(data));
-            this._summary.setValue(detail.join(" · "));
+            this._summary.setValue("");
         }
     }
 
