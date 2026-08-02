@@ -11,25 +11,18 @@ row keeps the effort for the whole and is done when its parts are. Parts were
 only split out where each one can be written, reviewed and committed on its
 own — items that are genuinely a single change were left whole.
 
-## Eleventh pass — architecture, coupling, wiring
-
-Not another sweep for defects in the small: this one asked where the seams are,
-what has to agree with what, and what is wired to nothing. The first row is the
-shape of the project and the rest are things that fall out of it.
-
-## Architecture
-
-| id | severity | effort | description |
-|----|----------|--------|-------------|
-| PT-128 | medium | M | [applet.js](cinnamon-powertoys@geraldo-netto/applet.js) is 3161 lines against 4228 for all sixteen libraries — 43% of the JavaScript in the one file that cannot be loaded outside Cinnamon, because it opens with `imports.ui.applet`. So none of it is executed by any case: `tests/cases/settings.js` reads it *as text*, which is the tell. That is not only the widgets. About three hundred lines in it decide things and touch nothing on screen, and every library under it was given a seam precisely so its decisions could be checked. The parts below are ordered so each is a smaller file than the last. |
-
-## Wiring and congruence
-
-| id | severity | effort | description |
-|----|----------|--------|-------------|
-| PT-131 | low | XS | `DdcBacklight`'s doc says onReady "is called once, when the first probe has finished". Since PT-124 that is no longer true — `stop()` then `start()` probes again and calls it again — and it was already beside the point, because the applet passes `() => this._onBacklightChanged()` as *both* onReady and onChanged, so the distinction the class draws is used by nobody. Say what it now does, or collapse the two into one callback. Mine to fix: the contract went stale in this session. |
+Nothing open.
 
 ## Closed
+
+The eleventh pass asked where the seams are, what has to agree with what, and
+what is wired to nothing. Its seven rows are closed between `286327a` and the
+commit that follows this line. The first was the shape of the project: 43% of
+the JavaScript sat in the one file no case can load, so `lib/alerts.js` and
+`lib/reading.js` are what came out of it, and applet.js is 3161 lines down to
+2932. Two of the remaining rows were paid for by that move within the hour —
+the battery-threshold clamp and the profile-drawn helper are both covered now
+by cases that could not have been written the day before.
 
 The tenth pass read every tracked file again, this time including the two tools
 the ninth pass had only run: the loader emulation was compared against

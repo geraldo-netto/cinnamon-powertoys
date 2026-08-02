@@ -345,13 +345,23 @@ var DdcMonitor = class DdcMonitor {
  */
 var DdcBacklight = class DdcBacklight {
     /*
-     * onReady is called once, when the first probe has finished and the caller
-     * can stop wondering whether this machine has any of this. onChanged is
-     * called whenever the monitors change afterwards without anyone having
-     * asked - which is what a re-detection is, and the only way the menu hears
-     * that a monitor has been plugged in.
+     * onChanged is called whenever the set of monitors or their values changes
+     * under this class's own hand: a probe finishing, a re-detection finding
+     * something new, the control being stopped. It is the only way the menu
+     * hears that a monitor has been plugged in.
+     *
+     * There were two callbacks here, and the second - onReady - said "the
+     * first probe has answered, you can stop wondering whether this machine
+     * has any of this". Nothing ever made that distinction: the applet passed
+     * the same function for both, because syncing the sliders is all it does
+     * on either. Once stop() existed the "first" was not true either, since
+     * switching the setting off and on probes again.
+     *
+     * BacklightControl keeps its own onReady, and there the difference does
+     * earn its keep: whether the screen has a kernel backlight is exactly what
+     * decides whether this class is ever asked to probe.
      */
-    constructor(onChanged, onReady, run) {
+    constructor(onChanged, run) {
         this.available = false;
         this.percentage = null;
         this.destroyed = false;
@@ -360,7 +370,6 @@ var DdcBacklight = class DdcBacklight {
         this.hidden = 0;
 
         this._onChanged = onChanged || function () {};
-        this._onReady = onReady || function () {};
         this._run = run || runCommand;
         this._started = false;
         this._detecting = false;
@@ -376,7 +385,7 @@ var DdcBacklight = class DdcBacklight {
         if (this._started || this.destroyed)
             return;
         this._started = true;
-        this._detect(() => this._onReady());
+        this._detect();
     }
 
     /*
@@ -403,6 +412,9 @@ var DdcBacklight = class DdcBacklight {
         this.hidden = 0;
         this.available = false;
         this.percentage = null;
+        /* Emptying the list is a change like any other; see lib/bluez.js,
+         * where the same silence kept dead rows in the menu. */
+        this._onChanged();
     }
 
     /*
@@ -428,8 +440,7 @@ var DdcBacklight = class DdcBacklight {
             this.start();
             return;
         }
-        /* Nobody asked for this one, so it is reported rather than returned. */
-        this._detect(() => this._onChanged());
+        this._detect();
     }
 
     /*
@@ -458,8 +469,7 @@ var DdcBacklight = class DdcBacklight {
         return monitors;
     }
 
-    _detect(onDone) {
-        let done = onDone || function () {};
+    _detect() {
         this._detecting = true;
         this._run(["ddcutil", "--brief", "detect"], (output, status) => {
             this._detecting = false;
@@ -469,7 +479,7 @@ var DdcBacklight = class DdcBacklight {
                 return;
             if (status !== 0) {
                 /* No ddcutil, no permission, or no display answered. */
-                done();
+                this._onChanged();
                 return;
             }
 
@@ -482,10 +492,10 @@ var DdcBacklight = class DdcBacklight {
             this.monitors = this._adopt(found.slice(0, MAX_DISPLAYS));
             if (this.monitors.length === 0) {
                 this._sync();
-                done();
+                this._onChanged();
                 return;
             }
-            this.refresh(done);
+            this.refresh(() => this._onChanged());
         });
     }
 

@@ -132,7 +132,7 @@ function named(body) {
 
 function started(output, status, brightness) {
     let run = detecting(output, status, brightness);
-    let control = new Ddc.DdcBacklight(null, null, run);
+    let control = new Ddc.DdcBacklight(null, run);
     control.start();
     return { run: run, control: control };
 }
@@ -187,7 +187,7 @@ cases["brightness is a fraction of whatever the monitor's maximum is"] = functio
 
 cases["nothing is spawned until it is asked for"] = function () {
     let run = detecting(DETECT_TWO, 0);
-    let control = new Ddc.DdcBacklight(null, null, run);
+    let control = new Ddc.DdcBacklight(null, run);
     Harness.deepEqual(run.calls, [], "constructing it must not touch the I2C bus");
     Harness.equal(control.available, false, "and it claims nothing yet");
 };
@@ -195,7 +195,7 @@ cases["nothing is spawned until it is asked for"] = function () {
 cases["a machine with monitors that answer ends up available"] = function () {
     let ready = 0;
     let run = detecting(DETECT_TWO, 0);
-    let control = new Ddc.DdcBacklight(null, () => ready++, run);
+    let control = new Ddc.DdcBacklight(() => ready++, run);
     control.start();
     Harness.equal(control.available, true, "available");
     Harness.equal(control.percentage, 40, "and knows where the brightness is");
@@ -216,7 +216,7 @@ cases["each monitor is asked for its own value"] = function () {
 cases["a machine without ddcutil ends up unavailable, quietly"] = function () {
     let ready = 0;
     let run = detecting("", -1);
-    let control = new Ddc.DdcBacklight(null, () => ready++, run);
+    let control = new Ddc.DdcBacklight(() => ready++, run);
     control.start();
     Harness.equal(control.available, false, "nothing to control");
     Harness.equal(ready, 1, "the caller was still told");
@@ -256,7 +256,7 @@ cases["a monitor plugged in later gets a slider of its own"] = function () {
             return ["VCP 10 C 40 100\n", 0];
         return ["", 0];
     });
-    let control = new Ddc.DdcBacklight(null, null, run);
+    let control = new Ddc.DdcBacklight(null, run);
     control.start();
     Harness.equal(control.monitors.length, 1, "one to begin with");
 
@@ -285,7 +285,7 @@ cases["unplugging one renumbers the other rather than renaming it"] = function (
             return ["VCP 10 C 40 100\n", 0];
         return ["", 0];
     });
-    let control = new Ddc.DdcBacklight(null, null, run);
+    let control = new Ddc.DdcBacklight(null, run);
     control.start();
     let second = control.monitors[1];
 
@@ -307,7 +307,7 @@ cases["a monitor that misses one read keeps its slider"] = function () {
             return [brightness, 0];
         return ["", 0];
     });
-    let control = new Ddc.DdcBacklight(null, null, run);
+    let control = new Ddc.DdcBacklight(null, run);
     control.start();
     Harness.equal(control.monitors[0].available, true, "it answered once");
 
@@ -324,25 +324,32 @@ cases["a monitor that has never answered is not offered"] = function () {
     Harness.equal(each.control.monitors[0].available, false, "so there is nothing to move");
 };
 
-cases["a probe answers the caller; a re-detection tells them"] = function () {
-    let ready = 0;
+cases["a probe, a re-detection and a stop all tell the caller"] = function () {
+    /*
+     * There were two callbacks here and this case asserted the difference: a
+     * probe answered onReady, a re-detection said onChanged. Nothing ever made
+     * that distinction - the applet passed one function as both, because
+     * syncing the sliders is all it does either way - so what is left is one
+     * signal, and what it has to say is that the monitors are not what they
+     * were.
+     */
     let changed = 0;
     let run = detecting(DETECT_TWO, 0);
-    let control = new Ddc.DdcBacklight(() => changed++, () => ready++, run);
+    let control = new Ddc.DdcBacklight(() => changed++, run);
 
     control.start();
-    Harness.equal(ready, 1, "the caller asked for the probe and was answered");
-    Harness.equal(changed, 0, "and nothing had changed under it");
+    Harness.equal(changed, 1, "the probe answered and there are monitors now");
 
     control.redetect();
-    Harness.equal(ready, 1, "the probe is only ready once");
-    Harness.equal(changed, 1,
-                  "but a monitor arriving is news, and this is how the menu hears it");
+    Harness.equal(changed, 2, "a monitor arriving is news, and this is how the menu hears it");
+
+    control.stop();
+    Harness.equal(changed, 3, "and so is every one of them going away");
 };
 
 cases["a re-detection before the first one starts it instead"] = function () {
     let each = { run: detecting(DETECT_TWO, 0) };
-    let control = new Ddc.DdcBacklight(null, null, each.run);
+    let control = new Ddc.DdcBacklight(null, each.run);
     control.redetect();
     Harness.equal(control.monitors.length, 2, "the probe ran");
     Harness.equal(each.run.calls[0], "ddcutil --brief detect", "as the first probe");
@@ -404,7 +411,7 @@ function writesRefused(brightness) {
 cases["a write the monitor refused is not taken as its value"] = function () {
     logging(function (lines) {
         let run = writesRefused();
-        let control = new Ddc.DdcBacklight(null, null, run);
+        let control = new Ddc.DdcBacklight(null, run);
         control.start();
         Harness.equal(control.monitors[0].percentage, 40, "where the monitor said it was");
 
@@ -441,7 +448,7 @@ cases["a refused write does not stick through a later failed read"] = function (
         return ["", 1];
     });
     logging(function () {
-        let control = new Ddc.DdcBacklight(null, null, run);
+        let control = new Ddc.DdcBacklight(null, run);
         control.start();
 
         control.monitors[0].setPercentage(70);
@@ -500,7 +507,7 @@ cases["a probe still in flight when it is stopped does not bring them back"] = f
     let run = function (argv, onDone) {
         waiting.push(() => onDone(DETECT_TWO, 0));
     };
-    let control = new Ddc.DdcBacklight(null, null, run);
+    let control = new Ddc.DdcBacklight(null, run);
 
     control.start();
     control.stop();
@@ -514,7 +521,7 @@ cases["a probe still in flight when it is stopped does not bring them back"] = f
 
 cases["stopping something that was never started does nothing"] = function () {
     let run = detecting(DETECT_TWO, 0);
-    let control = new Ddc.DdcBacklight(null, null, run);
+    let control = new Ddc.DdcBacklight(null, run);
     control.stop();
     Harness.deepEqual(run.calls, [], "nothing was spawned to be let go of");
 
@@ -558,7 +565,7 @@ cases["a read is not started while a write is in flight"] = function () {
 cases["a refresh answers once, after every monitor has"] = function () {
     let waiting = [];
     let run = function (argv, onDone) { waiting.push(onDone); };
-    let control = new Ddc.DdcBacklight(null, null, run);
+    let control = new Ddc.DdcBacklight(null, run);
     control.monitors = ["1", "2", "3"].map(
         number => new Ddc.DdcMonitor({ number: number, bus: "/dev/i2c-" + number }, run));
 

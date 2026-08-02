@@ -119,7 +119,7 @@ function defaultBackends() {
         profilesClient: onChanged => new Profiles.PowerProfilesClient(onChanged),
         backlight: (kind, onChanged, onReady) =>
             new Backlight.BacklightControl(kind, onChanged, onReady),
-        monitorBacklight: (onChanged, onReady) => new Ddc.DdcBacklight(onChanged, onReady),
+        monitorBacklight: onChanged => new Ddc.DdcBacklight(onChanged),
         bluetoothBatteries: onChanged => new Bluez.BluezBatteries(onChanged),
         upowerMonitor: (onChanged, onReady) => new UPower.UPowerMonitor(onChanged, onReady),
         fileExists: path => IO.exists(path),
@@ -1833,7 +1833,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * it is told to - see _onScreenBacklightKnown().
          */
         this._backlights.monitor = this._backends.monitorBacklight(
-            () => this._onBacklightChanged(),
             () => this._onBacklightChanged());
 
         /* Bluetooth devices UPower does not bridge - which on some builds is
