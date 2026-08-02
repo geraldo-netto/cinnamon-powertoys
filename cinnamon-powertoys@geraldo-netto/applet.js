@@ -14,6 +14,7 @@ const GLib = imports.gi.GLib;
 const Gtk = imports.gi.Gtk;
 const Main = imports.ui.main;
 const Mainloop = imports.mainloop;
+const Pango = imports.gi.Pango;
 const PopupMenu = imports.ui.popupMenu;
 const Settings = imports.ui.settings;
 const St = imports.gi.St;
@@ -921,6 +922,18 @@ const BACKLIGHT_STEP = 5;
  * line down the middle of the menu.
  */
 class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
+    /*
+     * A full span child still counts as being in the first menu column, so a
+     * row this wide sitting in a column with the governor and the energy
+     * preference would set that column's label width to its own and push both
+     * of their values off the right hand edge. It has no columns to line up
+     * with; it takes the width it is given. Same override as NoteRow and
+     * SegmentedControl, for the same reason.
+     */
+    getColumnWidths() {
+        return [];
+    }
+
     _init(label, iconName, control) {
         super._init.call(this, 0);
 
@@ -935,6 +948,28 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
         this._reading = new St.Label({ text: "", style_class: "powertoys-slider-value" });
 
         this.removeActor(this._slider);
+
+        /*
+         * The track carries the theme's own minimum width, which is written
+         * for a menu the width of a whole panel: measured here it was 206px,
+         * against a column 326px wide inside its padding, and the row drew
+         * over the column beside it rather than shrinking. It asks for less
+         * now and still takes everything left over, which is what expand is
+         * for. See the stylesheet.
+         *
+         * The track is the only part of the row that grows, so it gets all of
+         * the width the name and the percentage do not need.
+         *
+         * The name is what gives when there is not enough: an ellipsized label
+         * can be allocated less than its text needs, where a plain one cannot
+         * and pushes the row out of the column instead. That is not a rare
+         * case - a monitor answering the DDC/CI probe adds a slider to a
+         * column that was measured without one, while the menu is open. The
+         * tooltip has the name in full.
+         */
+        this._slider.add_style_class_name("powertoys-slider-track");
+        this._label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+
         let row = new St.BoxLayout({ style_class: "powertoys-slider-row" });
         row.add(this._icon, { y_fill: false, y_align: St.Align.MIDDLE });
         row.add(this._label, { y_fill: false, y_align: St.Align.MIDDLE });
@@ -1054,9 +1089,19 @@ class Column {
         this.actor = this._section.actor;
     }
 
-    /* A heading plus the section its rows go in, hidden and shown together. */
-    group(title) {
+    /*
+     * A heading plus the section its rows go in, hidden and shown together.
+     *
+     * `spaced` sets a wider gap above the heading, for a group that follows
+     * one it has nothing to do with. The profile and the processor sit close
+     * together because the first writes the second; the brightness under them
+     * answers to neither, and at the same gap it read as one more thing the
+     * power profile does.
+     */
+    group(title, options) {
         let heading = headingItem(title);
+        if (options && options.spaced)
+            heading.actor.add_style_class_name("powertoys-group-spaced");
         this._section.addMenuItem(heading);
         let section = new PopupMenu.PopupMenuSection();
         this._section.addMenuItem(section);
@@ -1089,8 +1134,7 @@ class MenuPresenter {
     }
 
     /*
-     * Three columns, with the brightness sliders above them and the settings
-     * rows below.
+     * Three columns, with the settings rows below them.
      *
      * One subject each, left to right in the order they answer to each other:
      * what the machine has been told to do, what is plugged into it, and what
@@ -1098,8 +1142,12 @@ class MenuPresenter {
      * share the first because the profile is what sets the processor - they
      * are two levels of one decision, not two subjects.
      *
-     * The sliders stay full width above them: they are what most visits here
-     * are for, and a slider reads as a track rather than as a column.
+     * The sliders used to run the full width above all three, on the reasoning
+     * that a slider reads as a track rather than as a column. What that cost
+     * was a band of menu as wide as three columns holding one control and a
+     * rule under it, above a first column that ended well short of the bottom
+     * of the other two. They are in that column now, under the settings the
+     * profile writes, which is where the space already was.
      *
      * A column is only there while something in it is, so a machine with no
      * profiles and no cpufreq, or a user who has switched the devices off,
@@ -1107,18 +1155,6 @@ class MenuPresenter {
      * been. See _syncColumns.
      */
     _build(capabilities, backlights) {
-        this._buildBrightness(backlights);
-
-        /*
-         * The rule under the sliders, and only while there are any.
-         *
-         * On a machine with no backlight and no monitor this applet can reach,
-         * the block above it is empty, and a rule at the very top of a menu
-         * divides the menu from nothing.
-         */
-        this._brightnessRule = new PopupMenu.PopupSeparatorMenuItem();
-        this._menu.addMenuItem(this._brightnessRule);
-
         /* A section laid out the other way round is a row of columns. */
         this._columns = new PopupMenu.PopupMenuSection();
         this._columns.actor.set_vertical(false);
@@ -1132,6 +1168,7 @@ class MenuPresenter {
 
         this._buildProfileGroup();
         this._buildCpuGroup();
+        this._buildBrightness(backlights);
         this._buildDeviceGroup(capabilities);
         this._buildSensorGroup();
 
@@ -1141,27 +1178,30 @@ class MenuPresenter {
     }
 
     /*
-     * Brightness sits at the top because it is the control in here that gets
-     * used most, and because that is where the applet this one can replace
-     * keeps it. Each slider hides itself when there is no such backlight.
+     * The backlights, at the foot of the first column. Each slider hides
+     * itself when there is no such backlight, and the heading goes with the
+     * last of them.
+     *
+     * Under a heading of their own the built in ones are named for what they
+     * light rather than for what the slider does: "Screen" and "Keyboard",
+     * where they used to be "Brightness" and "Keyboard backlight" and had to
+     * carry that word themselves. The monitors keep their own names, which is
+     * the only thing telling one from another.
      *
      * The monitors are a list rather than three fixed rows: how many there are
      * is not known when the menu is built, because finding out means spawning
      * ddcutil and waiting for hardware that answers in tenths of a second. The
      * section they live in belongs to them alone, since it is emptied and
      * refilled whenever a monitor is plugged in or unplugged.
-     *
-     * The whole lot is in a section of its own so that its columns line up
-     * with each other rather than with the summary line and the settings rows,
-     * which have nothing to do with a slider.
      */
     _buildBrightness(backlights) {
         this._backlightSliders = [];
-        this._brightness = new PanelSection();
-        this._menu.addMenuItem(this._brightness);
+        this._brightnessGroup = this._performanceColumn.group(_("Brightness"),
+                                                              { spaced: true });
+        this._brightness = this._brightnessGroup.menu;
 
         if (backlights.screen)
-            this._addBacklight(_("Brightness"), "display-brightness", backlights.screen);
+            this._addBacklight(_("Screen"), "display-brightness", backlights.screen);
 
         this._monitors = backlights.monitor || null;
         let monitorSection = new PopupMenu.PopupMenuSection();
@@ -1177,8 +1217,7 @@ class MenuPresenter {
             });
 
         if (backlights.keyboard)
-            this._addBacklight(_("Keyboard backlight"), "keyboard-brightness",
-                               backlights.keyboard);
+            this._addBacklight(_("Keyboard"), "keyboard-brightness", backlights.keyboard);
     }
 
     /*
@@ -1382,10 +1421,11 @@ class MenuPresenter {
             slider.sync();
         this._syncMonitors();
 
-        /* Nothing above the rule means no rule; see _build. */
-        this._brightnessRule.actor.visible =
+        /* A heading over nothing on a machine with no backlight and no monitor
+         * this applet can reach. */
+        this._brightnessGroup.setVisible(
             this._backlightSliders.some(slider => slider.actor.visible) ||
-            this._monitorList.items.length > 0;
+            this._monitorList.items.length > 0);
     }
 
     /*
@@ -1462,7 +1502,8 @@ class MenuPresenter {
      */
     _syncColumns() {
         this._performanceColumn.actor.visible = this._profileGroup.heading.actor.visible ||
-                                                this._cpuGroup.heading.actor.visible;
+                                                this._cpuGroup.heading.actor.visible ||
+                                                this._brightnessGroup.heading.actor.visible;
         this._deviceColumn.actor.visible = this._deviceGroup.heading.actor.visible;
         /* The supply line lives at the top of this column and is worth having
          * on its own, so switching the sensors off does not take it away. */

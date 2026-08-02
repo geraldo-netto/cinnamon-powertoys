@@ -28,11 +28,11 @@ msgstr ""
 msgid "GPU"
 msgstr ""
 
-#: applet.js:224 applet.js:507 applet.js:1277
+#: applet.js:224 applet.js:507 applet.js:1282
 msgid "Governor"
 msgstr ""
 
-#: applet.js:226 applet.js:1280
+#: applet.js:226 applet.js:1285
 msgid "Energy preference"
 msgstr ""
 
@@ -44,11 +44,11 @@ msgstr ""
 msgid "Turbo boost off"
 msgstr ""
 
-#: applet.js:230 applet.js:1217 applet.js:2627
+#: applet.js:230 applet.js:1222 applet.js:2634
 msgid "Power profile"
 msgstr ""
 
-#: applet.js:232 applet.js:1325
+#: applet.js:232 applet.js:1330
 msgid "Charge limit"
 msgstr ""
 
@@ -81,107 +81,111 @@ msgid "Power draw"
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:520 applet.js:1975 applet.js:2576 applet.js:2627 applet.js:2674
-#: applet.js:2683
+#: applet.js:520 applet.js:1982 applet.js:2583 applet.js:2634 applet.js:2681
+#: applet.js:2690
 msgid "Power Toys"
 msgstr ""
 
-#: applet.js:1139
+#: applet.js:1143
 msgid "System power settings"
 msgstr ""
 
-#: applet.js:1164
+#: applet.js:1166
 msgid "Brightness"
 msgstr ""
 
-#: applet.js:1180
-msgid "Keyboard backlight"
+#: applet.js:1170
+msgid "Screen"
 msgstr ""
 
-#: applet.js:1199
+#: applet.js:1186 lib/format.js:89
+msgid "Keyboard"
+msgstr ""
+
+#: applet.js:1204
 msgid "Configure Power Toys"
 msgstr ""
 
-#: applet.js:1223
+#: applet.js:1228
 msgid "Performance limited"
 msgstr ""
 
-#: applet.js:1249 lib/sensors.js:36
+#: applet.js:1254 lib/sensors.js:36
 msgid "Processor"
 msgstr ""
 
-#: applet.js:1254
+#: applet.js:1259
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1274
+#: applet.js:1279
 msgid "Governor and energy preference follow the power profile"
 msgstr ""
 
-#: applet.js:1295
+#: applet.js:1300
 msgid "Devices"
 msgstr ""
 
-#: applet.js:1316
+#: applet.js:1321
 msgid "Nothing with a battery is connected"
 msgstr ""
 
-#: applet.js:1344
+#: applet.js:1349
 msgid "Sensors"
 msgstr ""
 
-#: applet.js:1419
+#: applet.js:1425
 #, javascript-format
 msgid "Only the first %d monitors have a slider"
 msgstr ""
 
-#: applet.js:1516
+#: applet.js:1523
 msgid "On AC power"
 msgstr ""
 
-#: applet.js:1534
+#: applet.js:1541
 msgid "an application"
 msgstr ""
 
-#: applet.js:1553
+#: applet.js:1560
 msgid "Connected"
 msgstr ""
 
-#: applet.js:1553
+#: applet.js:1560
 msgid "Disconnected"
 msgstr ""
 
-#: applet.js:1734
+#: applet.js:1741
 msgid "Frequency"
 msgstr ""
 
-#: applet.js:1739
+#: applet.js:1746
 msgid "Scaling driver"
 msgstr ""
 
-#: applet.js:1756
+#: applet.js:1763
 msgid "No sensor matches"
 msgstr ""
 
-#: applet.js:1770
+#: applet.js:1777
 msgid "No sensors found"
 msgstr ""
 
-#: applet.js:1976
+#: applet.js:1983
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "Right click the panel to configure it."
 msgstr ""
 
-#: applet.js:2561
+#: applet.js:2568
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2577
+#: applet.js:2584
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:2684
+#: applet.js:2691
 msgid "The change could not be applied."
 msgstr ""
 
@@ -223,10 +227,6 @@ msgstr ""
 
 #: lib/format.js:88
 msgid "Mouse"
-msgstr ""
-
-#: lib/format.js:89
-msgid "Keyboard"
 msgstr ""
 
 #: lib/format.js:90

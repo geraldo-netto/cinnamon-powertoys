@@ -47,8 +47,29 @@
     spacing: 8px;
 }
 
+/*
+ * A floor rather than a width, so the names of several sliders line up and a
+ * long one still gets the room. Low enough that the whole row - icon, name,
+ * track, percentage - fits a column that was sized before the sliders were in
+ * it, which is what happens when a monitor answers the DDC/CI probe while the
+ * menu is already open.
+ */
 .powertoys-slider-name {
-    min-width: 100px;
+    min-width: 72px;
+}
+
+/*
+ * The track, in a column rather than across the whole menu.
+ *
+ * The theme's .popup-slider-menu-item is written for a slider that has the
+ * menu's full width to itself: measured on this desktop it asks for 206px,
+ * which with the icon, the name and the percentage came to more than the
+ * column is wide, and the row drew over the column beside it. Two class names
+ * so this wins on specificity - the theme is loaded after this file, so one
+ * would tie and lose. It still expands into whatever the row has left.
+ */
+.popup-slider-menu-item.powertoys-slider-track {
+    min-width: 90px;
 }
 
 .powertoys-slider-value {
@@ -108,6 +129,20 @@
     padding-top: 8px;
     padding-bottom: 2px;
     opacity: 0.85;
+}
+
+/*
+ * A group that follows one it has nothing to do with: brightness under the
+ * processor's settings. The gap is what says the subject changed.
+ *
+ * Two class names rather than one, and the theme's own is the second of them.
+ * A menu item is a .popup-menu-item, the theme sets padding on that, and the
+ * theme is loaded after this file - so one class here ties on specificity and
+ * loses on order. Measured on the running applet: this rule as
+ * `.powertoys-group-spaced` alone computed to the theme's 4px.
+ */
+.popup-menu-item.powertoys-group-spaced {
+    padding-top: 22px;
 }
 
 /* Which chip a run of sensor rows came off, inside the sensors group. Smaller

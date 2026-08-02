@@ -3,14 +3,14 @@
 A Cinnamon applet that puts a single power icon in the panel and, from one
 menu, monitors and configures power management for the whole machine.
 
-A brightness slider for each screen the machine can move, and one for the
-keyboard backlight where there is one, then three columns, one subject each
-and in the order they answer to each other: what the machine has been told to
-do — **Power profile** and **Processor**, which are two levels of one
-decision — then what is plugged into it, **Devices**, then what all of that is
-doing to the temperature, **Sensors**, with the supply the machine is running
-on at the top of it. A column that has nothing in it is not there at all.
-Nothing is folded away, and every figure is stated once.
+Three columns, one subject each and in the order they answer to each other:
+what the machine has been told to do — **Power profile** and **Processor**,
+which are two levels of one decision, and under them **Brightness**, a slider
+for each screen the machine can move and one for the keyboard backlight where
+there is one — then what is plugged into it, **Devices**, then what all of
+that is doing to the temperature, **Sensors**, with the supply the machine is
+running on at the top of it. A column that has nothing in it is not there at
+all. Nothing is folded away, and every figure is stated once.
 
 ![The menu](docs/menu.png)
 
@@ -43,7 +43,8 @@ Connected bluetooth devices are read from BlueZ as well as from UPower, which
 does not bridge all of them, and where nothing is connected the group says so
 in words rather than being empty.
 
-**Brightness.** Screen and keyboard backlight sliders at the top of the menu,
+**Brightness.** *Screen* and *Keyboard* sliders under *Brightness*, at the foot
+of the first column where the profile and the processor leave the room free,
 driven through `org.cinnamon.SettingsDaemon.Power.Screen` and `.Keyboard`, so
 the wheel over one moves in the same steps the brightness keys do. A machine
 with no backlight of its own — a desktop, or a laptop with the lid shut on an
