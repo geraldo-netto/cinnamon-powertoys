@@ -348,3 +348,100 @@ var EnergyMeter = class EnergyMeter {
         return this.watts;
     }
 };
+
+/*
+ * The sensors of one machine: what was found, and what they read now.
+ *
+ * Discovery is the expensive half - every hwmon directory listed, every label
+ * file opened - and it only changes when hardware does, so it happens once
+ * and the result is kept. read() is the cheap half, one file per sensor, and
+ * is what a poll calls.
+ */
+var SensorSet = class SensorSet {
+    constructor() {
+        this.discover();
+    }
+
+    discover() {
+        let found = discoverSensors();
+        this.temperatureSensors = found.temperatures;
+        this.fanSensors = found.fans;
+        this.powerSensors = found.powerMeters;
+        /* The meters keep the previous counter value between polls, so they
+         * outlive a reading and are only rebuilt by a rediscovery. */
+        this.energyMeters = discoverEnergyCounters().map(counter => new EnergyMeter(counter));
+    }
+
+    _temperature(sensor) {
+        let raw = IO.readNumber(sensor.path);
+        return {
+            id: sensor.id,
+            measure: sensor.measure,
+            chip: sensor.chip,
+            kind: sensor.kind,
+            label: Format.sensorLabel(sensor),
+            critical: sensor.critical,
+            celsius: raw === null ? null : raw / 1000,
+        };
+    }
+
+    _fan(sensor) {
+        return {
+            id: sensor.id,
+            measure: sensor.measure,
+            chip: sensor.chip,
+            kind: sensor.kind,
+            label: Format.sensorLabel(sensor),
+            rpm: IO.readNumber(sensor.path),
+        };
+    }
+
+    _powers() {
+        let readings = [];
+        let packageWatts = null;
+
+        for (let meter of this.energyMeters) {
+            let watts = meter.sample();
+            if (watts === null)
+                continue;
+            readings.push({
+                id: meter.id,
+                measure: meter.measure,
+                kind: meter.kind,
+                label: meter.label,
+                watts: watts,
+            });
+            /* The sub-domains are inside the top level ones, so adding both
+             * would count the same joules twice. */
+            if (meter.topLevel)
+                packageWatts = (packageWatts || 0) + watts;
+        }
+
+        for (let sensor of this.powerSensors) {
+            let raw = IO.readNumber(sensor.path);
+            if (raw === null)
+                continue;
+            readings.push({
+                id: sensor.id,
+                measure: sensor.measure,
+                kind: sensor.kind,
+                label: Format.sensorLabel(sensor),
+                /* hwmon reports microwatts */
+                watts: raw / 1000000,
+            });
+        }
+
+        return { readings: readings, packageWatts: packageWatts };
+    }
+
+    /* One value per sensor, as of now. */
+    read() {
+        let powers = this._powers();
+        return {
+            temperatures: this.temperatureSensors.map(sensor => this._temperature(sensor)),
+            fans: this.fanSensors.map(sensor => this._fan(sensor)),
+            powers: powers.readings,
+            packageWatts: powers.packageWatts,
+        };
+    }
+};

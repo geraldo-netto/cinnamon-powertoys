@@ -70,9 +70,7 @@ const CHARGE_LIMITS = [60, 70, 80, 90, 95, 100];
  */
 function defaultBackends() {
     return {
-        discoverSensors: () => Sensors.discoverSensors(),
-        energyMeters: () => Sensors.discoverEnergyCounters()
-            .map(counter => new Sensors.EnergyMeter(counter)),
+        sensors: () => new Sensors.SensorSet(),
         cpuControl: runner => new Cpu.CpuControl(runner),
         chargeControl: () => PowerSupply.discoverChargeControl(),
         platformProfile: () => PowerSupply.platformProfile(),
@@ -318,8 +316,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         this._bindSettings();
 
-        this._sensors = this._backends.discoverSensors();
-        this._energyMeters = this._backends.energyMeters();
+        this._sensors = this._backends.sensors();
         this._cpu = this._backends.cpuControl((args, onDone) => this._runHelper(args, onDone));
         this._chargeControl = this._backends.chargeControl();
 
@@ -546,19 +543,13 @@ class PowerToysApplet extends Applet.TextIconApplet {
             }
         }
 
-        let temperatures = [];
-        for (let sensor of this._sensors.temperatures) {
-            let raw = this._backends.readNumber(sensor.path);
-            temperatures.push({
-                id: sensor.id,
-                measure: sensor.measure,
-                chip: sensor.chip,
-                kind: sensor.kind,
-                label: Format.sensorLabel(sensor),
-                critical: sensor.critical,
-                celsius: raw === null ? null : raw / 1000,
-            });
-        }
+        let readings = this._sensors.read();
+        let temperatures = readings.temperatures;
+        let fans = readings.fans;
+        let powers = readings.powers;
+
+        /* A battery is a sensor too: UPower reports its temperature and the
+         * rate it is charging or draining at. */
         for (let device of devices) {
             if (device.temperature)
                 temperatures.push({
@@ -570,42 +561,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
                     critical: null,
                     celsius: device.temperature,
                 });
-        }
-
-        let fans = this._sensors.fans.map(fan => ({
-            id: fan.id,
-            measure: fan.measure,
-            label: Format.sensorLabel(fan),
-            kind: fan.kind,
-            rpm: this._backends.readNumber(fan.path),
-        }));
-
-        let powers = [];
-        let packageWatts = null;
-        for (let meter of this._energyMeters) {
-            let value = meter.sample();
-            if (value === null)
-                continue;
-            powers.push({ id: meter.id, measure: meter.measure, label: meter.label,
-                          kind: meter.kind, watts: value });
-            /* the sub-domains are inside the top level ones, adding both
-             * would count the same joules twice */
-            if (meter.topLevel)
-                packageWatts = (packageWatts || 0) + value;
-        }
-        for (let sensor of this._sensors.powerMeters) {
-            let raw = this._backends.readNumber(sensor.path);
-            if (raw === null)
-                continue;
-            powers.push({
-                id: sensor.id,
-                measure: sensor.measure,
-                label: Format.sensorLabel(sensor),
-                kind: sensor.kind,
-                watts: raw / 1000000,
-            });
-        }
-        for (let device of devices) {
             if (device.powerSupply && device.energyRate)
                 powers.push({
                     id: "upower:" + device.path,
@@ -651,7 +606,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             temperatures: temperatures,
             fans: fans,
             powers: powers,
-            packageWatts: packageWatts,
+            packageWatts: readings.packageWatts,
             cpu: cpu,
             profile: profile,
         };
@@ -754,7 +709,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
     _onMenuOpened() {
         /* Sensors can appear at runtime (a USB device, a card waking up). */
-        this._sensors = this._backends.discoverSensors();
+        this._sensors.discover();
         this._cpu.refresh();
         if (this._upower.available)
             this._upower.refresh();
