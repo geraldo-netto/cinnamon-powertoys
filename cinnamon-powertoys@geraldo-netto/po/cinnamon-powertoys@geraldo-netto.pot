@@ -16,152 +16,132 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: applet.js:194
-msgid "battery"
-msgstr ""
-
-#: applet.js:195
-msgid "package"
-msgstr ""
-
-#: applet.js:196
-msgid "GPU"
-msgstr ""
-
-#: applet.js:251 applet.js:454 applet.js:1318 applet.js:1800
-msgid "Governor"
-msgstr ""
-
-#: applet.js:253 applet.js:1321 applet.js:1803
-msgid "Energy preference"
-msgstr ""
-
-#: applet.js:255
-msgid "Turbo boost on"
-msgstr ""
-
-#: applet.js:255
-msgid "Turbo boost off"
-msgstr ""
-
-#: applet.js:257 applet.js:1262 applet.js:2829
-msgid "Power profile"
-msgstr ""
-
-#: applet.js:259 applet.js:1366
-msgid "Charge limit"
-msgstr ""
-
-#: applet.js:447
+#: applet.js:369
 msgid "Running on AC power"
 msgstr ""
 
-#: applet.js:452
+#: applet.js:374
 msgid "Profile"
 msgstr ""
 
-#: applet.js:456 lib/format.js:391
+#: applet.js:376 applet.js:1221 applet.js:1703 lib/reading.js:110
+msgid "Governor"
+msgstr ""
+
+#: applet.js:378 lib/format.js:391
 msgid "Temperature"
 msgstr ""
 
 #. settings-schema.json->panel-show-power->description
-#: applet.js:459
+#: applet.js:381
 msgid "Power draw"
 msgstr ""
 
-#: applet.js:485
+#: applet.js:407
 #, javascript-format
 msgid "and %d more"
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:490 applet.js:2058 applet.js:2760 applet.js:2829 applet.js:2876
-#: applet.js:2885
+#: applet.js:412 applet.js:1961 applet.js:2663 applet.js:2732 applet.js:2779
+#: applet.js:2788
 msgid "Power Toys"
 msgstr ""
 
-#: applet.js:1211
+#: applet.js:1114
 msgid "System power settings"
 msgstr ""
 
-#: applet.js:1233
+#: applet.js:1136
 msgid "Brightness"
 msgstr ""
 
-#: applet.js:1238
+#: applet.js:1141
 msgid "Screen"
 msgstr ""
 
-#: applet.js:1254 lib/format.js:89
+#: applet.js:1157 lib/format.js:89
 msgid "Keyboard"
 msgstr ""
 
-#: applet.js:1268
+#: applet.js:1165 applet.js:2732 lib/reading.js:116
+msgid "Power profile"
+msgstr ""
+
+#: applet.js:1171
 msgid "Performance limited"
 msgstr ""
 
-#: applet.js:1294 lib/sensors.js:36
+#: applet.js:1197 lib/sensors.js:36
 msgid "Processor"
 msgstr ""
 
-#: applet.js:1299
+#: applet.js:1202
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1336
+#: applet.js:1224 applet.js:1706 lib/reading.js:112
+msgid "Energy preference"
+msgstr ""
+
+#: applet.js:1239
 msgid "Devices"
 msgstr ""
 
-#: applet.js:1357
+#: applet.js:1260
 msgid "Nothing with a battery is connected"
 msgstr ""
 
-#: applet.js:1376
+#: applet.js:1269 lib/reading.js:118
+msgid "Charge limit"
+msgstr ""
+
+#: applet.js:1279
 msgid "The batteries are set to different limits; choosing one sets both"
 msgstr ""
 
-#: applet.js:1383
+#: applet.js:1286
 msgid "Sensors"
 msgstr ""
 
-#: applet.js:1477
+#: applet.js:1380
 #, javascript-format
 msgid "Only the first %d monitors have a slider"
 msgstr ""
 
-#: applet.js:1576
+#: applet.js:1479
 msgid "On AC power"
 msgstr ""
 
-#: applet.js:1594
+#: applet.js:1497
 msgid "an application"
 msgstr ""
 
-#: applet.js:1613
+#: applet.js:1516
 msgid "Connected"
 msgstr ""
 
-#: applet.js:1613
+#: applet.js:1516
 msgid "Disconnected"
 msgstr ""
 
-#: applet.js:1786
+#: applet.js:1689
 msgid "Frequency"
 msgstr ""
 
-#: applet.js:1791
+#: applet.js:1694
 msgid "Scaling driver"
 msgstr ""
 
-#: applet.js:1822
+#: applet.js:1725
 msgid "No sensor matches"
 msgstr ""
 
-#: applet.js:1836
+#: applet.js:1739
 msgid "No sensors found"
 msgstr ""
 
-#: applet.js:2059
+#: applet.js:1962
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "
@@ -169,15 +149,15 @@ msgid ""
 "shortcuts."
 msgstr ""
 
-#: applet.js:2743
+#: applet.js:2646
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2761
+#: applet.js:2664
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:2886
+#: applet.js:2789
 msgid "The change could not be applied."
 msgstr ""
 
@@ -491,6 +471,26 @@ msgstr ""
 
 #: lib/format.js:393 lib/sensors.js:203
 msgid "Power"
+msgstr ""
+
+#: lib/reading.js:29
+msgid "battery"
+msgstr ""
+
+#: lib/reading.js:30
+msgid "package"
+msgstr ""
+
+#: lib/reading.js:31
+msgid "GPU"
+msgstr ""
+
+#: lib/reading.js:114
+msgid "Turbo boost on"
+msgstr ""
+
+#: lib/reading.js:114
+msgid "Turbo boost off"
 msgstr ""
 
 #: lib/sensors.js:38

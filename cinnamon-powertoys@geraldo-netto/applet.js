@@ -44,6 +44,7 @@ const Sensors = require("./lib/sensors.js");
 const Translate = require("./lib/gettext.js");
 const UPower = require("./lib/upower.js");
 const Profiles = require("./lib/profiles.js");
+const Reading = require("./lib/reading.js");
 const Format = require("./lib/format.js");
 
 const UUID = Translate.UUID;
@@ -184,85 +185,6 @@ const SETTINGS = [
 ];
 
 /*
- * The power figure is not one thing: on battery it is what the battery is
- * losing, on a desktop it is the CPU package or the graphics card. They are
- * different enough that showing the number without saying which would be
- * misleading, so the source is always named alongside it.
- */
-function powerSourceLabel(source) {
-    switch (source) {
-        case "battery": return _("battery");
-        case "package": return _("package");
-        case "gpu": return _("GPU");
-        default: return "";
-    }
-}
-
-function powerText(data) {
-    if (data.systemWatts === null)
-        return "";
-    let label = powerSourceLabel(data.systemWattsSource);
-    return Format.watts(data.systemWatts) + (label ? " (" + label + ")" : "");
-}
-
-/*
- * The profile the panel should be drawing.
- *
- * Neither backend answers at once - the daemon replies over D-Bus, the ACPI
- * path goes through a password dialog - and the panel used to keep the old
- * gauge and the old word until the next poll caught up, four seconds later by
- * default. Somebody who has just cycled the profile with the wheel or the
- * hotkey is looking straight at the panel, and what it said was that nothing
- * had happened; a notification was doing the work the panel should have been.
- *
- * So it draws what was asked for while that is in flight, which is what the
- * menu has always done with the same value. Nothing is invented: the applet
- * clears the pending profile when the machine confirms it, and clears it on
- * an error too, so a change that is refused takes the panel back with it.
- */
-function shownProfile(data, options) {
-    return (options && options.pendingProfile) || data.profile.active;
-}
-
-/*
- * The same figure for the panel, where every character is expensive.
- *
- * What a battery is losing is the whole machine and needs no explanation. The
- * other two sources are one part of it - the processor package, a graphics
- * card - and a bare number there reads as system power when it is not: a
- * desktop that cannot read its RAPL counters would show the graphics card's
- * 54 W as if it were the lot. Those say which.
- */
-function panelPowerText(data) {
-    if (data.systemWattsSource === "battery")
-        return Format.watts(data.systemWatts);
-    return powerText(data);
-}
-
-/*
- * What a privileged change did, in the words the menu uses for it.
- *
- * The argument vectors are the helper's vocabulary, and this is the one place
- * that turns them back into something worth reading.
- */
-function describeChange(args) {
-    switch (args[0]) {
-        case "governor":
-            return _("Governor") + ": " + Format.governorLabel(args[1]);
-        case "epp":
-            return _("Energy preference") + ": " + Format.energyPreferenceLabel(args[1]);
-        case "boost":
-            return String(args[1]) === "1" ? _("Turbo boost on") : _("Turbo boost off");
-        case "platform-profile":
-            return _("Power profile") + ": " + Format.profileLabel(args[1]);
-        case "charge-threshold":
-            return _("Charge limit") + ": " + args[1] + "%";
-        default:
-            return "";
-    }
-}
-
-/*
  * The panel item: the text beside the icon, the icon, and the tooltip.
  *
  * It is given the applet only to reach the four calls that put something on
@@ -309,7 +231,7 @@ class PanelPresenter {
     }
 
     update(data, options) {
-        let profile = shownProfile(data, options);
+        let profile = Reading.shownProfile(data, options);
         let source = this._iconSource(data, options.iconSource, profile);
         this._applet.set_applet_label(this._labelText(data, options, source, profile));
         this._updateIcon(data, source, profile);
@@ -367,7 +289,7 @@ class PanelPresenter {
         if (options.showBattery && data.primary && data.primary.percentage !== null)
             parts.push(Format.percent(data.primary.percentage));
         if (options.showPower && data.systemWatts !== null)
-            parts.push(panelPowerText(data));
+            parts.push(Reading.panelPowerText(data));
         if (options.showProfile && this._profileNeedsSpelling(data, source, profile))
             parts.push(Format.profileLabel(profile));
         /* Four figures about four different things, joined by a space, read as
@@ -447,7 +369,7 @@ class PanelPresenter {
             lines.push(_("Running on AC power"));
         }
 
-        let profile = shownProfile(data, options);
+        let profile = Reading.shownProfile(data, options);
         if (profile)
             lines.push(_("Profile") + ": " + Format.profileLabel(profile));
         if (data.cpu.governor)
@@ -456,7 +378,7 @@ class PanelPresenter {
             lines.push(_("Temperature") + ": " +
                        Format.temperature(data.cpuTemperature, options.tempUnit, 1));
         if (data.systemWatts !== null)
-            lines.push(_("Power draw") + ": " + powerText(data));
+            lines.push(_("Power draw") + ": " + Reading.powerText(data));
 
         /*
          * The accessories, after a blank line and never more than a few.
@@ -1068,25 +990,6 @@ class PanelSection extends PopupMenu.PopupMenuSection {
 }
 
 /*
- * Whether the power profile is what writes the governor and the energy
- * preference.
- *
- * power-profiles-daemon does: it sets both from whichever profile is in force
- * and sets them again on the next profile change or mains transition, so a
- * governor chosen by hand holds until then and no longer. To anybody using the
- * machine the profile and the governor are then one setting with two names,
- * and the menu says it once - as the profile, which is the one that sticks.
- *
- * The ACPI platform profile is not that. It writes firmware and never goes
- * near cpufreq, so where it is the only backend the governor is a separate
- * question and stays a control of its own. Same on a machine with no profiles.
- */
-function profileOwnsGovernor(data) {
-    return data.profile.available && !!data.profile.backend &&
-           data.profile.backend !== PowerSupply.PLATFORM_BACKEND;
-}
-
-/*
  * The name of a group of rows.
  *
  * Not a menu item that does anything, and deliberately not the same weight as
@@ -1635,7 +1538,7 @@ class MenuPresenter {
          * on screen and a second click can only queue behind it, so the
          * controls say so rather than pretending to be ready. */
         let editable = options.privileged && !options.busy;
-        let owned = profileOwnsGovernor(data);
+        let owned = Reading.profileOwnsGovernor(data);
         this._governorControl.sync(data.cpu.governors, data.cpu.governor, editable, !owned);
         this._energyControl.sync(data.cpu.energyPreferences, data.cpu.energyPreference,
                                  editable, !owned);
@@ -1795,7 +1698,7 @@ class MenuPresenter {
          * menu offers - they are what it was told, which is a reading. Where
          * they are still controls they are in the Processor group, and saying
          * them here as well would be the same word twice. */
-        if (profileOwnsGovernor(data)) {
+        if (Reading.profileOwnsGovernor(data)) {
             if (data.cpu.governor)
                 rows.push({ key: "cpu:governor", label: _("Governor"),
                             value: Format.governorLabel(data.cpu.governor), warning: false });
@@ -2871,7 +2774,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
                  * to be: the panel icon is green, yellow or red, and it
                  * changes colour as they take effect.
                  */
-                let changed = describeChange(args);
+                let changed = Reading.describeChange(args);
                 if (changed)
                     Main.notify(_("Power Toys"), changed);
                 if (onDone)
