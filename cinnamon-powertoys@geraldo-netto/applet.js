@@ -19,7 +19,6 @@ const PopupMenu = imports.ui.popupMenu;
 const Settings = imports.ui.settings;
 const St = imports.gi.St;
 const Tooltips = imports.ui.tooltips;
-const UPowerGlib = imports.gi.UPowerGlib;
 
 /*
  * Cinnamon loads every xlet file through misc/fileUtils.js, which hands the
@@ -59,8 +58,6 @@ Format.setIconLookup(function (name) {
     let theme = Gtk.IconTheme.get_default();
     return theme.has_icon(name + "-symbolic") || theme.has_icon(name);
 });
-
-const UPDeviceState = UPowerGlib.DeviceState;
 
 const HELPER = "powertoys-helper";
 
@@ -2185,8 +2182,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         let temperatures = readings.temperatures.concat(upower.temperatures);
         let powers = readings.powers.concat(upower.powers);
-        let power = this._pickPower(upower.primary, readings.packageWatts, powers);
-        let picked = this._pickTemperature(temperatures);
+        let power = Reading.pickPower(upower.primary, readings.packageWatts, powers);
+        let picked = Reading.pickTemperature(temperatures, this.cpuSensorHint);
         let charge = this._readChargeLimit();
 
         return {
@@ -2284,59 +2281,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
             degraded: state.degraded,
             holds: state.holds,
         };
-    }
-
-    /*
-     * The sensor shown in the panel: the user's hint first, then the one a
-     * CPU calls its own, then a GPU, then whatever is left.
-     *
-     * Matching is on what the driver calls the sensor, not on the name the
-     * menu shows, which is composed for reading and could be composed
-     * differently tomorrow. The settings tooltip says "chip or label
-     * fragment", and that is now literally what is compared.
-     */
-    _pickTemperature(temperatures) {
-        let readable = temperatures.filter(sensor => sensor.celsius !== null);
-        if (readable.length === 0)
-            return { sensor: null, hintMatched: null };
-
-        let hint = (this.cpuSensorHint || "").trim();
-        if (hint) {
-            let match = readable.find(sensor => Sensors.sensorMatches(sensor, hint));
-            if (match)
-                return { sensor: match, hintMatched: true };
-        }
-
-        /* What the common processor drivers call the reading that stands for
-         * the whole package: AMD's Tctl and Tdie, Intel's "Package id 0", and
-         * the SoC thermal zones that have only a type. */
-        let matched = hint === "" ? null : false;
-        let preferred = ["tctl", "tdie", "package id 0", "cpu"];
-        let cpus = readable.filter(sensor => sensor.kind === "cpu");
-        for (let name of preferred) {
-            let match = cpus.find(sensor => Sensors.sensorMatches(sensor, name));
-            if (match)
-                return { sensor: match, hintMatched: matched };
-        }
-        if (cpus.length > 0)
-            return { sensor: cpus[0], hintMatched: matched };
-
-        let gpu = readable.find(sensor => sensor.kind === "gpu");
-        return { sensor: gpu || readable[0], hintMatched: matched };
-    }
-
-    /* Battery drain is the honest number while on battery; otherwise fall back
-     * to the RAPL package counter and finally to the GPU meters. The source is
-     * reported alongside the value, since these measure very different things. */
-    _pickPower(primary, packageWatts, powers) {
-        if (primary && primary.state === UPDeviceState.DISCHARGING && primary.energyRate)
-            return { watts: primary.energyRate, source: "battery" };
-        if (packageWatts !== null)
-            return { watts: packageWatts, source: "package" };
-        let gpus = powers.filter(entry => entry.kind === "gpu");
-        if (gpus.length > 0)
-            return { watts: gpus.reduce((total, entry) => total + entry.watts, 0), source: "gpu" };
-        return { watts: null, source: null };
     }
 
     /* ------------------------------------------------------------------ */

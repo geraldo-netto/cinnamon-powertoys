@@ -22,7 +22,6 @@ shape of the project and the rest are things that fall out of it.
 | id | severity | effort | description |
 |----|----------|--------|-------------|
 | PT-128 | medium | M | [applet.js](cinnamon-powertoys@geraldo-netto/applet.js) is 3161 lines against 4228 for all sixteen libraries — 43% of the JavaScript in the one file that cannot be loaded outside Cinnamon, because it opens with `imports.ui.applet`. So none of it is executed by any case: `tests/cases/settings.js` reads it *as text*, which is the tell. That is not only the widgets. About three hundred lines in it decide things and touch nothing on screen, and every library under it was given a seam precisely so its decisions could be checked. The parts below are ordered so each is a smaller file than the last. |
-| PT-128c | low | S | [`_pickTemperature`](cinnamon-powertoys@geraldo-netto/applet.js#L2479) and [`_pickPower`](cinnamon-powertoys@geraldo-netto/applet.js#L2512) are methods only because they read `this.cpuSensorHint`; pass it in and they are functions of a list. Between them they choose the number in the panel tooltip and the number the high-temperature alert fires on, by a preference order — `tctl`, `tdie`, `package id 0`, `cpu` — that is asserted nowhere. |
 
 ## Wiring and congruence
 

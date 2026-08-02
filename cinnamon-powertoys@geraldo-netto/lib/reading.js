@@ -12,11 +12,23 @@
  * intended.
  */
 
+const UPowerGlib = imports.gi.UPowerGlib;
+
 const PowerSupply = require("./lib/power-supply.js");
 const Format = require("./lib/format.js");
+const Sensors = require("./lib/sensors.js");
 const Translate = require("./lib/gettext.js");
 
 const _ = Translate._;
+
+const UPDeviceState = UPowerGlib.DeviceState;
+
+/*
+ * What the common processor drivers call the reading that stands for the whole
+ * package: AMD's Tctl and Tdie, Intel's "Package id 0", and the SoC thermal
+ * zones that have only a type. In order of preference.
+ */
+var PREFERRED_CPU_SENSORS = ["tctl", "tdie", "package id 0", "cpu"];
 
 /*
  * The power figure is not one thing: on battery it is what the battery is
@@ -127,4 +139,67 @@ function describeChange(args) {
         default:
             return "";
     }
+}
+
+/*
+ * The sensor the machine is judged by: the user's hint first, then the one a
+ * CPU calls its own, then a GPU, then whatever is left.
+ *
+ * This one number is the panel tooltip's temperature and the number the high
+ * temperature alert fires against, so which sensor it comes off decides
+ * whether the alert is about the processor or about a disk.
+ *
+ * Matching is on what the driver calls the sensor, not on the name the menu
+ * shows, which is composed for reading and could be composed differently
+ * tomorrow. The settings tooltip says "chip or label fragment", and that is
+ * literally what is compared.
+ *
+ * `hintMatched` answers a question only the menu asks: true where the user's
+ * hint chose the sensor, false where they set one and nothing matched - which
+ * is worth saying out loud, since there is no other way to find out a typed
+ * name was ignored - and null where they set none.
+ */
+function pickTemperature(temperatures, hint) {
+    let wanted = (hint || "").trim();
+    let readable = temperatures.filter(sensor => sensor.celsius !== null);
+    if (readable.length === 0)
+        return { sensor: null, hintMatched: null };
+
+    if (wanted) {
+        let match = readable.find(sensor => Sensors.sensorMatches(sensor, wanted));
+        if (match)
+            return { sensor: match, hintMatched: true };
+    }
+
+    let matched = wanted === "" ? null : false;
+    let cpus = readable.filter(sensor => sensor.kind === "cpu");
+    for (let name of PREFERRED_CPU_SENSORS) {
+        let match = cpus.find(sensor => Sensors.sensorMatches(sensor, name));
+        if (match)
+            return { sensor: match, hintMatched: matched };
+    }
+    if (cpus.length > 0)
+        return { sensor: cpus[0], hintMatched: matched };
+
+    let gpu = readable.find(sensor => sensor.kind === "gpu");
+    return { sensor: gpu || readable[0], hintMatched: matched };
+}
+
+/*
+ * Which of several numbers counts as the machine's power draw.
+ *
+ * Battery drain is the honest number while on battery; otherwise the RAPL
+ * package counter, and finally the GPU meters added together. The source is
+ * reported alongside the value because these measure very different things -
+ * see powerText, which is what says so to the user.
+ */
+function pickPower(primary, packageWatts, powers) {
+    if (primary && primary.state === UPDeviceState.DISCHARGING && primary.energyRate)
+        return { watts: primary.energyRate, source: "battery" };
+    if (packageWatts !== null)
+        return { watts: packageWatts, source: "package" };
+    let gpus = powers.filter(entry => entry.kind === "gpu");
+    if (gpus.length > 0)
+        return { watts: gpus.reduce((total, entry) => total + entry.watts, 0), source: "gpu" };
+    return { watts: null, source: null };
 }

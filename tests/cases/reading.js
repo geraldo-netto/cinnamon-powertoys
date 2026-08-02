@@ -8,9 +8,18 @@
  */
 
 const Harness = imports.harness;
+const UPowerGlib = imports.gi.UPowerGlib;
 
 const PowerSupply = Harness.requireXlet("./lib/power-supply.js");
 const Reading = Harness.requireXlet("./lib/reading.js");
+
+const State = UPowerGlib.DeviceState;
+
+/* A temperature reading, the shape lib/sensors.js produces. */
+function temperature(chip, rawLabel, kind, celsius) {
+    return { id: chip + ":" + rawLabel, measure: "temperature", chip: chip,
+             rawLabel: rawLabel, kind: kind, celsius: celsius };
+}
 
 /* The profile block of a reading, as _collectProfile assembles it. */
 function profile(overrides) {
@@ -116,4 +125,100 @@ cases["the platform profile is not described here"] = function () {
      */
     Harness.equal(Reading.describeChange(["platform-profile", "performance"]), "",
                   "said by whoever asked for it, not by the general describer");
+};
+
+/* ---------------------------------------------------------------- */
+/* which reading stands for the machine                              */
+
+const K10 = temperature("k10temp", "Tctl", "cpu", 62.5);
+const TDIE = temperature("k10temp", "Tdie", "cpu", 60.0);
+const CCD = temperature("k10temp", "Tccd1", "cpu", 58.0);
+const AMDGPU = temperature("amdgpu", "edge", "gpu", 41.0);
+const NVME = temperature("nvme", null, "disk", 38.0);
+
+cases["the processor's own reading is what stands for the machine"] = function () {
+    let picked = Reading.pickTemperature([NVME, AMDGPU, CCD, K10], "");
+    Harness.equal(picked.sensor.rawLabel, "Tctl",
+                  "the one AMD publishes as the package's control value");
+    Harness.equal(picked.hintMatched, null, "nobody asked for a particular one");
+};
+
+cases["the preference order is followed, not the discovery order"] = function () {
+    /* Tccd1 comes off the same chip and is discovered first here; it is one
+     * chiplet, not the package. */
+    Harness.equal(Reading.pickTemperature([CCD, TDIE], "").sensor.rawLabel, "Tdie", "Tdie over Tccd1");
+    Harness.equal(Reading.pickTemperature([CCD, TDIE, K10], "").sensor.rawLabel, "Tctl",
+                  "and Tctl over Tdie");
+};
+
+cases["a processor with nothing recognisable still answers"] = function () {
+    let odd = temperature("soc_thermal", null, "cpu", 55.0);
+    Harness.equal(Reading.pickTemperature([AMDGPU, odd], "").sensor.chip, "soc_thermal",
+                  "any CPU sensor beats a GPU one");
+};
+
+cases["a machine with no processor sensor falls back to the graphics card"] = function () {
+    Harness.equal(Reading.pickTemperature([NVME, AMDGPU], "").sensor.chip, "amdgpu", "the GPU");
+    Harness.equal(Reading.pickTemperature([NVME], "").sensor.chip, "nvme",
+                  "and then to whatever there is, rather than to nothing");
+};
+
+cases["a machine that reports nothing readable says so"] = function () {
+    let dead = temperature("amdgpu", "edge", "gpu", null);
+    let picked = Reading.pickTemperature([dead], "");
+    Harness.equal(picked.sensor, null, "no sensor");
+    Harness.equal(picked.hintMatched, null, "and no hint to have failed");
+};
+
+cases["a hint chooses the sensor, whatever kind it is"] = function () {
+    /* Matched on what the driver calls it, so a disk can be named on purpose
+     * and the sensor filter keeps it for that reason. */
+    let picked = Reading.pickTemperature([K10, AMDGPU, NVME], "nvme");
+    Harness.equal(picked.sensor.chip, "nvme", "the one that was asked for");
+    Harness.equal(picked.hintMatched, true, "and it was found");
+};
+
+cases["a hint is matched on the driver's word, not the menu's"] = function () {
+    Harness.equal(Reading.pickTemperature([K10, AMDGPU], "Tctl").sensor.rawLabel, "Tctl",
+                  "the label");
+    Harness.equal(Reading.pickTemperature([K10, AMDGPU], "amdgpu").sensor.chip, "amdgpu",
+                  "or the chip");
+};
+
+cases["a hint that matches nothing is reported, not swallowed"] = function () {
+    /* Somebody who typed a name has no other way of finding out it was
+     * ignored, so the menu says so - which it can only do because of this. */
+    let picked = Reading.pickTemperature([K10, AMDGPU], "coretemp");
+    Harness.equal(picked.sensor.rawLabel, "Tctl", "the automatic choice still happens");
+    Harness.equal(picked.hintMatched, false, "but the hint did not, and that is worth saying");
+};
+
+cases["a battery on the way down is the machine's power draw"] = function () {
+    let battery = { state: State.DISCHARGING, energyRate: 11.2 };
+    Harness.deepEqual(Reading.pickPower(battery, 54, [{ kind: "gpu", watts: 30 }]),
+                      { watts: 11.2, source: "battery" },
+                      "what the whole machine is losing beats a part of it");
+};
+
+cases["a battery on the cable is not a draw"] = function () {
+    let charging = { state: State.CHARGING, energyRate: 45 };
+    Harness.deepEqual(Reading.pickPower(charging, 54, []), { watts: 54, source: "package" },
+                      "45 W into the battery is not 45 W out of the machine");
+};
+
+cases["the package counter comes before the graphics card"] = function () {
+    Harness.deepEqual(Reading.pickPower(null, 54, [{ kind: "gpu", watts: 30 }]),
+                      { watts: 54, source: "package" }, "RAPL where it can be read");
+};
+
+cases["graphics cards are added together when there is nothing else"] = function () {
+    let powers = [{ kind: "gpu", watts: 30 }, { kind: "gpu", watts: 24 },
+                  { kind: "cpu", watts: 19 }];
+    Harness.deepEqual(Reading.pickPower(null, null, powers), { watts: 54, source: "gpu" },
+                      "both cards, and nothing that is not one");
+};
+
+cases["a machine that measures no power says so rather than showing a zero"] = function () {
+    Harness.deepEqual(Reading.pickPower(null, null, []), { watts: null, source: null },
+                      "nothing measured is not nought watts");
 };
