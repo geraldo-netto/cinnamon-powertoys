@@ -75,6 +75,47 @@ RAPL energy counters (`/sys/class/powercap/*/energy_uj`) are root-only on most
 kernels since CVE-2020-8694. When they are unreadable the package power row is
 simply not shown; battery draw and GPU power still work.
 
+### One prompt instead of one per change
+
+Out of the box every one of those changes asks for the password again, because
+`pkexec` with no policy of its own never keeps an authorisation. Changing the
+governor, the energy preference and the charge limit in one visit to the menu
+is three prompts.
+
+```sh
+sudo make install-policy      # optional
+```
+
+That installs two files:
+
+| file | what it is |
+|------|------------|
+| `/usr/share/polkit-1/actions/io.github.geraldo-netto.cinnamon-powertoys.policy` | the action |
+| `/usr/local/lib/cinnamon-powertoys/powertoys-helper` | a root owned copy of the helper |
+
+**What the action grants.** An administrator, logged in at the machine, may run
+that one helper as root, and the authorisation is remembered for a few minutes
+afterwards (`auth_admin_keep`) rather than for a single call. Anyone who is not
+an administrator is still asked for an administrator password, and anyone
+inactive or connected remotely gets no keeping at all. It grants nothing else:
+the helper takes five fixed commands and checks every value against the list
+the kernel itself advertises.
+
+**Why the second file.** A kept authorisation applies to a path, so that path
+must be one its caller cannot rewrite while the authorisation is still valid.
+The copy inside the applet lives under your home directory; the action
+deliberately names a root owned copy instead. Re-run `sudo make install-policy`
+after upgrading the applet so the two stay the same script.
+
+**To revoke it:**
+
+```sh
+sudo make uninstall-policy
+```
+
+Both files go, and the applet carries on asking for a password on every
+change.
+
 ## Requirements
 
 - Cinnamon 5.4 or newer
