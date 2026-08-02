@@ -20,12 +20,6 @@ half of what the watch forwards — and what happens to the thing that arrives
 while its backend is busy with the one before. And one row about the thread
 all of this runs on.
 
-## Guards that never fire
-
-| id | severity | effort | description |
-|----|----------|--------|-------------|
-| PT-143 | low | XS | [`_settle`](cinnamon-powertoys@geraldo-netto/lib/bluez.js#L213) answers "is this the list that was there" by path and percentage alone. [`WATCHED_INTERFACES`](cinnamon-powertoys@geraldo-netto/lib/bluez.js#L31) forwards `Device1` property changes precisely so the list follows the device — and a change of `Alias`, or of the `Icon` that decides a row's kind, comes through that watch, updates `this.devices`, and is reported to nobody, because the path and the percentage still match. The menu keeps the old name until the next poll happens to redraw it. Compare what the row is made of: model and kind beside path and percentage. |
-
 ## Queues, and the thread that draws
 
 | id | severity | effort | description |

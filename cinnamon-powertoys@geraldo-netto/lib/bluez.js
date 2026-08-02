@@ -128,6 +128,25 @@ function describe(path, interfaces) {
     };
 }
 
+/*
+ * Whether two readings of one device would draw the same row.
+ *
+ * The path and the percentage were the whole of this, and a row is more than
+ * those two: its title is the model and its icon is chosen from the kind. Both
+ * of those come off org.bluez.Device1, which is watched precisely so that the
+ * list follows the device - so a headset renamed in the bluetooth settings, or
+ * one whose Icon BlueZ works out a moment after it connects, reached
+ * this.devices and was reported to nobody, and the menu kept the old row until
+ * something else happened to redraw it.
+ *
+ * What is compared is what is displayed, which is the rule that keeps this
+ * honest as the row grows.
+ */
+function _sameRow(a, b) {
+    return a.path === b.path && a.percentage === b.percentage &&
+           a.model === b.model && a.kind === b.kind;
+}
+
 function parseObjects(objects) {
     let devices = [];
     for (let path in objects) {
@@ -228,8 +247,7 @@ var BluezBatteries = class BluezBatteries {
      */
     _settle(devices) {
         let changed = devices.length !== this.devices.length ||
-                      devices.some((device, i) => device.path !== this.devices[i].path ||
-                                                  device.percentage !== this.devices[i].percentage);
+                      devices.some((device, i) => !_sameRow(device, this.devices[i]));
         this.devices = devices;
         if (changed)
             this._onChanged();

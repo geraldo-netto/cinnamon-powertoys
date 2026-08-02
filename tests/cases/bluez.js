@@ -195,6 +195,30 @@ cases["a change is only reported when something actually changed"] = function ()
     control.destroy();
 };
 
+cases["a device renamed or reclassified is a change too"] = function () {
+    /*
+     * Both the alias and the icon come off org.bluez.Device1, which is watched
+     * exactly so the list follows the device. Comparing only the path and the
+     * percentage meant a rename reached this.devices and was reported to
+     * nobody: the menu kept the old title until something else redrew it.
+     */
+    let objects = tree({ [HEADSET]: device("BW01", "audio-headset", true, 90) });
+    let changes = 0;
+    let control = new Bluez.BluezBatteries(() => changes++,
+                                           (path, iface, method, onDone) => onDone(objects));
+    Harness.equal(changes, 1, "the first answer is news");
+
+    objects[HEADSET]["org.bluez.Device1"].Alias = "Desk headset";
+    control._refresh();
+    Harness.equal(control.devices[0].model, "Desk headset", "the list takes the new name");
+    Harness.equal(changes, 2, "and says so, because the name is the row's title");
+
+    objects[HEADSET]["org.bluez.Device1"].Icon = "input-mouse";
+    control._refresh();
+    Harness.equal(changes, 3, "as is the kind, which is what the row's icon is chosen from");
+    control.destroy();
+};
+
 cases["one read of the tree at a time"] = function () {
     /* The settle timer stops a burst arming twice; it does nothing about a
      * burst that spans two of them, and two GetManagedObjects then settle in
