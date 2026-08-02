@@ -178,11 +178,19 @@ cinnamon-powertoys@geraldo-netto/
 ├── lib/power-supply.js  charge limit and ACPI platform profile nodes
 ├── lib/upower.js        UPower D-Bus client
 ├── lib/profiles.js      power-profiles-daemon client
+├── lib/device.js        what a powered device is, in words
+├── lib/privileged.js    finding, running and queueing the pkexec helper
 ├── lib/format.js        value formatting and UPower enum naming
+├── lib/gettext.js       the text domain, bound once
+├── lib/log.js           the one thing in lib/ that knows about the shell
 ├── powertoys-helper     validating pkexec helper for root owned settings
 ├── settings-schema.json
 ├── stylesheet.css
 └── icons/
+
+tests/                   harness, runner and the cases
+tools/                   the loader emulation, parse check, translations
+polkit/                  the action for one prompt instead of one per change
 ```
 
 ## Translating
