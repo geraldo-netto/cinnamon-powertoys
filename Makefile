@@ -30,10 +30,12 @@ install:
 	@rm -rf $(TARGET)
 	@cp -r $(UUID) $(TARGET)
 	@chmod +x $(TARGET)/powertoys-helper
+	@tools/install-translations.sh install
 	@echo "installed to $(TARGET)"
 
 uninstall:
 	@rm -rf $(TARGET)
+	@tools/install-translations.sh uninstall
 	@echo "removed $(TARGET)"
 
 # Installs a root owned copy of the helper and the action that names it. The

@@ -19,6 +19,10 @@ chmod +x "$TARGET_DIR/powertoys-helper"
 
 echo "Installed to $TARGET_DIR"
 
+# A .po in po/ does nothing until it is compiled into the directory the applet
+# binds its text domain to.
+"$(dirname "$0")/tools/install-translations.sh" install
+
 # Reloading only works once the applet is enabled on a panel; on a first
 # install the call fails and the instructions below apply.
 reloaded=no

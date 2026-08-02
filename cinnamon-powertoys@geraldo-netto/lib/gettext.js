@@ -14,7 +14,10 @@ const Gettext = imports.gettext;
 const GLib = imports.gi.GLib;
 
 var UUID = __meta.uuid;
-var LOCALE_DIR = GLib.get_home_dir() + "/.local/share/locale";
+/* Where the install path compiles catalogues to. get_user_data_dir()
+ * respects XDG_DATA_HOME, which the install script reads too, so the two
+ * agree even where that is set. */
+var LOCALE_DIR = GLib.get_user_data_dir() + "/locale";
 
 Gettext.bindtextdomain(UUID, LOCALE_DIR);
 
