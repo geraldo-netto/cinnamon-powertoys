@@ -109,32 +109,46 @@ function _hwmonIdentity(base) {
     return null;
 }
 
+/* "k10temp Tctl" rather than "Tctl", and "drivetemp 1" where a chip has
+ * several of something and names none of them. */
+function _displayName(entry) {
+    let chip = entry.chip;
+    let label = entry.rawLabel;
+    if (!label)
+        return entry.siblings > 1 ? chip + " " + entry.index : chip;
+    if (label.toLowerCase().indexOf(chip.toLowerCase()) === 0)
+        return label;
+    return chip + " " + label;
+}
+
 /*
- * Builds the name shown in the menu. "k10temp Tctl" rather than "Tctl", and a
- * disambiguating suffix when several chips would otherwise collide, as five
- * drivetemp instances do.
+ * Names everything discovered, in one pass, without touching what it was
+ * given: an entry comes back as a copy carrying `display`.
+ *
+ * Where that name would be ambiguous - five drivetemp chips all called
+ * "drivetemp" - whatever tells them apart is appended: the block device, the
+ * PCI slot, the thermal zone.
+ *
+ * Ambiguity is judged within a measure and not across all of them. Two
+ * readings from one card, a fan and a power meter, are both "amdgpu", and
+ * appending the same PCI slot to each would leave them just as alike and
+ * longer; they are already told apart by being in RPM and in watts.
  */
 function _finalizeNames(entries) {
-    for (let entry of entries) {
-        let chip = entry.chip;
-        let label = entry.rawLabel;
-        if (!label)
-            entry.display = entry.siblings > 1 ? chip + " " + entry.index : chip;
-        else if (label.toLowerCase().indexOf(chip.toLowerCase()) === 0)
-            entry.display = label;
-        else
-            entry.display = chip + " " + label;
-    }
+    let named = entries.map(entry => Object.assign({}, entry, { display: _displayName(entry) }));
 
     let counts = {};
-    for (let entry of entries)
-        counts[entry.display] = (counts[entry.display] || 0) + 1;
-
-    for (let entry of entries) {
-        if (counts[entry.display] > 1 && entry.identity)
-            entry.display = entry.display + " (" + entry.identity + ")";
+    for (let entry of named) {
+        let key = entry.measure + "\u0000" + entry.display;
+        counts[key] = (counts[key] || 0) + 1;
     }
-    return entries;
+
+    return named.map(function (entry) {
+        let key = entry.measure + "\u0000" + entry.display;
+        if (counts[key] > 1 && entry.identity)
+            return Object.assign({}, entry, { display: entry.display + " (" + entry.identity + ")" });
+        return entry;
+    });
 }
 
 /*
@@ -262,10 +276,12 @@ function discoverSensors() {
         });
     }
 
+    /* One pass over everything, then split back out by what it measures. */
+    let named = _finalizeNames(found.temperatures.concat(found.fans, found.powerMeters));
     return {
-        temperatures: _finalizeNames(found.temperatures),
-        fans: _finalizeNames(found.fans),
-        powerMeters: _finalizeNames(found.powerMeters),
+        temperatures: named.filter(entry => entry.measure === "temperature"),
+        fans: named.filter(entry => entry.measure === "fan"),
+        powerMeters: named.filter(entry => entry.measure === "power"),
     };
 }
 

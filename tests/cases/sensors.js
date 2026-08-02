@@ -345,3 +345,26 @@ cases["a machine with none of it answers null rather than throwing"] = function 
         IO.setRoot("");
     }
 };
+
+cases["naming leaves the entries it was given alone"] = function () {
+    on("machine", function () {
+        let raw = [{ chip: "drivetemp", rawLabel: null, siblings: 1, index: "1",
+                     identity: "sda", measure: "temperature" },
+                   { chip: "drivetemp", rawLabel: null, siblings: 1, index: "1",
+                     identity: "sdb", measure: "temperature" }];
+        let named = Sensors._finalizeNames(raw);
+        Harness.equal(raw[0].display, undefined, "the input was mutated");
+        Harness.equal(named[0].display, "drivetemp (sda)", "first");
+        Harness.equal(named[1].display, "drivetemp (sdb)", "second");
+    });
+};
+
+cases["a fan and a meter on one chip are not disambiguated against each other"] = function () {
+    on("machine", function () {
+        let found = Sensors.discoverSensors();
+        Harness.equal(byId(found.fans, "hwmon:hwmon3:fan1").display, "amdgpu",
+                      "the card's only fan");
+        Harness.equal(byId(found.powerMeters, "hwmon:hwmon3:power1").display, "amdgpu",
+                      "and its only meter, told apart by RPM against watts");
+    });
+};
