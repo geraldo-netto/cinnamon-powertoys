@@ -37,6 +37,7 @@ const Ddc = require("./lib/ddc.js");
 const Device = require("./lib/device.js");
 const IO = require("./lib/io.js");
 const Log = require("./lib/log.js");
+const PendingProfile = require("./lib/pending-profile.js");
 const PowerSupply = require("./lib/power-supply.js");
 const Privileged = require("./lib/privileged.js");
 const Sensors = require("./lib/sensors.js");
@@ -1794,7 +1795,12 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._collectAgain = false;
         this._scrollTimerId = 0;
         this._pendingScroll = 0;
-        this._pendingProfile = null;
+        /* A profile asked for and not yet arrived, which the panel and the
+         * menu draw until it does - or until it is clear it will not. */
+        this._pending = new PendingProfile.PendingProfile((asked, actual) => {
+            Log.error("asked for the " + asked + " profile and the machine is still on " +
+                      (actual || "none") + "; showing what it reports");
+        });
         /* The policy decides whether something is worth saying; where it is
          * said is the applet's, because it is the only part of this that has a
          * tray to say it in. */
@@ -2127,7 +2133,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             peripheralLevel: this.peripheralBatteryThreshold,
             sensorHint: (this.cpuSensorHint || "").trim(),
             /* a change the machine has not confirmed yet */
-            pendingProfile: this._pendingProfile,
+            pendingProfile: this._pending.value,
             busy: this._helper.busy,
         };
     }
@@ -2419,9 +2425,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     _present(data) {
-        /* The machine has caught up with what was asked for. */
-        if (this._pendingProfile && data.profile.active === this._pendingProfile)
-            this._pendingProfile = null;
+        /* Caught up with what was asked for - or given long enough to and
+         * not, in which case the machine is taken at its word. */
+        this._pending.settle(data.profile.active);
 
         this._latest = data;
         this._panel.update(data, this._panelOptions());
@@ -2507,7 +2513,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             iconSource: this.panelIconSource,
             tempUnit: this.tempUnit,
             /* a change the machine has not confirmed yet; see shownProfile */
-            pendingProfile: this._pendingProfile,
+            pendingProfile: this._pending.value,
         };
     }
 
@@ -2544,24 +2550,20 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * was one. Asking again for the profile already in flight is not one.
      */
     _setProfile(name) {
-        if (name === this._pendingProfile)
+        if (!this._pending.ask(name))
             return false;
-        this._pendingProfile = name;
 
         this._profileBackend.setProfile(name, error => {
             if (error) {
-                /*
-                 * Only where this is still the change in flight. A second
-                 * profile asked for while this one was pending has already
-                 * replaced it, and clearing it on the older call's failure
-                 * would take the panel back to a profile nobody asked for and
-                 * leave the newer change with nothing saying it is pending.
-                 */
-                if (this._pendingProfile === name)
-                    this._pendingProfile = null;
+                this._pending.failed(name);
                 /* Cancelling a password dialog is not news; the user did it. */
                 if (error.message !== "cancelled")
                     this._notifyProfileError(name, error);
+            } else {
+                /* Taken. From here the machine is expected to adopt it, and
+                 * PendingProfile is what stops it being drawn for ever if
+                 * something else has other ideas. */
+                this._pending.written(name);
             }
             this._scheduleUpdate();
         });
@@ -2660,7 +2662,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             return false;
 
         let ordered = this._orderedProfiles(state);
-        let from = Reading.shownProfile(this._latest, { pendingProfile: this._pendingProfile });
+        let from = Reading.shownProfile(this._latest, { pendingProfile: this._pending.value });
         let index = ordered.indexOf(from);
         if (index < 0)
             index = 0;

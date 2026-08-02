@@ -24,7 +24,6 @@ machines between them; these are the ones with a hole in.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-133 | medium | S | `_pendingProfile` has no way out except success. It is cleared where the reading catches up with it ([applet.js:2422](cinnamon-powertoys@geraldo-netto/applet.js#L2422)) and where the *same* profile's call fails ([applet.js:2559](cinnamon-powertoys@geraldo-netto/applet.js#L2559)) — and nowhere else. A backend that accepts a write without adopting the value leaves it set for the rest of the session: firmware that takes a platform profile and then reverts on its own thermal policy is the concrete case. What that costs is not cosmetic. The panel and the menu draw the pending profile, so both show a profile the machine is not in; `_setProfile` drops that name as a duplicate for ever, so it cannot be asked for again; and since PT-114 the wheel and the hotkey step from it, so they walk away from the real profile. Give it an expiry — a small number of polls, or the first reading that arrives after the call reported success — and take the panel back when it lapses. |
 
 ## Concurrency
 
