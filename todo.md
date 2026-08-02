@@ -34,4 +34,3 @@ these are things the code has been doing all along.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-121 | low | XS | The translation template ships with the extractor's placeholders: `SOME DESCRIPTIVE TITLE`, `PACKAGE VERSION`, `FIRST AUTHOR <EMAIL@ADDRESS>` and a `#, fuzzy` on the header itself. A translator's first sight of the project is a file that names neither it nor where to send the result. The [`pot` target](Makefile#L126) already strips one header line with `sed` to keep the output reproducible; stamp the identity in the same place, so the template stays a function of the sources and the workflow's diff check goes on passing. |

@@ -1,13 +1,13 @@
-# SOME DESCRIPTIVE TITLE.
-# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
-# This file is distributed under the same license as the PACKAGE package.
-# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+# Translation template for Power Toys, a Cinnamon applet.
+# Copyright (C) the Power Toys authors.
+# Distributed under the MIT license, with the rest of cinnamon-powertoys@geraldo-netto.
+# To start a language, see the Translating section of README.md.
 #
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: PACKAGE VERSION\n"
-"Report-Msgid-Bugs-To: \n"
+"Project-Id-Version: Power Toys 1.0.0\n"
+"Report-Msgid-Bugs-To: https://github.com/geraldo-netto/cinnamon-powertoys/issues\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"

@@ -8,6 +8,15 @@ TARGET  := $(DESTDIR)$(PREFIX)/cinnamon/applets/$(UUID)
 # check` fails if they stop agreeing, because a mismatch would quietly mean
 # the action never applies and every change asks for a password again.
 POT         := $(UUID)/po/$(UUID).pot
+METADATA    := $(UUID)/metadata.json
+
+# What the template says about itself, read out of metadata.json rather than
+# written here, so the two cannot come to disagree about the applet's name,
+# its version or where to report a problem with the strings. Recursive on
+# purpose: only the pot target ever asks for them.
+POT_NAME     = $(shell python3 -c "import json;print(json.load(open('$(METADATA)'))['name'])")
+POT_VERSION  = $(shell python3 -c "import json;print(json.load(open('$(METADATA)'))['version'])")
+POT_URL      = $(shell python3 -c "import json;print(json.load(open('$(METADATA)'))['url'])")
 
 POLICY      := io.github.geraldo-netto.cinnamon-powertoys.policy
 POLICY_DIR  := $(DESTDIR)/usr/share/polkit-1/actions
@@ -123,10 +132,34 @@ check:
 # records when the extraction ran rather than anything about the strings, and
 # nothing downstream needs it - msginit writes its own, msgmerge works from
 # PO-Revision-Date - so it is taken back out.
+#
+# The header is stamped for the same reason the stamp is stripped: it is the
+# first thing a translator sees. What the extractor writes is
+# "SOME DESCRIPTIVE TITLE", "PACKAGE VERSION" and "FIRST AUTHOR
+# <EMAIL@ADDRESS>", so the file named neither the applet nor anywhere to send
+# the result. The three fields that identify the project are filled in from
+# metadata.json; the ones that identify the translator are left alone, because
+# msginit fills those in with whoever is doing the work.
+#
+# Nothing here reads a clock, so the template is still a function of the
+# sources and the workflow's check can still be a plain diff.
 pot:
 	@cinnamon-xlet-makepot $(UUID)
 	@sed -i '/^"POT-Creation-Date:/d' $(POT)
-	@echo "pot ok       $(POT), reproducible"
+	@sed -i \
+		-e 's|^# SOME DESCRIPTIVE TITLE\.$$|# Translation template for $(POT_NAME), a Cinnamon applet.|' \
+		-e "s|^# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER$$|# Copyright (C) the $(POT_NAME) authors.|" \
+		-e 's|^# This file is distributed under the same license as the PACKAGE package\.$$|# Distributed under the MIT license, with the rest of $(UUID).|' \
+		-e 's|^# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR\.$$|# To start a language, see the Translating section of README.md.|' \
+		-e 's|^"Project-Id-Version: PACKAGE VERSION|"Project-Id-Version: $(POT_NAME) $(POT_VERSION)|' \
+		-e 's|^"Report-Msgid-Bugs-To: |"Report-Msgid-Bugs-To: $(POT_URL)/issues|' \
+		$(POT)
+	@# A placeholder left standing means the extractor's header has moved and
+	@# one of the expressions above quietly matched nothing. Say so, rather
+	@# than shipping the placeholder again.
+	@! grep -qE "SOME DESCRIPTIVE TITLE|PACKAGE VERSION|COPYRIGHT HOLDER|FIRST AUTHOR" $(POT) || \
+		{ echo "the extractor's header has changed; update the pot target"; exit 1; }
+	@echo "pot ok       $(POT), reproducible, stamped from $(METADATA)"
 
 restart:
 	@cinnamon --replace > /dev/null 2>&1 &
