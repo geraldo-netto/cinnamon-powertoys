@@ -3,6 +3,16 @@
 A Cinnamon applet that puts a single power icon in the panel and, from one
 menu, monitors and configures power management for the whole machine.
 
+![The menu](docs/menu.png)
+
+The panel item, between the other applets:
+
+![The panel item](docs/panel.png)
+
+Captured on a desktop, so two things are not in the shot because that machine
+does not have them: the charger row, which needs a UPower line power device,
+and the backlight sliders, which need a backlight. Both hide themselves.
+
 ## Features
 
 **Batteries, every device type.** Everything UPower knows about is listed, not
