@@ -540,8 +540,22 @@ class KeyedList {
         this._items = new Map();
     }
 
+    /*
+     * The set of keys, as one string that cannot be forged.
+     *
+     * Joining the keys with a separator is only safe while no key contains
+     * one, and these keys are device paths, sensor ids and profile names -
+     * none of which promises that. Counting each key's length in front of it
+     * means no two different sets can produce the same string, whatever is in
+     * them, so a set that has really changed can never read as unchanged and
+     * leave the rows as they were.
+     */
+    _signature(entries) {
+        return entries.map(entry => String(entry.key).length + ":" + entry.key).join("");
+    }
+
     sync(entries) {
-        let key = entries.map(entry => entry.key).join(",");
+        let key = this._signature(entries);
         if (key !== this._key) {
             this._key = key;
             this._section.removeAll();
