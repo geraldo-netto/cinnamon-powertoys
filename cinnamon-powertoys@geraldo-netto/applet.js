@@ -112,7 +112,7 @@ function defaultBackends() {
         sensors: () => new Sensors.SensorSet(),
         cpuControl: runner => new Cpu.CpuControl(runner),
         chargeControl: runner => PowerSupply.discoverChargeControl(runner),
-        platformProfile: () => PowerSupply.platformProfile(),
+        platformProfileClient: runner => new PowerSupply.PlatformProfileClient(runner),
         profilesClient: onChanged => new Profiles.PowerProfilesClient(onChanged),
         backlight: (kind, onChanged, onReady) =>
             new Backlight.BacklightControl(kind, onChanged, onReady),
@@ -1307,7 +1307,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * all of them - reported by BlueZ itself. */
         this._bluetooth = this._backends.bluetoothBatteries(() => this._scheduleUpdate());
 
-        this._profiles = this._backends.profilesClient(() => this._scheduleUpdate());
+        this._profiles = this._backends.profilesClient(() => {
+            /* The daemon appearing or vanishing is the only thing that
+             * changes which backend answers, and the only thing that says so. */
+            this._chooseProfileBackend();
+            this._scheduleUpdate();
+        });
+        this._platformProfiles = this._backends.platformProfileClient(
+            (args, onDone) => this._runHelperQuietly(args, onDone));
+        this._chooseProfileBackend();
         this._upower = this._backends.upowerMonitor(() => this._scheduleUpdate(),
                                                     () => this._scheduleUpdate());
 
@@ -1575,42 +1583,32 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     /*
-     * Which profile backend is answering. power-profiles-daemon when it is
-     * running, otherwise the ACPI platform profile - which is read from sysfs
-     * and written through the helper, so the reading says which it was.
+     * Which of the two backends answers, decided once here rather than at
+     * every place that cares.
+     *
+     * power-profiles-daemon where it is running, the firmware's own profile
+     * where it is not. When there is neither, the daemon client is still the
+     * one asked: it answers unavailable, null and an empty list, which is
+     * exactly how a machine with no profiles should read.
      */
-    _collectProfile() {
+    _chooseProfileBackend() {
         if (this._profiles.available)
-            return {
-                available: true,
-                backend: this._profiles.busName,
-                active: this._profiles.active,
-                list: this._profiles.profiles,
-                degraded: this._profiles.degraded,
-                holds: this._profiles.holds,
-                viaSysfs: false,
-            };
+            this._profileBackend = this._profiles;
+        else if (this._platformProfiles.available)
+            this._profileBackend = this._platformProfiles;
+        else
+            this._profileBackend = this._profiles;
+    }
 
-        let platform = this._backends.platformProfile();
-        if (platform && platform.choices.length > 0)
-            return {
-                available: true,
-                backend: "acpi-platform-profile",
-                active: platform.active,
-                list: platform.choices,
-                degraded: "",
-                holds: [],
-                viaSysfs: true,
-            };
-
+    _collectProfile() {
+        let backend = this._profileBackend;
         return {
-            available: false,
-            backend: null,
-            active: null,
-            list: [],
-            degraded: "",
-            holds: [],
-            viaSysfs: false,
+            available: backend.available,
+            backend: backend.busName,
+            active: backend.active,
+            list: backend.profiles,
+            degraded: backend.degraded,
+            holds: backend.holds,
         };
     }
 
@@ -1800,28 +1798,41 @@ class PowerToysApplet extends Applet.TextIconApplet {
             return;
         this._pendingProfile = name;
 
-        let data = this._latest;
-        if (data && data.profile.viaSysfs) {
-            /* the helper reports its own failures */
-            this._runHelper(["platform-profile", name], outcome => {
-                if (!outcome.applied)
-                    this._pendingProfile = null;
-            });
-        } else {
-            this._profiles.setProfile(name, error => {
-                if (error) {
-                    this._pendingProfile = null;
+        this._profileBackend.setProfile(name, error => {
+            if (error) {
+                this._pendingProfile = null;
+                /* Cancelling a password dialog is not news; the user did it. */
+                if (error.message !== "cancelled")
                     this._notifyProfileError(name, error);
-                }
-                this._scheduleUpdate();
-            });
-        }
+            }
+            this._scheduleUpdate();
+        });
+
         this.menu.close();
         this._scheduleUpdate();
     }
 
     /* Gio prefixes a remote error with the D-Bus error name, which means
      * nothing to the person reading the notification. */
+    /*
+     * The helper without the notification policy, for a caller that reports
+     * the outcome in its own words - a profile that will not switch is not
+     * the same news as a governor that will not.
+     */
+    _runHelperQuietly(args, onDone) {
+        if (!this.enablePrivilegedControls) {
+            onDone({ applied: false, error: _("Privileged controls are turned off") });
+            return;
+        }
+        this._helper.run(args, outcome => {
+            if (this._destroyed)
+                return;
+            this._cpu.refresh();
+            this._update();
+            onDone(outcome);
+        });
+    }
+
     _notifyProfileError(name, error) {
         let detail = error && error.message ? error.message : String(error);
         detail = detail.replace(/^GDBus\.Error:[^\s:]+:\s*/, "").trim();

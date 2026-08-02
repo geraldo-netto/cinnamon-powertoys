@@ -24,8 +24,6 @@ own — items that are genuinely a single change were left whole.
 |----|----------|--------|-------------|
 | PT-27 | medium | M | No tests. The throwaway smoke script used during development (sensor discovery, CPU control read-out, profile client, UPower snapshot) covers the risky parts and runs under plain `cjs`; move it into `tests/` and wire it to `make check`. |
 | PT-27d | low | XS | A smoke case for the UPower monitor and the profile client against the live daemons, skipped rather than failed when they are not on the bus, so CI without a system bus stays green. |
-| PT-32 | medium | M | One of the two clusters left in the applet class that are more than wiring. The two profile backends are stitched together rather than made interchangeable. `PowerProfilesClient` and `PowerSupply.platformProfile()` have different shapes, so `_collect()` unions them behind a `viaSysfs` flag (`_collectProfile()` in [applet.js](cinnamon-powertoys@geraldo-netto/applet.js)) and `_setProfile()` re-reads that flag to pick the write path (`_setProfile()` in [applet.js](cinnamon-powertoys@geraldo-netto/applet.js)). |
-| PT-32b | medium | XS | Choose the backend once — at startup and whenever the daemon appears or vanishes — and the `viaSysfs` flag, the union in `_collect()` and the branch in `_setProfile()` all go away. |
 
 ## Laws of UX
 
