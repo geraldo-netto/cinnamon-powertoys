@@ -82,3 +82,14 @@ cases["the theme is asked once per name, not once per row"] = function () {
         Format.setIconLookup(null);
     }
 };
+
+cases["a profile this applet has no icon for gets none"] = function () {
+    Harness.equal(Format.profileIconName("power-saver"), "powertoys-powersaver", "power saver");
+    Harness.equal(Format.profileIconName("balanced"), "powertoys-balanced", "balanced");
+    Harness.equal(Format.profileIconName("performance"), "powertoys-performance", "performance");
+    Harness.equal(Format.profileIconName("quiet"), "powertoys-powersaver",
+                  "firmware names that mean the same thing");
+    Harness.equal(Format.profileIconName("something-a-vendor-invented"), null,
+                  "rather than dressing it up as one of the three");
+    Harness.equal(Format.profileIconName(null), null, "nothing active");
+};

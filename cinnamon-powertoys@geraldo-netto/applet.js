@@ -283,8 +283,9 @@ class AlertPolicy {
  * nothing back out of it. What to show arrives with each update.
  */
 class PanelPresenter {
-    constructor(applet) {
+    constructor(applet, iconDir) {
         this._applet = applet;
+        this._iconDir = iconDir;
         this._iconKey = null;
     }
 
@@ -339,14 +340,30 @@ class PanelPresenter {
             return;
         }
 
-        let name = DEFAULT_ICON;
-        if (source === "profile" && data.profile.active)
-            name = Format.profileIconName(data.profile.active);
-        let key = "symbolic:" + name;
+        let profileIcon = source === "profile" && data.profile.active
+            ? Format.profileIconName(data.profile.active) : null;
+        if (profileIcon) {
+            let key = "profile:" + profileIcon;
+            if (key === this._iconKey)
+                return;
+            this._iconKey = key;
+            /*
+             * Loaded from the applet's own directory by path rather than by
+             * name. These three carry colour, so asking for them as symbolic
+             * names would have the theme repaint all three in the panel
+             * foreground and make them identical; asking by name at all
+             * depends on the icon theme having noticed the applet's directory,
+             * which it does not always do until something makes it rescan.
+             */
+            this._applet.set_applet_icon_path(this._iconDir + "/" + profileIcon + ".svg");
+            return;
+        }
+
+        let key = "symbolic:" + DEFAULT_ICON;
         if (key === this._iconKey)
             return;
         this._iconKey = key;
-        this._applet.set_applet_icon_symbolic_name(name);
+        this._applet.set_applet_icon_symbolic_name(DEFAULT_ICON);
     }
 
     _tooltipText(data, options) {
@@ -1006,7 +1023,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._scrollTimerId = 0;
         this._pendingScroll = 0;
         this._alerts = new AlertPolicy();
-        this._panel = new PanelPresenter(this);
+        this._panel = new PanelPresenter(this, metadata.path + "/icons");
         this._hotkeyIds = [];
 
         this._bindSettings();

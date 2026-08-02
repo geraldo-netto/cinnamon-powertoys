@@ -238,7 +238,13 @@ function profileLabel(name) {
     return capitalize(name.replace(/[-_]/g, " "));
 }
 
-/* Icons shipped in the applet's icons/ directory. */
+/*
+ * Icons shipped in the applet's own icons/ directory, one per profile.
+ *
+ * Null for a profile this does not recognise - some firmware exports its own
+ * names - so the caller shows the plain applet icon rather than pretending an
+ * unknown profile is one of these three.
+ */
 function profileIconName(name) {
     switch (name) {
         case "power-saver":
@@ -252,7 +258,7 @@ function profileIconName(name) {
         case "balanced":
             return "powertoys-balanced";
         default:
-            return "powertoys";
+            return null;
     }
 }
 
