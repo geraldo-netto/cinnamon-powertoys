@@ -667,7 +667,7 @@ class SelectorItem extends PopupMenu.PopupMenuItem {
 }
 
 /*
- * A radio group: an optional bold title, then one dot item per value.
+ * A radio group: an optional heading, then one dot item per value.
  *
  * Power profiles, governors, energy preferences and charge limits are all the
  * same widget, and the first three change their option list while the applet
