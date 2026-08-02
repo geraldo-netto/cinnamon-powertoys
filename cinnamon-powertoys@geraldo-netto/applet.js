@@ -38,6 +38,7 @@ const Device = require("./lib/device.js");
 const IO = require("./lib/io.js");
 const Log = require("./lib/log.js");
 const PowerSupply = require("./lib/power-supply.js");
+const Privileged = require("./lib/privileged.js");
 const Sensors = require("./lib/sensors.js");
 const Translate = require("./lib/gettext.js");
 const UPower = require("./lib/upower.js");
@@ -76,10 +77,6 @@ const HELPER = "powertoys-helper";
 const SYSTEM_HELPER = "/usr/local/lib/cinnamon-powertoys/powertoys-helper";
 
 const DEFAULT_ICON = "powertoys";
-/* pkexec exit codes: the dialog was closed, or authorisation was refused */
-const PKEXEC_DISMISSED = 126;
-const PKEXEC_UNAUTHORISED = 127;
-
 /*
  * How often the set of sensors is looked at again.
  *
@@ -123,6 +120,8 @@ function defaultBackends() {
         bluetoothBatteries: onChanged => new Bluez.BluezBatteries(onChanged),
         upowerMonitor: (onChanged, onReady) => new UPower.UPowerMonitor(onChanged, onReady),
         fileExists: path => IO.exists(path),
+        privilegedHelper: (candidates, exists, repair) =>
+            new Privileged.PrivilegedHelper(candidates, exists, repair),
     };
 }
 
@@ -1151,6 +1150,11 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         this._bindSettings();
 
+        this._helper = this._backends.privilegedHelper(
+            [SYSTEM_HELPER, metadata.path + "/" + HELPER],
+            path => this._backends.fileExists(path),
+            path => this._ensureExecutable(path));
+
         this._sensors = this._backends.sensors();
         this._cpu = this._backends.cpuControl((args, onDone) => this._runHelper(args, onDone));
         this._chargeControl =
@@ -1697,56 +1701,38 @@ class PowerToysApplet extends Applet.TextIconApplet {
     /*
      * Governor, energy preference, boost and charge limit are root owned, so
      * they go through a small validating helper launched with pkexec.
+     *
+     * The gate is here rather than inside the helper: whether the user has
+     * allowed these changes at all is a setting, and a setting is the
+     * applet's business. What the helper answers is turned into a
+     * notification here too, because deciding what is worth interrupting
+     * somebody for is not something a library should do.
      */
     _runHelper(args, onDone) {
         if (!this.enablePrivilegedControls)
             return;
 
-        let helper = SYSTEM_HELPER;
-        if (!this._backends.fileExists(helper)) {
-            helper = this.metadata.path + "/" + HELPER;
-            if (!this._backends.fileExists(helper)) {
-                Main.notifyError(_("Power Toys"), _("Helper script not found") + ": " + helper);
+        this._helper.run(args, outcome => {
+            if (this._destroyed)
+                return;
+
+            this._cpu.refresh();
+            this._update();
+
+            if (outcome.applied) {
+                if (onDone)
+                    onDone(outcome);
                 return;
             }
-            /* Only ours is ours to repair; the system copy is root owned. */
-            this._ensureExecutable(helper);
-        }
 
-        let command = "pkexec " + GLib.shell_quote(helper) + " " +
-                      args.map(argument => GLib.shell_quote(String(argument))).join(" ");
-        try {
-            Util.spawnCommandLineAsyncIO(command, (stdout, stderr, exitCode) => {
-                if (this._destroyed)
-                    return;
-                this._cpu.refresh();
-                this._update();
-
-                if (exitCode === 0) {
-                    if (onDone)
-                        onDone();
-                    return;
-                }
-
-                /* Nothing was changed and the user knows why: they closed the
-                 * dialog or the password did not check out. */
-                if (exitCode === PKEXEC_DISMISSED || exitCode === PKEXEC_UNAUTHORISED)
-                    return;
-
-                this._notifyHelperError(stderr);
-            });
-        } catch (error) {
-            Log.error("helper failed: " + error);
-            this._notifyHelperError(String(error));
-        }
-    }
-
-    /* The helper explains itself on stderr, so the last line is the reason. */
-    _notifyHelperError(stderr) {
-        let lines = (stderr || "").split("\n").map(line => line.trim()).filter(line => line !== "");
-        let detail = lines.length > 0 ? lines[lines.length - 1] : "";
-        detail = detail.replace(/^powertoys-helper:\s*/, "");
-        Main.notifyError(_("Power Toys"), detail || _("The change could not be applied."));
+            /* Cancelled means the user closed the dialog or the password did
+             * not check out; they do not need telling what they just did. */
+            if (!outcome.cancelled)
+                Main.notifyError(_("Power Toys"),
+                                 outcome.error || _("The change could not be applied."));
+            if (onDone)
+                onDone(outcome);
+        });
     }
 
     /* A checkout or a zip download can lose the executable bit. */

@@ -12,7 +12,8 @@ const Harness = imports.harness;
 var cases = {};
 
 const MODULES = ["io", "log", "gettext", "format", "device", "sensors", "cpu",
-                 "power-supply", "upower", "profiles", "backlight", "ddc", "bluez"];
+                 "power-supply", "privileged", "upower", "profiles", "backlight", "ddc",
+                 "bluez"];
 
 for (let name of MODULES) {
     cases["lib/" + name + ".js loads"] = function () {
@@ -46,6 +47,7 @@ const USED = {
     "backlight": ["BacklightControl", "SCREEN", "KEYBOARD"],
     "ddc": ["DdcBacklight", "parseDisplays", "parseBrightness"],
     "bluez": ["BluezBatteries", "parseObjects", "addressOf"],
+    "privileged": ["PrivilegedHelper"],
 };
 
 for (let name in USED) {
