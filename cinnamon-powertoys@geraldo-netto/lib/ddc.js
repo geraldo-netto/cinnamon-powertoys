@@ -282,6 +282,15 @@ var DdcMonitor = class DdcMonitor {
      * Refuses to start a second write while one is in flight: a slider drag
      * would otherwise queue a process per value the pointer passes through,
      * against hardware that answers in tenths of a second.
+     *
+     * The value is only taken as this monitor's once ddcutil says it took it.
+     * It used to be taken whatever came back, so a write the monitor refused -
+     * asleep, switched to its other input, the cable pulled mid-drag - left the
+     * slider reading a number the screen was not at. That number then stuck:
+     * a monitor that has answered once keeps its last value through a failed
+     * read, by design, and the last value was now the wrong one. On a refusal
+     * the reading is left where the monitor last put it and the next refresh
+     * answers, which is the same thing that happens when a read fails.
      */
     setPercentage(value, onDone) {
         let done = onDone || function () {};
@@ -293,13 +302,20 @@ var DdcMonitor = class DdcMonitor {
         let wanted = Math.max(0, Math.min(100, Math.round(value)));
         this._busy = true;
         this._run(["ddcutil", "--display", this.number,
-                   "setvcp", BRIGHTNESS_FEATURE, String(wanted)], () => {
+                   "setvcp", BRIGHTNESS_FEATURE, String(wanted)], (output, status) => {
             this._busy = false;
             if (this.destroyed) {
                 done();
                 return;
             }
-            this.percentage = wanted;
+            if (status === 0)
+                this.percentage = wanted;
+            else
+                /* One line per completed write, since _busy serialises them,
+                 * and the only trace there is: ddcutil's own complaint goes to
+                 * a stderr this module silences. */
+                Log.error("ddcutil would not set the brightness of " + this.name +
+                          " to " + wanted + "% (exit " + status + ")");
             done();
         });
     }

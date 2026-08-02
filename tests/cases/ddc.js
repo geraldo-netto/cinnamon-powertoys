@@ -16,6 +16,18 @@ const Harness = imports.harness;
 const Ddc = Harness.requireXlet("./lib/ddc.js");
 const Hardware = Harness.requireXlet("./lib/hardware.js");
 const IO = Harness.requireXlet("./lib/io.js");
+const Log = Harness.requireXlet("./lib/log.js");
+
+/* Collects what the module logged, and puts the sink back. */
+function logging(body) {
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    try {
+        body(lines);
+    } finally {
+        Log.setSink(null);
+    }
+}
 
 /* ddcutil --brief detect, with two monitors on one machine. */
 const DETECT_TWO = [
@@ -371,6 +383,81 @@ cases["a value outside the scale is brought back into it"] = function () {
     Harness.deepEqual(each.run.calls.filter(c => c.indexOf("--display 1") >= 0),
                       ["ddcutil --display 1 setvcp 10 100",
                        "ddcutil --display 1 setvcp 10 0"], "clamped both ways");
+};
+
+/*
+ * The same machine, except that every setvcp is refused. Reading still works,
+ * which is what a monitor that has gone to sleep or been switched to its other
+ * input looks like: it answered when the applet started and will not take a
+ * write now.
+ */
+function writesRefused(brightness) {
+    return runner(function (argv) {
+        if (argv.indexOf("detect") >= 0)
+            return [DETECT_TWO, 0];
+        if (argv.indexOf("getvcp") >= 0)
+            return [brightness === undefined ? "VCP 10 C 40 100\n" : brightness, 0];
+        return ["", 1];
+    });
+}
+
+cases["a write the monitor refused is not taken as its value"] = function () {
+    logging(function (lines) {
+        let run = writesRefused();
+        let control = new Ddc.DdcBacklight(null, null, run);
+        control.start();
+        Harness.equal(control.monitors[0].percentage, 40, "where the monitor said it was");
+
+        control.monitors[0].setPercentage(70);
+        Harness.equal(control.monitors[0].percentage, 40,
+                      "ddcutil would not take it, so the screen is still at 40");
+        Harness.equal(control.monitors[0].available, true,
+                      "a refused write is not proof the monitor has gone");
+
+        /* The only trace there is: ddcutil's own complaint goes to a stderr
+         * this module silences, and the slider cannot say anything, because
+         * from the outside a refusal looks exactly like nothing happening. */
+        Harness.equal(lines.length, 1, "one line per refused write");
+        Harness.ok(lines[0].indexOf("would not set the brightness") >= 0 &&
+                   lines[0].indexOf("Dell U2415") >= 0,
+                   "naming the monitor, since there may be several: " + lines[0]);
+    });
+};
+
+cases["a refused write does not stick through a later failed read"] = function () {
+    /*
+     * The two together are what made this worth fixing. A monitor that has
+     * answered once keeps its last value through a read that fails, on purpose
+     * - it is asleep, not gone. With the refused write recorded, the value it
+     * kept was one the monitor had never been at, and nothing later would
+     * correct it.
+     */
+    let answering = true;
+    let run = runner(function (argv) {
+        if (argv.indexOf("detect") >= 0)
+            return [DETECT_TWO, 0];
+        if (argv.indexOf("getvcp") >= 0)
+            return answering ? ["VCP 10 C 40 100\n", 0] : ["", 1];
+        return ["", 1];
+    });
+    logging(function () {
+        let control = new Ddc.DdcBacklight(null, null, run);
+        control.start();
+
+        control.monitors[0].setPercentage(70);
+        answering = false;
+        control.refresh();
+        Harness.equal(control.monitors[0].percentage, 40,
+                      "still the last value the monitor itself gave");
+    });
+};
+
+cases["a write that was taken is"] = function () {
+    /* The other half, so the guard cannot be tightened into never believing
+     * anything. */
+    let each = started(DETECT_TWO, 0);
+    each.control.monitors[0].setPercentage(70);
+    Harness.equal(each.control.monitors[0].percentage, 70, "ddcutil said it took it");
 };
 
 cases["a step moves by one notch from wherever it is"] = function () {

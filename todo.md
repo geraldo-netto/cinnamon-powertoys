@@ -25,7 +25,6 @@ regression from this session's commits except where the row says so.
 | id | severity | effort | description |
 |----|----------|--------|-------------|
 | PT-124 | medium | S | Switching *Control external monitor brightness* off does nothing until a reload. The setting's handler calls [`_considerMonitorBacklight`](cinnamon-powertoys@geraldo-netto/applet.js#L2171), which only ever starts the probe — there is no off path — so the sliders stay in the menu and [`_brightnessControl`](cinnamon-powertoys@geraldo-netto/applet.js#L3024) goes on handing the wheel to the monitors, both against a setting that says off. The tooltip promises "turn the probe off with…", and the one thing somebody who has just switched it off will check is whether the sliders went. On off: destroy the `DdcBacklight` (or hide its sliders and make `_brightnessControl` read the setting), and rebuild it on the next on. |
-| PT-125 | low | S | A failed monitor write is recorded as a success. [`DdcMonitor.setPercentage`](cinnamon-powertoys@geraldo-netto/lib/ddc.js#L302) sets `this.percentage = wanted` in a callback that ignores ddcutil's exit status, so a write the monitor refused — asleep, cable pulled mid-drag — leaves the slider on a value the screen is not at. And it stays there: `known` is true, so the next refresh that also fails keeps the last value, which is now the wrong one. Check the status, and on failure leave `percentage` alone and let the next refresh answer. Add the case to `tests/cases/ddc.js`; the runner seam is already there. |
 
 ## Ninth pass — closed
 
