@@ -25,8 +25,8 @@
     "cpu-sensor-hint": {
         "type": "entry",
         "default": "",
-        "description": "Preferred CPU sensor",
-        "tooltip": "Chip or label fragment of the sensor used for the panel temperature, e.g. 'Tctl' or 'k10temp'. Leave empty for automatic detection."
+        "description": "Preferred temperature sensor",
+        "tooltip": "Chip or label fragment of the sensor shown as the machine's temperature, in the tooltip, the menu summary and the Performance panel, e.g. 'Tctl' or 'k10temp'. Leave empty for automatic detection."
     },
     "panel-section": {
         "type": "section",
