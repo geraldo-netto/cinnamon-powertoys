@@ -114,11 +114,12 @@ cases["a row under a named group drops the chip and the address"] = function () 
     on("machine", function () {
         let found = Sensors.discoverSensors();
         Harness.equal(byId(found.temperatures, "hwmon:hwmon0:temp1").short,
-                      "Tctl", "a label the driver already gave");
+                      "Cooling control (Tctl)",
+                      "a control value, said in words, with the driver's word to match on");
         Harness.equal(byId(found.temperatures, "hwmon:hwmon0:temp2").short,
-                      "CCD 1", "an abbreviation nobody outside the driver reads");
+                      "Core die 1 (Tccd1)", "an abbreviation nobody outside the driver reads");
         Harness.equal(byId(found.temperatures, "hwmon:hwmon3:temp1").short,
-                      "Edge", "lower case as the driver writes it, capitalised here");
+                      "Die edge", "the card's, whose one word the driver writes in lower case");
         Harness.equal(byId(found.fans, "hwmon:hwmon3:fan1").short,
                       "Fan", "a reading the driver never labelled");
         Harness.equal(byId(found.temperatures, "hwmon:hwmon2:temp1").short,
@@ -129,11 +130,13 @@ cases["a row under a named group drops the chip and the address"] = function () 
 cases["a tidied label is text, not a replacement pattern"] = function () {
     on("machine", function () {
         let found = Sensors.discoverSensors();
-        /* Tccd1 is the one entry that uses what the pattern matched. If these
-         * were replacement strings a translation containing $ would be eaten
-         * by String.replace, so the table answers with a name instead. */
-        Harness.equal(byId(found.temperatures, "hwmon:hwmon0:temp2").short, "CCD 1", "first");
-        Harness.equal(byId(found.temperatures, "hwmon:hwmon0:temp3").short, "CCD 2", "second");
+        /* Tccd1 uses both what the pattern matched and the number in it. If
+         * these were replacement strings a translation containing $ would be
+         * eaten by String.replace, so the table answers with a name instead. */
+        Harness.equal(byId(found.temperatures, "hwmon:hwmon0:temp2").short,
+                      "Core die 1 (Tccd1)", "first");
+        Harness.equal(byId(found.temperatures, "hwmon:hwmon0:temp3").short,
+                      "Core die 2 (Tccd2)", "second");
     });
 };
 
@@ -255,6 +258,28 @@ cases["only the top level RAPL domains may be summed"] = function () {
         Harness.equal(byId(counters, "rapl:intel-rapl:0:0").topLevel, false,
                       "inside the first package, so adding it would count twice");
         Harness.equal(byId(counters, "rapl:dtpm:0").topLevel, false, "not a RAPL package at all");
+    });
+};
+
+cases["a RAPL domain is named after what it measures"] = function () {
+    on("machine", function () {
+        let counters = Sensors.discoverEnergyCounters();
+        Harness.equal(byId(counters, "rapl:intel-rapl:0").label, "Package 0",
+                      "two sockets, so each says which it is");
+        Harness.equal(byId(counters, "rapl:intel-rapl:1").label, "Package 1", "the other");
+        Harness.equal(byId(counters, "rapl:intel-rapl:0:0").label, "Cores",
+                      "the cores inside the first");
+        Harness.equal(byId(counters, "rapl:dtpm:0").label, "dtpm:0",
+                      "a name nothing knows is left as it was found");
+    });
+};
+
+cases["one socket has no number to say"] = function () {
+    on("one-socket", function () {
+        let counters = Sensors.discoverEnergyCounters();
+        Harness.equal(byId(counters, "rapl:intel-rapl:0").label, "Package",
+                      "nothing to tell it apart from");
+        Harness.equal(byId(counters, "rapl:intel-rapl:0:0").label, "Cores", "and its cores");
     });
 };
 

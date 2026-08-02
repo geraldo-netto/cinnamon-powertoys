@@ -156,27 +156,50 @@ function _hwmonIdentity(base) {
  * What a sensor is called under a heading that already names the chip.
  *
  * "amdgpu edge" is two words of which one is the heading, so the chip comes
- * off. What is left is the driver's own word for the reading, which is
- * sometimes a word - edge, junction - and sometimes an abbreviation nobody
- * outside the driver would recognise. Those few are spelled out; everything
- * else is passed through with a capital on it, because guessing at a name is
- * worse than showing the one the kernel uses.
+ * off. What is left is the driver's own word for the reading, which is a word
+ * to whoever wrote the driver and a riddle to everyone else. The ones below
+ * are spelled out; everything else is passed through with a capital on it,
+ * because guessing at a name is worse than showing the one the kernel uses.
  *
  * A reading the driver never labelled is named after what it measures, which
  * under the chip's own heading is all there is left to say about it.
  *
+ * The processor's three keep the driver's word in brackets after the spelled
+ * out one. It is the string the preferred-sensor setting is matched against,
+ * and this row is the only place in the applet it is ever written, so a name
+ * that replaced it would leave nothing to copy into that box.
+ *
+ * What they mean is the kernel's. From Documentation/hwmon/k10temp.rst: Tctl
+ * is "the processor temperature control value, used by the platform to
+ * control cooling systems", on an arbitrary scale rather than a physical one;
+ * Tdie is the temperature actually measured; Tccd1..8 are the Core Complex
+ * Dies, the chiplets the cores sit on.
+ *
+ * From amdgpu, where the labels are a table in amdgpu_pm.c and each entry is
+ * read in amdgpu_hwmon_show_temp: "junction" asks the card for
+ * AMDGPU_PP_SENSOR_HOTSPOT_TEMP, so it is the hotspot, which is the name the
+ * rest of the world uses for it; "edge" asks for AMDGPU_PP_SENSOR_EDGE_TEMP,
+ * away from that hotspot; "mem" is the memory on the card. vddnb is the one
+ * the driver refuses on anything but an APU - "only APUs have vddnb" - and it
+ * is that chip's SoC rail.
+ *
  * Each entry answers with the name rather than being a replacement string.
  * These are translated, and a replacement string is not text: `$&`, `$1` and
  * `$'` are substitutions to String.replace, so a translator who wrote a `$`
- * got it eaten or got part of the label repeated back at them. Only the CCD
- * number needs what the pattern matched, and it can ask for it.
+ * got it eaten or got part of the label repeated back at them. The entries
+ * that quote the driver back ask the match for it instead, which also keeps
+ * the driver's own capitals.
  */
 const SHORT_LABELS = [
-    [/^tccd(\d+)$/i, match => _("CCD") + " " + match[1]],
-    [/^tdie$/i, () => _("Die")],
-    [/^tccd$/i, () => _("CCD")],
+    [/^tccd(\d+)$/i, match => _("Core die") + " " + match[1] + " (" + match[0] + ")"],
+    [/^tccd$/i, match => _("Core die") + " (" + match[0] + ")"],
+    [/^tdie$/i, match => _("Measured die") + " (" + match[0] + ")"],
+    [/^tctl$/i, match => _("Cooling control") + " (" + match[0] + ")"],
+    [/^edge$/i, () => _("Die edge")],
+    [/^junction$/i, () => _("Hotspot")],
     [/^mem$/i, () => _("Memory")],
     [/^vddgfx$/i, () => _("Core voltage")],
+    [/^vddnb$/i, () => _("SoC voltage")],
     [/^ppt$/i, () => _("Power")],
 ];
 
@@ -457,12 +480,40 @@ function _criticalTripPoint(base) {
 const RAPL_PACKAGE_DOMAIN = /^(intel|amd)-rapl:\d+$/;
 
 /*
+ * What powercap calls a domain, said in words.
+ *
+ * The kernel's names are "package-0" for a socket and, inside it, "core" for
+ * the cores, "uncore" for the graphics and the rest of the die, "dram" for
+ * the memory and "psys" for the whole board where the firmware measures that.
+ * A machine with one socket has nothing to tell apart, so its package is just
+ * the package; where there are several, each keeps its number.
+ */
+const RAPL_NAMES = [
+    [/^core$/i, () => _("Cores")],
+    [/^uncore$/i, () => _("Uncore")],
+    [/^dram$/i, () => _("Memory")],
+    [/^psys$/i, () => _("Whole board")],
+];
+
+function _raplName(raw, packages) {
+    let match = /^package-(\d+)$/i.exec(raw);
+    if (match)
+        return packages > 1 ? _("Package") + " " + match[1] : _("Package");
+    for (let [pattern, name] of RAPL_NAMES) {
+        if (pattern.test(raw))
+            return name();
+    }
+    return raw;
+}
+
+/*
  * RAPL / powercap energy counters. Since CVE-2020-8694 energy_uj is usually
  * 0400, so this returns an empty list on most systems - that is expected and
- * simply means no package power readout.
+ * simply means no package power readout. README says how to hand it back, and
+ * what is being handed back with it.
  */
 function discoverEnergyCounters() {
-    let counters = [];
+    let found = [];
     for (let entry of IO.listDir(POWERCAP_DIR)) {
         if (!/^(intel-rapl|amd-rapl|dtpm)/.test(entry))
             continue;
@@ -470,21 +521,31 @@ function discoverEnergyCounters() {
         let energyPath = base + "/energy_uj";
         if (!IO.exists(energyPath) || !IO.isReadable(energyPath))
             continue;
-        counters.push({
-            id: "rapl:" + entry,
-            measure: "power",
-            kind: "package",
-            /* Not a chip, so it has no chip's name to be grouped under; the
-             * kind is what these have in common and all they have. */
-            group: "rapl",
-            label: IO.readString(base + "/name") || entry,
-            path: energyPath,
-            maxRange: IO.readNumber(base + "/max_energy_range_uj"),
-            domain: entry,
-            topLevel: RAPL_PACKAGE_DOMAIN.test(entry),
+        found.push({
+            entry: entry,
+            base: base,
+            energyPath: energyPath,
+            raw: IO.readString(base + "/name") || entry,
         });
     }
-    return counters;
+
+    /* Counted before anything is named, because whether one package needs its
+     * number said depends on how many there are. */
+    let packages = found.filter(item => /^package-\d+$/i.test(item.raw)).length;
+
+    return found.map(item => ({
+        id: "rapl:" + item.entry,
+        measure: "power",
+        kind: "package",
+        /* Not a chip, so it has no chip's name to be grouped under; the
+         * kind is what these have in common and all they have. */
+        group: "rapl",
+        label: _raplName(item.raw, packages),
+        path: item.energyPath,
+        maxRange: IO.readNumber(item.base + "/max_energy_range_uj"),
+        domain: item.entry,
+        topLevel: RAPL_PACKAGE_DOMAIN.test(item.entry),
+    }));
 }
 
 /* Turns a monotonic microjoule counter into watts. */

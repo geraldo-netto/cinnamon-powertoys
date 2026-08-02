@@ -485,7 +485,7 @@ msgstr ""
 msgid "Fan"
 msgstr ""
 
-#: lib/format.js:393 lib/sensors.js:180
+#: lib/format.js:393 lib/sensors.js:203
 msgid "Power"
 msgstr ""
 
@@ -493,7 +493,7 @@ msgstr ""
 msgid "Graphics"
 msgstr ""
 
-#: lib/sensors.js:40
+#: lib/sensors.js:40 lib/sensors.js:501
 msgid "Package"
 msgstr ""
 
@@ -513,20 +513,48 @@ msgstr ""
 msgid "Other"
 msgstr ""
 
-#: lib/sensors.js:175 lib/sensors.js:177
-msgid "CCD"
+#: lib/sensors.js:194 lib/sensors.js:195
+msgid "Core die"
 msgstr ""
 
-#: lib/sensors.js:176
-msgid "Die"
+#: lib/sensors.js:196
+msgid "Measured die"
 msgstr ""
 
-#: lib/sensors.js:178
+#: lib/sensors.js:197
+msgid "Cooling control"
+msgstr ""
+
+#: lib/sensors.js:198
+msgid "Die edge"
+msgstr ""
+
+#: lib/sensors.js:199
+msgid "Hotspot"
+msgstr ""
+
+#: lib/sensors.js:200 lib/sensors.js:494
 msgid "Memory"
 msgstr ""
 
-#: lib/sensors.js:179
+#: lib/sensors.js:201
 msgid "Core voltage"
+msgstr ""
+
+#: lib/sensors.js:202
+msgid "SoC voltage"
+msgstr ""
+
+#: lib/sensors.js:492
+msgid "Cores"
+msgstr ""
+
+#: lib/sensors.js:493
+msgid "Uncore"
+msgstr ""
+
+#: lib/sensors.js:495
+msgid "Whole board"
 msgstr ""
 
 #. metadata.json->description
