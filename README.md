@@ -19,10 +19,11 @@ The panel item, between the other applets:
 ![The panel item](docs/panel.png)
 
 Taken on a desktop, so several things are missing because that machine does not
-have them or cannot reach them: the charger row, which needs a UPower line
-power device; the whole *Brightness* group, because there is no kernel
-backlight and the account was not in the `i2c` group when the session started,
-which is what a monitor on a cable needs — see
+have them: no battery and no charger row, which needs a UPower line power
+device, and under *Brightness* no *Screen* or *Keyboard* slider, because there
+is no kernel backlight to move. What is there instead is the monitor on the
+cable, driven over DDC/CI and named after itself — which needs `ddcutil` and
+the `i2c` group, see
 [External monitor brightness](#external-monitor-brightness). The governor and
 the energy preference are not offered at all because power-profiles-daemon is
 running and owns them — the profile is the control, and the panel tooltip names
