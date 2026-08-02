@@ -586,6 +586,18 @@ class MenuPresenter {
 
         this._deviceSeparator = new PopupMenu.PopupSeparatorMenuItem();
         this._menu.addMenuItem(this._deviceSeparator);
+
+        /* The charger goes above the batteries: whether it is plugged in is
+         * the first thing anyone opening this menu on a laptop wants. */
+        let lineSection = new PopupMenu.PopupMenuSection();
+        this._menu.addMenuItem(lineSection);
+        this._lineList = new KeyedList(lineSection,
+                                       entry => new InfoRow(entry.label, entry.value),
+                                       (row, entry) => {
+                                           row.setLabel(entry.label);
+                                           row.setValue(entry.value);
+                                       });
+
         let deviceSection = new PopupMenu.PopupMenuSection();
         this._menu.addMenuItem(deviceSection);
         this._deviceList = new KeyedList(deviceSection,
@@ -707,11 +719,16 @@ class MenuPresenter {
     }
 
     _updateDevices(data, options) {
-        let show = options.showDevices && data.devices.length > 0;
-        this._deviceSeparator.actor.visible = show;
-        this._deviceList.sync(show
-            ? data.devices.map(device => ({ key: device.path, device: device }))
-            : []);
+        let lines = options.showDevices ? data.lines : [];
+        let devices = options.showDevices ? data.devices : [];
+
+        this._deviceSeparator.actor.visible = lines.length > 0 || devices.length > 0;
+        this._lineList.sync(lines.map(device => ({
+            key: device.path,
+            label: Format.deviceTitle(device),
+            value: device.online ? _("Connected") : _("Disconnected"),
+        })));
+        this._deviceList.sync(devices.map(device => ({ key: device.path, device: device })));
     }
 
     _updateCpu(data, options) {
@@ -1005,6 +1022,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         return {
             upowerAvailable: upower.available,
             devices: upower.devices,
+            lines: upower.lines,
             primary: upower.primary,
             onBattery: upower.onBattery,
             lineOnline: upower.lineOnline,

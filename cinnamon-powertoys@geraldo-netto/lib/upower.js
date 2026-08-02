@@ -358,13 +358,15 @@ var UPowerMonitor = class UPowerMonitor {
     /* Everything the applet takes from UPower, as of now. */
     read() {
         let devices = this.snapshot();
+        let lines = this.lineDevices();
         let readings = this._sensorReadings(devices);
         return {
             available: this.available,
             devices: devices,
+            lines: lines,
             primary: this._primaryDevice(devices),
             onBattery: this.onBattery,
-            lineOnline: this.lineDevices().some(device => device.online),
+            lineOnline: lines.some(device => device.online),
             temperatures: readings.temperatures,
             powers: readings.powers,
         };

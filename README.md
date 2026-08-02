@@ -11,7 +11,8 @@ tablets, UPS units, styluses. Each row shows charge, state, time remaining,
 draw in watts, voltage, temperature, health (capacity versus design capacity)
 and charge cycles when the device reports them. Devices that only report a
 coarse level (low / normal / high) are shown that way instead of a fake
-percentage.
+percentage. Chargers are listed above them, by model where UPower knows it,
+so whether the machine is on the cable is the first line in the menu.
 
 **Power profiles.** Reads and switches profiles through power-profiles-daemon
 (both the `net.hadess.PowerProfiles` and `org.freedesktop.UPower.PowerProfiles`
