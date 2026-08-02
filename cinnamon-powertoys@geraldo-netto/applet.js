@@ -20,7 +20,6 @@ const Settings = imports.ui.settings;
 const St = imports.gi.St;
 const Tooltips = imports.ui.tooltips;
 const UPowerGlib = imports.gi.UPowerGlib;
-const Util = imports.misc.util;
 
 /*
  * Cinnamon loads every xlet file through misc/fileUtils.js, which hands the
@@ -60,7 +59,6 @@ Format.setIconLookup(function (name) {
 });
 
 const UPDeviceState = UPowerGlib.DeviceState;
-const UPDeviceLevel = UPowerGlib.DeviceLevel;
 
 const HELPER = "powertoys-helper";
 

@@ -107,6 +107,30 @@ cases["these readings carry what the sensor list reads off them"] = function () 
     }
 };
 
+cases["and carry no field nothing reads"] = function () {
+    /*
+     * The mirror of the case above, and it has already been earned: `charging`
+     * was set on every battery power reading and read by nothing, for as long
+     * as these readings have existed. The list above says the shape is at
+     * least what the menu needs; this one says it is no more than that, which
+     * is the half that rots quietly.
+     */
+    const ALLOWED = {
+        temperature: ["id", "measure", "chip", "rawLabel", "kind", "label", "group",
+                      "groupLabel", "shortLabel", "critical", "celsius"],
+        power: ["id", "measure", "kind", "label", "group", "groupLabel", "shortLabel", "watts"],
+    };
+    let extra = [];
+    let readings = UPower.sensorReadings([device()]);
+    for (let reading of readings.temperatures.concat(readings.powers)) {
+        for (let field in reading) {
+            if (ALLOWED[reading.measure].indexOf(field) < 0)
+                extra.push(reading.measure + "." + field);
+        }
+    }
+    Harness.deepEqual(extra, [], "set here and read nowhere");
+};
+
 cases["their kind is one the menu knows and keeps"] = function () {
     let readings = UPower.sensorReadings([device()]);
     Harness.equal(readings.temperatures[0].kind, "battery", "battery");

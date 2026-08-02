@@ -125,7 +125,6 @@ function sensorReadings(devices) {
                 groupLabel: title,
                 shortLabel: Format.measureName("power"),
                 watts: device.energyRate,
-                charging: device.state === UPDeviceState.CHARGING,
             });
     }
 
