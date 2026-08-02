@@ -118,8 +118,19 @@ change.
 
 ## Requirements
 
-- Cinnamon 5.4 or newer
-- UPower (for battery and device data)
+- Cinnamon 5.4 or newer. Only 6.6 has been run. 5.4 through 6.4 are checked by
+  reading the Cinnamon sources at each release for every call this applet
+  makes: the xlet `require()` loader, `PopupSubMenuMenuItem`,
+  `PopupSwitchMenuItem`, `PopupSliderMenuItem`, `PopupIconMenuItem`,
+  `addActor`, `addSettingsAction`, class-based applets, `AllowedLayout`,
+  `AppletSettings.bind`, `spawnCommandLineAsyncIO`, `Tooltips.Tooltip`,
+  `keybindingManager.addHotKey`, `criticalNotify`, and the `=` operator in a
+  settings-schema `dependency`. All of them are present and unchanged in 5.4.0.
+- UPower, for battery and device data
+- `xapp-symbolic-icons`, for the device and battery icons. Cinnamon's own power
+  applet only started using these names in 6.6, so on an older desktop that
+  package may not be installed and those icons will be missing. Nothing else is
+  affected.
 - power-profiles-daemon, optional, for profile switching
 - polkit, optional, for the privileged controls
 
