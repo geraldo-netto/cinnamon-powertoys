@@ -135,6 +135,21 @@ function powerText(data) {
 }
 
 /*
+ * The same figure for the panel, where every character is expensive.
+ *
+ * What a battery is losing is the whole machine and needs no explanation. The
+ * other two sources are one part of it - the processor package, a graphics
+ * card - and a bare number there reads as system power when it is not: a
+ * desktop that cannot read its RAPL counters would show the graphics card's
+ * 54 W as if it were the lot. Those say which.
+ */
+function panelPowerText(data) {
+    if (data.systemWattsSource === "battery")
+        return Format.watts(data.systemWatts);
+    return powerText(data);
+}
+
+/*
  * When to say something, and how not to say it twice.
  *
  * Each poll hands over the reading and the limits in force; this decides
@@ -246,7 +261,7 @@ class PanelPresenter {
         if (options.showTemp && data.cpuTemperature !== null)
             parts.push(Format.temperature(data.cpuTemperature, options.tempUnit, 0));
         if (options.showPower && data.systemWatts !== null)
-            parts.push(Format.watts(data.systemWatts));
+            parts.push(panelPowerText(data));
         if (options.showFrequency && data.cpu.averageFrequency !== null)
             parts.push(Format.frequency(data.cpu.averageFrequency));
         if (options.showProfile && data.profile.active)
