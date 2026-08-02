@@ -32,6 +32,7 @@ const Util = imports.misc.util;
 const Backlight = require("./lib/backlight.js");
 const Cpu = require("./lib/cpu.js");
 const IO = require("./lib/io.js");
+const Log = require("./lib/log.js");
 const PowerSupply = require("./lib/power-supply.js");
 const Sensors = require("./lib/sensors.js");
 const Translate = require("./lib/gettext.js");
@@ -1304,7 +1305,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         try {
             data = this._collect();
         } catch (error) {
-            global.logError("[powertoys] collection failed: " + error);
+            Log.error("collection failed: " + error);
             return;
         }
         this._latest = data;
@@ -1501,7 +1502,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
                 this._notifyHelperError(stderr);
             });
         } catch (error) {
-            global.logError("[powertoys] helper failed: " + error);
+            Log.error("helper failed: " + error);
             this._notifyHelperError(String(error));
         }
     }

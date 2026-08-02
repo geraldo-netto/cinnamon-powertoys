@@ -10,6 +10,7 @@ const Gio = imports.gi.Gio;
 const UPowerGlib = imports.gi.UPowerGlib;
 
 const Format = require("./lib/format.js");
+const Log = require("./lib/log.js");
 
 var BUS_NAME = "org.freedesktop.UPower";
 var MANAGER_PATH = "/org/freedesktop/UPower";
@@ -97,7 +98,7 @@ var UPowerMonitor = class UPowerMonitor {
             new ManagerProxy(Gio.DBus.system, BUS_NAME, MANAGER_PATH,
                              (proxy, error) => this._onManagerReady(proxy, error));
         } catch (e) {
-            global.logError("[powertoys] cannot reach UPower: " + e);
+            Log.error("cannot reach UPower: " + e);
         }
     }
 
@@ -105,8 +106,7 @@ var UPowerMonitor = class UPowerMonitor {
         if (this.destroyed)
             return;
         if (error || !proxy) {
-            global.logError("[powertoys] UPower manager unavailable: " +
-                            (error ? error.message : "no proxy"));
+            Log.error("UPower manager unavailable: " + (error ? error.message : "no proxy"));
             this._onReady();
             return;
         }
@@ -132,7 +132,7 @@ var UPowerMonitor = class UPowerMonitor {
             if (this.destroyed)
                 return;
             if (enumError) {
-                global.logError("[powertoys] EnumerateDevices failed: " + enumError.message);
+                Log.error("EnumerateDevices failed: " + enumError.message);
                 this._onReady();
                 return;
             }
