@@ -1154,10 +1154,9 @@ class MenuPresenter {
          * set. Under power-profiles-daemon they are not: the daemon writes
          * both from whichever profile is in force and writes them again on the
          * next profile change or mains transition, so the power profile above
-         * is the control and these are its result. They are hidden there and
-         * stated under the processor's name in the sensors, with the frequency
-         * and the scaling driver, which is what they are - a reading of what
-         * the machine was told.
+         * is the control and these go entirely. They were stated under the
+         * processor's name in the sensors for a while, as readings; see
+         * _cpuReadingRows for why that came back out.
          *
          * They stay controls where nothing else is writing them: a machine
          * with no profiles at all, or one whose only profile is the ACPI
@@ -1642,19 +1641,17 @@ class MenuPresenter {
             rows.push({ key: "cpu:driver", label: _("Scaling driver"),
                         value: driver, warning: false });
 
-        /* Where the power profile writes these, they are not settings this
-         * menu offers - they are what it was told, which is a reading. Where
-         * they are still controls they are in the Processor group, and saying
-         * them here as well would be the same word twice. */
-        if (Reading.profileOwnsGovernor(data)) {
-            if (data.cpu.governor)
-                rows.push({ key: "cpu:governor", label: _("Governor"),
-                            value: Format.governorLabel(data.cpu.governor), warning: false });
-            if (data.cpu.energyPreference)
-                rows.push({ key: "cpu:energy", label: _("Energy preference"),
-                            value: Format.energyPreferenceLabel(data.cpu.energyPreference),
-                            warning: false });
-        }
+        /*
+         * The governor and the energy preference were stated here too, while
+         * the daemon owned them. What that put on screen was "Performance"
+         * three times in one menu - the filled segment, then twice more under
+         * the chip - and the two extra rows read as settings nobody could find
+         * the control for, because the control is the profile, two columns to
+         * the left, and nothing said so. A reading of a setting is not like a
+         * temperature: it invites changing, and these rows could only decline.
+         * The tooltip still names the governor in force, beside the profile
+         * that wrote it.
+         */
 
         return {
             group: host ? host.group : "cpu:processor",

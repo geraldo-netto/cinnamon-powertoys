@@ -24,9 +24,9 @@ power device; the whole *Brightness* group, because there is no kernel
 backlight and the account was not in the `i2c` group when the session started,
 which is what a monitor on a cable needs — see
 [External monitor brightness](#external-monitor-brightness). The governor and
-the energy preference are readings there rather than controls because
-power-profiles-daemon is running and owns them. All of it hides itself rather
-than sitting there empty.
+the energy preference are not offered at all because power-profiles-daemon is
+running and owns them — the profile is the control, and the panel tooltip names
+the governor it wrote. All of it hides itself rather than sitting there empty.
 
 ## Features
 
@@ -76,11 +76,13 @@ temperatures. Its temperature is not repeated at all; it was the same number as
 Under power-profiles-daemon the governor and the energy preference are not
 controls, because the daemon writes both from whichever profile is in force and
 writes them again on the next profile change or mains transition. One thing to
-set, under one name: the power profile. What the daemon then wrote is stated
-with the other readings, next to the frequency and the scaling driver. The
-menu used to offer all three, with a line under the profile explaining which of
-the two below it that profile was writing — three controls agreeing on the same
-word, and a sentence to account for it.
+set, under one name: the power profile. What the daemon then wrote is not
+restated either — two more rows reading *Performance* under a segment already
+saying it were settings nobody could find the control for; the panel tooltip
+names the governor in force. The menu used to offer all three, with a line
+under the profile explaining which of the two below it that profile was
+writing — three controls agreeing on the same word, and a sentence to account
+for it.
 
 They are controls where nothing else is writing them: a machine with no
 profiles at all, and one whose only profile is the ACPI platform profile, which

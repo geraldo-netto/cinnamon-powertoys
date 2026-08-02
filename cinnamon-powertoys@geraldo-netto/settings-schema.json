@@ -90,7 +90,7 @@
         "type": "switch",
         "default": true,
         "description": "Show Processor",
-        "tooltip": "Turbo boost, and the governor and energy preference where the power profile is not the one writing them. What the processor is doing - frequency, scaling driver, governor, temperature - is under Sensors."
+        "tooltip": "Turbo boost, and the governor and energy preference where the power profile is not the one writing them. What the processor is doing - frequency, scaling driver, temperature - is under Sensors."
     },
     "show-devices": {
         "type": "switch",

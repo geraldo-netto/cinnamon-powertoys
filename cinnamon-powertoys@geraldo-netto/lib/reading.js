@@ -101,9 +101,9 @@ function shownProfile(data, options) {
  * question and stays a control of its own. Same on a machine with no profiles.
  *
  * This is the largest thing the menu does differently from one machine to the
- * next - two settings are controls or readings depending on it - which is why
- * it is worth being a named function with cases behind it rather than a
- * condition written out at each of the three places that ask.
+ * next - two settings are controls or not offered at all depending on it -
+ * which is why it is worth being a named function with cases behind it rather
+ * than a condition written out where it is asked.
  */
 function profileOwnsGovernor(data) {
     return data.profile.available && !!data.profile.backend &&
