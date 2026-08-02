@@ -11,7 +11,13 @@ row keeps the effort for the whole and is done when its parts are. Parts were
 only split out where each one can be written, reviewed and committed on its
 own — items that are genuinely a single change were left whole.
 
-Nothing open.
+## External monitors
+
+| id | severity | effort | description |
+|----|----------|--------|-------------|
+| PT-145 | medium | S | Look for monitors again when the applet is being looked at. Today [`redetect`](cinnamon-powertoys@geraldo-netto/lib/ddc.js#L509) is reached from one place only, [`_onMonitorsChanged`](cinnamon-powertoys@geraldo-netto/applet.js#L1983), which the desktop emits when a connector is plugged or unplugged. That misses the monitor that was asleep when the applet started, the adapter that answers late, and every switch-on that produces no hotplug event — each of which means no slider for the rest of the session, on a machine where the DDC/CI sliders are the only brightness control there is. [`_onMenuOpened`](cinnamon-powertoys@geraldo-netto/applet.js#L2293) already treats opening the menu as the moment to look again at everything else: it sweeps the sensor topology, refreshes the CPU, and refreshes [every backlight](cinnamon-powertoys@geraldo-netto/applet.js#L2308) — but a refresh only re-reads the monitors already known and cannot find a new one. Probing there instead is a two-word change. |
+| PT-145a | medium | S | The menu. What has to be decided first is the cost, because it is the reason this was not done: a probe spawns ddcutil, talks to every display on the I2C bus and *wakes a sleeping monitor*, which the comments over `redetect` and `_onMonitorsChanged` both say is not to be done casually. Waking a screen somebody deliberately put to sleep because they opened a menu is worse than the missing slider. `_detect` is guarded against overlapping itself so it is at most one probe per open, but a menu opened twenty times an evening is twenty probes. Two ways to have both: probe on open no more often than every N seconds; or probe only when the list is currently empty, which is the case that actually goes wrong and costs nothing on a machine whose monitors already answered. |
+| PT-145b | low | S | The tooltip. Same trigger in spirit — the pointer resting on the icon is the applet being looked at — but the tooltip names no monitor: it is the battery, the profile, the governor, the temperature, the draw and the peripherals ([`_tooltipText`](cinnamon-powertoys@geraldo-netto/applet.js#L369)). So a probe fired from [`tooltip.show`](cinnamon-powertoys@geraldo-netto/applet.js#L225) spends I2C traffic, and possibly wakes a screen, for something nobody can see from what it produced, and it fires on every accidental hover across the panel. Worth doing only if the tooltip grows a brightness line, or if it is folded into whatever rate limit PT-145a settles on. |
 
 ## Closed
 
