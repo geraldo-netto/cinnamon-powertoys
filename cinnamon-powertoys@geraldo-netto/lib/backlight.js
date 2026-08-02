@@ -168,19 +168,48 @@ var BacklightControl = class BacklightControl {
         });
     }
 
-    /* One notch, the size of which is the daemon's business. */
-    step(up, onDone) {
-        if (!this._proxy)
+    /*
+     * Several notches, the size of which is the daemon's business.
+     *
+     * The wheel over the applet gathers a flick before it reaches here, so
+     * what arrives is a count rather than one click. They are applied one
+     * after another rather than turned into a percentage, because the notch is
+     * the daemon's to size and it is the same notch the brightness keys use -
+     * the whole reason this goes through the daemon at all. The round trips
+     * cost nothing worth avoiding: it is answering from memory.
+     */
+    stepBy(notches, onDone) {
+        let done = onDone || function () {};
+        let remaining = Math.abs(Math.round(notches));
+        if (!this._proxy || remaining === 0) {
+            done();
             return;
-        let call = up ? this._proxy.StepUpRemote : this._proxy.StepDownRemote;
-        call.call(this._proxy, (result, error) => {
-            if (this.destroyed)
+        }
+
+        let up = notches > 0;
+        let next = () => {
+            if (this.destroyed || remaining === 0) {
+                done();
                 return;
-            if (!error && result)
-                this.percentage = result[0];
-            if (onDone)
-                onDone();
-        });
+            }
+            remaining--;
+            let call = up ? this._proxy.StepUpRemote : this._proxy.StepDownRemote;
+            call.call(this._proxy, (result, error) => {
+                if (this.destroyed) {
+                    done();
+                    return;
+                }
+                if (!error && result)
+                    this.percentage = result[0];
+                next();
+            });
+        };
+        next();
+    }
+
+    /* One notch, which is what the slider's own wheel sends. */
+    step(up, onDone) {
+        this.stepBy(up ? 1 : -1, onDone);
     }
 
     destroy() {

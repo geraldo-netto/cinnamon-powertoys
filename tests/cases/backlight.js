@@ -174,3 +174,44 @@ cases["a destroyed control lets go and stops answering"] = function () {
     Harness.deepEqual(stub.calls, [],
                       "and nothing reaches a daemon on behalf of an applet that has left");
 };
+
+cases["a gathered flick is that many of the daemon's own notches"] = function () {
+    /*
+     * Not turned into a percentage: the notch is the daemon's to size and it
+     * is the same one the brightness keys use, which is the whole reason this
+     * goes through the daemon rather than writing sysfs.
+     */
+    let stub = proxy({ GetPercentage: 40, StepUp: 55, StepDown: 25 });
+    let screen = control(Backlight.SCREEN, stub);
+    stub.calls.length = 0;
+
+    screen.stepBy(3);
+    Harness.deepEqual(stub.calls, [["StepUp"], ["StepUp"], ["StepUp"]],
+                      "three notches, one after another");
+    Harness.equal(screen.percentage, 55, "and it ends where the daemon says it ended");
+
+    stub.calls.length = 0;
+    screen.stepBy(-2);
+    Harness.deepEqual(stub.calls, [["StepDown"], ["StepDown"]], "and down the same way");
+};
+
+cases["a flick that gathered to nothing does nothing"] = function () {
+    let stub = proxy({ GetPercentage: 40, StepUp: 45 });
+    let screen = control(Backlight.SCREEN, stub);
+    stub.calls.length = 0;
+    screen.stepBy(0);
+    Harness.deepEqual(stub.calls, [], "up and back down again is where it started");
+};
+
+cases["a destroyed control stops part way through a flick"] = function () {
+    let stub = proxy({ GetPercentage: 40, StepUp: 45 });
+    let screen = control(Backlight.SCREEN, stub);
+    stub.calls.length = 0;
+
+    /* Destroy on the first answer, as removing the applet mid-flick would. */
+    let real = stub.StepUpRemote;
+    stub.StepUpRemote = onDone => { screen.destroy(); real(onDone); };
+    screen.stepBy(5);
+    Harness.deepEqual(stub.calls.filter(call => call[0] === "StepUp"), [["StepUp"]],
+                      "the notch that was already out, and none of the four behind it");
+};

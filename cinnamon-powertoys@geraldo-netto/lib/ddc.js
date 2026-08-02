@@ -334,9 +334,21 @@ var DdcMonitor = class DdcMonitor {
         });
     }
 
-    step(up, onDone) {
+    /*
+     * Several notches at once, as one write rather than one write per notch.
+     *
+     * A monitor answers in tenths of a second and a second write while the
+     * first is in flight is refused, so a flick sent one notch at a time
+     * arrived as one notch and the rest were dropped on the floor. The wheel
+     * gathers the flick and this applies the total.
+     */
+    stepBy(notches, onDone) {
         let from = this.percentage === null ? 50 : this.percentage;
-        this.setPercentage(from + (up ? STEP : -STEP), onDone);
+        this.setPercentage(from + notches * STEP, onDone);
+    }
+
+    step(up, onDone) {
+        this.stepBy(up ? 1 : -1, onDone);
     }
 
     destroy() {
@@ -570,9 +582,14 @@ var DdcBacklight = class DdcBacklight {
             monitor.setPercentage(value, settle);
     }
 
-    step(up, onDone) {
+    /* Every monitor, by the same count; see DdcMonitor.stepBy. */
+    stepBy(notches, onDone) {
         let from = this.percentage === null ? 50 : this.percentage;
-        this.setPercentage(from + (up ? STEP : -STEP), onDone);
+        this.setPercentage(from + notches * STEP, onDone);
+    }
+
+    step(up, onDone) {
+        this.stepBy(up ? 1 : -1, onDone);
     }
 
     destroy() {

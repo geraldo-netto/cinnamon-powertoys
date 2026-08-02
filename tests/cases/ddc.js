@@ -633,3 +633,35 @@ cases["a read that never answers does not lock the monitor out"] = function () {
     monitor.refresh();
     Harness.equal(calls.length, 1, "asking again is allowed once the last one gave up");
 };
+
+cases["a gathered flick is one write, not one per notch"] = function () {
+    /*
+     * A monitor answers in tenths of a second and refuses a second write while
+     * the first is in flight, so a flick sent notch by notch arrived as one
+     * notch and the rest went nowhere. The wheel gathers the count; this
+     * applies the total.
+     */
+    let each = started(DETECT_TWO, 0);
+    each.run.calls.length = 0;
+
+    each.control.stepBy(4);
+    Harness.deepEqual(each.run.calls,
+                      ["ddcutil --display 1 setvcp 10 60",
+                       "ddcutil --display 2 setvcp 10 60"],
+                      "four notches up from 40, in one write per monitor");
+};
+
+cases["a gathered flick down is the same the other way"] = function () {
+    let each = started(DETECT_TWO, 0);
+    each.run.calls.length = 0;
+    each.control.stepBy(-3);
+    Harness.equal(each.run.calls[0], "ddcutil --display 1 setvcp 10 25", "three notches down");
+};
+
+cases["one notch is still one notch"] = function () {
+    let each = started(DETECT_TWO, 0);
+    each.run.calls.length = 0;
+    each.control.monitors[0].step(true);
+    Harness.equal(each.run.calls[0], "ddcutil --display 1 setvcp 10 45",
+                  "which is what the slider's own wheel sends");
+};

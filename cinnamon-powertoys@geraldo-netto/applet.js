@@ -2774,38 +2774,66 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         /*
          * Brightness, which is what the applet this one replaces does with
-         * the wheel. The daemon owns the step size, so this moves by the same
-         * amount the brightness keys do.
+         * the wheel. The notch is the control's own, so on a kernel backlight
+         * this moves by the same amount the brightness keys do.
          */
         if (this.scrollAction === "brightness") {
-            let control = this._brightnessControl();
-            if (!control)
+            if (!this._brightnessControl())
                 return Clutter.EVENT_PROPAGATE;
-            control.step(up, () => this._onBacklightChanged());
+            this._gatherScroll(up ? 1 : -1, notches => this._stepBrightness(notches));
             return Clutter.EVENT_STOP;
         }
 
         if (this.scrollAction !== "profile" || !this._profileState())
             return Clutter.EVENT_PROPAGATE;
 
-        if (direction === Clutter.ScrollDirection.UP)
-            this._pendingScroll += 1;
-        else if (direction === Clutter.ScrollDirection.DOWN)
-            this._pendingScroll -= 1;
-        else
-            return Clutter.EVENT_PROPAGATE;
+        /* Announced, because the panel is not necessarily showing the profile
+         * and otherwise nothing would say it had changed. */
+        this._gatherScroll(up ? 1 : -1, notches => this._stepProfile(notches, false, true));
+        return Clutter.EVENT_STOP;
+    }
 
+    /*
+     * The wheel counts, and the count is applied once it settles.
+     *
+     * One flick of a finger sends several clicks. For the power profile each
+     * used to be its own D-Bus write, so a flick meant the daemon switching
+     * profiles two or three times in a few tens of milliseconds, and that is
+     * why this gathering exists.
+     *
+     * The brightness did not gather, and needed it more. On a kernel backlight
+     * the daemon queues the steps and nothing is lost; on a monitor over
+     * DDC/CI each step reads a percentage that has not moved yet and a second
+     * write while the first is in flight is refused, so a five-notch flick
+     * moved one notch and the other four went nowhere. Brightness is the
+     * default action, so that was the common path.
+     *
+     * Long enough to gather a flick, short enough that the change still feels
+     * immediate.
+     */
+    _gatherScroll(step, apply) {
+        this._pendingScroll += step;
         this._cancelPendingScroll();
         this._scrollTimerId = Mainloop.timeout_add(SCROLL_SETTLE_MS, () => {
             this._scrollTimerId = 0;
-            let step = this._pendingScroll;
+            let gathered = this._pendingScroll;
             this._pendingScroll = 0;
-            /* Announced, because the panel is not necessarily showing the
-             * profile and otherwise nothing would say it had changed. */
-            this._stepProfile(step, false, true);
+            if (gathered !== 0)
+                apply(gathered);
             return GLib.SOURCE_REMOVE;
         });
-        return Clutter.EVENT_STOP;
+    }
+
+    /*
+     * A gathered flick, on whichever screen this machine has.
+     *
+     * Resolved when the flick settles rather than when it started: a monitor
+     * can be unplugged, or a probe can finish, in the quarter second between.
+     */
+    _stepBrightness(notches) {
+        let control = this._brightnessControl();
+        if (control)
+            control.stepBy(notches, () => this._onBacklightChanged());
     }
 
     /* Whichever screen this machine actually has: its own panel, or a
