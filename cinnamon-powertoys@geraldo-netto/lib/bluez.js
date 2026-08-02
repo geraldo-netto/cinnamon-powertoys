@@ -178,20 +178,29 @@ var BluezBatteries = class BluezBatteries {
         this._call("/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects", objects => {
             if (this.destroyed)
                 return;
-            if (!objects) {
-                this.available = false;
-                this.devices = [];
-                return;
-            }
-            this.available = true;
-            let devices = parseObjects(objects);
-            let changed = devices.length !== this.devices.length ||
-                          devices.some((device, i) => device.path !== this.devices[i].path ||
-                                                      device.percentage !== this.devices[i].percentage);
-            this.devices = devices;
-            if (changed)
-                this._onChanged();
+            this.available = !!objects;
+            this._settle(objects ? parseObjects(objects) : []);
         });
+    }
+
+    /*
+     * Takes the list, and reports it where it is not the list that was there.
+     *
+     * Both answers come through here, which is the point. The empty one used
+     * to return early without a word: bluetoothd going away, or answering
+     * nothing, cleared the devices and told nobody, so the menu kept rows for
+     * things that were no longer connected until the next poll swept them - up
+     * to a whole refresh interval, on a list whose entire job is to say what is
+     * connected now. Clearing a list that had something in it is exactly the
+     * kind of change the callback exists for.
+     */
+    _settle(devices) {
+        let changed = devices.length !== this.devices.length ||
+                      devices.some((device, i) => device.path !== this.devices[i].path ||
+                                                  device.percentage !== this.devices[i].percentage);
+        this.devices = devices;
+        if (changed)
+            this._onChanged();
     }
 
     /*

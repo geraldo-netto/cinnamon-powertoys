@@ -113,6 +113,38 @@ cases["a machine with no bluetooth daemon says nothing and breaks nothing"] = fu
     control.destroy();
 };
 
+cases["bluetoothd going away empties the list and says so"] = function () {
+    let objects = tree({ [HEADSET]: device("BW01", "audio-headset", true, 90) });
+    let running = true;
+    let changes = 0;
+    let control = new Bluez.BluezBatteries(
+        () => changes++,
+        (path, iface, method, onDone) => onDone(running ? objects : null));
+
+    Harness.equal(control.devices.length, 1, "one connected to begin with");
+    Harness.equal(changes, 1, "which was news");
+
+    running = false;
+    control._refresh();
+    Harness.equal(control.available, false, "the daemon is not there");
+    Harness.deepEqual(control.devices, [], "so nothing is connected");
+    Harness.equal(changes, 2,
+                  "and the menu is told, rather than keeping the rows until the next poll");
+    control.destroy();
+};
+
+cases["a daemon that was never there is not a change"] = function () {
+    /* The empty answer is only news against a list that had something in it.
+     * A desktop with no radio answers this way for the whole session. */
+    let changes = 0;
+    let control = new Bluez.BluezBatteries(() => changes++,
+                                           (path, iface, method, onDone) => onDone(null));
+    control._refresh();
+    control._refresh();
+    Harness.equal(changes, 0, "nothing changed, so nothing was said");
+    control.destroy();
+};
+
 cases["a burst of signals is one read of the tree"] = function () {
     /*
      * What BlueZ does while an adapter is discovering: RSSI republished
