@@ -359,6 +359,7 @@ var EnergyMeter = class EnergyMeter {
  */
 var SensorSet = class SensorSet {
     constructor() {
+        this._topology = null;
         this.discover();
     }
 
@@ -370,6 +371,33 @@ var SensorSet = class SensorSet {
         /* The meters keep the previous counter value between polls, so they
          * outlive a reading and are only rebuilt by a rediscovery. */
         this.energyMeters = discoverEnergyCounters().map(counter => new EnergyMeter(counter));
+        this._topology = this._topologyKey();
+    }
+
+    /*
+     * A cheap description of what is present: three directory listings. A
+     * card waking up, a USB sensor being plugged in or a driver being loaded
+     * adds or removes an entry in one of them.
+     */
+    _topologyKey() {
+        return [IO.listDir(HWMON_DIR).join(","),
+                IO.listDir(THERMAL_DIR).join(","),
+                IO.listDir(POWERCAP_DIR).join(",")].join("|");
+    }
+
+    /*
+     * Checks for hardware that has come or gone, and sweeps again only if
+     * there is any. Answers whether it did.
+     *
+     * A driver that grows a new node inside a directory that was already
+     * there is missed until the next real change; that is the price of not
+     * re-reading every label file each time the menu is opened.
+     */
+    refresh() {
+        if (this._topologyKey() === this._topology)
+            return false;
+        this.discover();
+        return true;
     }
 
     _temperature(sensor) {

@@ -708,8 +708,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     _onMenuOpened() {
-        /* Sensors can appear at runtime (a USB device, a card waking up). */
-        this._sensors.discover();
+        /* Sensors can appear at runtime (a USB device, a card waking up), so
+         * the set is checked here - cheaply, and swept again only if it moved. */
+        this._sensors.refresh();
         this._cpu.refresh();
         if (this._upower.available)
             this._upower.refresh();
