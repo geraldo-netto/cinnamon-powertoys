@@ -174,16 +174,10 @@ const SHORT_LABELS = [
     [/^ppt$/i, _("Power")],
 ];
 
-const MEASURE_NAMES = {
-    temperature: _("Temperature"),
-    fan: _("Fan"),
-    power: _("Power"),
-};
-
 function _shortName(entry) {
     let label = entry.rawLabel;
     if (!label) {
-        let measure = MEASURE_NAMES[entry.measure] || entry.chip;
+        let measure = Format.measureName(entry.measure) || entry.chip;
         return entry.siblings > 1 ? measure + " " + entry.index : measure;
     }
 

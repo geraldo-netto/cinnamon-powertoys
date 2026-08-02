@@ -369,6 +369,25 @@ function energyPreferenceLabel(name) {
     return capitalize(name.replace(/_/g, " "));
 }
 
+/*
+ * What a reading measures, in one word.
+ *
+ * Sensor rows sit under a heading that already names the chip they came off,
+ * so a row that the driver never labelled has only to say what its number is.
+ * It lives here rather than in lib/sensors.js because UPower's readings - a
+ * battery's temperature, what it is drawing - are grouped the same way and
+ * have to use the same words for it.
+ */
+var MEASURE_NAMES = {
+    temperature: _("Temperature"),
+    fan: _("Fan"),
+    power: _("Power"),
+};
+
+function measureName(measure) {
+    return MEASURE_NAMES[measure] || "";
+}
+
 /* Display name computed at discovery time, e.g. "k10temp Tctl", "drivetemp (sda)". */
 function sensorLabel(sensor) {
     return sensor.display || sensor.label || sensor.chip || "";

@@ -65,6 +65,63 @@ function _number(value) {
     return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/*
+ * What the batteries contribute to the sensor lists.
+ *
+ * A battery is a sensor as much as a hwmon chip is: it reports its own
+ * temperature, and the rate it is charging or draining at is a power meter.
+ * So its readings carry everything a hwmon reading carries, including the
+ * grouping - one group per device, headed by the device's own name, with the
+ * rows under it saying only what they measure. That is the same shape
+ * lib/sensors.js produces, and it has to be: the menu concatenates the two
+ * lists and groups the result without knowing which came from where.
+ *
+ * A plain function of a device list, so the shape can be checked without a
+ * system bus.
+ */
+function sensorReadings(devices) {
+    let temperatures = [];
+    let powers = [];
+
+    for (let device of devices) {
+        let title = Format.deviceTitle(device);
+        let group = "upower:" + device.path;
+
+        /* Zero degrees is a reading. It used to be dropped as falsy, which
+         * hid the one temperature anybody would go looking for. */
+        if (device.temperature !== null && device.temperature !== undefined)
+            temperatures.push({
+                id: "upower:" + device.path,
+                measure: "temperature",
+                chip: title,
+                kind: "battery",
+                label: title,
+                group: group,
+                groupLabel: title,
+                shortLabel: Format.measureName("temperature"),
+                critical: null,
+                celsius: device.temperature,
+            });
+
+        /* Zero watts is not: a battery at rest reports it, and a row saying
+         * the machine is drawing nothing at all is worse than no row. */
+        if (device.powerSupply && device.energyRate)
+            powers.push({
+                id: "upower:" + device.path,
+                measure: "power",
+                kind: "battery",
+                label: title,
+                group: group,
+                groupLabel: title,
+                shortLabel: Format.measureName("power"),
+                watts: device.energyRate,
+                charging: device.state === UPDeviceState.CHARGING,
+            });
+    }
+
+    return { temperatures: temperatures, powers: powers };
+}
+
 var UPowerMonitor = class UPowerMonitor {
     /*
      * onChanged is called whenever the device set or any device property
@@ -276,46 +333,11 @@ var UPowerMonitor = class UPowerMonitor {
         return null;
     }
 
-    /*
-     * What the batteries contribute to the sensor lists. A battery is a
-     * sensor as much as a hwmon chip is: it reports its own temperature, and
-     * the rate it is charging or draining at is a power meter.
-     */
-    _sensorReadings(devices) {
-        let temperatures = [];
-        let powers = [];
-
-        for (let device of devices) {
-            let title = Format.deviceTitle(device);
-            if (device.temperature)
-                temperatures.push({
-                    id: "upower:" + device.path,
-                    measure: "temperature",
-                    chip: title,
-                    kind: "battery",
-                    label: title,
-                    critical: null,
-                    celsius: device.temperature,
-                });
-            if (device.powerSupply && device.energyRate)
-                powers.push({
-                    id: "upower:" + device.path,
-                    measure: "power",
-                    kind: "battery",
-                    label: title,
-                    watts: device.energyRate,
-                    charging: device.state === UPDeviceState.CHARGING,
-                });
-        }
-
-        return { temperatures: temperatures, powers: powers };
-    }
-
     /* Everything the applet takes from UPower, as of now. */
     read() {
         let devices = this.snapshot();
         let lines = this.lineDevices();
-        let readings = this._sensorReadings(devices);
+        let readings = sensorReadings(devices);
         return {
             available: this.available,
             devices: devices,

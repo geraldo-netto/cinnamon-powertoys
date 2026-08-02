@@ -72,7 +72,7 @@ msgstr ""
 msgid "Profile"
 msgstr ""
 
-#: applet.js:509 applet.js:1190 lib/sensors.js:178
+#: applet.js:509 applet.js:1190 lib/format.js:382
 msgid "Temperature"
 msgstr ""
 
@@ -485,6 +485,14 @@ msgstr ""
 msgid "Power saving"
 msgstr ""
 
+#: lib/format.js:383
+msgid "Fan"
+msgstr ""
+
+#: lib/format.js:384 lib/sensors.js:174
+msgid "Power"
+msgstr ""
+
 #: lib/sensors.js:38
 msgid "Graphics"
 msgstr ""
@@ -515,14 +523,6 @@ msgstr ""
 
 #: lib/sensors.js:173
 msgid "Core voltage"
-msgstr ""
-
-#: lib/sensors.js:174 lib/sensors.js:180
-msgid "Power"
-msgstr ""
-
-#: lib/sensors.js:179
-msgid "Fan"
 msgstr ""
 
 #. metadata.json->description
