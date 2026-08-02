@@ -31,6 +31,7 @@ const Util = imports.misc.util;
  * the legacy importer caches them for the life of the process.
  */
 const Backlight = require("./lib/backlight.js");
+const Bluez = require("./lib/bluez.js");
 const Cpu = require("./lib/cpu.js");
 const Ddc = require("./lib/ddc.js");
 const Device = require("./lib/device.js");
@@ -109,6 +110,7 @@ function defaultBackends() {
         backlight: (kind, onChanged, onReady) =>
             new Backlight.BacklightControl(kind, onChanged, onReady),
         monitorBacklight: (onChanged, onReady) => new Ddc.DdcBacklight(onChanged, onReady),
+        bluetoothBatteries: onChanged => new Bluez.BluezBatteries(onChanged),
         upowerMonitor: (onChanged, onReady) => new UPower.UPowerMonitor(onChanged, onReady),
         fileExists: path => IO.exists(path),
     };
@@ -1143,6 +1145,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
             () => this._scheduleUpdate(),
             () => this._scheduleUpdate());
 
+        /* Bluetooth devices UPower does not bridge - which on some builds is
+         * all of them - reported by BlueZ itself. */
+        this._bluetooth = this._backends.bluetoothBatteries(() => this._scheduleUpdate());
+
         this._profiles = this._backends.profilesClient(() => this._scheduleUpdate());
         this._upower = this._backends.upowerMonitor(() => this._scheduleUpdate(),
                                                     () => this._scheduleUpdate());
@@ -1322,6 +1328,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _collect() {
         let upower = this._upower.read();
         let readings = this._sensors.read();
+        /* Anything with a charge that UPower did not mention. */
+        let devices = upower.devices.concat(this._bluetooth.missingFrom(upower.devices));
 
         let temperatures = readings.temperatures.concat(upower.temperatures);
         let powers = readings.powers.concat(upower.powers);
@@ -1329,7 +1337,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         return {
             upowerAvailable: upower.available,
-            devices: upower.devices,
+            devices: devices,
             lines: upower.lines,
             primary: upower.primary,
             onBattery: upower.onBattery,
@@ -1768,6 +1776,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._profiles.destroy();
         if (this._upower)
             this._upower.destroy();
+        if (this._bluetooth)
+            this._bluetooth.destroy();
         for (let name in this._backlights)
             this._backlights[name].destroy();
         if (this.settings)

@@ -28,7 +28,10 @@ draw in watts, voltage, temperature, health (capacity versus design capacity)
 and charge cycles when the device reports them. Devices that only report a
 coarse level (low / normal / high) are shown that way instead of a fake
 percentage. Chargers are listed above them, by model where UPower knows it,
-so whether the machine is on the cable is the first line in the menu.
+so whether the machine is on the cable is the first line in the panel.
+Connected bluetooth devices are read from BlueZ as well as from UPower, which
+does not bridge all of them, and the panel says so plainly when there is
+nothing connected rather than just being empty.
 
 **Brightness.** Screen and keyboard backlight sliders at the top of the menu,
 driven through `org.cinnamon.SettingsDaemon.Power.Screen` and `.Keyboard`, so
@@ -168,6 +171,7 @@ cinnamon-powertoys@geraldo-netto/
 ├── lib/sensors.js       hwmon, thermal and powercap discovery
 ├── lib/backlight.js     screen and keyboard backlight through csd
 ├── lib/ddc.js           external monitor brightness through ddcutil
+├── lib/bluez.js         bluetooth batteries UPower does not bridge
 ├── lib/cpu.js           cpufreq scaling interface
 ├── lib/power-supply.js  charge limit and ACPI platform profile nodes
 ├── lib/upower.js        UPower D-Bus client

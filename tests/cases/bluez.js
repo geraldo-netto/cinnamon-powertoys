@@ -1,0 +1,129 @@
+/*
+ * Bluetooth batteries from BlueZ.
+ *
+ * The D-Bus call is a parameter, so these run without bluetoothd and without
+ * any device being switched on. The fixtures are the shape BlueZ's object
+ * manager really answers with, taken from this machine's own tree.
+ */
+
+const Harness = imports.harness;
+
+const Bluez = Harness.requireXlet("./lib/bluez.js");
+const UPowerGlib = imports.gi.UPowerGlib;
+
+const Kind = UPowerGlib.DeviceKind;
+
+const HEADSET = "/org/bluez/hci0/dev_F4_4E_FD_01_53_0F";
+const MOUSE = "/org/bluez/hci0/dev_98_47_44_F9_EE_B2";
+
+function tree(extra) {
+    let objects = {
+        "/org/bluez/hci0": { "org.bluez.Adapter1": { Powered: true } },
+    };
+    for (let path in extra || {})
+        objects[path] = extra[path];
+    return objects;
+}
+
+function device(name, icon, connected, percentage) {
+    let interfaces = {
+        "org.bluez.Device1": { Alias: name, Icon: icon, Connected: connected },
+    };
+    if (percentage !== undefined)
+        interfaces["org.bluez.Battery1"] = { Percentage: percentage };
+    return interfaces;
+}
+
+var cases = {};
+
+cases["a connected device with a battery is reported"] = function () {
+    let found = Bluez.parseObjects(tree({
+        [HEADSET]: device("BW01", "audio-headset", true, 90),
+    }));
+    Harness.equal(found.length, 1, "one device");
+    Harness.equal(found[0].model, "BW01", "named by its alias");
+    Harness.equal(found[0].percentage, 90, "charge");
+    Harness.equal(found[0].kind, Kind.HEADSET, "BlueZ's icon says what it is");
+    Harness.equal(found[0].powerSupply, false, "it does not power the machine");
+};
+
+cases["a device that is switched off is not reported"] = function () {
+    let found = Bluez.parseObjects(tree({
+        [HEADSET]: device("BW01", "audio-headset", false, 90),
+    }));
+    Harness.deepEqual(found, [],
+                      "which is why the menu was empty on the machine this was written on");
+};
+
+cases["a connected device with no battery is not reported"] = function () {
+    let found = Bluez.parseObjects(tree({
+        [MOUSE]: device("MX Anywhere", "input-mouse", true),
+    }));
+    Harness.deepEqual(found, [], "nothing to say about it");
+};
+
+cases["the adapter itself is not a device"] = function () {
+    Harness.deepEqual(Bluez.parseObjects(tree()), [], "only the adapter is there");
+};
+
+cases["BlueZ's icon names map onto UPower's kinds"] = function () {
+    let found = Bluez.parseObjects(tree({
+        [HEADSET]: device("A", "input-keyboard", true, 50),
+        [MOUSE]: device("B", "input-mouse", true, 60),
+    }));
+    Harness.equal(found[0].kind, Kind.KEYBOARD, "keyboard");
+    Harness.equal(found[1].kind, Kind.MOUSE, "mouse");
+
+    let odd = Bluez.parseObjects(tree({
+        [HEADSET]: device("C", "something-new", true, 70),
+    }));
+    Harness.equal(odd[0].kind, Kind.BLUETOOTH_GENERIC, "an icon we do not know");
+};
+
+cases["a device is recognised across the two naming schemes"] = function () {
+    Harness.equal(Bluez.addressOf(HEADSET), "F4_4E_FD_01_53_0F", "BlueZ");
+    Harness.equal(Bluez.addressOf("/org/freedesktop/UPower/devices/headset_dev_F4_4E_FD_01_53_0F"),
+                  "F4_4E_FD_01_53_0F", "UPower calls the same device this");
+    Harness.equal(Bluez.addressOf("/org/freedesktop/UPower/devices/battery_BAT0"), null,
+                  "a laptop battery has no address");
+};
+
+cases["a device UPower already covers is not listed twice"] = function () {
+    let called = [];
+    let control = new Bluez.BluezBatteries(null, function (path, iface, method, onDone) {
+        called.push(method);
+        onDone(tree({ [HEADSET]: device("BW01", "audio-headset", true, 90),
+                      [MOUSE]: device("MX", "input-mouse", true, 55) }));
+    });
+
+    Harness.equal(control.devices.length, 2, "BlueZ knows both");
+    let fromUPower = [{ path: "/org/freedesktop/UPower/devices/headset_dev_F4_4E_FD_01_53_0F" }];
+    let extra = control.missingFrom(fromUPower);
+    Harness.equal(extra.length, 1, "one of them is new");
+    Harness.equal(extra[0].model, "MX", "the one UPower did not mention");
+    control.destroy();
+};
+
+cases["a machine with no bluetooth daemon says nothing and breaks nothing"] = function () {
+    let control = new Bluez.BluezBatteries(null, (path, iface, method, onDone) => onDone(null));
+    Harness.equal(control.available, false, "not available");
+    Harness.deepEqual(control.devices, [], "no devices");
+    Harness.deepEqual(control.missingFrom([]), [], "and nothing to add");
+    control.destroy();
+};
+
+cases["a change is only reported when something actually changed"] = function () {
+    let objects = tree({ [HEADSET]: device("BW01", "audio-headset", true, 90) });
+    let changes = 0;
+    let control = new Bluez.BluezBatteries(() => changes++,
+                                           (path, iface, method, onDone) => onDone(objects));
+    Harness.equal(changes, 1, "the first answer is news");
+
+    control._refresh();
+    Harness.equal(changes, 1, "the same answer again is not");
+
+    objects[HEADSET]["org.bluez.Battery1"].Percentage = 85;
+    control._refresh();
+    Harness.equal(changes, 2, "a new level is");
+    control.destroy();
+};
