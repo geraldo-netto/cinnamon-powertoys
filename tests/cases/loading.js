@@ -11,7 +11,7 @@ const Harness = imports.harness;
 
 var cases = {};
 
-const MODULES = ["io", "log", "gettext", "format", "sensors", "cpu",
+const MODULES = ["io", "log", "gettext", "format", "device", "sensors", "cpu",
                  "power-supply", "upower", "profiles", "backlight"];
 
 for (let name of MODULES) {
@@ -29,14 +29,17 @@ const USED = {
     "log": ["error", "setSink"],
     "gettext": ["_", "UUID"],
     "format": ["deviceTitle", "sensorLabel", "temperature", "watts", "percent",
+               "batteryIconName", "setIconLookup", "DEVICE_ICONS",
                "frequency", "rpm", "volts", "energy", "duration", "profileLabel",
                "profileIconName", "governorLabel", "energyPreferenceLabel",
                "deviceKindName", "deviceStateName", "batteryLevelName",
                "deviceIconName", "reportsPrecisePercentage"],
     "sensors": ["SensorSet", "EnergyMeter", "discoverSensors", "discoverEnergyCounters",
-                "isPrimaryKind", "bySensorOrder", "kindLabel", "classifyChip", "KINDS"],
+                "isPrimaryKind", "bySensorOrder", "kindLabel", "classifyChip", "KINDS",
+                "sensorMatches"],
+    "device": ["isDraining", "lowThreshold", "remainingText", "describe"],
     "cpu": ["CpuControl"],
-    "power-supply": ["discoverChargeControl", "platformProfile"],
+    "power-supply": ["discoverChargeControl", "platformProfile", "ChargeControl"],
     "upower": ["UPowerMonitor"],
     "profiles": ["PowerProfilesClient", "PROFILE_ORDER"],
     "backlight": ["BacklightControl", "SCREEN", "KEYBOARD"],

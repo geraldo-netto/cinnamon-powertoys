@@ -32,6 +32,7 @@ const Util = imports.misc.util;
  */
 const Backlight = require("./lib/backlight.js");
 const Cpu = require("./lib/cpu.js");
+const Device = require("./lib/device.js");
 const IO = require("./lib/io.js");
 const Log = require("./lib/log.js");
 const PowerSupply = require("./lib/power-supply.js");
@@ -99,38 +100,6 @@ function defaultBackends() {
         upowerMonitor: (onChanged, onReady) => new UPower.UPowerMonitor(onChanged, onReady),
         fileExists: path => IO.exists(path),
     };
-}
-
-/*
- * Whether the device is spending its charge rather than taking it in.
- * System batteries report a state that can be trusted; peripherals very often
- * report none at all, so for those anything that is not explicitly on the
- * cable counts as draining.
- */
-function isDeviceDraining(device) {
-    if (device.powerSupply)
-        return device.state === UPDeviceState.DISCHARGING;
-    return device.state !== UPDeviceState.CHARGING &&
-           device.state !== UPDeviceState.FULLY_CHARGED &&
-           device.state !== UPDeviceState.PENDING_CHARGE;
-}
-
-/*
- * The level at which a device counts as low. A mouse at 18% is not a laptop
- * at 18%, so peripherals carry their own limit; both the row colour and the
- * notification read it from here.
- */
-function deviceLowThreshold(device, systemLevel, peripheralLevel) {
-    return device.powerSupply ? systemLevel : peripheralLevel;
-}
-
-/* How long the device has left, or how long until it is full. */
-function remainingText(device) {
-    if (device.state === UPDeviceState.DISCHARGING && device.timeToEmpty)
-        return Format.duration(device.timeToEmpty) + " " + _("remaining");
-    if (device.state === UPDeviceState.CHARGING && device.timeToFull)
-        return Format.duration(device.timeToFull) + " " + _("until full");
-    return "";
 }
 
 /*
@@ -205,10 +174,10 @@ class AlertPolicy {
 
         let system = device.powerSupply;
         let enabled = system ? limits.lowBattery : limits.peripheralBattery;
-        let threshold = deviceLowThreshold(device, limits.lowLevel, limits.peripheralLevel);
+        let threshold = Device.lowThreshold(device, limits.lowLevel, limits.peripheralLevel);
         let level = this._alerted.get(device.path) || "";
 
-        if (!enabled || !isDeviceDraining(device)) {
+        if (!enabled || !Device.isDraining(device)) {
             this._alerted.delete(device.path);
             return;
         }
@@ -324,7 +293,7 @@ class PanelPresenter {
             lines.push(Format.deviceKindName(data.primary.kind) + " " +
                        Format.percent(data.primary.percentage) + " - " +
                        Format.deviceStateName(data.primary.state));
-            let remaining = remainingText(data.primary);
+            let remaining = Device.remainingText(data.primary);
             if (remaining)
                 lines.push(remaining);
         } else if (data.lineOnline || !data.upowerAvailable) {
@@ -804,7 +773,7 @@ class MenuPresenter {
             this._summary.setLabel(Format.deviceKindName(data.primary.kind) + " " +
                                    Format.percent(data.primary.percentage));
             let detail = Format.deviceStateName(data.primary.state);
-            let remaining = remainingText(data.primary);
+            let remaining = Device.remainingText(data.primary);
             if (remaining)
                 detail += " · " + remaining;
             this._summary.setValue(detail);
@@ -1357,44 +1326,19 @@ class PowerToysApplet extends Applet.TextIconApplet {
         };
     }
 
-    /* Both of these are the settings applied to the rules above, and are what
-     * DeviceRow asks the applet for while it colours itself. */
+    /* The settings applied to the rules in lib/device.js. DeviceRow asks the
+     * applet for these while it colours itself; PT-33 is what stops it. */
     lowThresholdFor(device) {
-        return deviceLowThreshold(device, this.lowBatteryThreshold,
-                                  this.peripheralBatteryThreshold);
+        return Device.lowThreshold(device, this.lowBatteryThreshold,
+                                   this.peripheralBatteryThreshold);
     }
 
     isDraining(device) {
-        return isDeviceDraining(device);
+        return Device.isDraining(device);
     }
 
-    /* One line summary of a device, used in the menu rows. */
     describeDevice(device) {
-        let parts = [];
-        /* Peripherals usually report no state at all, saying "Unknown" adds
-         * nothing; name what the device is instead. */
-        if (device.state === UPDeviceState.UNKNOWN)
-            parts.push(Format.deviceKindName(device.kind));
-        else
-            parts.push(Format.deviceStateName(device.state));
-
-        let remaining = remainingText(device);
-        if (remaining)
-            parts.push(remaining);
-        if (device.energyRate)
-            parts.push(Format.watts(device.energyRate));
-        if (device.voltage)
-            parts.push(Format.volts(device.voltage));
-        if (device.temperature)
-            parts.push(Format.temperature(device.temperature, this.tempUnit, 1));
-        if (device.capacity && device.capacity < 100)
-            parts.push(_("health") + " " + Format.percent(device.capacity));
-        if (device.cycles && device.cycles > 0)
-            parts.push(device.cycles + " " + _("cycles"));
-        if (device.energy && device.energyFull)
-            parts.push(Format.energy(device.energy) + " / " + Format.energy(device.energyFull));
-
-        return parts.filter(part => part !== "").join(" · ");
+        return Device.describe(device, this.tempUnit);
     }
 
     /* ------------------------------------------------------------------ */
