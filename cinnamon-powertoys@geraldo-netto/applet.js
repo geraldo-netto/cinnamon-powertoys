@@ -733,6 +733,15 @@ class MenuPresenter {
                                                         "system-run", St.IconType.SYMBOLIC);
         configure.connect("activate", () => this._actions.configure());
         this._menu.addMenuItem(configure);
+
+        /* Which build this is. Worth a line: the version in metadata.json is
+         * what the Applets manager lists, and someone reporting a problem
+         * should not have to go and look it up. */
+        if (capabilities.version) {
+            let about = new InfoRow(_("Power Toys"), capabilities.version);
+            about.actor.add_style_class_name("powertoys-about");
+            this._menu.addMenuItem(about);
+        }
     }
 
     _addBacklight(label, iconName, control) {
@@ -1091,7 +1100,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
         });
 
         this._menuPresenter = new MenuPresenter(this.menu, this._menuActions(), this,
-                                               { chargeLimit: !!this._chargeControl },
+                                               { chargeLimit: !!this._chargeControl,
+                                                 version: this.metadata.version },
                                                this._backlights);
         this._menuPresenter.applyExpandState(this.expandSections);
     }

@@ -4,7 +4,16 @@
     "description": "Monitor and configure system power management: batteries of every device type, power profiles, CPU governor and energy preference, temperatures and power draw.",
     "icon": "cs-power",
     "version": "1.0.0",
+    "url": "https://github.com/geraldo-netto/cinnamon-powertoys",
     "max-instances": 1,
-    "cinnamon-version": ["5.4", "5.6", "5.8", "6.0", "6.2", "6.4", "6.6"],
+    "cinnamon-version": [
+        "5.4",
+        "5.6",
+        "5.8",
+        "6.0",
+        "6.2",
+        "6.4",
+        "6.6"
+    ],
     "author": "Geraldo Netto"
 }
