@@ -32,6 +32,7 @@ const UUID = "cinnamon-powertoys@geraldo-netto";
  * the legacy importer caches them for the life of the process.
  */
 const IO = require("./lib/io.js");
+const Sensors = require("./lib/sensors.js");
 const Sysfs = require("./lib/sysfs.js");
 const UPower = require("./lib/upower.js");
 const Profiles = require("./lib/profiles.js");
@@ -90,9 +91,9 @@ function bySensorOrder(a, b) {
  */
 function defaultBackends() {
     return {
-        discoverSensors: () => Sysfs.discoverSensors(),
-        energyMeters: () => Sysfs.discoverEnergyCounters()
-            .map(counter => new Sysfs.EnergyMeter(counter)),
+        discoverSensors: () => Sensors.discoverSensors(),
+        energyMeters: () => Sensors.discoverEnergyCounters()
+            .map(counter => new Sensors.EnergyMeter(counter)),
         cpuControl: () => new Sysfs.CpuControl(),
         chargeControl: () => Sysfs.discoverChargeControl(),
         platformProfile: () => Sysfs.platformProfile(),

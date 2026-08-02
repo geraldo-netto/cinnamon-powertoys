@@ -82,7 +82,8 @@ simply not shown; battery draw and GPU power still work.
 cinnamon-powertoys@geraldo-netto/
 ├── applet.js            panel item, menu, polling, alerts
 ├── lib/io.js            file reads, rooted so a captured /sys can stand in
-├── lib/sysfs.js         hwmon, thermal, powercap and cpufreq readers
+├── lib/sensors.js       hwmon, thermal and powercap discovery
+├── lib/sysfs.js         cpufreq and power supply nodes
 ├── lib/upower.js        UPower D-Bus client
 ├── lib/profiles.js      power-profiles-daemon client
 ├── lib/format.js        value formatting and UPower enum naming
