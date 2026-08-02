@@ -197,11 +197,11 @@ msgstr ""
 msgid "until full"
 msgstr ""
 
-#: lib/device.js:84
+#: lib/device.js:86
 msgid "health"
 msgstr ""
 
-#: lib/device.js:86
+#: lib/device.js:88
 msgid "cycles"
 msgstr ""
 
@@ -535,9 +535,9 @@ msgstr ""
 
 #. metadata.json->description
 msgid ""
-"Monitor and configure system power management: batteries of every device "
-"type, power profiles, CPU governor and energy preference, temperatures and "
-"power draw."
+"Monitor and configure system power management: brightness for every screen, "
+"batteries of every device type, power profiles, processor settings, "
+"temperatures and power draw."
 msgstr ""
 
 #. settings-schema.json->general-section->description

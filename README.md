@@ -32,10 +32,10 @@ draw in watts, voltage, temperature, health (capacity versus design capacity)
 and charge cycles when the device reports them. Devices that only report a
 coarse level (low / normal / high) are shown that way instead of a fake
 percentage. Chargers are listed above them, by model where UPower knows it,
-so whether the machine is on the cable is the first line in the panel.
+so whether the machine is on the cable is the first line under *Devices*.
 Connected bluetooth devices are read from BlueZ as well as from UPower, which
-does not bridge all of them, and the panel says so plainly when there is
-nothing connected rather than just being empty.
+does not bridge all of them, and where nothing is connected the group says so
+in words rather than being empty.
 
 **Brightness.** Screen and keyboard backlight sliders at the top of the menu,
 driven through `org.cinnamon.SettingsDaemon.Power.Screen` and `.Keyboard`, so
@@ -44,9 +44,12 @@ with no backlight of its own — a desktop, or a laptop with the lid shut on an
 external screen — gets one slider per monitor instead, over DDC/CI through
 `ddcutil`, each named after the monitor it moves: make and model out of the
 EDID, the socket appended where two monitors are the same model. Up to ten,
-and the eleventh is a line saying so rather than nothing. The wheel over the
-panel icon has no monitor in mind and so still moves all of them. Each slider
-is hidden where there is nothing behind it.
+and past that a line saying so rather than nothing. Plugging a monitor in or
+unplugging one is looked for and the sliders follow, which is the only time
+the I2C bus is disturbed for that — probing wakes a sleeping monitor, so it is
+not done on a timer. The wheel over the panel icon has no monitor in mind and
+so still moves all of them together. Each slider is hidden where there is
+nothing behind it.
 
 **Power profiles.** Reads and switches profiles through power-profiles-daemon
 (both the `net.hadess.PowerProfiles` and `org.freedesktop.UPower.PowerProfiles`
@@ -62,12 +65,15 @@ preference, boost and the battery charge limit are kernel owned, so they are
 applied through a small validating helper launched with `pkexec`.
 
 **Temperature and power.** Every hwmon and thermal zone sensor plus fan speeds,
-hwmon power meters (for example the amdgpu GPU package power) and RAPL package
-power when the kernel allows reading it. Readings are grouped by the chip they
-came off, and the chip is named rather than addressed: the processor from
-`/proc/cpuinfo`, anything on the PCI bus from `pci.ids`, so two graphics cards
-read as *Radeon RX 6600/6600 XT/6600M* and *AMD Raphael* instead of as
-`03:00.0` and `08:00.0`. The list can be limited to CPU and GPU only.
+hwmon power meters (for example the amdgpu GPU package power), RAPL package
+power when the kernel allows reading it, and what the batteries report about
+themselves. Readings are grouped by the thing they came off and it is named
+rather than addressed: the processor from `/proc/cpuinfo`, anything on the PCI
+bus from `pci.ids`, a battery by what UPower calls it. So two graphics cards
+read as *Radeon RX 6600/6600 XT/6600M* and *AMD Raphael* rather than as
+`03:00.0` and `08:00.0`, and the rows under each say only what they measure —
+*Edge*, *Junction*, *Fan* — because the heading has already said whose they
+are. The list can be limited to CPU and GPU only.
 
 **Alerts.** Configurable low and critical battery notifications, separate
 thresholds for peripherals, and an optional high temperature warning. All with
@@ -78,10 +84,11 @@ draw, CPU frequency, active profile, any combination. Temperature is in the
 tooltip and the menu rather than the panel, where a figure that moves every few
 seconds pulls the eye without ever being worth acting on. The
 icon follows the battery level, the active profile, or stays fixed. The wheel
-over the applet changes screen brightness and a middle click toggles the
-keyboard backlight, as they do on the applet this one can replace; either can
-be pointed at the power profile instead, or switched off. Optional keyboard
-shortcuts to cycle the profile and to open the menu.
+over the applet changes screen brightness — every monitor together, since the
+gesture names no screen — and a middle click toggles the keyboard backlight,
+as they do on the applet this one can replace; either can be pointed at the
+power profile instead, or switched off. Optional keyboard shortcuts to cycle
+the profile and to open the menu.
 
 ## Install
 
@@ -89,8 +96,9 @@ shortcuts to cycle the profile and to open the menu.
 ./install.sh          # or: make install
 ```
 
-Then restart Cinnamon (`Alt+F2`, `r`, Enter) and enable **Power Toys** from
-*Right click panel → Applets*.
+On a first install, restart Cinnamon (`Alt+F2`, `r`, Enter) and enable **Power
+Toys** from *Right click panel → Applets*. After that the script reloads the
+running applet itself and says so, so an upgrade needs neither.
 
 To remove it:
 
@@ -194,29 +202,37 @@ settings.
 
 ## Requirements
 
-- Cinnamon 5.4 or newer. Only 6.6 has been run. The claim is checked by reading
-  the Cinnamon sources for every call this applet makes, and re-checked against
-  5.4.0 whenever that set changes: the xlet `require()` loader,
-  `PopupMenuSection` and the fact that its actor *is* its box, which is what
-  lets the two menu columns sit side by side, `PopupMenuBase.getColumnWidths`
-  and `setColumnWidths`, which the columns override so their rows line up
-  with themselves and not with the whole menu — and which the segmented
-  profile control overrides for the opposite reason, so that a row spanning
-  every column does not set the width of the first one,
-  `PopupSubMenuMenuItem` and its `menu`, which is what *Advanced* is,
-  `PopupSwitchMenuItem`, `PopupSliderMenuItem`, `PopupIconMenuItem`,
-  `PopupBaseMenuItem`'s `{ activate: false, hover: false }`, which is how a
-  row of buttons takes key focus without being a menu entry itself,
-  `St.Button` and its `clicked`, `St.BoxLayout.add` with the `expand`,
-  `x_fill` and `y_align` child properties, `addActor`, `removeActor`,
-  `setShowDot`, `addSettingsAction`, class-based applets, `AllowedLayout`,
+- Cinnamon 5.4 or newer. Only 6.6 has been run. The claim is kept honest by
+  reading the Cinnamon sources rather than by trying it: whenever this applet
+  starts using something of Cinnamon's that a 5.4 desktop might not have had,
+  that call is looked up in the 5.4.0 sources before the change lands. Those
+  are the ones named below; the rest of what an applet touches — a menu item,
+  a separator, spawning a command — is older than any version this supports
+  and is not tracked here.
+
+  The xlet `require()` loader. `PopupMenuSection` and the fact that its actor
+  *is* its box, which is what lets the two menu columns sit side by side.
+  `PopupMenuBase.getColumnWidths` and `setColumnWidths`, which the columns
+  override so their rows line up with themselves and not with the whole menu —
+  and which the segmented profile control overrides for the opposite reason, so
+  that a row spanning every column does not set the width of the first one.
+  `PopupSubMenuMenuItem` and its `menu`, which is what *Advanced* is.
+  `PopupSwitchMenuItem`, `PopupSliderMenuItem`, `PopupIconMenuItem`.
+  `PopupBaseMenuItem`'s `{ activate: false, hover: false }`, which is how a row
+  of buttons takes key focus without being a menu entry itself. `St.Button` and
+  its `clicked`. `St.BoxLayout.add` with the `expand`, `x_fill` and `y_align`
+  child properties. `addActor`, `removeActor`, `setShowDot`,
+  `addSettingsAction`. Class-based applets, `AllowedLayout`,
   `set_show_label_in_vertical_panels`, `set_applet_icon_path`,
-  `AppletSettings.bind`, `spawnCommandLineAsyncIO`, `Tooltips.Tooltip` with its
-  `show` and `visible`, `keybindingManager.addHotKey`, `criticalNotify`, and the
-  `=` operator in a settings-schema `dependency`. All of them are present in
-  5.4.0. Two things the applet leans on are not Cinnamon's at all and are older
-  than any of this: `Gio.File.load_contents_async`, which takes the sensor
-  reads off the compositor's thread, and `Gtk.IconTheme`'s `changed` signal.
+  `AppletSettings.bind`, `spawnCommandLineAsyncIO`. `Tooltips.Tooltip` with its
+  `show` and `visible`. `keybindingManager.addHotKey`, `criticalNotify`.
+  `Main.layoutManager`'s `monitors-changed`, which is when the monitor sliders
+  are looked for again. And the `=` operator in a settings-schema `dependency`.
+  All of them are in 5.4.0.
+
+  Two things the applet leans on are not Cinnamon's at all and are older than
+  any of this: `Gio.File.load_contents_async`, which takes the sensor reads off
+  the compositor's thread, and `Gtk.IconTheme`'s `changed` signal.
 - UPower, for battery and device data
 - `xapp-symbolic-icons`, optional. Device and battery icons prefer that set,
   which Cinnamon's own power applet only started using in 6.6; where it is not
@@ -256,8 +272,10 @@ cinnamon-powertoys@geraldo-netto/
 ├── lib/gettext.js       the text domain, bound once
 ├── lib/log.js           the one thing in lib/ that knows about the shell
 ├── powertoys-helper     validating pkexec helper for root owned settings
+├── metadata.json
 ├── settings-schema.json
 ├── stylesheet.css
+├── po/                  the translation template and any translations
 └── icons/
 
 tests/                   harness, runner and the cases
@@ -283,7 +301,10 @@ directory into `~/.local/share/locale` where the applet looks for it.
 
 After changing any translatable string, `make pot` regenerates the template;
 `msgmerge -U <lang>.po cinnamon-powertoys@geraldo-netto.pot` carries an
-existing translation onto it.
+existing translation onto it. Regenerating over unchanged sources produces the
+same bytes — the extraction timestamp is stripped, deliberately, so that the
+template is a function of the strings and the check below can be a plain
+diff.
 
 ## Tests
 
@@ -293,11 +314,14 @@ cjs tests/run.js      # tests only
 cjs tests/run.js io   # only cases whose name contains "io"
 ```
 
-`make check` also runs on every push and pull request, along with a staged
-install of the applet and of the polkit action — see
+On every push and pull request the same `make check` runs, then a staged
+install of the applet and of the polkit action, then a check that the
+translation template still matches the strings in the source — see
 [.github/workflows/check.yml](.github/workflows/check.yml). None of it needs
 Cinnamon, a session bus or real hardware, because the libraries take their
-file root, their D-Bus calls and their spawns as parameters.
+file root, their D-Bus calls and their spawns as parameters. It does need one
+typelib, `gir1.2-upowerglib-1.0`, which the runner installs alongside `cjs`;
+without it four of the libraries throw the moment they are loaded.
 
 `tests/harness.js` loads the libraries exactly as Cinnamon does — strict mode,
 the same export collection, a `require()` bound to the xlet directory — so a
