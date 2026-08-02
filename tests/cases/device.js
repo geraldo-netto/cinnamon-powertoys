@@ -15,12 +15,20 @@ const State = UPowerGlib.DeviceState;
 const Kind = UPowerGlib.DeviceKind;
 const Level = UPowerGlib.DeviceLevel;
 
+/*
+ * The optional fields are null and not zero, which is what UPower's own
+ * _number() produces for a property a device does not have. They were zero
+ * here, and that is the difference between "does not report a temperature"
+ * and "is at freezing" - a distinction the code could not make either, until
+ * it had to.
+ */
 function battery(extra) {
     let device = { path: "/bat", powerSupply: true, kind: Kind.BATTERY,
                    state: State.DISCHARGING, vendor: "ACME", model: "BAT0",
                    percentage: 42, batteryLevel: Level.NONE, icon: "battery-good-symbolic",
-                   energyRate: 0, voltage: 0, temperature: 0, capacity: 0, cycles: 0,
-                   energy: 0, energyFull: 0, timeToEmpty: 0, timeToFull: 0 };
+                   energyRate: null, voltage: null, temperature: null, capacity: null,
+                   cycles: null, energy: null, energyFull: null,
+                   timeToEmpty: null, timeToFull: null };
     for (let key in extra || {})
         device[key] = extra[key];
     return device;
@@ -96,6 +104,14 @@ cases["a full battery says everything it knows"] = function () {
 cases["a device that reports nothing says what it is"] = function () {
     Harness.equal(Device.describe(mouse(), "celsius"), "Mouse",
                   "better than the word Unknown");
+};
+
+cases["freezing is a reading, and nothing else at zero is"] = function () {
+    Harness.equal(Device.describe(battery({ temperature: 0 }), "celsius").indexOf("0.0 °C") >= 0,
+                  true, "a battery left in a car overnight is the one time anybody looks");
+    let idle = Device.describe(battery({ energyRate: 0, voltage: 0 }), "celsius");
+    Harness.equal(idle.indexOf("W"), -1, "a battery at rest draws nothing worth a row");
+    Harness.equal(idle.indexOf("V"), -1, "and 0 V is a battery that is not reporting");
 };
 
 cases["a healthy battery does not mention its health"] = function () {

@@ -72,7 +72,13 @@ function describe(device, tempUnit) {
         parts.push(Format.watts(device.energyRate));
     if (device.voltage)
         parts.push(Format.volts(device.voltage));
-    if (device.temperature)
+    /*
+     * Zero degrees is a reading and the rest are not. A battery drawing 0 W is
+     * a battery at rest and a battery at 0 V is one that is not reporting, so
+     * those stay falsy tests; a battery at 0 °C is a battery that has been
+     * left in a car overnight, which is the one time anybody would look.
+     */
+    if (device.temperature !== null && device.temperature !== undefined)
         parts.push(Format.temperature(device.temperature, tempUnit, 1));
     if (device.capacity && device.capacity < 100)
         parts.push(_("health") + " " + Format.percent(device.capacity));
