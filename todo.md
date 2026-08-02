@@ -25,7 +25,6 @@ that work rather than found surviving from before it.
 | PT-88 | low | XS | `data.temperatureSensorId` is computed on every reading and read nowhere. |
 | PT-89 | low | XS | `Sensors.bySensorOrder` has no caller outside the case that tests it — the menu sorts with `MenuPresenter._bySensorGroup` instead. Either the menu should use it or it should go. |
 | PT-90 | low | XS | `PlatformProfileClient` is the one backend `on_applet_removed_from_panel` does not destroy. Its `destroy()` is empty, so nothing leaks today; the asymmetry is what will be wrong the moment it holds anything. |
-| PT-91 | low | XS | `runCommand()` in [lib/ddc.js](cinnamon-powertoys@geraldo-netto/lib/ddc.js) leaves its eight second timeout armed after the process has answered. It fires, finds the call already finished and removes itself, so the cost is one dangling timer per `ddcutil` call rather than a bug. |
 
 ## Documentation drift
 

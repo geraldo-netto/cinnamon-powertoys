@@ -41,12 +41,19 @@ var STEP = 5;
  */
 function runCommand(argv, onDone) {
     let done = false;
+    let timeoutId = 0;
     let process;
 
     function finish(output, status) {
         if (done)
             return;
         done = true;
+        /* The timer has done its job, or never needed to; either way it is
+         * not left armed for the rest of its eight seconds. */
+        if (timeoutId) {
+            GLib.source_remove(timeoutId);
+            timeoutId = 0;
+        }
         onDone(output, status);
     }
 
@@ -62,16 +69,15 @@ function runCommand(argv, onDone) {
         return;
     }
 
-    GLib.timeout_add(GLib.PRIORITY_DEFAULT, CALL_TIMEOUT_MS, () => {
-        if (!done) {
-            Log.error("ddcutil did not answer in time, giving up on it");
-            try {
-                process.force_exit();
-            } catch (e) {
-                /* already gone */
-            }
-            finish("", -1);
+    timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, CALL_TIMEOUT_MS, () => {
+        timeoutId = 0;
+        Log.error("ddcutil did not answer in time, giving up on it");
+        try {
+            process.force_exit();
+        } catch (e) {
+            /* already gone */
         }
+        finish("", -1);
         return GLib.SOURCE_REMOVE;
     });
 
