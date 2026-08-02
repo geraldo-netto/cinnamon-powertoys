@@ -884,7 +884,23 @@ class MenuPresenter {
     _buildSensorPanel() {
         this._sensorMenu = new PopupMenu.PopupSubMenuMenuItem(_("Sensors"));
         this._menu.addMenuItem(this._sensorMenu);
-        this._sensorList = new KeyedList(this._sensorMenu.menu,
+
+        /* Only ever shown when the preferred sensor setting names something
+         * this machine does not have. Somebody who typed a name has no other
+         * way of finding out it was ignored. */
+        this._hintRow = new InfoRow("", "");
+        this._hintRow.setWarning(true);
+        this._hintRow.actor.hide();
+        this._sensorMenu.menu.addMenuItem(this._hintRow);
+
+        /*
+         * The rows live in a section of their own, because KeyedList clears
+         * what it is given whenever the set of sensors changes - and anything
+         * else sharing that menu would be destroyed along with them.
+         */
+        let listSection = new PopupMenu.PopupMenuSection();
+        this._sensorMenu.menu.addMenuItem(listSection);
+        this._sensorList = new KeyedList(listSection,
                                          entry => new InfoRow(entry.label, entry.value),
                                          (row, entry) => {
                                              row.setValue(entry.value);
@@ -1129,6 +1145,10 @@ class MenuPresenter {
         this._setPanelSummary(this._sensorMenu, _("Sensors"),
                               data.cpuTemperature === null ? ""
                               : Format.temperature(data.cpuTemperature, options.tempUnit, 1));
+
+        this._hintRow.actor.visible = data.hintMatched === false;
+        if (data.hintMatched === false)
+            this._hintRow.setLabel(_("No sensor matches") + " \u201c" + options.sensorHint + "\u201d");
 
         let all = options.showAllSensors;
         let entries = [].concat(
@@ -1393,6 +1413,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             /* what a device row colours itself against */
             lowLevel: this.lowBatteryThreshold,
             peripheralLevel: this.peripheralBatteryThreshold,
+            sensorHint: (this.cpuSensorHint || "").trim(),
             /* a change the machine has not confirmed yet */
             pendingProfile: this._pendingProfile,
             busy: this._helper.busy,
@@ -1428,6 +1449,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         let temperatures = readings.temperatures.concat(upower.temperatures);
         let powers = readings.powers.concat(upower.powers);
         let power = this._pickPower(upower.primary, readings.packageWatts, powers);
+        let picked = this._pickTemperature(temperatures);
 
         return {
             upowerAvailable: upower.available,
@@ -1443,7 +1465,12 @@ class PowerToysApplet extends Applet.TextIconApplet {
             cpu: this._cpu.snapshot(),
             profile: this._collectProfile(),
             chargeLimit: this._chargeControl ? this._chargeControl.limit : null,
-            cpuTemperature: this._pickTemperature(temperatures),
+            cpuTemperature: picked.sensor === null ? null : picked.sensor.celsius,
+            /* which sensor that came from, and whether the user's hint is
+             * the reason - false means they asked for one and it was not
+             * found, which is worth saying out loud */
+            temperatureSensorId: picked.sensor === null ? null : picked.sensor.id,
+            hintMatched: picked.hintMatched,
             systemWatts: power.watts,
             systemWattsSource: power.source,
         };
@@ -1519,30 +1546,31 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _pickTemperature(temperatures) {
         let readable = temperatures.filter(sensor => sensor.celsius !== null);
         if (readable.length === 0)
-            return null;
+            return { sensor: null, hintMatched: null };
 
         let hint = (this.cpuSensorHint || "").trim();
         if (hint) {
             let match = readable.find(sensor => Sensors.sensorMatches(sensor, hint));
             if (match)
-                return match.celsius;
+                return { sensor: match, hintMatched: true };
         }
 
         /* What the common processor drivers call the reading that stands for
          * the whole package: AMD's Tctl and Tdie, Intel's "Package id 0", and
          * the SoC thermal zones that have only a type. */
+        let matched = hint === "" ? null : false;
         let preferred = ["tctl", "tdie", "package id 0", "cpu"];
         let cpus = readable.filter(sensor => sensor.kind === "cpu");
         for (let name of preferred) {
             let match = cpus.find(sensor => Sensors.sensorMatches(sensor, name));
             if (match)
-                return match.celsius;
+                return { sensor: match, hintMatched: matched };
         }
         if (cpus.length > 0)
-            return cpus[0].celsius;
+            return { sensor: cpus[0], hintMatched: matched };
 
         let gpu = readable.find(sensor => sensor.kind === "gpu");
-        return gpu ? gpu.celsius : readable[0].celsius;
+        return { sensor: gpu || readable[0], hintMatched: matched };
     }
 
     /* Battery drain is the honest number while on battery; otherwise fall back
