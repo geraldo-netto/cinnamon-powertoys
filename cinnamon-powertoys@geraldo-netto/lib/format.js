@@ -2,20 +2,11 @@
  * cinnamon-powertoys - value formatting and UPower enum naming.
  */
 
-const GLib = imports.gi.GLib;
-const Gettext = imports.gettext;
 const UPowerGlib = imports.gi.UPowerGlib;
 
-const UUID = "cinnamon-powertoys@geraldo-netto";
+const Translate = require("./lib/gettext.js");
 
-Gettext.bindtextdomain(UUID, GLib.get_home_dir() + "/.local/share/locale");
-
-function _(text) {
-    let translated = Gettext.dgettext(UUID, text);
-    if (translated !== text)
-        return translated;
-    return Gettext.gettext(text);
-}
+const _ = Translate._;
 
 const UPDeviceKind = UPowerGlib.DeviceKind;
 const UPDeviceState = UPowerGlib.DeviceState;

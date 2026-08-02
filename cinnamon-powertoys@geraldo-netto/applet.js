@@ -9,7 +9,6 @@
 
 const Applet = imports.ui.applet;
 const Clutter = imports.gi.Clutter;
-const Gettext = imports.gettext;
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 const Main = imports.ui.main;
@@ -20,8 +19,6 @@ const St = imports.gi.St;
 const Tooltips = imports.ui.tooltips;
 const UPowerGlib = imports.gi.UPowerGlib;
 const Util = imports.misc.util;
-
-const UUID = "cinnamon-powertoys@geraldo-netto";
 
 /*
  * Cinnamon loads every xlet file through misc/fileUtils.js, which hands the
@@ -37,18 +34,13 @@ const Cpu = require("./lib/cpu.js");
 const IO = require("./lib/io.js");
 const PowerSupply = require("./lib/power-supply.js");
 const Sensors = require("./lib/sensors.js");
+const Translate = require("./lib/gettext.js");
 const UPower = require("./lib/upower.js");
 const Profiles = require("./lib/profiles.js");
 const Format = require("./lib/format.js");
 
-Gettext.bindtextdomain(UUID, GLib.get_home_dir() + "/.local/share/locale");
-
-function _(text) {
-    let translated = Gettext.dgettext(UUID, text);
-    if (translated !== text)
-        return translated;
-    return Gettext.gettext(text);
-}
+const UUID = Translate.UUID;
+const _ = Translate._;
 
 const UPDeviceState = UPowerGlib.DeviceState;
 const UPDeviceLevel = UPowerGlib.DeviceLevel;
