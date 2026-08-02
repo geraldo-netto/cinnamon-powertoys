@@ -101,3 +101,53 @@ cases["a failure with nothing to say still reports a failure"] = function () {
     Harness.equal(outcome.applied, false, "not applied");
     Harness.equal(outcome.error, "", "with no reason to give, which the caller words itself");
 };
+
+/* A helper whose spawn is held open until the case says to answer. */
+function deferredHelper() {
+    let waiting = [];
+    let helper = new Privileged.PrivilegedHelper([SYSTEM], () => true, () => {},
+                                                 (argv, onDone) => waiting.push({ argv: argv, onDone: onDone }));
+    helper.waiting = waiting;
+    helper.answer = function (status) {
+        let next = waiting.shift();
+        next.onDone(status === undefined ? 0 : status, "");
+    };
+    return helper;
+}
+
+cases["two changes at once are one dialog after another"] = function () {
+    let helper = deferredHelper();
+    let finished = [];
+    helper.run(["governor", "powersave"], () => finished.push("governor"));
+    helper.run(["epp", "power"], () => finished.push("epp"));
+
+    Harness.equal(helper.waiting.length, 1, "only the first was spawned");
+    Harness.equal(helper.busy, true, "and it says so");
+
+    helper.answer(0);
+    Harness.deepEqual(finished, ["governor"], "the first is done");
+    Harness.equal(helper.waiting.length, 1, "and now the second is running");
+
+    helper.answer(0);
+    Harness.deepEqual(finished, ["governor", "epp"], "in the order they were asked for");
+    Harness.equal(helper.busy, false, "and nothing is left");
+};
+
+cases["a refused change does not strand the one behind it"] = function () {
+    let helper = deferredHelper();
+    let outcomes = [];
+    helper.run(["governor", "powersave"], result => outcomes.push(result));
+    helper.run(["boost", "1"], result => outcomes.push(result));
+
+    helper.answer(126);
+    helper.answer(0);
+    Harness.equal(outcomes[0].cancelled, true, "the first was dismissed");
+    Harness.equal(outcomes[1].applied, true, "the second still ran");
+};
+
+cases["nothing in flight means not busy"] = function () {
+    let helper = helperWith([SYSTEM], [0, ""]);
+    Harness.equal(helper.busy, false, "before");
+    helper.run(["boost", "1"], () => {});
+    Harness.equal(helper.busy, false, "and after, since that spawn answered at once");
+};

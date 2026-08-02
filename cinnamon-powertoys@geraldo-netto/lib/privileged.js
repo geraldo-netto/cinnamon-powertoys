@@ -63,6 +63,16 @@ var PrivilegedHelper = class PrivilegedHelper {
         this._exists = exists || (() => false);
         this._repair = repair || function () {};
         this._spawn = spawn || _spawn;
+
+        /*
+         * One at a time. Two clicks in quick succession used to spawn two
+         * pkexec processes and put two password dialogs on screen, one behind
+         * the other, for two settings - and whichever the user answered
+         * first, the other was still waiting. A queue makes it one dialog and
+         * one change after another, in the order they were asked for.
+         */
+        this._queue = [];
+        this._running = false;
     }
 
     /*
@@ -91,27 +101,45 @@ var PrivilegedHelper = class PrivilegedHelper {
      *   { applied: false, error: "..." }   something else, with the reason
      */
     run(args, onDone) {
-        let done = onDone || function () {};
+        this._queue.push({ args: args, done: onDone || function () {} });
+        this._next();
+    }
+
+    /* Whether a change is in flight. Callers use it to show that something is
+     * happening rather than looking as though nothing did. */
+    get busy() {
+        return this._running || this._queue.length > 0;
+    }
+
+    _next() {
+        if (this._running || this._queue.length === 0)
+            return;
+
+        let job = this._queue.shift();
         let helper = this.path();
 
         if (!helper) {
-            done({ applied: false, error: "the helper script could not be found" });
+            job.done({ applied: false, error: "the helper script could not be found" });
+            this._next();
             return;
         }
 
-        let argv = ["pkexec", helper].concat(args.map(argument => String(argument)));
+        this._running = true;
+        let argv = ["pkexec", helper].concat(job.args.map(argument => String(argument)));
         this._spawn(argv, (status, stderr) => {
-            if (status === 0) {
-                done({ applied: true });
-                return;
-            }
-            if (status === PKEXEC_DISMISSED || status === PKEXEC_UNAUTHORISED) {
-                done({ applied: false, cancelled: true });
-                return;
-            }
-            let reason = _reason(stderr);
-            Log.error("helper failed with status " + status + ": " + (reason || "no reason given"));
-            done({ applied: false, error: reason });
+            this._running = false;
+            job.done(this._outcome(status, stderr));
+            this._next();
         });
+    }
+
+    _outcome(status, stderr) {
+        if (status === 0)
+            return { applied: true };
+        if (status === PKEXEC_DISMISSED || status === PKEXEC_UNAUTHORISED)
+            return { applied: false, cancelled: true };
+        let reason = _reason(stderr);
+        Log.error("helper failed with status " + status + ": " + (reason || "no reason given"));
+        return { applied: false, error: reason };
     }
 };
