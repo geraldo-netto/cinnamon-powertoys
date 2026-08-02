@@ -14,9 +14,10 @@ coarse level (low / normal / high) are shown that way instead of a fake
 percentage. Chargers are listed above them, by model where UPower knows it,
 so whether the machine is on the cable is the first line in the menu.
 
-**Brightness.** A screen backlight slider at the top of the menu, driven
-through `org.cinnamon.SettingsDaemon.Power.Screen`, so the wheel over it moves
-in the same steps the brightness keys do. Hidden on machines with no backlight.
+**Brightness.** Screen and keyboard backlight sliders at the top of the menu,
+driven through `org.cinnamon.SettingsDaemon.Power.Screen` and `.Keyboard`, so
+the wheel over one moves in the same steps the brightness keys do. Each is
+hidden on a machine that does not have that backlight.
 
 **Power profiles.** Reads and switches profiles through power-profiles-daemon
 (both the `net.hadess.PowerProfiles` and `org.freedesktop.UPower.PowerProfiles`

@@ -22,8 +22,6 @@ own — items that are genuinely a single change were left whole.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-15 | medium | M | No brightness controls. The stock `power@cinnamon.org` applet carries screen and keyboard backlight sliders through `org.cinnamon.SettingsDaemon.Power.Screen` / `.Keyboard`; anyone replacing that applet with this one loses them. Two separate interfaces, so unpacked into PT-15a and PT-15b. |
-| PT-15b | low | XS | Keyboard backlight slider through `org.cinnamon.SettingsDaemon.Power.Keyboard`, same treatment. Ships independently of PT-15a. |
 | PT-17 | medium | S | Scroll-to-change-profile has no debounce and no feedback ([applet.js:1144](cinnamon-powertoys@geraldo-netto/applet.js#L1144)). One flick of the wheel sends several D-Bus property writes. Coalesce on a short timeout and show the resulting profile, the way `_cycleProfile()` does. |
 | PT-18 | low | M | `_updateMenu()` runs on every poll even when the menu is closed ([applet.js:780](cinnamon-powertoys@geraldo-netto/applet.js#L780)), rebuilding label text for rows nobody can see. Update the panel always, the menu only while `this.menu.isOpen`, plus once on open. The rebuild paths now share KeyedList, so this is one guard in `_updateMenu()` plus a sync on open. It is also what turns PT-19's lazy frequency into a saving in the default configuration, where the CPU section still asks for the value on every poll. |
 | PT-21 | medium | M | No `po/` directory and no `.pot`, although every string goes through `_()` and `make pot` exists. Without the template neither the applet strings nor the settings-schema descriptions can be translated, and nothing in the project compiles or installs a translation once one exists. |

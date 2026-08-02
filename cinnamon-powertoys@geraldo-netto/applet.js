@@ -656,6 +656,9 @@ class MenuPresenter {
         this._backlightSliders = [];
         if (backlights.screen)
             this._addBacklight(_("Brightness"), "display-brightness", backlights.screen);
+        if (backlights.keyboard)
+            this._addBacklight(_("Keyboard backlight"), "keyboard-brightness",
+                               backlights.keyboard);
 
         let profileSection = new PopupMenu.PopupMenuSection();
         this._menu.addMenuItem(profileSection);
@@ -955,6 +958,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
             screen: this._backends.backlight(Backlight.SCREEN,
                                              () => this._scheduleUpdate(),
                                              () => this._scheduleUpdate()),
+            keyboard: this._backends.backlight(Backlight.KEYBOARD,
+                                               () => this._scheduleUpdate(),
+                                               () => this._scheduleUpdate()),
         };
 
         this._profiles = this._backends.profilesClient(() => this._scheduleUpdate());
