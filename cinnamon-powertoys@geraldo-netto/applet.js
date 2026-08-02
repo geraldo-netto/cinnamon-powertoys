@@ -1689,16 +1689,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * one of them - which sensor the panel shows, and which of several
      * numbers counts as the machine's power draw.
      */
+    /* Answers exactly once, with the reading or with null when there is not
+     * one. The caller has an in-flight flag riding on that promise. */
     _collect(onDone) {
         this._sensors.readAsync(this._sensorFilter(), readings => {
-            if (this._destroyed)
-                return;
-            let data;
+            let data = null;
             try {
                 data = this._assemble(readings);
             } catch (error) {
                 Log.error("collection failed: " + error);
-                return;
             }
             onDone(data);
         });
@@ -1954,6 +1953,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * once the first has been shown, so the sequence stays one reading at a
      * time in the order they were asked for. And the applet may be gone by the
      * time the answer comes back, which is what the _destroyed check is for.
+     *
+     * Every path out of a reading has to come back through `finished`, which
+     * is the only thing that lowers the in-flight flag. It used to be lowered
+     * in the success callback alone, and a reading that threw - a proxy that
+     * went away between two polls is enough - left the flag raised for good:
+     * every later poll returned at the guard above, the panel kept whatever it
+     * last held, and nothing said why. One transient error stopped the applet
+     * for the rest of the session. So a failure is an ordinary answer here,
+     * carrying no data, and the flag comes down either way.
      */
     _update() {
         if (this._destroyed)
@@ -1963,21 +1971,36 @@ class PowerToysApplet extends Applet.TextIconApplet {
             return;
         }
 
-        this._collecting = true;
-        this._collect(data => {
+        let settled = false;
+        let finished = data => {
+            if (settled)
+                return;
+            settled = true;
             this._collecting = false;
+
             if (this._destroyed)
                 return;
-            try {
-                this._present(data);
-            } catch (error) {
-                Log.error("could not show the reading: " + error);
+            if (data) {
+                try {
+                    this._present(data);
+                } catch (error) {
+                    Log.error("could not show the reading: " + error);
+                }
             }
             if (this._collectAgain) {
                 this._collectAgain = false;
                 this._update();
             }
-        });
+        };
+
+        this._collecting = true;
+        try {
+            this._collect(finished);
+        } catch (error) {
+            /* Thrown before the read was even started, so nothing is coming. */
+            Log.error("could not start a reading: " + error);
+            finished(null);
+        }
     }
 
     _present(data) {
