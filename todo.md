@@ -16,8 +16,8 @@ Nothing open.
 ## Closed
 
 The eleventh pass asked where the seams are, what has to agree with what, and
-what is wired to nothing. Its seven rows are closed between `286327a` and the
-commit that follows this line. The first was the shape of the project: 43% of
+what is wired to nothing. Its seven rows are closed between `286327a` and
+`4cb4bbb`. The first was the shape of the project: 43% of
 the JavaScript sat in the one file no case can load, so `lib/alerts.js` and
 `lib/reading.js` are what came out of it, and applet.js is 3161 lines down to
 2932. Two of the remaining rows were paid for by that move within the hour —
