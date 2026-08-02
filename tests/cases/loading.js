@@ -7,7 +7,13 @@
  * up here as a missing export.
  */
 
+const GLib = imports.gi.GLib;
 const Harness = imports.harness;
+const Loader = imports.loader;
+
+/* The file tools/loader.js claims to copy. Absent on anything that is not a
+ * Cinnamon desktop, which includes the runner. */
+const FILE_UTILS = "/usr/share/cinnamon/js/misc/fileUtils.js";
 
 var cases = {};
 
@@ -85,6 +91,35 @@ cases["every name a source reaches for on a library is exported"] = function () 
     /* If this ever reads zero the regexes have stopped matching and the case
      * is passing by finding nothing at all. */
     Harness.ok(checked > 60, "only " + checked + " names checked, which is too few to be right");
+};
+
+/*
+ * The one thing in this repository that is a copy of somebody else's file.
+ *
+ * tools/loader.js exists so the parse check and the harness agree with what
+ * Cinnamon actually evaluates, and a copy is a thing that drifts: the list had
+ * been tidied into lower case and grown a "cationative" that is in no version
+ * of the original. Nothing failed for it, which is the trouble - a difference
+ * here shows up as a construct that passes every check and behaves differently
+ * in the shell.
+ *
+ * Skipped where there is no Cinnamon to read, which is the runner. That means
+ * this is a check somebody's desktop makes and CI cannot, so it is named in
+ * the skip list rather than passing quietly.
+ */
+cases["the loader emulation's import names are Cinnamon's own"] = function () {
+    if (!GLib.file_test(FILE_UTILS, GLib.FileTest.EXISTS))
+        Harness.skip("no Cinnamon here to copy from");
+
+    let source = Harness.readFile(FILE_UTILS);
+    let match = /var importNames = \[([^\]]*)\]/.exec(source);
+    Harness.ok(match, "importNames has moved in " + FILE_UTILS);
+
+    let theirs = match[1].split(",")
+        .map(entry => entry.trim().replace(/^['"]|['"]$/g, ""))
+        .filter(entry => entry !== "");
+    Harness.deepEqual(Loader.IMPORT_NAMES, theirs,
+                      "copy it verbatim, capitals and all - see the note on the list");
 };
 
 cases["the libraries load without a shell"] = function () {

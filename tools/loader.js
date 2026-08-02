@@ -25,12 +25,21 @@ var PREAMBLE = "'use strict';";
 
 /*
  * The names the loader refuses to re-export, because they are its own import
- * namespaces rather than anything the module defined. Compared lowercased,
- * exactly as fileUtils.js compares them.
+ * namespaces rather than anything the module defined.
+ *
+ * Copied out of fileUtils.js verbatim, capitals and all, and that is the whole
+ * point of it: the candidate is lowercased before it is looked up in here, so
+ * `jsUnit`, `byteArray` and `cairoNative` can never match anything and
+ * Cinnamon does re-export a top level declaration of any of those three. An
+ * emulation that tidied the list into lower case would drop them, which is a
+ * different loader from the one the shell runs.
+ *
+ * So this list is not corrected, and there is a case in tests/cases/loading.js
+ * that reads the real file and fails if the two ever come apart.
  */
-var IMPORT_NAMES = ["mainloop", "jsunit", "format", "signals", "lang", "tweener",
+var IMPORT_NAMES = ["mainloop", "jsUnit", "format", "signals", "lang", "tweener",
                     "overrides", "gettext", "coverage", "package", "cairo",
-                    "byteArray", "cationative", "caironative"];
+                    "byteArray", "cairoNative"];
 
 function decode(bytes) {
     try {
