@@ -33,4 +33,3 @@ about what the interface asks of the person reading it.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-57 | medium | S | **Serial Position Effect.** The last row of the menu is the one people remember and reach for, and it holds `Power Toys 1.0.0`, which cannot be acted on. The two things that can — *System power settings* and *Configure Power Toys* — sit above it. Put the version in the settings window or on the configure row and give the end of the menu back to an action. |

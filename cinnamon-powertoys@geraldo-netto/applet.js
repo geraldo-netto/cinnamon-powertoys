@@ -924,20 +924,35 @@ class MenuPresenter {
 
         this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this._menu.addSettingsAction(_("System power settings"), "power");
+        this._addConfigureRow(capabilities.version);
+    }
 
+    /*
+     * The last row of the menu, which is the one people remember where it is
+     * and go straight to.
+     *
+     * It used to hold "Power Toys 1.0.0", which cannot be done anything with,
+     * and the two rows that can be were above it. So the end of the menu now
+     * belongs to the applet's own settings - the likelier of the two, since
+     * the other opens a window this applet is not part of - and the version
+     * rides along on the right of it.
+     *
+     * The version is still worth carrying. It is what the Applets manager
+     * lists, and somebody reporting a problem should not have to go and find
+     * it. On a row that does something, it costs nothing to keep.
+     */
+    _addConfigureRow(version) {
         let configure = new PopupMenu.PopupIconMenuItem(_("Configure Power Toys"),
                                                         "system-run", St.IconType.SYMBOLIC);
         configure.connect("activate", () => this._actions.configure());
-        this._menu.addMenuItem(configure);
 
-        /* Which build this is. Worth a line: the version in metadata.json is
-         * what the Applets manager lists, and someone reporting a problem
-         * should not have to go and look it up. */
-        if (capabilities.version) {
-            let about = new InfoRow(_("Power Toys"), capabilities.version);
-            about.actor.add_style_class_name("powertoys-about");
-            this._menu.addMenuItem(about);
+        if (version) {
+            let label = new St.Label({ text: version });
+            label.add_style_class_name("powertoys-about");
+            configure.addActor(label, { expand: true, span: -1, align: St.Align.END });
         }
+
+        this._menu.addMenuItem(configure);
     }
 
     /*
