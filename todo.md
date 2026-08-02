@@ -50,4 +50,18 @@ about what the interface asks of the person reading it.
 | PT-62 | medium | S | **Paradox of the Active User.** Nobody reads the README first. On a desktop the applet is now an icon with no text beside it, and the two richest parts of the menu are behind submenus that are folded by default. There is nothing on first run that says what it can do. |
 | PT-63 | low | XS | **Von Restorff Effect.** Bold now marks three different things: the summary line, the group headings, and a warning. The one that is supposed to stand out is the one competing with the other two. |
 | PT-64 | low | XS | **Law of Uniform Connectedness.** Four groups in the menu, three conventions: no separator between the summary and the profiles, a separator above the devices that appears only when there are any, and a fixed one above the submenus. |
+## Bugs and incongruences
 
+A pass looking for things that are wrong rather than things that are untidy.
+
+| id | severity | effort | description |
+|----|----------|--------|-------------|
+| PT-65 | medium | XS | The *Preferred CPU sensor* tooltip still says the hint chooses "the sensor used for the panel temperature". The panel stopped showing a temperature when that was taken out of the label; the hint now governs the tooltip, the menu summary and the processor row instead. Introduced by that change and missed by it. |
+| PT-66 | medium | XS | `AlertPolicy` never forgets a device that goes away. An entry is dropped from `_alerted` only when the device is seen again above its limit, so a headset unplugged while low keeps its entry for the life of the session — and if it comes back at the same level it will not warn again. Drop entries whose path is not in the reading. |
+| PT-67 | low | XS | The helper's boost writer is the one setter that does not report its own failure. `set_governor` and `set_charge_threshold` count successful writes and `die` with a message; `set_boost` writes directly, so a rejected write aborts under `set -e` with nothing on stderr and the applet shows its generic message. |
+| PT-68 | medium | S | Every backlight change triggers a whole machine reading. csd emits `Changed` on each step, the handler is `_scheduleUpdate()`, and an update is about 10 ms of synchronous file reads (measured). Dragging the brightness slider does that for every value the pointer passes through. The slider already knows the new value and needs nothing else re-read. |
+| PT-69 | low | XS | The icon theme is asked once per name and the answer is kept for the life of the applet ([lib/format.js](cinnamon-powertoys@geraldo-netto/lib/format.js)), so switching to a theme that does or does not carry the xapp set is not noticed until a reload. |
+| PT-70 | low | XS | The charge limit is read from sysfs on every poll whether or not privileged controls are on and whether or not the menu is open — the one reading still taken for something that cannot currently be shown. |
+| PT-71 | low | XS | An accepted profile change polls twice: `_setProfile()` schedules an update inside the D-Bus callback and again immediately after issuing it. |
+| PT-72 | low | XS | Opening the menu calls `UPowerMonitor.refresh()`, which asks UPower to re-poll every system battery. On a laptop that is a real device poll on every menu open, for data that arrives by signal anyway. |
+| PT-73 | low | XS | The panel can say the same thing twice. With no battery the icon source resolves to `profile`, so the coloured gauge already shows which profile is active, and *Show active power profile in the panel* then repeats it in words beside it. |
