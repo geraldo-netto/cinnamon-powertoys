@@ -155,8 +155,10 @@ var BluezBatteries = class BluezBatteries {
         this._call = call || ((path, iface, method, onDone) => this._dbusCall(path, iface, method, onDone));
         this._signalIds = [];
         this._refreshTimerId = 0;
-        /* A read of the tree is in flight; see _refresh. */
+        /* A read of the tree is in flight, and one was asked for while it
+         * was; see _refresh. */
         this._reading = false;
+        this._readAgain = false;
 
         this._refresh();
         this._watch();
@@ -177,7 +179,8 @@ var BluezBatteries = class BluezBatteries {
     }
 
     /*
-     * One read of the tree at a time.
+     * One read of the tree at a time, and the one asked for meanwhile is taken
+     * once that has answered.
      *
      * The settle timer stops a burst of signals arming twice, and does nothing
      * about a burst that spans two of them: the timer fires, the call goes
@@ -185,10 +188,19 @@ var BluezBatteries = class BluezBatteries {
      * GetManagedObjects then settle in whatever order they come back in, and
      * the older one can be the one that wins. Cheaper to skip the read than to
      * work out which answer is the newer.
+     *
+     * Skipping it is right; forgetting it was not. The timer that asked has
+     * already fired and cleared itself, so nothing re-arms, and whatever was
+     * behind that signal - a headset switched off, a mouse connecting - waited
+     * for the next unrelated signal to carry it in. On a quiet desk that is
+     * whenever. One flag, taken when the read in flight has settled, which is
+     * the same shape the applet's own _update uses for the same problem.
      */
     _refresh() {
-        if (this._reading)
+        if (this._reading) {
+            this._readAgain = true;
             return;
+        }
         this._reading = true;
         this._call("/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects", objects => {
             this._reading = false;
@@ -196,6 +208,10 @@ var BluezBatteries = class BluezBatteries {
                 return;
             this.available = !!objects;
             this._settle(objects ? parseObjects(objects) : []);
+            if (this._readAgain) {
+                this._readAgain = false;
+                this._refresh();
+            }
         });
     }
 

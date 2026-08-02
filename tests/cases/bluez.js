@@ -209,7 +209,41 @@ cases["one read of the tree at a time"] = function () {
     Harness.equal(waiting.length, 1, "and a second is not started on top of it");
 
     waiting.shift()(tree({ [HEADSET]: device("BW01", "audio-headset", true, 90) }));
-    control._refresh();
     Harness.equal(waiting.length, 1, "once the first answered, the next one may go");
+
+    waiting.shift()(tree());
+    Harness.equal(waiting.length, 0, "and nothing is left asking");
+    control.destroy();
+};
+
+cases["a read asked for during a read is taken, not forgotten"] = function () {
+    /*
+     * Skipping the second read is right - two answers settling in whatever
+     * order they arrive in can leave the older one winning. Forgetting it was
+     * not: the timer that asked has already fired and cleared itself, so
+     * nothing re-arms, and the headset that switched off stayed in the menu
+     * until some unrelated signal happened along.
+     */
+    let objects = tree({ [HEADSET]: device("BW01", "audio-headset", true, 90) });
+    let waiting = [];
+    let changes = 0;
+    let control = new Bluez.BluezBatteries(() => changes++, (path, iface, method, onDone) => {
+        waiting.push(onDone);
+    });
+
+    waiting.shift()(objects);
+    Harness.equal(control.devices.length, 1, "the headset is connected");
+    Harness.equal(changes, 1, "which was news");
+
+    /* A read goes out; while it is in flight the headset is switched off and
+     * BlueZ says so, which is the read that used to be dropped. */
+    control._refresh();
+    control._refresh();
+    waiting.shift()(objects);
+    Harness.equal(waiting.length, 1, "the skipped one was remembered");
+
+    waiting.shift()(tree());
+    Harness.deepEqual(control.devices, [], "so the headset leaves the list");
+    Harness.equal(changes, 2, "and the menu is told, rather than waiting for the next signal");
     control.destroy();
 };
