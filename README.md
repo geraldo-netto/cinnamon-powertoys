@@ -66,9 +66,11 @@ hysteresis, so a value sitting on the limit does not spam the tray.
 draw, CPU frequency, active profile, any combination. Temperature is in the
 tooltip and the menu rather than the panel, where a figure that moves every few
 seconds pulls the eye without ever being worth acting on. The
-icon follows the battery level, the active profile, or stays fixed. Optional
-keyboard shortcuts to cycle the profile and to open the menu, and an optional
-scroll-to-change-profile action.
+icon follows the battery level, the active profile, or stays fixed. The wheel
+over the applet changes screen brightness and a middle click toggles the
+keyboard backlight, as they do on the applet this one can replace; either can
+be pointed at the power profile instead, or switched off. Optional keyboard
+shortcuts to cycle the profile and to open the menu.
 
 ## Install
 

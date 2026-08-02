@@ -117,11 +117,22 @@
     },
     "scroll-action": {
         "type": "combobox",
-        "default": "none",
+        "default": "brightness",
         "description": "Mouse wheel over the applet",
         "options": {
-            "Do nothing": "none",
-            "Change power profile": "profile"
+            "Change screen brightness": "brightness",
+            "Change power profile": "profile",
+            "Do nothing": "none"
+        }
+    },
+    "middle-click-action": {
+        "type": "combobox",
+        "default": "keyboard-backlight",
+        "description": "Middle click on the applet",
+        "options": {
+            "Toggle keyboard backlight": "keyboard-backlight",
+            "Cycle power profile": "profile",
+            "Do nothing": "none"
         }
     },
     "cycle-profile-hotkey": {

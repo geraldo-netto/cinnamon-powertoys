@@ -159,6 +159,7 @@ const SETTINGS = [
 
     { key: "enable-privileged-controls", property: "enablePrivilegedControls" },
     { key: "scroll-action", property: "scrollAction" },
+    { key: "middle-click-action", property: "middleClickAction" },
     { key: "cycle-profile-hotkey", property: "cycleProfileHotkey", onChange: "hotkeys" },
     { key: "toggle-menu-hotkey", property: "toggleMenuHotkey", onChange: "hotkeys" },
 
@@ -1311,6 +1312,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._createMenu(orientation);
 
         this.actor.connect("scroll-event", (actor, event) => this._onScroll(actor, event));
+        this.actor.connect("button-press-event", (actor, event) => this._onButtonPress(actor, event));
 
         this._registerHotkeys();
         this._startPolling();
@@ -1929,10 +1931,27 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * power saver - and it reaches the daemon as one write instead of three.
      */
     _onScroll(actor, event) {
+        let direction = event.get_scroll_direction();
+        let up = direction === Clutter.ScrollDirection.UP;
+        if (!up && direction !== Clutter.ScrollDirection.DOWN)
+            return Clutter.EVENT_PROPAGATE;
+
+        /*
+         * Brightness, which is what the applet this one replaces does with
+         * the wheel. The daemon owns the step size, so this moves by the same
+         * amount the brightness keys do.
+         */
+        if (this.scrollAction === "brightness") {
+            let control = this._brightnessControl();
+            if (!control)
+                return Clutter.EVENT_PROPAGATE;
+            control.step(up, () => this._onBacklightChanged());
+            return Clutter.EVENT_STOP;
+        }
+
         if (this.scrollAction !== "profile" || !this._profileState())
             return Clutter.EVENT_PROPAGATE;
 
-        let direction = event.get_scroll_direction();
         if (direction === Clutter.ScrollDirection.UP)
             this._pendingScroll += 1;
         else if (direction === Clutter.ScrollDirection.DOWN)
@@ -1951,6 +1970,40 @@ class PowerToysApplet extends Applet.TextIconApplet {
             return GLib.SOURCE_REMOVE;
         });
         return Clutter.EVENT_STOP;
+    }
+
+    /* Whichever screen this machine actually has: its own panel, or a
+     * monitor on a cable. */
+    _brightnessControl() {
+        if (this._backlights.screen.available)
+            return this._backlights.screen;
+        if (this._backlights.monitor && this._backlights.monitor.available)
+            return this._backlights.monitor;
+        return null;
+    }
+
+    /*
+     * Middle click. The stock applet toggles the keyboard backlight, which is
+     * the sort of thing nobody discovers but everybody who knew about it
+     * misses.
+     */
+    _onButtonPress(actor, event) {
+        if (event.get_button() !== 2)
+            return Clutter.EVENT_PROPAGATE;
+
+        if (this.middleClickAction === "keyboard-backlight") {
+            if (!this._backlights.keyboard.available)
+                return Clutter.EVENT_PROPAGATE;
+            this._backlights.keyboard.toggle(() => this._onBacklightChanged());
+            return Clutter.EVENT_STOP;
+        }
+
+        if (this.middleClickAction === "profile" && this._profileState()) {
+            this._cycleProfile();
+            return Clutter.EVENT_STOP;
+        }
+
+        return Clutter.EVENT_PROPAGATE;
     }
 
     _cancelPendingScroll() {

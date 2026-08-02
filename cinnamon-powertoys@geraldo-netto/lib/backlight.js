@@ -131,6 +131,23 @@ var BacklightControl = class BacklightControl {
         });
     }
 
+    /*
+     * The keyboard backlight's own toggle: off, or back to where it was. Only
+     * that interface has it, and on the others this does nothing.
+     */
+    toggle(onDone) {
+        if (!this._proxy || typeof this._proxy.ToggleRemote !== "function")
+            return;
+        this._proxy.ToggleRemote((result, error) => {
+            if (this.destroyed)
+                return;
+            if (!error && result)
+                this.percentage = result[0];
+            if (onDone)
+                onDone();
+        });
+    }
+
     /* One notch, the size of which is the daemon's business. */
     step(up, onDone) {
         if (!this._proxy)
