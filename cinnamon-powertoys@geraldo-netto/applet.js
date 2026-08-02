@@ -78,6 +78,16 @@ const DEFAULT_ICON = "powertoys";
 const PKEXEC_DISMISSED = 126;
 const PKEXEC_UNAUTHORISED = 127;
 
+/*
+ * How long the wheel has to stop for before a profile change is applied.
+ *
+ * One flick of a finger sends several clicks, and each one used to be its own
+ * D-Bus write, so a flick meant the daemon switching profiles two or three
+ * times in a few tens of milliseconds. Long enough to gather a flick, short
+ * enough that the change still feels immediate.
+ */
+const SCROLL_SETTLE_MS = 250;
+
 /* Charge limits offered in the menu, in percent. */
 const CHARGE_LIMITS = [60, 70, 80, 90, 95, 100];
 
@@ -987,6 +997,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this.set_show_label_in_vertical_panels(false);
 
         this._timerId = 0;
+        this._scrollTimerId = 0;
+        this._pendingScroll = 0;
         this._alerts = new AlertPolicy();
         this._panel = new PanelPresenter(this);
         this._hotkeyIds = [];
@@ -1531,23 +1543,43 @@ class PowerToysApplet extends Applet.TextIconApplet {
         }
     }
 
+    /*
+     * The wheel counts, and the count is applied once it settles.
+     *
+     * Three clicks in one direction means three steps, clamped at the ends -
+     * the wheel should stop at performance rather than come round again at
+     * power saver - and it reaches the daemon as one write instead of three.
+     */
     _onScroll(actor, event) {
         if (this.scrollAction !== "profile" || !this._profileState())
             return Clutter.EVENT_PROPAGATE;
 
         let direction = event.get_scroll_direction();
-        let step;
         if (direction === Clutter.ScrollDirection.UP)
-            step = 1;
+            this._pendingScroll += 1;
         else if (direction === Clutter.ScrollDirection.DOWN)
-            step = -1;
+            this._pendingScroll -= 1;
         else
             return Clutter.EVENT_PROPAGATE;
 
-        /* No wrapping here: the wheel should stop at the ends rather than
-         * jump from performance back to power saver. */
-        this._stepProfile(step, false, false);
+        this._cancelPendingScroll();
+        this._scrollTimerId = Mainloop.timeout_add(SCROLL_SETTLE_MS, () => {
+            this._scrollTimerId = 0;
+            let step = this._pendingScroll;
+            this._pendingScroll = 0;
+            /* Announced, because the panel is not necessarily showing the
+             * profile and otherwise nothing would say it had changed. */
+            this._stepProfile(step, false, true);
+            return GLib.SOURCE_REMOVE;
+        });
         return Clutter.EVENT_STOP;
+    }
+
+    _cancelPendingScroll() {
+        if (this._scrollTimerId) {
+            Mainloop.source_remove(this._scrollTimerId);
+            this._scrollTimerId = 0;
+        }
     }
 
     _registerHotkeys() {
@@ -1590,6 +1622,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
     on_applet_removed_from_panel() {
         this._stopPolling();
+        this._cancelPendingScroll();
         if (this._idleId) {
             Mainloop.source_remove(this._idleId);
             this._idleId = 0;
