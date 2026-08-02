@@ -19,6 +19,7 @@
  */
 
 const Gio = imports.gi.Gio;
+const GLib = imports.gi.GLib;
 const Harness = imports.harness;
 
 const UPower = Harness.requireXlet("./lib/upower.js");
@@ -87,7 +88,33 @@ cases["UPower answers the questions the applet asks it"] = function () {
 cases["a power profiles daemon answers the questions the applet asks it"] = function () {
     needSystemBus();
 
-    let client = new Profiles.PowerProfilesClient(function () {});
+    /*
+     * The client looks for the daemon asynchronously - see systemBus().proxy,
+     * which is not allowed to block the thread that draws the desktop - so
+     * `available` is false the instant it is built, whether or not a daemon is
+     * there. Asking too early is how this case would quietly start skipping on
+     * a machine that has one, which is the whole of what it exists to catch.
+     *
+     * A machine with no daemon never calls back at all. That is an answer too
+     * and not something to fail over, so the deadline is beside the callback
+     * rather than instead of it.
+     */
+    let client = null;
+    Harness.settle(function (done) {
+        let answered = false;
+        let settle = () => {
+            if (answered)
+                return;
+            answered = true;
+            done();
+        };
+        client = new Profiles.PowerProfilesClient(settle);
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+            settle();
+            return GLib.SOURCE_REMOVE;
+        });
+    }, "the power profiles daemon");
+
     try {
         if (!client.available)
             Harness.skip("no power profiles daemon on this bus");

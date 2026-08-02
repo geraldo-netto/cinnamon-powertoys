@@ -64,6 +64,12 @@ function daemon(overrides) {
  * A system bus carrying whichever daemons are given, keyed by bus name. A
  * name that is absent throws when a proxy for it is asked for, which is what
  * makeProxyWrapper does against a name nobody owns.
+ *
+ * The proxy is asked for with a callback, because the real one is built
+ * asynchronously - see systemBus() - and this stub answers it straight away.
+ * That is what keeps these cases ordinary functions: the connecting is
+ * asynchronous in shape and immediate in fact, so everything below still reads
+ * as a sequence. The cases that care about the gap hold the callback instead.
  */
 function bus(daemons) {
     let watched = [];
@@ -73,10 +79,10 @@ function bus(daemons) {
         writes: writes,
         unwatched: [],
         failWrite: null,
-        proxy: function (backend) {
+        proxy: function (backend, onDone) {
             if (!daemons[backend.name])
                 throw new Error("no owner for " + backend.name);
-            return daemons[backend.name];
+            onDone(daemons[backend.name], null);
         },
         watch: function (name, onAppeared, onVanished) {
             watched.push({ name: name, appeared: onAppeared, vanished: onVanished });
@@ -115,6 +121,72 @@ cases["a name that offers no profiles is passed over"] = function () {
     }));
     Harness.equal(client.busName, UPOWER, "kept looking");
     Harness.equal(client.available, true, "and found one");
+};
+
+cases["the caller is told once the daemon has answered"] = function () {
+    /*
+     * The whole of why connecting is asynchronous. The bus is no longer asked
+     * on the thread that draws, which means `available` is false when the
+     * constructor returns - so a client that found a daemon a moment later and
+     * said nothing would leave the applet with the answer it took at startup,
+     * and the menu without a profile control until something unrelated
+     * redrew it.
+     */
+    let stub = daemon();
+    let system = bus({ [HADESS]: stub });
+    let waiting = [];
+    system.proxy = function (backend, onDone) {
+        if (backend.name !== HADESS)
+            throw new Error("no owner for " + backend.name);
+        waiting.push(() => onDone(stub, null));
+    };
+
+    let changes = 0;
+    let client = new Profiles.PowerProfilesClient(() => changes++, system);
+    Harness.equal(client.available, false, "the bus has not answered yet");
+    Harness.equal(changes, 0, "and there is nothing to say until it has");
+
+    waiting.shift()();
+    Harness.equal(client.available, true, "it answered");
+    Harness.equal(client.busName, HADESS, "under its own name");
+    Harness.equal(changes, 1, "and the caller was told, which is how the menu finds out");
+};
+
+cases["a name that answers with an error is passed over"] = function () {
+    /* Asked asynchronously, a name nobody owns reports its failure to the
+     * callback rather than throwing it. Either way the other name is still
+     * worth trying. */
+    let stub = daemon();
+    let asked = [];
+    let system = bus({ [UPOWER]: stub });
+    system.proxy = function (backend, onDone) {
+        asked.push(backend.name);
+        if (backend.name === UPOWER)
+            onDone(stub, null);
+        else
+            onDone(null, new Error("no owner for " + backend.name));
+    };
+
+    let client = new Profiles.PowerProfilesClient(null, system);
+    Harness.deepEqual(asked, [HADESS, UPOWER], "asked in order, and kept going past the failure");
+    Harness.equal(client.busName, UPOWER, "and connected to the one that answered");
+};
+
+cases["a daemon that answers after the client is gone is not connected to"] = function () {
+    let stub = daemon();
+    let system = bus({ [HADESS]: stub });
+    let waiting = [];
+    system.proxy = function (backend, onDone) {
+        if (backend.name !== HADESS)
+            throw new Error("no owner for " + backend.name);
+        waiting.push(() => onDone(stub, null));
+    };
+
+    let client = new Profiles.PowerProfilesClient(null, system);
+    client.destroy();
+    waiting.shift()();
+    Harness.equal(client.available, false, "the applet has left the panel; what it found is no use");
+    Harness.equal(stub.handlers.length, 0, "and nothing was connected to outlive it");
 };
 
 cases["a machine with no daemon reads as unavailable"] = function () {
@@ -181,13 +253,16 @@ cases["the daemon speaking drops the reading and says so"] = function () {
     let stub = daemon();
     let changes = 0;
     let client = new Profiles.PowerProfilesClient(() => changes++, bus({ [HADESS]: stub }));
+    /* Finding the daemon is itself a change, and this stub answers at once;
+     * what is counted here is what the daemon says afterwards. */
+    let connected = changes;
 
     Harness.equal(client.snapshot().active, "balanced", "as it was");
     stub.ActiveProfile = "performance";
     Harness.equal(client.snapshot().active, "balanced", "still, until the daemon says otherwise");
 
     stub.handlers.find(entry => entry[0] === "g-properties-changed")[1]();
-    Harness.equal(changes, 1, "the caller hears about it");
+    Harness.equal(changes - connected, 1, "the caller hears about it");
     Harness.equal(client.snapshot().active, "performance", "and the reading is taken again");
 };
 

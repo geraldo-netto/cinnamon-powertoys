@@ -20,12 +20,6 @@ half of what the watch forwards — and what happens to the thing that arrives
 while its backend is busy with the one before. And one row about the thread
 all of this runs on.
 
-## Queues, and the thread that draws
-
-| id | severity | effort | description |
-|----|----------|--------|-------------|
-| PT-144 | medium | M | [`systemBus().proxy`](cinnamon-powertoys@geraldo-netto/lib/profiles.js#L67) constructs its proxy with no callback, which in GJS is the synchronous form: a GetAll round trip on the system bus, taken on the thread that draws the desktop, in the applet's constructor and again each time the daemon's name appears. Every sibling connects the other way — [upower.js](cinnamon-powertoys@geraldo-netto/lib/upower.js#L152) and [backlight.js](cinnamon-powertoys@geraldo-netto/lib/backlight.js#L71) both hand their proxy a callback — and lib/ddc.js opens with "nothing here is synchronous and nothing blocks the shell". A daemon slow to answer, or wedged, is a stalled compositor for as long as D-Bus is willing to wait. M rather than S because `available` becomes an answer that arrives: [`_chooseProfileBackend`](cinnamon-powertoys@geraldo-netto/applet.js#L2216) reads it synchronously today, and the stubbed bus in the cases does too. |
-
 ## Closed
 
 The twelfth pass asked what is in flight, what can start twice, what can be

@@ -64,9 +64,25 @@ function _unpackVariantDict(entry) {
  */
 function systemBus() {
     return {
-        proxy: function (backend) {
+        /*
+         * Asynchronous, like every other proxy this applet builds.
+         *
+         * A proxy wrapper called without a callback is the synchronous form:
+         * GJS runs init() rather than init_async(), which is a connection and a
+         * GetAll round trip on the system bus, taken on the thread that draws
+         * the desktop. It happened in the applet's constructor and again every
+         * time one of the two names appeared, so a daemon slow to answer - or
+         * wedged, with D-Bus waiting out its timeout - was a stalled
+         * compositor, and the panel does not come back until it answers.
+         *
+         * lib/upower.js and lib/backlight.js both hand their proxy a callback,
+         * and lib/ddc.js opens by saying that nothing in it is synchronous and
+         * nothing blocks the shell. This was the one place that did.
+         */
+        proxy: function (backend, onDone) {
             let wrapper = Gio.DBusProxy.makeProxyWrapper(_interfaceXml(backend.name));
-            return new wrapper(Gio.DBus.system, backend.name, backend.path);
+            new wrapper(Gio.DBus.system, backend.name, backend.path,
+                        (proxy, error) => onDone(proxy, error));
         },
         watch: function (name, onAppeared, onVanished) {
             return Gio.bus_watch_name(Gio.BusType.SYSTEM, name,
@@ -101,6 +117,9 @@ var PowerProfilesClient = class PowerProfilesClient {
         this._watchIds = [];
         this.busName = null;
         this.busPath = null;
+        this.destroyed = false;
+        /* A search for the daemon is under way; see _connect. */
+        this._connecting = false;
         /* Built on demand and dropped whenever the daemon says anything has
          * changed - see snapshot(). */
         this._snapshot = null;
@@ -110,12 +129,10 @@ var PowerProfilesClient = class PowerProfilesClient {
         for (let backend of BACKENDS) {
             this._watchIds.push(this._bus.watch(
                 backend.name,
-                () => {
-                    if (!this._proxy) {
-                        this._connect();
-                        this._invalidate();
-                    }
-                },
+                /* Connecting says so itself when it finds something, and a
+                 * name appearing that turns out to offer no profiles has
+                 * changed nothing worth redrawing. */
+                () => this._connect(),
                 () => {
                     if (this.busName === backend.name) {
                         this._disconnectProxy();
@@ -125,21 +142,59 @@ var PowerProfilesClient = class PowerProfilesClient {
         }
     }
 
+    /*
+     * Looks for the daemon under each name in turn and stops at the first that
+     * offers profiles.
+     *
+     * The answer arrives rather than being returned, so `available` is false
+     * until the bus has spoken and the caller finds out through onChanged -
+     * which is the same way it hears about the daemon being started later, and
+     * why the applet chooses its profile backend on every change rather than
+     * once at startup.
+     */
     _connect() {
-        for (let backend of BACKENDS) {
-            try {
-                let proxy = this._bus.proxy(backend);
-                if (!proxy || !proxy.Profiles || proxy.Profiles.length === 0)
-                    continue;
+        if (this.destroyed || this._proxy || this._connecting)
+            return;
+        this._connecting = true;
+        this._tryBackend(0);
+    }
+
+    _tryBackend(index) {
+        if (index >= BACKENDS.length) {
+            this._connecting = false;
+            return;
+        }
+
+        let backend = BACKENDS[index];
+        let next = () => this._tryBackend(index + 1);
+
+        try {
+            this._bus.proxy(backend, (proxy, error) => {
+                if (this.destroyed) {
+                    this._connecting = false;
+                    return;
+                }
+                /*
+                 * Nobody owns the name, or something owns it and has nothing
+                 * on it. Neither is a daemon this applet can use, and neither
+                 * is a reason to stop looking at the other name.
+                 */
+                if (error || !proxy || !proxy.Profiles || proxy.Profiles.length === 0) {
+                    next();
+                    return;
+                }
+
+                this._connecting = false;
                 this._proxy = proxy;
                 this.busName = backend.name;
                 this.busPath = backend.path;
                 this._propSignalId = proxy.connect("g-properties-changed",
                                                    () => this._invalidate());
-                return;
-            } catch (e) {
-                /* daemon not running under this name */
-            }
+                this._invalidate();
+            });
+        } catch (e) {
+            /* daemon not running under this name */
+            next();
         }
     }
 
@@ -260,6 +315,9 @@ var PowerProfilesClient = class PowerProfilesClient {
      * part. */
 
     destroy() {
+        /* A search may still be out on the bus; what it finds is no longer
+         * wanted, the same way a probe in flight is disowned in lib/ddc.js. */
+        this.destroyed = true;
         this._disconnectProxy();
         for (let id of this._watchIds) {
             try {
