@@ -32,7 +32,6 @@ const MANAGER_XML = '<node>\
 
 const DEVICE_XML = '<node>\
 <interface name="org.freedesktop.UPower.Device">\
-    <method name="Refresh"/>\
     <property name="Vendor" type="s" access="read"/>\
     <property name="Model" type="s" access="read"/>\
     <property name="Type" type="u" access="read"/>\
@@ -188,20 +187,6 @@ var UPowerMonitor = class UPowerMonitor {
 
     get onBattery() {
         return this._manager ? this._manager.OnBattery === true : false;
-    }
-
-    /* Asks UPower to re-poll the batteries. Peripherals are left alone so we
-     * do not keep waking up bluetooth devices in the background. */
-    refresh() {
-        for (let proxy of this._devices.values()) {
-            if (proxy.PowerSupply === true) {
-                try {
-                    proxy.RefreshRemote(() => {});
-                } catch (e) {
-                    /* device disappeared between enumeration and refresh */
-                }
-            }
-        }
     }
 
     _describe(proxy, path) {

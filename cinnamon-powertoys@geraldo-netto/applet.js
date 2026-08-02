@@ -1829,8 +1829,14 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._sensors.refresh();
         this._sinceRediscover = 0;
         this._cpu.refresh();
-        if (this._upower.available)
-            this._upower.refresh();
+        /*
+         * UPower is deliberately not asked to re-poll. Its properties arrive
+         * by signal and the proxies are already up to date; Refresh() makes it
+         * go and read the hardware, which on a laptop is a real battery poll
+         * every time the menu is opened, for values that were already current.
+         * Every other battery display on the desktop shows what UPower's own
+         * cadence has arrived at, and so does this one.
+         */
         for (let name in this._backlights)
             this._backlights[name].refresh(() => this._onBacklightChanged());
         this._update();
