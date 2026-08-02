@@ -105,3 +105,15 @@ cases["a change nobody has words for is silent, not wrong"] = function () {
     Harness.equal(Reading.describeChange(["something-new", "x"]), "",
                   "the caller shows nothing rather than a half-formed sentence");
 };
+
+cases["the platform profile is not described here"] = function () {
+    /*
+     * The helper takes five commands and this describes four. The fifth is
+     * only ever sent through _runHelperQuietly, which reports in its own words
+     * because a profile that will not switch has a panel gauge and a filled
+     * segment to take back with it. A branch for it here read as a caller that
+     * has never existed, and it stays gone as long as this case does.
+     */
+    Harness.equal(Reading.describeChange(["platform-profile", "performance"]), "",
+                  "said by whoever asked for it, not by the general describer");
+};

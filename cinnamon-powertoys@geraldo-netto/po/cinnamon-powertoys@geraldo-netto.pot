@@ -24,7 +24,7 @@ msgstr ""
 msgid "Profile"
 msgstr ""
 
-#: applet.js:376 applet.js:1221 applet.js:1703 lib/reading.js:110
+#: applet.js:376 applet.js:1221 applet.js:1703 lib/reading.js:120
 msgid "Governor"
 msgstr ""
 
@@ -64,7 +64,7 @@ msgstr ""
 msgid "Keyboard"
 msgstr ""
 
-#: applet.js:1165 applet.js:2732 lib/reading.js:116
+#: applet.js:1165 applet.js:2732
 msgid "Power profile"
 msgstr ""
 
@@ -80,7 +80,7 @@ msgstr ""
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1224 applet.js:1706 lib/reading.js:112
+#: applet.js:1224 applet.js:1706 lib/reading.js:122
 msgid "Energy preference"
 msgstr ""
 
@@ -92,7 +92,7 @@ msgstr ""
 msgid "Nothing with a battery is connected"
 msgstr ""
 
-#: applet.js:1269 lib/reading.js:118
+#: applet.js:1269 lib/reading.js:126
 msgid "Charge limit"
 msgstr ""
 
@@ -485,11 +485,11 @@ msgstr ""
 msgid "GPU"
 msgstr ""
 
-#: lib/reading.js:114
+#: lib/reading.js:124
 msgid "Turbo boost on"
 msgstr ""
 
-#: lib/reading.js:114
+#: lib/reading.js:124
 msgid "Turbo boost off"
 msgstr ""
 

@@ -103,6 +103,16 @@ function profileOwnsGovernor(data) {
  *
  * The argument vectors are the helper's vocabulary, and this is the one place
  * that turns them back into something worth reading.
+ *
+ * The helper takes five commands and four of them are here. "platform-profile"
+ * is not, and its absence is the point: this is only ever called from the
+ * applet's _runHelper, which is what the CPU control and the charge control
+ * were given, while the platform profile client was given _runHelperQuietly
+ * instead. That one reports in its own words, because a profile that will not
+ * switch is not the same news as a governor that will not - the profile has a
+ * panel gauge and a filled segment saying what it is, and a failure has to take
+ * both back. A branch was kept here for it anyway, which read as a fifth
+ * caller that has never existed.
  */
 function describeChange(args) {
     switch (args[0]) {
@@ -112,8 +122,6 @@ function describeChange(args) {
             return _("Energy preference") + ": " + Format.energyPreferenceLabel(args[1]);
         case "boost":
             return String(args[1]) === "1" ? _("Turbo boost on") : _("Turbo boost off");
-        case "platform-profile":
-            return _("Power profile") + ": " + Format.profileLabel(args[1]);
         case "charge-threshold":
             return _("Charge limit") + ": " + args[1] + "%";
         default:
