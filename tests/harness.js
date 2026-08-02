@@ -11,8 +11,11 @@
  * reports. That is the whole contract.
  */
 
-const GLib = imports.gi.GLib;
 const Gio = imports.gi.Gio;
+
+/* The loader emulation the parse check uses as well, so the two cannot come
+ * to disagree about what Cinnamon does. The runner puts tools/ on the path. */
+const Loader = imports.loader;
 
 var UUID = "cinnamon-powertoys@geraldo-netto";
 
@@ -31,33 +34,6 @@ function testsDir() {
     return ROOT + "/tests";
 }
 
-function _decode(bytes) {
-    try {
-        return new TextDecoder().decode(bytes);
-    } catch (e) {
-        return imports.byteArray.toString(bytes);
-    }
-}
-
-/*
- * The names Cinnamon's loader refuses to re-export, because they are its own
- * import namespaces rather than anything the module defined. Kept in step
- * with misc/fileUtils.js.
- */
-const IMPORT_NAMES = ["mainloop", "jsunit", "format", "signals", "lang", "tweener",
-                      "overrides", "gettext", "coverage", "package", "cairo",
-                      "byteArray", "cationative", "caironative"];
-
-function _giNames() {
-    try {
-        let repository = imports.gi.GIRepository.Repository;
-        let instance = repository.dup_default ? repository.dup_default() : repository.get_default();
-        return instance.get_loaded_namespaces();
-    } catch (e) {
-        return ["Gio", "GLib", "St", "Clutter", "UPowerGlib", "GObject", "Gtk", "Gdk"];
-    }
-}
-
 let _cache = {};
 
 /*
@@ -74,32 +50,10 @@ function requireXlet(path) {
     if (_cache[path])
         return _cache[path];
 
-    let [ok, bytes] = GLib.file_get_contents(path);
-    if (!ok)
-        throw new Error("cannot read " + path);
-
-    let JS = "'use strict';" + _decode(bytes) + ";";
-    const exportsRegex = /^module\.exports(\.[a-zA-Z0-9_$]+)?\s*=/m;
-    const varRegex = /^(?:'use strict';){0,}(const|var|let|function|class)\s+([a-zA-Z0-9_$]+)/gm;
-    let gi = _giNames();
-    let match;
-    if (!exportsRegex.test(JS)) {
-        while ((match = varRegex.exec(JS)) !== null) {
-            if (match.index === varRegex.lastIndex)
-                varRegex.lastIndex++;
-            if (match[2] && IMPORT_NAMES.indexOf(match[2].toLowerCase()) === -1 &&
-                gi.indexOf(match[2]) === -1)
-                JS += "exports." + match[2] + " = typeof " + match[2] +
-                      " !== 'undefined' ? " + match[2] + " : null;";
-        }
-    }
-    JS += "return module.exports;";
-
     let exports = {};
     let module = { exports: exports };
     let meta = { uuid: UUID, path: xletDir() };
-    _cache[path] = new Function("require", "exports", "module",
-                                "__meta", "__dirname", "__filename", JS)
+    _cache[path] = Loader.compile(Loader.moduleBody(Loader.read(path)))
         .call(exports, requireXlet, exports, module, meta, xletDir(), path);
     return _cache[path];
 }

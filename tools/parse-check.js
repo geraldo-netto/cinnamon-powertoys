@@ -4,24 +4,24 @@
  *
  * The applet sources cannot simply be executed outside Cinnamon: they call
  * require() and reach for the session bus at load time. Handing the source to
- * new Function() parses it with the same engine Cinnamon uses and reports the
- * error with a line number, without evaluating a single statement.
- *
- * The wrapper mirrors misc/fileUtils.js, which is what Cinnamon actually
- * evaluates an xlet file with: the same parameter names, and the same
- * 'use strict' prefix, so a construct the loader would reject fails here too.
+ * the loader emulation parses it with the same engine Cinnamon uses, under the
+ * same parameter names and the same strict prefix, and reports the error with
+ * a line number without evaluating a single statement.
  */
 
 const GLib = imports.gi.GLib;
 const System = imports.system;
 
-function decode(bytes) {
-    try {
-        return new TextDecoder().decode(bytes);
-    } catch (e) {
-        return imports.byteArray.toString(bytes);
-    }
+/* This script's own directory, which is where the loader emulation is. */
+function scriptDir() {
+    let invoked = System.programInvocationName;
+    if (invoked[0] !== "/")
+        invoked = GLib.get_current_dir() + "/" + invoked;
+    return GLib.path_get_dirname(invoked);
 }
+
+imports.searchPath.unshift(scriptDir());
+const Loader = imports.loader;
 
 if (ARGV.length === 0) {
     printerr("usage: parse-check.js <file>...");
@@ -31,26 +31,18 @@ if (ARGV.length === 0) {
 let failures = 0;
 
 for (let path of ARGV) {
-    let ok = false;
-    let bytes = null;
+    let source;
 
     try {
-        [ok, bytes] = GLib.file_get_contents(path);
+        source = Loader.read(path);
     } catch (error) {
-        printerr("unreadable  " + path + ": " + error);
-        failures++;
-        continue;
-    }
-
-    if (!ok) {
-        printerr("unreadable  " + path);
+        printerr("unreadable  " + path + ": " + error.message);
         failures++;
         continue;
     }
 
     try {
-        new Function("require", "exports", "module", "__meta", "__dirname", "__filename",
-                     "'use strict';" + decode(bytes));
+        Loader.compile(Loader.PREAMBLE + source);
         print("parse ok    " + path);
     } catch (error) {
         printerr("parse FAIL  " + path + ": " + error);

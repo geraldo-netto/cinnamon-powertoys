@@ -25,6 +25,8 @@ function scriptDir() {
 const TESTS = scriptDir();
 const ROOT = GLib.path_get_dirname(TESTS);
 
+/* tools/ carries the loader emulation the harness loads libraries with. */
+imports.searchPath.unshift(ROOT + "/tools");
 imports.searchPath.unshift(TESTS);
 const Harness = imports.harness;
 Harness.setRoot(ROOT);
