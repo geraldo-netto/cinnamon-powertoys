@@ -41,7 +41,6 @@ A pass looking for things that are wrong rather than things that are untidy.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-67 | low | XS | The helper's boost writer is the one setter that does not report its own failure. `set_governor` and `set_charge_threshold` count successful writes and `die` with a message; `set_boost` writes directly, so a rejected write aborts under `set -e` with nothing on stderr and the applet shows its generic message. |
 | PT-69 | low | XS | The icon theme is asked once per name and the answer is kept for the life of the applet ([lib/format.js](cinnamon-powertoys@geraldo-netto/lib/format.js)), so switching to a theme that does or does not carry the xapp set is not noticed until a reload. |
 | PT-70 | low | XS | The charge limit is read from sysfs on every poll whether or not privileged controls are on and whether or not the menu is open — the one reading still taken for something that cannot currently be shown. |
 | PT-71 | low | XS | An accepted profile change polls twice: `_setProfile()` schedules an update inside the D-Bus callback and again immediately after issuing it. |

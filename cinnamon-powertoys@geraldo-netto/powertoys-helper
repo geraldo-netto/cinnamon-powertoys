@@ -62,6 +62,24 @@ first_policy() {
     return 1
 }
 
+# write_node <file> <value> <what to say if it will not take it>
+#
+# A redirect the kernel refuses ends this script under `set -e` with whatever
+# the shell chose to say about it - not prefixed, not the same wording from one
+# shell to the next, and on some of them not said at all. The applet reports
+# the last line of stderr as the reason, so every way this script can fail has
+# to be a line this script wrote.
+write_node() {
+    node=$1
+    value=$2
+    what=$3
+    # the subshell keeps the shell's own message about the redirect quiet
+    if ( printf '%s\n' "$value" > "$node" ) 2>/dev/null; then
+        return 0
+    fi
+    die "$what"
+}
+
 # write_policies <node name> <value>
 write_policies() {
     node=$1
@@ -108,14 +126,16 @@ set_boost() {
     esac
 
     if [ -f "$CPUFREQ_DIR/boost" ]; then
-        printf '%s\n' "$value" > "$CPUFREQ_DIR/boost"
+        write_node "$CPUFREQ_DIR/boost" "$value" "the kernel would not set boost to $value"
     elif [ -f "$CPU_DIR/intel_pstate/no_turbo" ]; then
         # intel_pstate exposes the inverse switch
         if [ "$value" = "1" ]; then
-            printf '0\n' > "$CPU_DIR/intel_pstate/no_turbo"
+            inverse=0
         else
-            printf '1\n' > "$CPU_DIR/intel_pstate/no_turbo"
+            inverse=1
         fi
+        write_node "$CPU_DIR/intel_pstate/no_turbo" "$inverse" \
+            "the kernel would not set boost to $value"
     else
         die "this system does not expose a boost switch"
     fi
@@ -127,7 +147,7 @@ set_platform_profile() {
     choices=$(cat "$PLATFORM_PROFILE_CHOICES" 2>/dev/null || echo "")
     # shellcheck disable=SC2086
     contains "$value" $choices || die "unknown platform profile: $value"
-    printf '%s\n' "$value" > "$PLATFORM_PROFILE"
+    write_node "$PLATFORM_PROFILE" "$value" "the firmware would not take the profile: $value"
 }
 
 set_charge_threshold() {
