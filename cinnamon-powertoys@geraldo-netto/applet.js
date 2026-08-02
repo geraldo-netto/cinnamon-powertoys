@@ -32,6 +32,7 @@ const Util = imports.misc.util;
  */
 const Backlight = require("./lib/backlight.js");
 const Cpu = require("./lib/cpu.js");
+const Ddc = require("./lib/ddc.js");
 const Device = require("./lib/device.js");
 const IO = require("./lib/io.js");
 const Log = require("./lib/log.js");
@@ -107,6 +108,7 @@ function defaultBackends() {
         profilesClient: onChanged => new Profiles.PowerProfilesClient(onChanged),
         backlight: (kind, onChanged, onReady) =>
             new Backlight.BacklightControl(kind, onChanged, onReady),
+        monitorBacklight: (onChanged, onReady) => new Ddc.DdcBacklight(onChanged, onReady),
         upowerMonitor: (onChanged, onReady) => new UPower.UPowerMonitor(onChanged, onReady),
         fileExists: path => IO.exists(path),
     };
@@ -142,6 +144,7 @@ const SETTINGS = [
     { key: "show-sensors", property: "showSensors" },
     { key: "show-all-sensors", property: "showAllSensors" },
     { key: "expand-sections", property: "expandSections", onChange: "expand" },
+    { key: "monitor-brightness", property: "monitorBrightness" },
 
     { key: "enable-privileged-controls", property: "enablePrivilegedControls" },
     { key: "scroll-action", property: "scrollAction" },
@@ -716,6 +719,9 @@ class MenuPresenter {
         this._backlightSliders = [];
         if (backlights.screen)
             this._addBacklight(_("Brightness"), "display-brightness", backlights.screen);
+        if (backlights.monitor)
+            this._addBacklight(_("Monitor brightness"), "display-brightness",
+                               backlights.monitor);
         if (backlights.keyboard)
             this._addBacklight(_("Keyboard backlight"), "keyboard-brightness",
                                backlights.keyboard);
@@ -1046,11 +1052,20 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._backlights = {
             screen: this._backends.backlight(Backlight.SCREEN,
                                              () => this._scheduleUpdate(),
-                                             () => this._scheduleUpdate()),
+                                             () => this._onScreenBacklightKnown()),
             keyboard: this._backends.backlight(Backlight.KEYBOARD,
                                                () => this._scheduleUpdate(),
                                                () => this._scheduleUpdate()),
         };
+        /*
+         * Monitors on a cable have no kernel backlight and have to be talked
+         * to over DDC/CI. The control exists from the start so the menu can
+         * hold a row for it, but it does not go looking for a monitor until
+         * it is told to - see _onScreenBacklightKnown().
+         */
+        this._backlights.monitor = this._backends.monitorBacklight(
+            () => this._scheduleUpdate(),
+            () => this._scheduleUpdate());
 
         this._profiles = this._backends.profilesClient(() => this._scheduleUpdate());
         this._upower = this._backends.upowerMonitor(() => this._scheduleUpdate(),
@@ -1102,6 +1117,18 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * places that use it. Saying so once, at startup, is the difference
      * between a five minute fix and a puzzling bug report.
      */
+    /*
+     * The settings daemon has said whether this machine has a backlight of
+     * its own. If it has, that is the one to use and nothing needs to go
+     * poking at the I2C bus; if it has not, a monitor on a cable is the only
+     * screen there is, and DDC/CI is the only way to reach it.
+     */
+    _onScreenBacklightKnown() {
+        if (this.monitorBrightness && !this._backlights.screen.available)
+            this._backlights.monitor.start();
+        this._scheduleUpdate();
+    }
+
     _reportUnboundSettings() {
         let missing = SETTINGS
             .filter(setting => this[setting.property] === undefined)

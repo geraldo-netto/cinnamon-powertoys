@@ -28,8 +28,11 @@ so whether the machine is on the cable is the first line in the menu.
 
 **Brightness.** Screen and keyboard backlight sliders at the top of the menu,
 driven through `org.cinnamon.SettingsDaemon.Power.Screen` and `.Keyboard`, so
-the wheel over one moves in the same steps the brightness keys do. Each is
-hidden on a machine that does not have that backlight.
+the wheel over one moves in the same steps the brightness keys do. A machine
+with no backlight of its own — a desktop, or a laptop with the lid shut on an
+external screen — gets a monitor slider instead, over DDC/CI through `ddcutil`,
+which moves every monitor together. Each slider is hidden where there is
+nothing behind it.
 
 **Power profiles.** Reads and switches profiles through power-profiles-daemon
 (both the `net.hadess.PowerProfiles` and `org.freedesktop.UPower.PowerProfiles`
@@ -145,6 +148,10 @@ change.
   which Cinnamon's own power applet only started using in 6.6; where it is not
   installed the applet falls back to the freedesktop names every icon theme
   has carried for twenty years.
+- `ddcutil`, optional, only for external monitor brightness. Needs read and
+  write on `/dev/i2c-*`, which usually means adding yourself to the `i2c`
+  group. Never probed on a machine that has a backlight of its own, and can be
+  turned off entirely with *Control external monitor brightness*
 - power-profiles-daemon, optional, for profile switching
 - polkit, optional, for the privileged controls
 
@@ -156,6 +163,7 @@ cinnamon-powertoys@geraldo-netto/
 ├── lib/io.js            file reads, rooted so a captured /sys can stand in
 ├── lib/sensors.js       hwmon, thermal and powercap discovery
 ├── lib/backlight.js     screen and keyboard backlight through csd
+├── lib/ddc.js           external monitor brightness through ddcutil
 ├── lib/cpu.js           cpufreq scaling interface
 ├── lib/power-supply.js  charge limit and ACPI platform profile nodes
 ├── lib/upower.js        UPower D-Bus client

@@ -99,6 +99,12 @@
         "default": false,
         "description": "Open the CPU and sensor sections by default"
     },
+    "monitor-brightness": {
+        "type": "switch",
+        "default": true,
+        "description": "Control external monitor brightness",
+        "tooltip": "For monitors on a cable, which have no kernel backlight. Needs ddcutil installed and permission on /dev/i2c-*, and is only used on machines with no built-in backlight of their own."
+    },
     "control-section": {
         "type": "section",
         "description": "Controls"
