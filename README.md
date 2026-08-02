@@ -142,6 +142,45 @@ sudo make uninstall-policy
 Both files go, and the applet carries on asking for a password on every
 change.
 
+### External monitor brightness
+
+A monitor on a cable has no kernel backlight. The only way to move it is DDC/CI
+over the display's I2C channel, which means read and write on `/dev/i2c-*`, and
+those are `root:i2c` on a stock install. Until your account is in that group the
+slider does not appear at all: the applet probes, `ddcutil` finds no bus it may
+open, and there is nothing to show. Nothing in the log says so either, because
+`ddcutil` reports the refusal on its output and still exits 0.
+
+```sh
+sudo usermod -aG i2c $USER
+```
+
+Then **log out and back in**. A process's groups are fixed when it starts and
+are never re-read, so a Cinnamon that was already running keeps the old set;
+`Alt+F2`, `r` re-executes the same process and does not help either. To see
+whether it will work without logging out first, `sg` runs one command with the
+new group:
+
+```sh
+sg i2c -c "ddcutil detect"
+```
+
+```
+Display 1
+   I2C bus:          /dev/i2c-15
+   DRM connector:    card2-HDMI-A-2
+   Monitor:          DEL:U2419H:...
+```
+
+`No displays found` there means the group was not the problem: the monitor or
+the cable does not carry DDC/CI. That is common over cheap HDMI adapters and on
+most televisions, and there is nothing to be done about it from this end.
+
+None of this is privileged in the way the CPU controls are — the applet spawns
+`ddcutil` as you, not through `pkexec`. If you would rather not add the group,
+turn the probe off with *Control external monitor brightness* in the applet
+settings.
+
 ## Requirements
 
 - Cinnamon 5.4 or newer. Only 6.6 has been run. The claim is checked by reading
@@ -165,10 +204,11 @@ change.
   which Cinnamon's own power applet only started using in 6.6; where it is not
   installed the applet falls back to the freedesktop names every icon theme
   has carried for twenty years.
-- `ddcutil`, optional, only for external monitor brightness. Needs read and
-  write on `/dev/i2c-*`, which usually means adding yourself to the `i2c`
-  group. Never probed on a machine that has a backlight of its own, and can be
-  turned off entirely with *Control external monitor brightness*
+- `ddcutil`, optional, only for external monitor brightness, and it needs a
+  group of its own before it works — see
+  [External monitor brightness](#external-monitor-brightness). Never probed on
+  a machine that has a backlight of its own, and can be turned off entirely
+  with *Control external monitor brightness*
 - power-profiles-daemon, optional, for profile switching
 - polkit, optional, for the privileged controls
 
