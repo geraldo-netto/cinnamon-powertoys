@@ -13,6 +13,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+# This job reads the repository and writes nothing back to it - no release, no
+# comment, no pushed tag - so its token is given the one scope it uses. Stated
+# here rather than left to the repository default, which is a setting outside
+# this file and can be more than that.
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -57,9 +64,21 @@ jobs:
       #
       # The extractor is one standalone Python script, and it ships in the
       # `cinnamon` package - the whole desktop, which is not a thing to install
-      # on a runner to read some strings. So it is fetched, from a tag rather
-      # than from a branch: an upstream change to the extractor should be
-      # something this repository picks up on purpose.
+      # on a runner to read some strings. So it is fetched.
+      #
+      # Fetched from a commit, and checked against the hash of what that commit
+      # holds, because this script is downloaded and then run as root on a
+      # machine holding a checkout of this repository. It was pinned to the tag
+      # 6.6.9, which is the right thing to read in a changelog and the wrong
+      # thing to trust: a tag is a name for a commit and can be moved to name a
+      # different one. The commit below is that tag as it stood, and the hash
+      # is what makes the pin worth having - a raw URL is served by a host, and
+      # the pin alone says which bytes were asked for, not which arrived.
+      #
+      # To move to a newer Cinnamon: resolve the tag to its commit, fetch the
+      # file, sha256sum it, and put both here. `make pot` has to produce the
+      # same template afterwards or the check below says so, which is the
+      # point of it.
       #
       # Nothing here is allowed to skip itself quietly. The step this replaced
       # asked `command -v` and printed "not available, skipping" when it was
@@ -67,11 +86,16 @@ jobs:
       # without once running.
       - name: Translation template is current
         env:
-          MAKEPOT: https://raw.githubusercontent.com/linuxmint/cinnamon/6.6.9/files/usr/bin/cinnamon-xlet-makepot
+          # linuxmint/cinnamon, the commit tag 6.6.9 named when this was pinned
+          MAKEPOT_COMMIT: 806c1a4e8cd23e528d3446b9e3cf5a3c7a3ddf18
+          MAKEPOT_SHA256: 09f3ab35ad02e9ed3a164231fb12aaf64635a558b7bacfd9812f810177220486
         run: |
           sudo apt-get install --no-install-recommends -y python3-polib python3-tz
-          sudo curl -fsSL -o /usr/local/bin/cinnamon-xlet-makepot "$MAKEPOT"
-          sudo chmod +x /usr/local/bin/cinnamon-xlet-makepot
+          curl -fsSL -o makepot.py \
+            "https://raw.githubusercontent.com/linuxmint/cinnamon/$MAKEPOT_COMMIT/files/usr/bin/cinnamon-xlet-makepot"
+          echo "$MAKEPOT_SHA256  makepot.py" | sha256sum -c -
+          sudo install -m 0755 makepot.py /usr/local/bin/cinnamon-xlet-makepot
+          rm -f makepot.py
           make pot
           git diff --exit-code -- cinnamon-powertoys@geraldo-netto/po \
             || { echo "run 'make pot' and commit the result"; exit 1; }

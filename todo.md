@@ -34,5 +34,4 @@ these are things the code has been doing all along.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-120 | low | XS | The workflow downloads `cinnamon-xlet-makepot` from a raw GitHub URL, `chmod +x` it and runs it as root, pinned to the tag [`6.6.9`](.github/workflows/check.yml#L70). A tag is a moving reference; pin the commit, or check a known SHA-256 before making it executable. While there, the job declares no `permissions:` block, so it takes whatever the repository default is — `contents: read` is the whole of what it needs. |
 | PT-121 | low | XS | The translation template ships with the extractor's placeholders: `SOME DESCRIPTIVE TITLE`, `PACKAGE VERSION`, `FIRST AUTHOR <EMAIL@ADDRESS>` and a `#, fuzzy` on the header itself. A translator's first sight of the project is a file that names neither it nor where to send the result. The [`pot` target](Makefile#L126) already strips one header line with `sed` to keep the output reproducible; stamp the identity in the same place, so the template stays a function of the sources and the workflow's diff check goes on passing. |
