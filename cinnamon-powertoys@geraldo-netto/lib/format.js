@@ -146,26 +146,69 @@ function reportsPrecisePercentage(device) {
     return device.batteryLevel === UPDeviceLevel.NONE && device.percentage !== null;
 }
 
-function deviceIconName(kind, fallback) {
-    switch (kind) {
-        case UPDeviceKind.MONITOR: return "xsi-video-display";
-        case UPDeviceKind.MOUSE: return "xsi-input-mouse";
-        case UPDeviceKind.KEYBOARD: return "xsi-input-keyboard";
-        case UPDeviceKind.PHONE:
-        case UPDeviceKind.MEDIA_PLAYER: return "xsi-phone-apple-iphone";
-        case UPDeviceKind.TABLET: return "xsi-input-tablet";
-        case UPDeviceKind.COMPUTER: return "xsi-computer";
-        case UPDeviceKind.GAMING_INPUT: return "xsi-input-gaming";
-        case UPDeviceKind.TOUCHPAD: return "xsi-input-touchpad";
-        case UPDeviceKind.HEADSET: return "xsi-audio-headset";
-        case UPDeviceKind.SPEAKERS: return "xsi-audio-speakers";
-        case UPDeviceKind.HEADPHONES: return "xsi-audio-headphones";
-        case UPDeviceKind.PRINTER: return "xsi-printer";
-        case UPDeviceKind.SCANNER: return "xsi-scanner";
-        case UPDeviceKind.CAMERA: return "xsi-camera-photo";
-        case UPDeviceKind.UPS: return "xsi-uninterruptible-power-supply";
-        default: return fallback || "xsi-battery-level-100";
-    }
+/*
+ * Device icons, each with what to use when the first one is not installed.
+ *
+ * The xsi- set comes from xapp-symbolic-icons. Cinnamon's own power applet
+ * only started using those names in 6.6, so on the older desktops this applet
+ * supports the package is usually absent and every device row would show a
+ * blank. The second name in each pair is the freedesktop one, which has been
+ * in every icon theme for twenty years.
+ */
+var DEVICE_ICONS = {};
+DEVICE_ICONS[UPDeviceKind.MONITOR] = ["xsi-video-display", "video-display"];
+DEVICE_ICONS[UPDeviceKind.MOUSE] = ["xsi-input-mouse", "input-mouse"];
+DEVICE_ICONS[UPDeviceKind.KEYBOARD] = ["xsi-input-keyboard", "input-keyboard"];
+DEVICE_ICONS[UPDeviceKind.PHONE] = ["xsi-phone-apple-iphone", "phone"];
+DEVICE_ICONS[UPDeviceKind.MEDIA_PLAYER] = ["xsi-phone-apple-iphone", "multimedia-player"];
+DEVICE_ICONS[UPDeviceKind.TABLET] = ["xsi-input-tablet", "input-tablet"];
+DEVICE_ICONS[UPDeviceKind.COMPUTER] = ["xsi-computer", "computer"];
+DEVICE_ICONS[UPDeviceKind.GAMING_INPUT] = ["xsi-input-gaming", "input-gaming"];
+DEVICE_ICONS[UPDeviceKind.TOUCHPAD] = ["xsi-input-touchpad", "input-touchpad"];
+DEVICE_ICONS[UPDeviceKind.HEADSET] = ["xsi-audio-headset", "audio-headset"];
+DEVICE_ICONS[UPDeviceKind.SPEAKERS] = ["xsi-audio-speakers", "audio-speakers"];
+DEVICE_ICONS[UPDeviceKind.HEADPHONES] = ["xsi-audio-headphones", "audio-headphones"];
+DEVICE_ICONS[UPDeviceKind.PRINTER] = ["xsi-printer", "printer"];
+DEVICE_ICONS[UPDeviceKind.SCANNER] = ["xsi-scanner", "scanner"];
+DEVICE_ICONS[UPDeviceKind.CAMERA] = ["xsi-camera-photo", "camera-photo"];
+DEVICE_ICONS[UPDeviceKind.UPS] = ["xsi-uninterruptible-power-supply",
+                                  "uninterruptible-power-supply"];
+
+var BATTERY_ICON = ["xsi-battery-level-100", "battery-full"];
+
+/*
+ * Whether a name is in the icon theme. Only the applet can answer that, so it
+ * supplies the lookup; without one every preferred name is taken on trust,
+ * which is what the tests want and what an older desktop would have got
+ * before this existed.
+ */
+let _hasIcon = null;
+let _resolved = {};
+
+function setIconLookup(lookup) {
+    _hasIcon = lookup || null;
+    _resolved = {};
+}
+
+function iconName(pair) {
+    if (!_hasIcon)
+        return pair[0];
+    if (_resolved[pair[0]] === undefined)
+        _resolved[pair[0]] = _hasIcon(pair[0]) === true;
+    return _resolved[pair[0]] ? pair[0] : pair[1];
+}
+
+/* The generic battery icon, used for anything that carries a charge and has
+ * nothing more specific. */
+function batteryIconName() {
+    return iconName(BATTERY_ICON);
+}
+
+function deviceIconName(kind, whenUnknown) {
+    let pair = DEVICE_ICONS[kind];
+    if (pair)
+        return iconName(pair);
+    return whenUnknown === undefined ? null : whenUnknown;
 }
 
 function deviceTitle(device) {

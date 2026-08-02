@@ -11,6 +11,7 @@ const Applet = imports.ui.applet;
 const Clutter = imports.gi.Clutter;
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
+const Gtk = imports.gi.Gtk;
 const Main = imports.ui.main;
 const Mainloop = imports.mainloop;
 const PopupMenu = imports.ui.popupMenu;
@@ -42,6 +43,16 @@ const Format = require("./lib/format.js");
 
 const UUID = Translate.UUID;
 const _ = Translate._;
+
+/*
+ * St appends "-symbolic" when it loads an icon as one, and the xapp set is
+ * shipped only under that suffix, so a name has to be asked for both ways
+ * before it counts as missing.
+ */
+Format.setIconLookup(function (name) {
+    let theme = Gtk.IconTheme.get_default();
+    return theme.has_icon(name + "-symbolic") || theme.has_icon(name);
+});
 
 const UPDeviceState = UPowerGlib.DeviceState;
 const UPDeviceLevel = UPowerGlib.DeviceLevel;
@@ -291,7 +302,7 @@ class PanelPresenter {
             if (key === this._iconKey)
                 return;
             this._iconKey = key;
-            this._applet.set_applet_icon_symbolic_name("xsi-battery-level-100");
+            this._applet.set_applet_icon_symbolic_name(Format.batteryIconName());
             if (icon)
                 this._applet._applet_icon.gicon = Gio.icon_new_for_string(icon);
             return;
@@ -452,7 +463,7 @@ class DeviceRow extends PopupMenu.PopupBaseMenuItem {
         if (!iconName && device.icon)
             iconName = device.icon.replace(/-symbolic$/, "");
         if (!iconName)
-            iconName = Format.deviceIconName(device.kind, "xsi-battery-level-100");
+            iconName = Format.batteryIconName();
         if (iconName !== this._iconName) {
             this._iconName = iconName;
             this._icon.icon_name = iconName;

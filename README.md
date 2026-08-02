@@ -137,10 +137,10 @@ change.
   `keybindingManager.addHotKey`, `criticalNotify`, and the `=` operator in a
   settings-schema `dependency`. All of them are present and unchanged in 5.4.0.
 - UPower, for battery and device data
-- `xapp-symbolic-icons`, for the device and battery icons. Cinnamon's own power
-  applet only started using these names in 6.6, so on an older desktop that
-  package may not be installed and those icons will be missing. Nothing else is
-  affected.
+- `xapp-symbolic-icons`, optional. Device and battery icons prefer that set,
+  which Cinnamon's own power applet only started using in 6.6; where it is not
+  installed the applet falls back to the freedesktop names every icon theme
+  has carried for twenty years.
 - power-profiles-daemon, optional, for profile switching
 - polkit, optional, for the privileged controls
 
