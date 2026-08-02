@@ -1,0 +1,633 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-02 12:03+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: applet.js:169
+msgid "battery"
+msgstr ""
+
+#: applet.js:170
+msgid "package"
+msgstr ""
+
+#: applet.js:171
+msgid "GPU"
+msgstr ""
+
+#: applet.js:244
+msgid "Battery critically low"
+msgstr ""
+
+#: applet.js:251
+msgid "Battery low"
+msgstr ""
+
+#: applet.js:269
+msgid "High temperature"
+msgstr ""
+
+#: applet.js:363
+msgid "Running on AC power"
+msgstr ""
+
+#: applet.js:367
+msgid "Profile"
+msgstr ""
+
+#: applet.js:369 applet.js:782
+msgid "Governor"
+msgstr ""
+
+#: applet.js:371 applet.js:776
+msgid "Temperature"
+msgstr ""
+
+#: applet.js:374
+msgid "Power draw"
+msgstr ""
+
+#. metadata.json->name
+#: applet.js:382 applet.js:760 applet.js:1425 applet.js:1476 applet.js:1496
+#: applet.js:1534
+msgid "Power Toys"
+msgstr ""
+
+#: applet.js:691
+msgid "Brightness"
+msgstr ""
+
+#: applet.js:693
+msgid "Keyboard backlight"
+msgstr ""
+
+#: applet.js:701
+msgid "Performance limited"
+msgstr ""
+
+#: applet.js:728 lib/sensors.js:35
+msgid "Processor"
+msgstr ""
+
+#: applet.js:732
+msgid "Sensors"
+msgstr ""
+
+#: applet.js:742 applet.js:975
+msgid "Battery charge limit"
+msgstr ""
+
+#: applet.js:749
+msgid "System power settings"
+msgstr ""
+
+#: applet.js:751
+msgid "Configure Power Toys"
+msgstr ""
+
+#: applet.js:775
+msgid "Frequency"
+msgstr ""
+
+#: applet.js:777
+msgid "Scaling driver"
+msgstr ""
+
+#: applet.js:784
+msgid "Energy preference"
+msgstr ""
+
+#: applet.js:790
+msgid "Turbo boost"
+msgstr ""
+
+#: applet.js:828
+msgid "On AC power"
+msgstr ""
+
+#: applet.js:846
+msgid "an application"
+msgstr ""
+
+#: applet.js:865
+msgid "Connected"
+msgstr ""
+
+#: applet.js:865
+msgid "Disconnected"
+msgstr ""
+
+#: applet.js:890
+msgid "unknown"
+msgstr ""
+
+#: applet.js:964
+msgid "No sensors found"
+msgstr ""
+
+#: applet.js:1426
+msgid "Could not switch to"
+msgstr ""
+
+#: applet.js:1476
+msgid "Power profile"
+msgstr ""
+
+#: applet.js:1496
+msgid "Helper script not found"
+msgstr ""
+
+#: applet.js:1534
+msgid "The change could not be applied."
+msgstr ""
+
+#: lib/device.js:48
+msgid "remaining"
+msgstr ""
+
+#: lib/device.js:50
+msgid "until full"
+msgstr ""
+
+#: lib/device.js:78
+msgid "health"
+msgstr ""
+
+#: lib/device.js:80
+msgid "cycles"
+msgstr ""
+
+#: lib/format.js:84
+msgid "AC adapter"
+msgstr ""
+
+#: lib/format.js:85 lib/sensors.js:40
+msgid "Battery"
+msgstr ""
+
+#: lib/format.js:86
+msgid "UPS"
+msgstr ""
+
+#: lib/format.js:87
+msgid "Monitor"
+msgstr ""
+
+#: lib/format.js:88
+msgid "Mouse"
+msgstr ""
+
+#: lib/format.js:89
+msgid "Keyboard"
+msgstr ""
+
+#: lib/format.js:90
+msgid "PDA"
+msgstr ""
+
+#: lib/format.js:91
+msgid "Phone"
+msgstr ""
+
+#: lib/format.js:92
+msgid "Media player"
+msgstr ""
+
+#: lib/format.js:93
+msgid "Tablet"
+msgstr ""
+
+#: lib/format.js:94
+msgid "Computer"
+msgstr ""
+
+#: lib/format.js:95
+msgid "Game controller"
+msgstr ""
+
+#: lib/format.js:96
+msgid "Pen"
+msgstr ""
+
+#: lib/format.js:97
+msgid "Touchpad"
+msgstr ""
+
+#: lib/format.js:98
+msgid "Modem"
+msgstr ""
+
+#: lib/format.js:99
+msgid "Network device"
+msgstr ""
+
+#: lib/format.js:100
+msgid "Headset"
+msgstr ""
+
+#: lib/format.js:101
+msgid "Speakers"
+msgstr ""
+
+#: lib/format.js:102
+msgid "Headphones"
+msgstr ""
+
+#: lib/format.js:103
+msgid "Video device"
+msgstr ""
+
+#: lib/format.js:104
+msgid "Audio device"
+msgstr ""
+
+#: lib/format.js:105
+msgid "Remote control"
+msgstr ""
+
+#: lib/format.js:106
+msgid "Printer"
+msgstr ""
+
+#: lib/format.js:107
+msgid "Scanner"
+msgstr ""
+
+#: lib/format.js:108
+msgid "Camera"
+msgstr ""
+
+#: lib/format.js:109
+msgid "Wearable"
+msgstr ""
+
+#: lib/format.js:110
+msgid "Toy"
+msgstr ""
+
+#: lib/format.js:111
+msgid "Bluetooth device"
+msgstr ""
+
+#: lib/format.js:116
+msgid "Device"
+msgstr ""
+
+#: lib/format.js:123
+msgid "Charging"
+msgstr ""
+
+#: lib/format.js:124
+msgid "Discharging"
+msgstr ""
+
+#: lib/format.js:125
+msgid "Empty"
+msgstr ""
+
+#: lib/format.js:126
+msgid "Fully charged"
+msgstr ""
+
+#: lib/format.js:127
+msgid "Pending charge"
+msgstr ""
+
+#: lib/format.js:128
+msgid "Pending discharge"
+msgstr ""
+
+#: lib/format.js:129 lib/format.js:141
+msgid "Unknown"
+msgstr ""
+
+#: lib/format.js:136
+msgid "Full"
+msgstr ""
+
+#: lib/format.js:137
+msgid "High"
+msgstr ""
+
+#: lib/format.js:138
+msgid "Normal"
+msgstr ""
+
+#: lib/format.js:139
+msgid "Low"
+msgstr ""
+
+#: lib/format.js:140
+msgid "Critical"
+msgstr ""
+
+#: lib/format.js:224
+msgid "Power saver"
+msgstr ""
+
+#: lib/format.js:225
+msgid "Balanced"
+msgstr ""
+
+#: lib/format.js:226
+msgid "Balanced performance"
+msgstr ""
+
+#: lib/format.js:227 lib/format.js:260 lib/format.js:278
+msgid "Performance"
+msgstr ""
+
+#: lib/format.js:228
+msgid "Quiet"
+msgstr ""
+
+#: lib/format.js:229
+msgid "Low power"
+msgstr ""
+
+#: lib/format.js:230
+msgid "Cool"
+msgstr ""
+
+#: lib/format.js:261
+msgid "Power save"
+msgstr ""
+
+#: lib/format.js:262
+msgid "On demand"
+msgstr ""
+
+#: lib/format.js:263
+msgid "Conservative"
+msgstr ""
+
+#: lib/format.js:264
+msgid "Scheduler guided"
+msgstr ""
+
+#: lib/format.js:265
+msgid "Userspace"
+msgstr ""
+
+#: lib/format.js:277
+msgid "Default"
+msgstr ""
+
+#: lib/format.js:279
+msgid "Balance performance"
+msgstr ""
+
+#: lib/format.js:280
+msgid "Balance power"
+msgstr ""
+
+#: lib/format.js:281
+msgid "Power saving"
+msgstr ""
+
+#: lib/sensors.js:37
+msgid "Graphics"
+msgstr ""
+
+#: lib/sensors.js:39
+msgid "Package"
+msgstr ""
+
+#: lib/sensors.js:42
+msgid "Mainboard"
+msgstr ""
+
+#: lib/sensors.js:44
+msgid "Storage"
+msgstr ""
+
+#: lib/sensors.js:46
+msgid "Network"
+msgstr ""
+
+#: lib/sensors.js:48
+msgid "Other"
+msgstr ""
+
+#. metadata.json->description
+msgid ""
+"Monitor and configure system power management: batteries of every device "
+"type, power profiles, CPU governor and energy preference, temperatures and "
+"power draw."
+msgstr ""
+
+#. settings-schema.json->general-section->description
+msgid "General"
+msgstr ""
+
+#. settings-schema.json->refresh-interval->units
+msgid "seconds"
+msgstr ""
+
+#. settings-schema.json->refresh-interval->description
+msgid "Refresh interval"
+msgstr ""
+
+#. settings-schema.json->refresh-interval->tooltip
+msgid "How often sensors and battery levels are polled."
+msgstr ""
+
+#. settings-schema.json->temp-unit->description
+msgid "Temperature unit"
+msgstr ""
+
+#. settings-schema.json->temp-unit->options
+msgid "Celsius"
+msgstr ""
+
+#. settings-schema.json->temp-unit->options
+msgid "Fahrenheit"
+msgstr ""
+
+#. settings-schema.json->cpu-sensor-hint->description
+msgid "Preferred CPU sensor"
+msgstr ""
+
+#. settings-schema.json->cpu-sensor-hint->tooltip
+msgid ""
+"Chip or label fragment of the sensor used for the panel temperature, e.g. "
+"'Tctl' or 'k10temp'. Leave empty for automatic detection."
+msgstr ""
+
+#. settings-schema.json->panel-section->description
+msgid "Panel"
+msgstr ""
+
+#. settings-schema.json->panel-icon-source->description
+msgid "Panel icon"
+msgstr ""
+
+#. settings-schema.json->panel-icon-source->options
+msgid "Automatic"
+msgstr ""
+
+#. settings-schema.json->panel-icon-source->options
+msgid "Battery level"
+msgstr ""
+
+#. settings-schema.json->panel-icon-source->options
+msgid "Active power profile"
+msgstr ""
+
+#. settings-schema.json->panel-icon-source->options
+msgid "Fixed icon"
+msgstr ""
+
+#. settings-schema.json->panel-show-battery->description
+msgid "Show battery percentage in the panel"
+msgstr ""
+
+#. settings-schema.json->panel-show-power->description
+msgid "Show power draw in the panel"
+msgstr ""
+
+#. settings-schema.json->panel-show-frequency->description
+msgid "Show CPU frequency in the panel"
+msgstr ""
+
+#. settings-schema.json->panel-show-profile->description
+msgid "Show active power profile in the panel"
+msgstr ""
+
+#. settings-schema.json->menu-section->description
+msgid "Menu"
+msgstr ""
+
+#. settings-schema.json->show-profiles->description
+msgid "Show power profiles"
+msgstr ""
+
+#. settings-schema.json->show-cpu->description
+msgid "Show CPU section"
+msgstr ""
+
+#. settings-schema.json->show-devices->description
+msgid "Show batteries and powered devices"
+msgstr ""
+
+#. settings-schema.json->show-sensors->description
+msgid "Show temperatures, fans and power meters"
+msgstr ""
+
+#. settings-schema.json->show-all-sensors->description
+msgid "Include disk, network and board sensors"
+msgstr ""
+
+#. settings-schema.json->show-all-sensors->tooltip
+msgid "When off, only CPU and GPU sensors are listed."
+msgstr ""
+
+#. settings-schema.json->expand-sections->description
+msgid "Open the CPU and sensor sections by default"
+msgstr ""
+
+#. settings-schema.json->control-section->description
+msgid "Controls"
+msgstr ""
+
+#. settings-schema.json->enable-privileged-controls->description
+msgid "Allow changing CPU governor, energy preference, boost and charge limit"
+msgstr ""
+
+#. settings-schema.json->enable-privileged-controls->tooltip
+msgid ""
+"These settings are owned by the kernel and are applied through pkexec, so an"
+" administrator password is requested."
+msgstr ""
+
+#. settings-schema.json->scroll-action->description
+msgid "Mouse wheel over the applet"
+msgstr ""
+
+#. settings-schema.json->scroll-action->options
+msgid "Do nothing"
+msgstr ""
+
+#. settings-schema.json->scroll-action->options
+msgid "Change power profile"
+msgstr ""
+
+#. settings-schema.json->cycle-profile-hotkey->description
+msgid "Shortcut to cycle the power profile"
+msgstr ""
+
+#. settings-schema.json->toggle-menu-hotkey->description
+msgid "Shortcut to open the applet menu"
+msgstr ""
+
+#. settings-schema.json->alerts-section->description
+msgid "Alerts"
+msgstr ""
+
+#. settings-schema.json->notify-low-battery->description
+msgid "Notify on low system battery"
+msgstr ""
+
+#. settings-schema.json->low-battery-threshold->units
+#. settings-schema.json->critical-battery-threshold->units
+#. settings-schema.json->peripheral-battery-threshold->units
+msgid "%"
+msgstr ""
+
+#. settings-schema.json->low-battery-threshold->description
+msgid "Low battery level"
+msgstr ""
+
+#. settings-schema.json->critical-battery-threshold->description
+msgid "Critical battery level"
+msgstr ""
+
+#. settings-schema.json->notify-peripheral-battery->description
+msgid "Notify on low peripheral battery"
+msgstr ""
+
+#. settings-schema.json->notify-peripheral-battery->tooltip
+msgid "Mice, keyboards, headsets, controllers and other connected devices."
+msgstr ""
+
+#. settings-schema.json->peripheral-battery-threshold->description
+msgid "Low peripheral level"
+msgstr ""
+
+#. settings-schema.json->notify-high-temp->description
+msgid "Notify on high temperature"
+msgstr ""
+
+#. settings-schema.json->high-temp-threshold->units
+msgid "°C"
+msgstr ""
+
+#. settings-schema.json->high-temp-threshold->description
+#. settings-schema.json->high-temp-threshold-fahrenheit->description
+msgid "High temperature level"
+msgstr ""
+
+#. settings-schema.json->high-temp-threshold->tooltip
+#. settings-schema.json->high-temp-threshold-fahrenheit->tooltip
+msgid ""
+"Compared against the temperature shown in the panel. Switching the unit "
+"above converts this value."
+msgstr ""
+
+#. settings-schema.json->high-temp-threshold-fahrenheit->units
+msgid "°F"
+msgstr ""

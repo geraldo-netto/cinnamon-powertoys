@@ -23,7 +23,6 @@ own — items that are genuinely a single change were left whole.
 | id | severity | effort | description |
 |----|----------|--------|-------------|
 | PT-21 | medium | M | No `po/` directory and no `.pot`, although every string goes through `_()` and `make pot` exists. Without the template neither the applet strings nor the settings-schema descriptions can be translated, and nothing in the project compiles or installs a translation once one exists. |
-| PT-21a | medium | XS | Run `cinnamon-xlet-makepot`, commit `po/cinnamon-powertoys@geraldo-netto.pot`, and document how to start a locale from it. |
 | PT-21b | medium | S | Nothing turns a `.po` into an installed `.mo`: both `install.sh` and `make install` copy the applet directory only, while the applet binds its text domain to `~/.local/share/locale` ([applet.js:33](cinnamon-powertoys@geraldo-netto/applet.js#L33)). Add `msgfmt` to the install path so a translation actually takes effect. |
 | PT-23 | medium | S | No CI. A small workflow running `sh -n` on the helper, JSON validation on the two schema files and the `cjs` parse check on the five JavaScript files would catch every class of error that showed up during development. |
 | PT-27 | medium | M | No tests. The throwaway smoke script used during development (sensor discovery, CPU control read-out, profile client, UPower snapshot) covers the risky parts and runs under plain `cjs`; move it into `tests/` and wire it to `make check`. |

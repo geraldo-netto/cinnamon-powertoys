@@ -167,6 +167,26 @@ cinnamon-powertoys@geraldo-netto/
 └── icons/
 ```
 
+## Translating
+
+Every string in the applet and in its settings goes through gettext, and
+`cinnamon-powertoys@geraldo-netto/po/` holds the template they were extracted
+into.
+
+To start a language, copy the template and fill it in:
+
+```sh
+cd cinnamon-powertoys@geraldo-netto/po
+msginit -l pt_BR -i cinnamon-powertoys@geraldo-netto.pot -o pt_BR.po
+```
+
+Then `./install.sh` or `make install`, which compiles every `.po` in that
+directory into `~/.local/share/locale` where the applet looks for it.
+
+After changing any translatable string, `make pot` regenerates the template;
+`msgmerge -U <lang>.po cinnamon-powertoys@geraldo-netto.pot` carries an
+existing translation onto it.
+
 ## Tests
 
 ```sh
