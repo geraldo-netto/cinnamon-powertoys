@@ -195,6 +195,35 @@ RAPL energy counters (`/sys/class/powercap/*/energy_uj`) are root-only on most
 kernels since CVE-2020-8694. When they are unreadable the package power row is
 simply not shown; battery draw and GPU power still work.
 
+### CPU package power
+
+There is no other place to read it from. `k10temp` and `coretemp` report
+temperatures and no power at all, and `amd_energy`, which put the same AMD
+counters behind hwmon, is no longer in the kernel. What an AMD APU's `amdgpu`
+node calls *PPT* is not it either: on the machine this was written on that
+reading rose from 19 W to 30 W between idle and all sixteen cores busy, where
+the socket itself moves by tens of watts, so it is that chip's own domain and
+not the processor's. On a machine where `energy_uj` is root-only, the applet has
+nothing to show and shows nothing.
+
+Handing those counters to a group is the only way to get the row, and it is a
+real trade rather than a formality. CVE-2020-8694, published as PLATYPUS,
+recovered AES-NI keys and defeated KASLR from unprivileged reads of exactly
+these files: a power trace sampled fast enough says what the processor is doing.
+Whatever the group can run can take that trace.
+
+```sh
+sudo make install-rapl                      # group adm, which a desktop user is already in
+sudo make install-rapl RAPL_GROUP=powermon  # a group of your own instead
+sudo make uninstall-rapl                    # root only again, at once and after a reboot
+```
+
+`adm` is the default because a desktop session is already in it, so the counters
+become readable without logging out. Reload the applet afterwards — it looks for
+them once, when it starts. The row then appears under *Package* in the Sensors
+column, one line for the socket and one for each domain inside it the kernel
+publishes.
+
 ### One prompt instead of one per change
 
 Out of the box every one of those changes asks for the password again, because

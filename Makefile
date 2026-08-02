@@ -14,7 +14,16 @@ POLICY_DIR  := $(DESTDIR)/usr/share/polkit-1/actions
 HELPER_PATH := /usr/local/lib/cinnamon-powertoys/powertoys-helper
 HELPER_DEST := $(DESTDIR)$(HELPER_PATH)
 
-.PHONY: install uninstall install-policy uninstall-policy check pot restart help
+# The optional udev rule that makes the RAPL energy counters readable, and the
+# group it hands them to. adm is the default because a desktop user is already
+# in it, so the change takes effect without logging out. Read the rule and the
+# README section it points at before installing it: it is a security trade.
+RAPL_RULE   := 99-cinnamon-powertoys-rapl.rules
+RAPL_DIR    := $(DESTDIR)/etc/udev/rules.d
+RAPL_GROUP  ?= adm
+
+.PHONY: install uninstall install-policy uninstall-policy install-rapl \
+	uninstall-rapl check pot restart help
 
 help:
 	@echo "make install          - install the applet for the current user"
@@ -22,6 +31,9 @@ help:
 	@echo "make install-policy   - (root) one password prompt per few minutes"
 	@echo "                        instead of one per change; see README"
 	@echo "make uninstall-policy - (root) remove it and go back to asking"
+	@echo "make install-rapl     - (root) let the applet read CPU package power,"
+	@echo "                        at the cost described in README; read it first"
+	@echo "make uninstall-rapl   - (root) make those counters root only again"
 	@echo "make check            - run the tests and check the JavaScript, helper,"
 	@echo "                        JSON and policy"
 	@echo "make pot              - regenerate the translation template"
@@ -61,6 +73,33 @@ uninstall-policy:
 	@rmdir $(dir $(HELPER_DEST)) 2>/dev/null || true
 	@echo "removed the action and the root owned helper"
 	@echo "the applet keeps working and asks for a password on every change"
+
+# Reading, not writing, and still root's to give away: see the rule itself and
+# the README section on it. The counters that already exist are handed over
+# here as well as in the rule, because a rule only fires on an event and these
+# nodes appeared when the machine booted.
+install-rapl:
+	@[ -n "$(DESTDIR)" ] || [ "$$(id -u)" = 0 ] || \
+		{ echo "needs root: sudo make install-rapl"; exit 1; }
+	@getent group $(RAPL_GROUP) >/dev/null || \
+		{ echo "no such group: $(RAPL_GROUP)"; exit 1; }
+	@install -d $(RAPL_DIR)
+	@sed 's/@GROUP@/$(RAPL_GROUP)/g' udev/$(RAPL_RULE) > $(RAPL_DIR)/$(RAPL_RULE)
+	@chmod 0644 $(RAPL_DIR)/$(RAPL_RULE)
+	@[ -n "$(DESTDIR)" ] || udevadm control --reload
+	@[ -n "$(DESTDIR)" ] || udevadm trigger --subsystem-match=powercap
+	@echo "installed $(RAPL_DIR)/$(RAPL_RULE), reading given to group $(RAPL_GROUP)"
+	@echo "reload the applet - it looks for these counters once, when it starts"
+
+uninstall-rapl:
+	@[ -n "$(DESTDIR)" ] || [ "$$(id -u)" = 0 ] || \
+		{ echo "needs root: sudo make uninstall-rapl"; exit 1; }
+	@rm -f $(RAPL_DIR)/$(RAPL_RULE)
+	@[ -n "$(DESTDIR)" ] || udevadm control --reload
+	@[ -n "$(DESTDIR)" ] || for f in /sys/class/powercap/*-rapl:*/energy_uj; do \
+		[ -e "$$f" ] || continue; chgrp root "$$f"; chmod 0400 "$$f"; done
+	@echo "removed $(RAPL_DIR)/$(RAPL_RULE)"
+	@echo "the counters are root only again, now and after the next boot"
 
 check:
 	@command -v cjs >/dev/null 2>&1 || { echo "cjs not found, install the cjs package"; exit 1; }

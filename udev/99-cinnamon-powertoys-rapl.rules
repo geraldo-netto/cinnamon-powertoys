@@ -1,0 +1,24 @@
+# RAPL energy counters, handed to one group.
+#
+# /sys/class/powercap/*/energy_uj is root only on current kernels, and that is
+# not an oversight: a fine grained power trace of a machine is a side channel.
+# CVE-2020-8694, published as PLATYPUS, recovered AES-NI keys and defeated
+# KASLR from unprivileged reads of exactly these counters. The kernel's answer
+# was to take the read away from everyone but root.
+#
+# This rule hands it back to one group. Whatever that group can run can watch
+# the machine's power draw at whatever rate it likes - which on a single user
+# desktop is the applet and the browser it is displaying, and on a shared
+# machine is every one of the group's members. Install it only if that trade
+# is one you want to make; nothing else in the applet needs it, and without it
+# the package power row is simply not shown.
+#
+#   sudo make install-rapl                     - group adm
+#   sudo make install-rapl RAPL_GROUP=powermon - some group of your own
+#   sudo make uninstall-rapl                   - root only again, at once
+#
+# %p is the device's path under /sys, so this names the counter of whichever
+# domain the event was for: the package, and each of the domains inside it.
+ACTION!="remove", SUBSYSTEM=="powercap", KERNEL=="*-rapl:*", \
+    RUN+="/usr/bin/chgrp @GROUP@ /sys%p/energy_uj", \
+    RUN+="/usr/bin/chmod 0440 /sys%p/energy_uj"
