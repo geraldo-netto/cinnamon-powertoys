@@ -11,16 +11,20 @@ row keeps the effort for the whole and is done when its parts are. Parts were
 only split out where each one can be written, reviewed and committed on its
 own — items that are genuinely a single change were left whole.
 
-## Thirteenth pass — guards, and what arrives while something is in flight
-
-Every source, case, tool and packaging file was read again. Two questions,
-both grown out of the twelfth pass: which guards test for an answer the live
-system never gives — a percentage that is never null, a comparison that hears
-half of what the watch forwards — and what happens to the thing that arrives
-while its backend is busy with the one before. And one row about the thread
-all of this runs on.
+Nothing open.
 
 ## Closed
+
+The thirteenth pass asked which guards test for an answer the live system never
+gives, and what happens to the thing that arrives while its backend is busy
+with the one before. Its six rows are closed between `160fe62` and `8925a9a`.
+Three of them were a value quietly thrown away by a guard that was right to
+refuse it and wrong to forget it — the brightness a drag ends on, the read of
+the BlueZ tree a signal asked for, and, the other way round, two guards that
+could not refuse anything because they tested a UPower percentage against null
+and it is never null. The one that reached furthest was the smallest change:
+lib/profiles.js was asking the system bus for the daemon synchronously, on the
+thread that draws the desktop, and had been since it was written.
 
 The twelfth pass asked what is in flight, what can start twice, what can be
 replaced while something still holds the old one, and which flags have no way
