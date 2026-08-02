@@ -169,6 +169,34 @@ cases["a switched off alert says nothing and remembers nothing"] = function () {
     Harness.equal(each.said.length, 1, "on again, and it says what it found");
 };
 
+cases["critical is kept under low, whatever the two settings say"] = function () {
+    Harness.equal(Alerts.criticalBelow(7, 20), 7, "an ordinary pair is left alone");
+    Harness.equal(Alerts.criticalBelow(30, 20), 19, "above low is brought under it");
+    Harness.equal(Alerts.criticalBelow(20, 20), 19,
+                  "and equal too, or low is reachable at no value at all");
+    Harness.equal(Alerts.criticalBelow(3, 5), 3, "the bottom of both ranges needs no help");
+    Harness.equal(Alerts.criticalBelow(1, 5), 1, "nor does the floor");
+};
+
+cases["a critical level set above low does not swallow the low warning"] = function () {
+    /*
+     * The two are independent spinbuttons whose ranges overlap - 1 to 30
+     * against 5 to 50 - so this pair can be set in the settings window. Tested
+     * critical first, a battery falling past both never reached the branch for
+     * low, and the low level silently did nothing.
+     */
+    let each = policy();
+    let wrong = limits({ lowLevel: 20, criticalLevel: Alerts.criticalBelow(30, 20) });
+
+    each.alerts.check(reading([battery(20)]), wrong);
+    Harness.equal(each.said.length, 1, "low still happens");
+    Harness.equal(each.said[0].urgent, false, "and is still the gentle one");
+
+    each.alerts.check(reading([battery(10)]), wrong);
+    Harness.equal(each.said.length, 2, "and critical after it");
+    Harness.equal(each.said[1].urgent, true, "as the urgent one");
+};
+
 cases["a temperature is reported once and recovers five degrees clear"] = function () {
     let each = policy();
     each.alerts.check(reading([], 89), limits());

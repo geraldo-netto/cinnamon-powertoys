@@ -32,6 +32,29 @@ const _ = Translate._;
  */
 var HYSTERESIS = 5;
 
+/*
+ * The critical level, kept under the low one.
+ *
+ * They are two spinbuttons on one axis with overlapping ranges - 1 to 30
+ * against 5 to 50 - and nothing in the settings window stops critical being
+ * set at or above low. Where it is, the low notification cannot happen at all:
+ * a battery falling past both is tested against critical first, so the branch
+ * for low is never taken, and a setting somebody changed on purpose silently
+ * does nothing. That is the same failure _reportUnboundSettings exists to
+ * catch, arrived at from the other end.
+ *
+ * Critical is the one that gives way. Low is what fires first on the way down
+ * and is the number somebody sets to decide when they want warning; a critical
+ * level at or above it was never a choice between the two, it was one of them
+ * being moved without the other. Setting them equal leaves low reachable at
+ * exactly its own value, which is what equal degrades to.
+ */
+function criticalBelow(critical, low) {
+    if (typeof critical !== "number" || typeof low !== "number")
+        return critical;
+    return Math.max(1, Math.min(critical, low - 1));
+}
+
 var AlertPolicy = class AlertPolicy {
     /* `notify` is called as (urgent, title, body). */
     constructor(notify) {

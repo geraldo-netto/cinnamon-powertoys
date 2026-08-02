@@ -185,6 +185,7 @@
         "step": 1,
         "units": "%",
         "description": "Critical battery level",
+        "tooltip": "The urgent one, so it is kept below the low level above. Setting it higher than that would mean the low warning never happened.",
         "dependency": "notify-low-battery"
     },
     "notify-peripheral-battery": {

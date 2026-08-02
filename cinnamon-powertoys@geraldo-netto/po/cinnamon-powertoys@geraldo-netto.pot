@@ -44,7 +44,7 @@ msgstr ""
 msgid "Turbo boost off"
 msgstr ""
 
-#: applet.js:257 applet.js:1262 applet.js:2826
+#: applet.js:257 applet.js:1262 applet.js:2829
 msgid "Power profile"
 msgstr ""
 
@@ -75,8 +75,8 @@ msgid "and %d more"
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:490 applet.js:2058 applet.js:2757 applet.js:2826 applet.js:2873
-#: applet.js:2882
+#: applet.js:490 applet.js:2058 applet.js:2760 applet.js:2829 applet.js:2876
+#: applet.js:2885
 msgid "Power Toys"
 msgstr ""
 
@@ -169,27 +169,27 @@ msgid ""
 "shortcuts."
 msgstr ""
 
-#: applet.js:2740
+#: applet.js:2743
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2758
+#: applet.js:2761
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:2883
+#: applet.js:2886
 msgid "The change could not be applied."
 msgstr ""
 
-#: lib/alerts.js:81
+#: lib/alerts.js:104
 msgid "Battery critically low"
 msgstr ""
 
-#: lib/alerts.js:88
+#: lib/alerts.js:111
 msgid "Battery low"
 msgstr ""
 
-#: lib/alerts.js:105
+#: lib/alerts.js:128
 msgid "High temperature"
 msgstr ""
 
@@ -791,6 +791,12 @@ msgstr ""
 
 #. settings-schema.json->critical-battery-threshold->description
 msgid "Critical battery level"
+msgstr ""
+
+#. settings-schema.json->critical-battery-threshold->tooltip
+msgid ""
+"The urgent one, so it is kept below the low level above. Setting it higher "
+"than that would mean the low warning never happened."
 msgstr ""
 
 #. settings-schema.json->notify-peripheral-battery->description

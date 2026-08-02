@@ -2668,7 +2668,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
             peripheralBattery: this.notifyPeripheralBattery,
             lowLevel: this.lowBatteryThreshold,
             peripheralLevel: this.peripheralBatteryThreshold,
-            criticalLevel: this.criticalBatteryThreshold,
+            /* The two are independent spinbuttons with overlapping ranges, and
+             * one order of them makes the other unreachable; see criticalBelow. */
+            criticalLevel: Alerts.criticalBelow(this.criticalBatteryThreshold,
+                                                this.lowBatteryThreshold),
             highTemp: this.notifyHighTemp,
             highTempCelsius: this.highTempCelsius,
             tempUnit: this.tempUnit,
