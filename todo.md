@@ -72,7 +72,6 @@ these rows are about.
 | id | severity | effort | description |
 |----|----------|--------|-------------|
 | PT-75 | medium | M | Everything runs on the compositor's main loop: ten milliseconds of synchronous `open`/`read`/`close` every four seconds, in the process that draws the desktop, on a machine where one of those reads can block for over a millisecond on a sleeping disk. `GLib.file_get_contents_async` exists. |
-| PT-76 | medium | S | Nothing stops an update after the applet is gone. `_runHelper()`'s spawn callback calls `this._update()` with no check that the applet is still on a panel, and `_scheduleUpdate()` creates a fresh idle source whenever it is called — including after `on_applet_removed_from_panel` has removed the one it knew about. A `destroyed` flag, checked in both, is the whole fix. |
 | PT-77 | medium | S | A profile change has no pending state. Between the click and the daemon answering, the menu still shows the old selection, so a second click sends a second write for a change that is already in flight. The same is true of every helper-backed control. |
 | PT-78 | medium | S | Nothing serialises the privileged helper. Two quick clicks spawn two `pkexec` processes and can put two password dialogs on screen for two settings, each finishing with its own refresh. |
 | PT-79 | low | S | The reading is rebuilt from nothing on every poll and no one compares it to the last. With the menu closed the panel is the only consumer, and it re-formats identical text every four seconds. |

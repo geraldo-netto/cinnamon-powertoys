@@ -1134,6 +1134,14 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this.setAllowedLayout(Applet.AllowedLayout.BOTH);
         this.set_show_label_in_vertical_panels(false);
 
+        /*
+         * Set when the applet leaves the panel. Everything that can be
+         * reached from outside - a D-Bus reply, a spawned process finishing,
+         * an idle callback - checks it, because those arrive whenever they
+         * arrive and the applet they were started for may be gone by then.
+         */
+        this._destroyed = false;
+
         this._timerId = 0;
         this._scrollTimerId = 0;
         this._pendingScroll = 0;
@@ -1239,7 +1247,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * knows its new value, so there is nothing to go and read.
      */
     _onBacklightChanged() {
-        if (this._menuPresenter)
+        if (!this._destroyed && this._menuPresenter)
             this._menuPresenter.syncBacklights();
     }
 
@@ -1501,7 +1509,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
     /* update                                                              */
 
     _scheduleUpdate() {
-        if (this._idleId)
+        if (this._destroyed || this._idleId)
             return;
         this._idleId = Mainloop.idle_add(() => {
             this._idleId = 0;
@@ -1553,6 +1561,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     _update() {
+        if (this._destroyed)
+            return;
+
         let data;
         try {
             data = this._collect();
@@ -1706,6 +1717,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
                       args.map(argument => GLib.shell_quote(String(argument))).join(" ");
         try {
             Util.spawnCommandLineAsyncIO(command, (stdout, stderr, exitCode) => {
+                if (this._destroyed)
+                    return;
                 this._cpu.refresh();
                 this._update();
 
@@ -1828,6 +1841,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     on_applet_removed_from_panel() {
+        this._destroyed = true;
         this._stopPolling();
         this._cancelPendingScroll();
         if (this._idleId) {
