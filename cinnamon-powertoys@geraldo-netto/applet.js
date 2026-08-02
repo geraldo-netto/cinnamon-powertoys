@@ -210,6 +210,29 @@ function panelPowerText(data) {
 }
 
 /*
+ * What a privileged change did, in the words the menu uses for it.
+ *
+ * The argument vectors are the helper's vocabulary, and this is the one place
+ * that turns them back into something worth reading.
+ */
+function describeChange(args) {
+    switch (args[0]) {
+        case "governor":
+            return _("Governor") + ": " + Format.governorLabel(args[1]);
+        case "epp":
+            return _("Energy preference") + ": " + Format.energyPreferenceLabel(args[1]);
+        case "boost":
+            return String(args[1]) === "1" ? _("Turbo boost on") : _("Turbo boost off");
+        case "platform-profile":
+            return _("Power profile") + ": " + Format.profileLabel(args[1]);
+        case "charge-threshold":
+            return _("Charge limit") + ": " + args[1] + "%";
+        default:
+            return "";
+    }
+}
+
+/*
  * When to say something, and how not to say it twice.
  *
  * Each poll hands over the reading and the limits in force; this decides
@@ -1758,6 +1781,20 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._update();
 
             if (outcome.applied) {
+                /*
+                 * A privileged change ends with a password dialog and then,
+                 * until now, nothing - so the last thing that happened was
+                 * being asked for a password, and whether it worked had to be
+                 * inferred from the menu reading differently next time it was
+                 * opened. Say what changed.
+                 *
+                 * Power profiles are not confirmed this way and do not need
+                 * to be: the panel icon is green, yellow or red, and it
+                 * changes colour as they take effect.
+                 */
+                let changed = describeChange(args);
+                if (changed)
+                    Main.notify(_("Power Toys"), changed);
                 if (onDone)
                     onDone(outcome);
                 return;
