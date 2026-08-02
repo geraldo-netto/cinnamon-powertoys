@@ -46,7 +46,23 @@ if command -v gdbus > /dev/null 2>&1; then
 fi
 
 if [ "$reloaded" = yes ]; then
-    echo "Reloaded the running applet, no restart needed."
+    echo "Reloaded the running applet."
+    # Reloading an xlet does not drop the stylesheet it loaded, so a rule that
+    # was changed or deleted goes on applying until the theme is reloaded.
+    # That surprises whoever has just edited one and seen nothing happen, so
+    # the theme is reloaded too where the shell will do it. Eval is refused
+    # unless the session has debugging enabled, hence the fallback message.
+    if gdbus call --session \
+            --dest org.Cinnamon \
+            --object-path /org/Cinnamon \
+            --method org.Cinnamon.Eval \
+            'imports.ui.main.themeManager._changeTheme();' 2>/dev/null | grep -q '^(true,'; then
+        echo "Reloaded the theme, so stylesheet changes are in too."
+    else
+        echo
+        echo "Note: a reload does not drop the old stylesheet. If you changed"
+        echo "stylesheet.css, restart Cinnamon (Alt+F2, then r) to see it."
+    fi
 else
     echo
     echo "Next steps:"
