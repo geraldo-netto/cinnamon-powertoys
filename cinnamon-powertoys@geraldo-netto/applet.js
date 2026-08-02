@@ -98,6 +98,11 @@ const REDISCOVER_SECONDS = 60;
  */
 const SCROLL_SETTLE_MS = 250;
 
+/* How many accessories the tooltip names before it starts counting them
+ * instead. Three, plus the machine's own four or five lines, is about as much
+ * as a tooltip is read in one glance. */
+const TOOLTIP_PERIPHERALS = 3;
+
 /* Charge limits offered in the menu, in percent. */
 const CHARGE_LIMITS = [60, 70, 80, 90, 95, 100];
 
@@ -545,10 +550,33 @@ class PanelPresenter {
         if (data.systemWatts !== null)
             lines.push(_("Power draw") + ": " + powerText(data));
 
-        let peripherals = data.devices.filter(device => !device.powerSupply &&
-                                                        device.percentage !== null);
-        for (let device of peripherals)
+        /*
+         * The accessories, after a blank line and never more than a few.
+         *
+         * This was one line per connected thing with a charge in it, with
+         * nothing between them and the machine's own lines. A desk with a
+         * mouse, a keyboard, a headset and two controllers made an eleven line
+         * tooltip, which is not read at all: past about seven lines a list
+         * stops being something anybody takes in at a glance, and a tooltip
+         * only exists for the glance.
+         *
+         * The emptiest are the ones worth knowing about, so they are the ones
+         * that fit, and the rest are counted rather than dropped silently -
+         * the menu lists every one of them under Devices.
+         */
+        let peripherals = data.devices
+            .filter(device => !device.powerSupply && device.percentage !== null)
+            .slice()
+            .sort((first, second) => first.percentage - second.percentage);
+
+        if (peripherals.length > 0 && lines.length > 0)
+            lines.push("");
+        for (let device of peripherals.slice(0, TOOLTIP_PERIPHERALS))
             lines.push(Format.deviceTitle(device) + ": " + Format.percent(device.percentage));
+        if (peripherals.length > TOOLTIP_PERIPHERALS) {
+            lines.push(_("and %d more")
+                .replace("%d", String(peripherals.length - TOOLTIP_PERIPHERALS)));
+        }
 
         if (lines.length === 0)
             lines.push(_("Power Toys"));
