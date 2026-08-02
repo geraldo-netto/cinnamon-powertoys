@@ -110,4 +110,29 @@ var CpuControl = class CpuControl {
         let value = this.reference ? IO.readNumber(this.reference + "/cpuinfo_max_freq") : null;
         return value === null ? null : value / 1000;
     }
+
+    /*
+     * Everything anyone asks about the CPU, in one reading.
+     *
+     * Which of these mean anything depends on the machine - there is no
+     * energy preference without an epp capable driver, no boost switch
+     * without one of the two nodes, nothing at all without cpufreq - and this
+     * class is where that is known, so the caller gets an empty list or a
+     * null rather than having to ask first.
+     */
+    snapshot() {
+        return {
+            available: this.available,
+            driver: this.driver,
+            governor: this.governor,
+            governors: this.governors,
+            energyPreference: this.energyPreference,
+            energyPreferences: this.energyPreferences,
+            boostSupported: this.boostSupported,
+            boostEnabled: this.boostEnabled,
+            averageFrequency: this.averageFrequency(),
+            maxFrequency: this.maxFrequency(),
+            amdPstateStatus: this.amdPstateStatus,
+        };
+    }
 };

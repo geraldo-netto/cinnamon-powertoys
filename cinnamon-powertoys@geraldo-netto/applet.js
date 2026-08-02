@@ -617,19 +617,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
                 });
         }
 
-        let cpu = {
-            available: this._cpu.available,
-            driver: this._cpu.driver,
-            governor: this._cpu.governor,
-            governors: this._cpu.governors,
-            energyPreference: this._cpu.energyPreference,
-            energyPreferences: this._cpu.energyPreferences,
-            boostSupported: this._cpu.boostSupported,
-            boostEnabled: this._cpu.boostEnabled,
-            averageFrequency: this._cpu.averageFrequency(),
-            maxFrequency: this._cpu.maxFrequency(),
-            amdPstateStatus: this._cpu.amdPstateStatus,
-        };
+        let cpu = this._cpu.snapshot();
 
         let profile = {
             available: this._profiles.available,
