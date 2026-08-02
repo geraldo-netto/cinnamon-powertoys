@@ -151,3 +151,46 @@ cases["nothing in flight means not busy"] = function () {
     helper.run(["boost", "1"], () => {});
     Harness.equal(helper.busy, false, "and after, since that spawn answered at once");
 };
+
+cases["what is queued when the applet leaves is dropped"] = function () {
+    /*
+     * Everything that comes back from here checks whether the applet is still
+     * on the panel, which is why this went unnoticed: a pkexec dialog is not
+     * something that comes back. Left alone, the queue went on spawning them.
+     */
+    let helper = deferredHelper();
+    let finished = [];
+    helper.run(["governor", "powersave"], () => finished.push("governor"));
+    helper.run(["epp", "power"], () => finished.push("epp"));
+    Harness.equal(helper.waiting.length, 1, "the first is running");
+
+    helper.destroy();
+    helper.answer(0);
+
+    Harness.deepEqual(finished, ["governor"], "the one already running still finishes");
+    Harness.equal(helper.waiting.length, 0,
+                  "and the second is not spawned, so no dialog for an applet that has gone");
+};
+
+cases["the change already on screen is left to finish"] = function () {
+    /* Its dialog is up, the user asked for it and may be halfway through
+     * typing; taking that away is worse than letting it complete. */
+    let helper = deferredHelper();
+    let outcome = null;
+    helper.run(["boost", "1"], result => { outcome = result; });
+    helper.destroy();
+
+    Harness.equal(helper.waiting.length, 1, "still in flight");
+    helper.answer(0);
+    Harness.equal(outcome.applied, true, "and it applied, as the user asked");
+};
+
+cases["nothing new is taken after that"] = function () {
+    let helper = deferredHelper();
+    helper.destroy();
+
+    let outcome = null;
+    helper.run(["governor", "powersave"], result => { outcome = result; });
+    Harness.equal(helper.waiting.length, 0, "nothing spawned");
+    Harness.equal(outcome.applied, false, "and the caller is answered rather than left waiting");
+};

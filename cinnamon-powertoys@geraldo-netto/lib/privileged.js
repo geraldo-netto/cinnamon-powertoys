@@ -73,6 +73,28 @@ var PrivilegedHelper = class PrivilegedHelper {
          */
         this._queue = [];
         this._running = false;
+        this._destroyed = false;
+    }
+
+    /*
+     * The applet is leaving the panel. Whatever has not been started is
+     * dropped, and nothing new is taken.
+     *
+     * Every other backend has one of these and this one did not, which went
+     * unnoticed because everything that comes *back* from here checks whether
+     * the applet is still there. A pkexec dialog is not something that comes
+     * back: with two changes queued, removing the applet left the second one
+     * still to be spawned, so a password dialog appeared for an applet that
+     * was no longer on the panel, to make a change nobody could see the result
+     * of.
+     *
+     * The job already running is deliberately left alone. Its dialog is on
+     * screen, the user asked for it and may be halfway through answering, and
+     * taking that away is worse than letting a change they asked for finish.
+     */
+    destroy() {
+        this._destroyed = true;
+        this._queue = [];
     }
 
     /*
@@ -101,7 +123,12 @@ var PrivilegedHelper = class PrivilegedHelper {
      *   { applied: false, error: "..." }   something else, with the reason
      */
     run(args, onDone) {
-        this._queue.push({ args: args, done: onDone || function () {} });
+        let done = onDone || function () {};
+        if (this._destroyed) {
+            done({ applied: false, error: "the applet is shutting down" });
+            return;
+        }
+        this._queue.push({ args: args, done: done });
         this._next();
     }
 
@@ -112,7 +139,7 @@ var PrivilegedHelper = class PrivilegedHelper {
     }
 
     _next() {
-        if (this._running || this._queue.length === 0)
+        if (this._destroyed || this._running || this._queue.length === 0)
             return;
 
         let job = this._queue.shift();

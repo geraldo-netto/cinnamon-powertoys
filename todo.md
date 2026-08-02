@@ -11,7 +11,34 @@ row keeps the effort for the whole and is done when its parts are. Parts were
 only split out where each one can be written, reviewed and committed on its
 own — items that are genuinely a single change were left whole.
 
-Nothing open.
+## Twelfth pass — state machines, in-flight work, lifetimes
+
+GJS has one thread for the code and several underneath it: every D-Bus call,
+every spawned process and every `load_contents_async` answers later, on a main
+loop that has gone on running in between. So this pass asked what is in flight,
+what can start twice, what can be replaced while something is still holding the
+old one, and which flags have no way back. The libraries hold nine small state
+machines between them; these are the ones with a hole in.
+
+## State machines
+
+| id | severity | effort | description |
+|----|----------|--------|-------------|
+| PT-133 | medium | S | `_pendingProfile` has no way out except success. It is cleared where the reading catches up with it ([applet.js:2422](cinnamon-powertoys@geraldo-netto/applet.js#L2422)) and where the *same* profile's call fails ([applet.js:2559](cinnamon-powertoys@geraldo-netto/applet.js#L2559)) — and nowhere else. A backend that accepts a write without adopting the value leaves it set for the rest of the session: firmware that takes a platform profile and then reverts on its own thermal policy is the concrete case. What that costs is not cosmetic. The panel and the menu draw the pending profile, so both show a profile the machine is not in; `_setProfile` drops that name as a duplicate for ever, so it cannot be asked for again; and since PT-114 the wheel and the hotkey step from it, so they walk away from the real profile. Give it an expiry — a small number of polls, or the first reading that arrives after the call reported success — and take the panel back when it lapses. |
+
+## Concurrency
+
+| id | severity | effort | description |
+|----|----------|--------|-------------|
+| PT-135 | medium | S | Reads to a monitor have no in-flight guard where writes do. [`DdcMonitor.setPercentage`](cinnamon-powertoys@geraldo-netto/lib/ddc.js) sets `_busy` and refuses a second write; [`refresh`](cinnamon-powertoys@geraldo-netto/lib/ddc.js) *checks* `_busy` but never sets it, so two `getvcp` can be in flight on one I2C bus at once. That is the failure this module's own comment describes — "asking a monitor two things at once over a bus it answers in tenths of a second is how ddcutil comes back with nothing" — and it is reachable two ways: opening the menu twice inside a probe's round trip, since `_onMenuOpened` refreshes every backlight, and a `monitors-changed` re-detection landing on top of a menu open. The result is a read that answers nothing, which on a monitor that has answered before is silently kept as the old value. `BluezBatteries._refresh` has the milder version of the same shape: the settle timer stops a burst arming twice, nothing stops two `GetManagedObjects` overlapping. |
+| PT-136 | low | S | One gesture, three behaviours. The wheel over the applet coalesces for the power profile — `_pendingScroll` gathered over [`SCROLL_SETTLE_MS`](cinnamon-powertoys@geraldo-netto/applet.js#L96), added up, written once — because a flick sends several clicks and each was a separate write. For brightness it does not: [`_onScroll`](cinnamon-powertoys@geraldo-netto/applet.js#L2777) calls `step` per click. On a kernel backlight that is fine, the daemon queues them. On a monitor it is not: each `step` reads `percentage`, which only moves after the write settles, and a second write while the first is in flight is dropped — so a five-notch flick moves one or two notches and the rest vanish. Brightness is the *default* scroll action, so this is the common path. Gather the notches the way the profile does. |
+| PT-137 | low | S | [`SensorSet.refresh()`](cinnamon-powertoys@geraldo-netto/lib/sensors.js#L655) can replace the sensor lists while a [`readAsync`](cinnamon-powertoys@geraldo-netto/lib/sensors.js#L786) is still out. The paths are collected before the read and `_assemble` walks `this.temperatureSensors` *after* it, so a rediscovery in between assembles the new lists out of values keyed by the old paths and every lookup misses — one poll where every sensor reads null. Both callers refresh before updating, which is why this needs the two to slip: an update deferred by `_collectAgain` finishes after the next tick's refresh. Rare, self-correcting on the next poll, and avoidable by taking the lists at read time rather than at assembly time. |
+
+## Architecture
+
+| id | severity | effort | description |
+|----|----------|--------|-------------|
+| PT-138 | low | S | [`KeyedList`](cinnamon-powertoys@geraldo-netto/applet.js#L423) is the last thing in `applet.js` that decides something rather than drawing it, and it decides the one thing that keeps the menu from flickering: whether a section is rebuilt or its rows updated in place. It needs nothing of a menu but `removeAll` and `addMenuItem`. Its [`_signature`](cinnamon-powertoys@geraldo-netto/applet.js#L442) length-prefixes each key specifically so that no two different sets can produce the same string — the keys are device paths, sensor ids and profile names, none of which promises to avoid a separator — and that argument is asserted nowhere. `lib/keyed-list.js`, with a stub section that records what it was told. |
 
 ## Closed
 

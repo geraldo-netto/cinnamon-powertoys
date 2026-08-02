@@ -1788,6 +1788,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._destroyed = false;
 
         this._timerId = 0;
+        this._idleId = 0;
         /* A reading is in flight; another was asked for while it was. */
         this._collecting = false;
         this._collectAgain = false;
@@ -2910,6 +2911,11 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._monitorsId = 0;
         }
         this._destroyMenu();
+        /* Before the backends that feed it: whatever is queued here would
+         * otherwise still put a password dialog on screen for an applet that
+         * has left the panel. */
+        if (this._helper)
+            this._helper.destroy();
         if (this._profiles)
             this._profiles.destroy();
         if (this._platformProfiles)
