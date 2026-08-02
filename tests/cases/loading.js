@@ -19,7 +19,7 @@ var cases = {};
 
 const MODULES = ["io", "log", "gettext", "format", "device", "hardware", "sensors", "cpu",
                  "power-supply", "privileged", "upower", "profiles", "backlight", "ddc",
-                 "bluez"];
+                 "bluez", "alerts"];
 
 for (let name of MODULES) {
     cases["lib/" + name + ".js loads"] = function () {

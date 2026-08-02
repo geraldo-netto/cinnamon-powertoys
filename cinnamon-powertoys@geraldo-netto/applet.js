@@ -30,6 +30,7 @@ const UPowerGlib = imports.gi.UPowerGlib;
  * drops the cached modules for the directory when the xlet is unloaded, while
  * the legacy importer caches them for the life of the process.
  */
+const Alerts = require("./lib/alerts.js");
 const Backlight = require("./lib/backlight.js");
 const Bluez = require("./lib/bluez.js");
 const Cpu = require("./lib/cpu.js");
@@ -258,101 +259,6 @@ function describeChange(args) {
             return _("Charge limit") + ": " + args[1] + "%";
         default:
             return "";
-    }
-}
-
-/*
- * When to say something, and how not to say it twice.
- *
- * Each poll hands over the reading and the limits in force; this decides
- * whether any of it is news. A device that has already been reported stays
- * quiet until it recovers, and recovering means climbing five points clear of
- * the limit, so one sitting exactly on it does not alternate.
- *
- * Nothing here touches a widget or reads a setting of its own, so a run of
- * readings can be pushed through it and the notifications counted.
- */
-class AlertPolicy {
-    constructor(notify) {
-        this._notify = notify || function (urgent, title, body) {
-            if (urgent)
-                Main.criticalNotify(title, body);
-            else
-                Main.notify(title, body);
-        };
-        this._alerted = new Map();
-        this._tempAlerted = false;
-    }
-
-    check(data, limits) {
-        for (let device of data.devices)
-            this._checkDevice(device, limits);
-        this._forgetAbsent(data.devices);
-        this._checkTemperature(data.cpuTemperature, limits);
-    }
-
-    /*
-     * A device that has been reported is remembered so it is not reported
-     * again, and it used to be remembered until it was seen back above its
-     * limit. A headset switched off while low never got that far, so it kept
-     * its entry for the session - and came back at the same level to silence.
-     */
-    _forgetAbsent(devices) {
-        let present = new Set(devices.map(device => device.path));
-        for (let path of Array.from(this._alerted.keys())) {
-            if (!present.has(path))
-                this._alerted.delete(path);
-        }
-    }
-
-    _checkDevice(device, limits) {
-        if (device.percentage === null)
-            return;
-
-        let system = device.powerSupply;
-        let enabled = system ? limits.lowBattery : limits.peripheralBattery;
-        let threshold = Device.lowThreshold(device, limits.lowLevel, limits.peripheralLevel);
-        let level = this._alerted.get(device.path) || "";
-
-        if (!enabled || !Device.isDraining(device)) {
-            this._alerted.delete(device.path);
-            return;
-        }
-
-        if (system && device.percentage <= limits.criticalLevel) {
-            if (level !== "critical") {
-                this._alerted.set(device.path, "critical");
-                this._notify(true, _("Battery critically low"),
-                             Format.deviceTitle(device) + " - " +
-                             Format.percent(device.percentage));
-            }
-        } else if (device.percentage <= threshold) {
-            if (level === "") {
-                this._alerted.set(device.path, "low");
-                this._notify(false, _("Battery low"),
-                             Format.deviceTitle(device) + " - " +
-                             Format.percent(device.percentage));
-            }
-        } else if (device.percentage > threshold + 5) {
-            /* hysteresis, so a device hovering at the limit is not noisy */
-            this._alerted.delete(device.path);
-        }
-    }
-
-    _checkTemperature(celsius, limits) {
-        if (!limits.highTemp || celsius === null) {
-            this._tempAlerted = false;
-            return;
-        }
-        if (celsius >= limits.highTempCelsius) {
-            if (!this._tempAlerted) {
-                this._tempAlerted = true;
-                this._notify(false, _("High temperature"),
-                             Format.temperature(celsius, limits.tempUnit, 1));
-            }
-        } else if (celsius < limits.highTempCelsius - 5) {
-            this._tempAlerted = false;
-        }
     }
 }
 
@@ -1986,7 +1892,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._scrollTimerId = 0;
         this._pendingScroll = 0;
         this._pendingProfile = null;
-        this._alerts = new AlertPolicy();
+        /* The policy decides whether something is worth saying; where it is
+         * said is the applet's, because it is the only part of this that has a
+         * tray to say it in. */
+        this._alerts = new Alerts.AlertPolicy((urgent, title, body) => {
+            if (urgent)
+                Main.criticalNotify(title, body);
+            else
+                Main.notify(title, body);
+        });
         this._panel = new PanelPresenter(this, metadata.path + "/icons");
         this._hotkeyIds = [];
 

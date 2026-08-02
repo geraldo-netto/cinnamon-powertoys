@@ -11,13 +11,36 @@ row keeps the effort for the whole and is done when its parts are. Parts were
 only split out where each one can be written, reviewed and committed on its
 own — items that are genuinely a single change were left whole.
 
-Nothing open.
+## Eleventh pass — architecture, coupling, wiring
+
+Not another sweep for defects in the small: this one asked where the seams are,
+what has to agree with what, and what is wired to nothing. The first row is the
+shape of the project and the rest are things that fall out of it.
+
+## Architecture
+
+| id | severity | effort | description |
+|----|----------|--------|-------------|
+| PT-128 | medium | M | [applet.js](cinnamon-powertoys@geraldo-netto/applet.js) is 3161 lines against 4228 for all sixteen libraries — 43% of the JavaScript in the one file that cannot be loaded outside Cinnamon, because it opens with `imports.ui.applet`. So none of it is executed by any case: `tests/cases/settings.js` reads it *as text*, which is the tell. That is not only the widgets. About three hundred lines in it decide things and touch nothing on screen, and every library under it was given a seam precisely so its decisions could be checked. The parts below are ordered so each is a smaller file than the last. |
+| PT-128b | low | S | The free functions at the top — [`powerText`](cinnamon-powertoys@geraldo-netto/applet.js#L200), `panelPowerText`, [`shownProfile`](cinnamon-powertoys@geraldo-netto/applet.js#L222), [`describeChange`](cinnamon-powertoys@geraldo-netto/applet.js#L247), [`profileOwnsGovernor`](cinnamon-powertoys@geraldo-netto/applet.js#L1178) — are pure functions of a reading. `profileOwnsGovernor` decides whether the governor is a control or a readout, which is the single largest thing the menu does differently between one machine and the next, and nothing checks it. |
+| PT-128c | low | S | [`_pickTemperature`](cinnamon-powertoys@geraldo-netto/applet.js#L2479) and [`_pickPower`](cinnamon-powertoys@geraldo-netto/applet.js#L2512) are methods only because they read `this.cpuSensorHint`; pass it in and they are functions of a list. Between them they choose the number in the panel tooltip and the number the high-temperature alert fires on, by a preference order — `tctl`, `tdie`, `package id 0`, `cpu` — that is asserted nowhere. |
+
+## Wiring and congruence
+
+| id | severity | effort | description |
+|----|----------|--------|-------------|
+| PT-129 | low | XS | [`describeChange`](cinnamon-powertoys@geraldo-netto/applet.js#L247) has a `platform-profile` branch that cannot be reached. It is called only from `_runHelper`, and `_runHelper` is wired to the CPU control and the charge control; the platform profile client is given `_runHelperQuietly` instead, which never describes anything — deliberately, since a profile that will not switch is reported in its own words. Either drop the branch or say beside it that it is kept for a caller that does not exist. |
+| PT-130 | low | XS | Three places ask which profile to draw and two of them call [`shownProfile`](cinnamon-powertoys@geraldo-netto/applet.js#L222). [`_updateProfiles`](cinnamon-powertoys@geraldo-netto/applet.js#L1680) spells `options.pendingProfile \|\| data.profile.active` out again instead. It is the same expression today; the helper exists so that it stays the same tomorrow. |
+| PT-131 | low | XS | `DdcBacklight`'s doc says onReady "is called once, when the first probe has finished". Since PT-124 that is no longer true — `stop()` then `start()` probes again and calls it again — and it was already beside the point, because the applet passes `() => this._onBacklightChanged()` as *both* onReady and onChanged, so the distinction the class draws is used by nobody. Say what it now does, or collapse the two into one callback. Mine to fix: the contract went stale in this session. |
+| PT-132 | low | XS | *Critical battery level* and *Low battery level* are offered as two independent numbers whose ranges overlap — 1–30 against 5–50 — and nothing keeps them in order. Set critical above low and the low notification becomes unreachable: [`_checkDevice`](cinnamon-powertoys@geraldo-netto/applet.js#L322) tests `percentage <= criticalLevel` first, so on a battery falling past both, the `else if` for low is never taken. A setting the user can change and that then does nothing is the same failure `_reportUnboundSettings` exists to catch, arrived at from the other end. Clamp one against the other where the limits are gathered, in `_alertLimits`. |
+
+## Closed
 
 The tenth pass read every tracked file again, this time including the two tools
 the ninth pass had only run: the loader emulation was compared against
 Cinnamon's own `fileUtils.js`, and the shipped SVGs, the translation scripts
 and the parse check were read as sources. Its four rows are closed between
-`e0ec291` and the commit that follows this line. Three of the four were in the
+`e0ec291` and `c0279c6`. Three of the four were in the
 paths that answer to hardware that is not there — a monitor that will not take
 a write, a bluetooth daemon that stops, a setting switched off — which is where
 this applet's failure cases nearly all live, because on the machine it is
