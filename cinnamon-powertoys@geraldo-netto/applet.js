@@ -2622,13 +2622,18 @@ class PowerToysApplet extends Applet.TextIconApplet {
         });
 
         /*
-         * No update is scheduled here. Issuing the call changes nothing that
-         * is on screen: the daemon has not applied anything yet, so the
-         * reading still says the old profile, and the pending profile is only
-         * ever drawn in the menu, which is closing on the next line. The one
-         * in the callback is the one that has something new to show.
+         * The menu stays open, and is redrawn now so that the segment fills
+         * under the click rather than a poll later.
+         *
+         * It used to close here, which made a liar of the control: the point
+         * of filling the segment that was chosen is that the change can be
+         * seen, and it cannot be seen from a menu that has just shut. Nothing
+         * else in this menu closes it either - the boost switch, the governor
+         * and the charge limit all leave it up - and a profile change is the
+         * moment the temperatures and the draw underneath are worth watching.
+         * The click dismisses it if that is what was wanted.
          */
-        this.menu.close();
+        this._scheduleUpdate();
     }
 
     /* Gio prefixes a remote error with the D-Bus error name, which means
