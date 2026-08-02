@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!--
+    Power saver: a leaf.
+
+    Full colour rather than symbolic, because the point of these three is that
+    they are green, yellow and red - a symbolic icon is repainted in the panel
+    foreground colour and they would all come out identical.
+
+    Two tones split along the midrib give it shape at 16 pixels without any
+    detail small enough to disappear there.
+  -->
+  <path d="M13.2 2.6C13.2 2.6 3.9 3.7 3.9 12.1 12.3 12.1 13.2 2.6 13.2 2.6Z"
+        fill="#66bb6a"/>
+  <path d="M13.2 2.6 3.9 12.1c8.4 0 9.3-9.5 9.3-9.5z"
+        fill="#43a047"/>
+  <path d="M4.4 11.6 12.4 3.5"
+        fill="none" stroke="#2e7d32" stroke-width="0.9" stroke-linecap="round"/>
+  <path d="M3.9 12.1 2.1 13.9"
+        fill="none" stroke="#2e7d32" stroke-width="1.5" stroke-linecap="round"/>
+</svg>
