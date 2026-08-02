@@ -1116,7 +1116,7 @@ class MenuPresenter {
         this._monitorList = new KeyedList(
             monitorSection,
             entry => entry.note
-                ? new InfoRow(entry.label, "")
+                ? this._createNote(entry.label)
                 : new BacklightSlider(entry.label, "display-brightness", entry.control),
             (row, entry) => {
                 if (!entry.note)
@@ -1335,6 +1335,19 @@ class MenuPresenter {
         let heading = new PopupMenu.PopupMenuItem(text, { reactive: false });
         heading.actor.add_style_class_name("powertoys-subgroup-title");
         return heading;
+    }
+
+    /*
+     * A line about the list rather than a line in it.
+     *
+     * Drawn at the weight of a reading, "Only the first 10 monitors have a
+     * slider" reads as an eleventh monitor called that. It is a footnote, and
+     * the only one in this menu, so it is quieter than what it follows.
+     */
+    _createNote(text) {
+        let note = new PopupMenu.PopupMenuItem(text, { reactive: false });
+        note.actor.add_style_class_name("powertoys-note");
+        return note;
     }
 
     _addBacklight(label, iconName, control) {

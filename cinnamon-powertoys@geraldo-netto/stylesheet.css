@@ -121,6 +121,16 @@
 }
 
 /*
+ * A line about a list rather than a line in it - so far only the one saying
+ * how many monitors get a slider. At the weight of a reading it read as one
+ * more monitor with a very long name.
+ */
+.powertoys-note {
+    font-size: 0.68em;
+    opacity: 0.6;
+}
+
+/*
  * The power profile as one row of buttons.
  *
  * The fill on the active one is grey at two opacities rather than the theme's
