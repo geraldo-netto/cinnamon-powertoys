@@ -162,9 +162,15 @@ var DdcBacklight = class DdcBacklight {
         });
     }
 
+    /*
+     * Reading is skipped while a write is in flight. The value being asked
+     * for is about to be overwritten by the write anyway, and asking a
+     * monitor two things at once over a bus it answers in tenths of a second
+     * is how ddcutil comes back with nothing.
+     */
     refresh(onDone) {
         let done = onDone || function () {};
-        if (this.displays.length === 0) {
+        if (this.displays.length === 0 || this._busy) {
             done();
             return;
         }

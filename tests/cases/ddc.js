@@ -165,3 +165,26 @@ cases["a destroyed control stops claiming anything"] = function () {
     control.setPercentage(10);
     Harness.deepEqual(run.calls, [], "and does not spawn anything else");
 };
+
+cases["a read is not started while a write is in flight"] = function () {
+    let calls = [];
+    let waiting = [];
+    let control = new Ddc.DdcBacklight(null, null, function (argv, onDone) {
+        calls.push(argv.join(" "));
+        waiting.push(onDone);
+    });
+    control.displays = ["1"];
+
+    control.setPercentage(40, () => {});
+    Harness.equal(calls.length, 1, "the write went out");
+
+    let answered = false;
+    control.refresh(() => { answered = true; });
+    Harness.equal(calls.length, 1, "and no read went out behind it");
+    Harness.equal(answered, true, "but the caller was still answered");
+
+    waiting.shift()("", 0);
+    control.refresh(() => {});
+    Harness.equal(calls.length, 2, "once the write is done, a read goes out again");
+    control.destroy();
+};
