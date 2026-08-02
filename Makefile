@@ -25,13 +25,11 @@ help:
 	@echo "make pot              - regenerate the translation template"
 	@echo "make restart          - restart Cinnamon"
 
+# One install path, not two. install.sh is the one that also reloads the
+# running applet, so a change is visible without restarting Cinnamon; having
+# this target do its own copy is how the two came to differ in the first place.
 install:
-	@mkdir -p $(dir $(TARGET))
-	@rm -rf $(TARGET)
-	@cp -r $(UUID) $(TARGET)
-	@chmod +x $(TARGET)/powertoys-helper
-	@tools/install-translations.sh install
-	@echo "installed to $(TARGET)"
+	@PREFIX=$(PREFIX) DESTDIR=$(DESTDIR) ./install.sh
 
 uninstall:
 	@rm -rf $(TARGET)

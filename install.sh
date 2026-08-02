@@ -8,7 +8,11 @@ set -eu
 
 UUID=cinnamon-powertoys@geraldo-netto
 SOURCE_DIR=$(cd "$(dirname "$0")" && pwd)/$UUID
-TARGET_DIR=${XDG_DATA_HOME:-$HOME/.local/share}/cinnamon/applets/$UUID
+
+# PREFIX and DESTDIR are honoured so `make install` can hand its own settings
+# through rather than doing the copy a second time and drifting from this.
+PREFIX=${PREFIX:-${XDG_DATA_HOME:-$HOME/.local/share}}
+TARGET_DIR=${DESTDIR:-}$PREFIX/cinnamon/applets/$UUID
 
 [ -d "$SOURCE_DIR" ] || { echo "missing $SOURCE_DIR" >&2; exit 1; }
 
@@ -21,7 +25,13 @@ echo "Installed to $TARGET_DIR"
 
 # A .po in po/ does nothing until it is compiled into the directory the applet
 # binds its text domain to.
-"$(dirname "$0")/tools/install-translations.sh" install
+"$(dirname "$0")/tools/install-translations.sh" install "${DESTDIR:-}$PREFIX/locale"
+
+# A staged install is for building a package, not for using: it must not reach
+# into the running session.
+if [ -n "${DESTDIR:-}" ]; then
+    exit 0
+fi
 
 # Reloading only works once the applet is enabled on a panel; on a first
 # install the call fails and the instructions below apply.
