@@ -1342,7 +1342,17 @@ class PowerToysApplet extends Applet.TextIconApplet {
         }
         this._latest = data;
         this._panel.update(data, this._panelOptions());
-        this._menuPresenter.update(data, this._menuOptions());
+
+        /*
+         * The panel is always on screen; the menu usually is not. Composing
+         * rows nobody can see costs a formatted string per row per poll, and
+         * through the lazily read frequency a file per cpufreq policy as
+         * well. The menu is brought up to date when it opens, which is the
+         * only moment its contents can be looked at.
+         */
+        if (this._menuPresenter && this.menu && this.menu.isOpen)
+            this._menuPresenter.update(data, this._menuOptions());
+
         this._alerts.check(data, this._alertLimits());
     }
 
