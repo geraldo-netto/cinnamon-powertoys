@@ -77,6 +77,23 @@ function kindRank(kind) {
     return index < 0 ? KINDS.length : index;
 }
 
+/*
+ * Whether a sensor answers to a name, judged on what the kernel calls it.
+ *
+ * Deliberately not the menu name: that one is composed for reading - the chip
+ * prefixed, a disambiguating suffix appended - and changing how it is built
+ * would silently change which sensor anything matching on it picks. These are
+ * the driver's own words, and a thermal zone that has no label of its own is
+ * matched on its type.
+ */
+function sensorMatches(sensor, fragment) {
+    if (!fragment)
+        return false;
+    let wanted = fragment.toLowerCase();
+    return (sensor.rawLabel || "").toLowerCase().indexOf(wanted) >= 0 ||
+           (sensor.chip || "").toLowerCase().indexOf(wanted) >= 0;
+}
+
 /* Temperatures, fans and meters listed together, interesting kinds first. */
 function bySensorOrder(a, b) {
     let rankA = kindRank(a.kind);
@@ -449,6 +466,9 @@ var SensorSet = class SensorSet {
             id: sensor.id,
             measure: sensor.measure,
             chip: sensor.chip,
+            /* what the driver calls it, which is what anything picking a
+             * sensor by name has to match on */
+            rawLabel: sensor.rawLabel,
             kind: sensor.kind,
             label: Format.sensorLabel(sensor),
             critical: sensor.critical,

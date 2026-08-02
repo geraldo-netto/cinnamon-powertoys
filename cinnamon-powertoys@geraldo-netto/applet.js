@@ -1226,26 +1226,34 @@ class PowerToysApplet extends Applet.TextIconApplet {
         };
     }
 
-    /* The sensor shown in the panel: user hint first, then a CPU sensor,
-     * then a GPU one, then whatever is left. */
+    /*
+     * The sensor shown in the panel: the user's hint first, then the one a
+     * CPU calls its own, then a GPU, then whatever is left.
+     *
+     * Matching is on what the driver calls the sensor, not on the name the
+     * menu shows, which is composed for reading and could be composed
+     * differently tomorrow. The settings tooltip says "chip or label
+     * fragment", and that is now literally what is compared.
+     */
     _pickTemperature(temperatures) {
         let readable = temperatures.filter(sensor => sensor.celsius !== null);
         if (readable.length === 0)
             return null;
 
-        let hint = (this.cpuSensorHint || "").trim().toLowerCase();
+        let hint = (this.cpuSensorHint || "").trim();
         if (hint) {
-            let match = readable.find(sensor =>
-                sensor.label.toLowerCase().indexOf(hint) >= 0 ||
-                sensor.chip.toLowerCase().indexOf(hint) >= 0);
+            let match = readable.find(sensor => Sensors.sensorMatches(sensor, hint));
             if (match)
                 return match.celsius;
         }
 
+        /* What the common processor drivers call the reading that stands for
+         * the whole package: AMD's Tctl and Tdie, Intel's "Package id 0", and
+         * the SoC thermal zones that have only a type. */
         let preferred = ["tctl", "tdie", "package id 0", "cpu"];
         let cpus = readable.filter(sensor => sensor.kind === "cpu");
         for (let name of preferred) {
-            let match = cpus.find(sensor => sensor.label.toLowerCase().indexOf(name) >= 0);
+            let match = cpus.find(sensor => Sensors.sensorMatches(sensor, name));
             if (match)
                 return match.celsius;
         }

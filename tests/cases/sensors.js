@@ -368,3 +368,23 @@ cases["a fan and a meter on one chip are not disambiguated against each other"] 
                       "and its only meter, told apart by RPM against watts");
     });
 };
+
+cases["a sensor is matched on what the driver calls it"] = function () {
+    let tctl = { chip: "k10temp", rawLabel: "Tctl", display: "k10temp Tctl" };
+    let zone = { chip: "cpu_thermal", rawLabel: null, display: "cpu_thermal" };
+    Harness.equal(Sensors.sensorMatches(tctl, "tctl"), true, "its label");
+    Harness.equal(Sensors.sensorMatches(tctl, "K10TEMP"), true, "its chip, any case");
+    Harness.equal(Sensors.sensorMatches(zone, "cpu"), true, "a zone has only a type");
+    Harness.equal(Sensors.sensorMatches(tctl, "k10temp tctl"), false,
+                  "the composed menu name is not what is compared");
+    Harness.equal(Sensors.sensorMatches(tctl, ""), false, "an empty hint matches nothing");
+};
+
+cases["a reading carries the driver's own label"] = function () {
+    on("machine", function () {
+        let readings = new Sensors.SensorSet().read();
+        Harness.equal(byId(readings.temperatures, "hwmon:hwmon0:temp1").rawLabel, "Tctl", "labelled");
+        Harness.equal(byId(readings.temperatures, "thermal:thermal_zone0").rawLabel, null,
+                      "a zone has none");
+    });
+};
