@@ -28,4 +28,3 @@ The applet changed shape; the things that describe it did not.
 | id | severity | effort | description |
 |----|----------|--------|-------------|
 | PT-93 | medium | S | [docs/menu.png](docs/menu.png) is a picture of a menu that no longer exists: one column, *Processor* and *Sensors* as collapsed submenus, no brightness sliders, no panel titles, no version on the configure row. It is the README's only image, directly under a paragraph describing three panels side by side. |
-| PT-94 | low | XS | The README's compatibility argument lists `PopupSubMenuMenuItem`, which the applet stopped using when the panels became columns, and does not mention what it uses now: a `PopupMenuSection` laid out horizontally, `Gio.File.load_contents_async`, and `Gtk.IconTheme`'s `changed` signal. The "Cinnamon 5.4 or newer" claim has not been re-checked against any of those. |

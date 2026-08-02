@@ -144,14 +144,22 @@ change.
 
 ## Requirements
 
-- Cinnamon 5.4 or newer. Only 6.6 has been run. 5.4 through 6.4 are checked by
-  reading the Cinnamon sources at each release for every call this applet
-  makes: the xlet `require()` loader, `PopupSubMenuMenuItem`,
-  `PopupSwitchMenuItem`, `PopupSliderMenuItem`, `PopupIconMenuItem`,
-  `addActor`, `addSettingsAction`, class-based applets, `AllowedLayout`,
-  `AppletSettings.bind`, `spawnCommandLineAsyncIO`, `Tooltips.Tooltip`,
-  `keybindingManager.addHotKey`, `criticalNotify`, and the `=` operator in a
-  settings-schema `dependency`. All of them are present and unchanged in 5.4.0.
+- Cinnamon 5.4 or newer. Only 6.6 has been run. The claim is checked by reading
+  the Cinnamon sources for every call this applet makes, and re-checked against
+  5.4.0 whenever that set changes: the xlet `require()` loader,
+  `PopupMenuSection` and the fact that its actor *is* its box, which is what
+  lets the three menu panels sit side by side, `PopupMenuBase.getColumnWidths`
+  and `setColumnWidths`, which the panels override so their columns line up
+  with themselves and not with the whole menu, `PopupSwitchMenuItem`,
+  `PopupSliderMenuItem`, `PopupIconMenuItem`, `addActor`, `removeActor`,
+  `setShowDot`, `addSettingsAction`, class-based applets, `AllowedLayout`,
+  `set_show_label_in_vertical_panels`, `set_applet_icon_path`,
+  `AppletSettings.bind`, `spawnCommandLineAsyncIO`, `Tooltips.Tooltip` with its
+  `show` and `visible`, `keybindingManager.addHotKey`, `criticalNotify`, and the
+  `=` operator in a settings-schema `dependency`. All of them are present in
+  5.4.0. Two things the applet leans on are not Cinnamon's at all and are older
+  than any of this: `Gio.File.load_contents_async`, which takes the sensor
+  reads off the compositor's thread, and `Gtk.IconTheme`'s `changed` signal.
 - UPower, for battery and device data
 - `xapp-symbolic-icons`, optional. Device and battery icons prefer that set,
   which Cinnamon's own power applet only started using in 6.6; where it is not
