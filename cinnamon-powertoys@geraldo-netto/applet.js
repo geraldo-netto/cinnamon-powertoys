@@ -31,6 +31,7 @@ const UUID = "cinnamon-powertoys@geraldo-netto";
  * drops the cached modules for the directory when the xlet is unloaded, while
  * the legacy importer caches them for the life of the process.
  */
+const IO = require("./lib/io.js");
 const Sysfs = require("./lib/sysfs.js");
 const UPower = require("./lib/upower.js");
 const Profiles = require("./lib/profiles.js");
@@ -97,8 +98,8 @@ function defaultBackends() {
         platformProfile: () => Sysfs.platformProfile(),
         profilesClient: onChanged => new Profiles.PowerProfilesClient(onChanged),
         upowerMonitor: (onChanged, onReady) => new UPower.UPowerMonitor(onChanged, onReady),
-        readNumber: path => Sysfs.readNumber(path),
-        fileExists: path => Sysfs.exists(path),
+        readNumber: path => IO.readNumber(path),
+        fileExists: path => IO.exists(path),
     };
 }
 
