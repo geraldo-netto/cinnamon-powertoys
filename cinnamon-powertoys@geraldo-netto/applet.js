@@ -1799,12 +1799,19 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this.settings.setValue("introduced", true);
 
         /*
-         * Inside a try because this is the last thing the constructor does and
-         * it is the least important thing the applet does. Main.notify with
-         * two arguments throws on Cinnamon 6.6.9 - somewhere under
-         * MessageTray, not here - and an exception in the constructor is an
-         * applet that never reaches the panel. Nobody should lose the applet
-         * over a greeting they were going to dismiss.
+         * Inside a try because this is the last thing the constructor does
+         * and the least important thing the applet does, and because it has
+         * been seen to throw.
+         *
+         * Once, on Cinnamon 6.6.9, this line ended the constructor with
+         * "right-hand side of 'in' should be an object, got undefined" and
+         * the applet never reached the panel - no icon, and nothing to go on
+         * but a stack in the shell log naming a greeting. It has not happened
+         * again: called from the same session afterwards, neither Main.notify
+         * nor the setValue above it throws. So the cause is not known and is
+         * not claimed here. What is known is that an exception on this line
+         * costs somebody the whole applet, and that no first run message is
+         * worth that.
          */
         try {
             Main.notify(_("Power Toys"),
