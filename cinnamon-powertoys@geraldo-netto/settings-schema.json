@@ -216,5 +216,9 @@
         "description": "High temperature level",
         "tooltip": "Compared against the temperature shown in the panel. Switching the unit above converts this value.",
         "dependency": "temp-unit=fahrenheit"
+    },
+    "introduced": {
+        "type": "generic",
+        "default": false
     }
 }

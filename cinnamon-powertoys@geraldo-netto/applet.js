@@ -157,6 +157,9 @@ const SETTINGS = [
     { key: "expand-sections", property: "expandSections", onChange: "expand" },
     { key: "monitor-brightness", property: "monitorBrightness" },
 
+    /* Not shown anywhere: whether this install has introduced itself yet. */
+    { key: "introduced", property: "introduced" },
+
     { key: "enable-privileged-controls", property: "enablePrivilegedControls" },
     { key: "scroll-action", property: "scrollAction" },
     { key: "middle-click-action", property: "middleClickAction" },
@@ -1317,6 +1320,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._registerHotkeys();
         this._startPolling();
         this._update();
+        this._introduce();
     }
 
     /* ------------------------------------------------------------------ */
@@ -1355,6 +1359,26 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * places that use it. Saying so once, at startup, is the difference
      * between a five minute fix and a puzzling bug report.
      */
+    /*
+     * The first run, and only the first.
+     *
+     * Nobody reads a README before using a panel applet, and there is not
+     * much to go on otherwise: on a desktop the applet is an icon with no
+     * text beside it, and everything it can do is behind three panels that
+     * are folded shut. So it says once what is in there, and opens them the
+     * first time the menu is used - showing being better than telling.
+     */
+    _introduce() {
+        if (this.introduced)
+            return;
+        this.settings.setValue("introduced", true);
+        this._openPanelsOnce = true;
+
+        Main.notify(_("Power Toys"),
+                    _("Power profiles, processor settings, batteries and sensors " +
+                      "are in this menu. Right click the panel to configure it."));
+    }
+
     /*
      * The settings daemon has said whether this machine has a backlight of
      * its own. If it has, that is the one to use and nothing needs to go
@@ -1694,8 +1718,14 @@ class PowerToysApplet extends Applet.TextIconApplet {
         if (this._upower.available)
             this._upower.refresh();
         for (let name in this._backlights)
-            this._backlights[name].refresh(() => this._scheduleUpdate());
+            this._backlights[name].refresh(() => this._onBacklightChanged());
         this._update();
+
+        /* Only ever on the very first menu of a fresh install. */
+        if (this._openPanelsOnce) {
+            this._openPanelsOnce = false;
+            this._menuPresenter.applyExpandState(true);
+        }
     }
 
     _update() {

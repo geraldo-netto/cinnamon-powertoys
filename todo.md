@@ -40,7 +40,6 @@ about what the interface asks of the person reading it.
 | id | severity | effort | description |
 |----|----------|--------|-------------|
 | PT-57 | medium | S | **Serial Position Effect.** The last row of the menu is the one people remember and reach for, and it holds `Power Toys 1.0.0`, which cannot be acted on. The two things that can — *System power settings* and *Configure Power Toys* — sit above it. Put the version in the settings window or on the configure row and give the end of the menu back to an action. |
-| PT-62 | medium | S | **Paradox of the Active User.** Nobody reads the README first. On a desktop the applet is now an icon with no text beside it, and the two richest parts of the menu are behind submenus that are folded by default. There is nothing on first run that says what it can do. |
 | PT-63 | low | XS | **Von Restorff Effect.** Bold now marks three different things: the summary line, the group headings, and a warning. The one that is supposed to stand out is the one competing with the other two. |
 ## Bugs and incongruences
 
