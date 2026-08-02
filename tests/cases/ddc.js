@@ -605,7 +605,7 @@ cases["a monitor is asked one thing at a time, reads included"] = function () {
     Harness.equal(waiting.length, 1, "and now the bus is free again");
 };
 
-cases["a read in flight holds off a write, as a write already held off a read"] = function () {
+cases["a write asked for during a read waits for the bus rather than being lost"] = function () {
     let waiting = [];
     let run = function (argv, onDone) {
         waiting.push({ argv: argv.join(" "), onDone: onDone });
@@ -617,6 +617,85 @@ cases["a read in flight holds off a write, as a write already held off a read"] 
     Harness.deepEqual(waiting.map(call => call.argv),
                       ["ddcutil --brief --display 1 getvcp 10"],
                       "the write did not go out on top of the read");
+
+    waiting.shift().onDone("VCP 10 C 40 100\n", 0);
+    Harness.deepEqual(waiting.map(call => call.argv),
+                      ["ddcutil --display 1 setvcp 10 70"],
+                      "and went out once the read was done with the bus");
+};
+
+cases["the value a drag ends on is written, not dropped"] = function () {
+    /*
+     * A drag emits a value per motion event against a monitor that answers in
+     * tenths of a second, so the value it ends on is the one most likely to
+     * land inside the previous write's round trip. It used to be refused and
+     * forgotten: the screen stopped where the last taken write put it, the
+     * number beside the handle agreed, and the next refresh pulled the handle
+     * back. The wheel gathers a flick before it reaches here (PT-136); a drag
+     * has no gather.
+     */
+    let waiting = [];
+    let run = function (argv, onDone) {
+        waiting.push({ argv: argv.join(" "), onDone: onDone });
+    };
+    let monitor = new Ddc.DdcMonitor({ number: "1", bus: "/dev/i2c-4", name: "Dell U2415" }, run);
+
+    monitor.setPercentage(30);
+    Harness.equal(waiting.length, 1, "the first one went out");
+
+    monitor.setPercentage(60);
+    monitor.setPercentage(90);
+    Harness.equal(waiting.length, 1, "and the rest of the drag did not go out on top of it");
+
+    waiting.shift().onDone("", 0);
+    Harness.deepEqual(waiting.map(call => call.argv),
+                      ["ddcutil --display 1 setvcp 10 90"],
+                      "one trailing write, for where the drag ended and nowhere it passed through");
+
+    waiting.shift().onDone("", 0);
+    Harness.equal(monitor.percentage, 90, "which is where the monitor is left");
+    Harness.equal(waiting.length, 0, "and there is nothing else to send");
+};
+
+cases["every write asked for is answered exactly once"] = function () {
+    /* The group's setPercentage and refresh count their monitors down to know
+     * when they have finished, so a callback that never comes is a count that
+     * never reaches zero, and one that comes twice syncs against a value that
+     * is still moving. */
+    let waiting = [];
+    let run = function (argv, onDone) { waiting.push(onDone); };
+    let monitor = new Ddc.DdcMonitor({ number: "1", bus: "/dev/i2c-4", name: "Dell U2415" }, run);
+
+    let answers = 0;
+    monitor.setPercentage(30, () => answers++);
+    monitor.setPercentage(60, () => answers++);
+    monitor.setPercentage(90, () => answers++);
+    Harness.equal(answers, 1, "the one a newer value replaced, which is not going out");
+
+    waiting.shift()("", 0);
+    Harness.equal(answers, 2, "the write that did go out");
+    waiting.shift()("", 0);
+    Harness.equal(answers, 3, "and the held one, once it had been out too");
+};
+
+cases["a monitor destroyed with a write held still answers for it"] = function () {
+    let waiting = [];
+    let run = function (argv, onDone) { waiting.push(onDone); };
+    let monitor = new Ddc.DdcMonitor({ number: "1", bus: "/dev/i2c-4", name: "Dell U2415" }, run);
+
+    let answered = 0;
+    monitor.setPercentage(30, () => answered++);
+    monitor.setPercentage(90, () => answered++);
+    monitor.destroy();
+    Harness.equal(answered, 1,
+                  "the held one, which is certainly not going out now, or a group waiting " +
+                  "on this monitor waits for ever");
+
+    /* The other is on the bus already and answers through its own callback,
+     * which runCommand's timeout guarantees will happen either way. */
+    waiting.shift()("", 0);
+    Harness.equal(answered, 2, "and it does");
+    Harness.equal(waiting.length, 0, "with nothing new sent to a monitor that has gone");
 };
 
 cases["a read that never answers does not lock the monitor out"] = function () {

@@ -228,6 +228,8 @@ var DdcMonitor = class DdcMonitor {
         this._run = run;
         /* One ddcutil at a time for this monitor, read or write. See refresh. */
         this._busy = false;
+        /* The one value asked for while that was true. See setPercentage. */
+        this._held = null;
     }
 
     /* Kept across a re-detection: the display number ddcutil hands out is a
@@ -289,13 +291,26 @@ var DdcMonitor = class DdcMonitor {
              * really has gone is removed by the next detection.
              */
             done();
+            this._writeHeld();
         });
     }
 
     /*
-     * Refuses to start a second write while one is in flight: a slider drag
-     * would otherwise queue a process per value the pointer passes through,
-     * against hardware that answers in tenths of a second.
+     * Will not start a second write while something is in flight, and does not
+     * throw away what was asked for either.
+     *
+     * A drag emits a value per motion event, against hardware that answers in
+     * tenths of a second, so a process per value the pointer passes through is
+     * out of the question - that guard was there from the start. What it did
+     * with the value was drop it, and the one a drag ends on is exactly the one
+     * most likely to land inside the previous write's round trip: drag to 90,
+     * release, and the monitor stops at 65 where the last taken write put it,
+     * the number beside the handle agrees, and the next refresh pulls the
+     * handle back to match. The wheel met the same arithmetic in PT-136 and
+     * answered it by gathering the flick before it got here; a drag has no
+     * gather, so the last value is held instead and written when the bus is
+     * free. Only the last, because the ones the pointer passed through on the
+     * way are not where anybody let go.
      *
      * The value is only taken as this monitor's once ddcutil says it took it.
      * It used to be taken whatever came back, so a write the monitor refused -
@@ -308,12 +323,26 @@ var DdcMonitor = class DdcMonitor {
      */
     setPercentage(value, onDone) {
         let done = onDone || function () {};
-        if (this.destroyed || this._busy) {
+        if (this.destroyed) {
             done();
             return;
         }
 
         let wanted = Math.max(0, Math.min(100, Math.round(value)));
+        if (this._busy) {
+            /*
+             * The one it replaces is answered now rather than never. Its write
+             * is not going out, which is what a refused write already meant to
+             * its caller - and the group's setPercentage counts its monitors
+             * down to know when it has finished, so a callback that never comes
+             * is a count that never reaches zero.
+             */
+            if (this._held)
+                this._held.done();
+            this._held = { value: wanted, done: done };
+            return;
+        }
+
         this._busy = true;
         this._run(["ddcutil", "--display", this.number,
                    "setvcp", BRIGHTNESS_FEATURE, String(wanted)], (output, status) => {
@@ -331,7 +360,19 @@ var DdcMonitor = class DdcMonitor {
                 Log.error("ddcutil would not set the brightness of " + this.name +
                           " to " + wanted + "% (exit " + status + ")");
             done();
+            this._writeHeld();
         });
+    }
+
+    /* Whatever was asked for while the bus was busy, now that it is not.
+     * Called wherever _busy comes back down, since a write can be asked for
+     * during a read as easily as during another write. */
+    _writeHeld() {
+        if (this.destroyed || this._busy || !this._held)
+            return;
+        let held = this._held;
+        this._held = null;
+        this.setPercentage(held.value, held.done);
     }
 
     /*
@@ -354,6 +395,12 @@ var DdcMonitor = class DdcMonitor {
     destroy() {
         this.destroyed = true;
         this.available = false;
+        /* A held write is not going out now, and whoever asked for it is still
+         * waiting to hear; see the note on answering in setPercentage. */
+        let held = this._held;
+        this._held = null;
+        if (held)
+            held.done();
     }
 };
 
