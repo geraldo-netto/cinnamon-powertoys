@@ -31,6 +31,24 @@ const DETECT_TWO = [
     "",
 ].join("\n");
 
+/* One monitor, and the same machine after the second one is unplugged: the
+ * survivor is display 1 now, because ddcutil numbers by position. */
+const DETECT_ONE = [
+    "Display 1",
+    "   I2C bus:          /dev/i2c-4",
+    "   DRM connector:    card1-DP-1",
+    "   Monitor:          DEL:DELL U2415:7MT0184N0LTL",
+    "",
+].join("\n");
+
+const DETECT_SECOND_ONLY = [
+    "Display 1",
+    "   I2C bus:          /dev/i2c-5",
+    "   DRM connector:    card1-HDMI-A-1",
+    "   Monitor:          GSM:LG HDR 4K:0x01010101",
+    "",
+].join("\n");
+
 /* Two of the same monitor, which report the same everything but the serial. */
 const DETECT_TWINS = [
     "Display 1",
@@ -215,6 +233,91 @@ cases["more monitors than there are sliders is said rather than hidden"] = funct
 cases["under the cap nothing is reported as hidden"] = function () {
     let each = started(detectMany(3), 0);
     Harness.equal(each.control.hidden, 0, "three of ten");
+};
+
+cases["a monitor plugged in later gets a slider of its own"] = function () {
+    let output = DETECT_ONE;
+    let run = runner(function (argv) {
+        if (argv.indexOf("detect") >= 0)
+            return [output, 0];
+        if (argv.indexOf("getvcp") >= 0)
+            return ["VCP 10 C 40 100\n", 0];
+        return ["", 0];
+    });
+    let control = new Ddc.DdcBacklight(null, null, run);
+    control.start();
+    Harness.equal(control.monitors.length, 1, "one to begin with");
+
+    output = DETECT_TWO;
+    control.redetect();
+    Harness.equal(control.monitors.length, 2, "and two once the second is plugged in");
+    Harness.equal(control.monitors[1].number, "2", "the new one knows its display number");
+};
+
+cases["a monitor that survives a re-detection is the same control"] = function () {
+    let each = started(DETECT_TWO, 0);
+    let first = each.control.monitors[0];
+
+    each.control.redetect();
+    Harness.equal(each.control.monitors[0], first,
+                  "recognised by its bus, so its slider and a drag on it survive");
+    Harness.equal(each.control.monitors[0].percentage, 40, "and it was re-read, not guessed");
+};
+
+cases["unplugging one renumbers the other rather than renaming it"] = function () {
+    let output = DETECT_TWO;
+    let run = runner(function (argv) {
+        if (argv.indexOf("detect") >= 0)
+            return [output, 0];
+        if (argv.indexOf("getvcp") >= 0)
+            return ["VCP 10 C 40 100\n", 0];
+        return ["", 0];
+    });
+    let control = new Ddc.DdcBacklight(null, null, run);
+    control.start();
+    let second = control.monitors[1];
+
+    /* The LG is now display 1, because the Dell in front of it is gone. */
+    output = DETECT_SECOND_ONLY;
+    control.redetect();
+    Harness.equal(control.monitors.length, 1, "one left");
+    Harness.equal(control.monitors[0], second, "and it is the one that was there");
+    Harness.equal(control.monitors[0].number, "1",
+                  "ddcutil numbers by position, so the number it is asked for moved");
+};
+
+cases["a monitor that misses one read keeps its slider"] = function () {
+    let brightness = "VCP 10 C 40 100\n";
+    let run = runner(function (argv) {
+        if (argv.indexOf("detect") >= 0)
+            return [DETECT_TWO, 0];
+        if (argv.indexOf("getvcp") >= 0)
+            return [brightness, 0];
+        return ["", 0];
+    });
+    let control = new Ddc.DdcBacklight(null, null, run);
+    control.start();
+    Harness.equal(control.monitors[0].available, true, "it answered once");
+
+    brightness = "VCP 10 ERR\n";
+    control.refresh();
+    Harness.equal(control.monitors[0].available, true,
+                  "a monitor asleep or busy is not a monitor that has gone");
+    Harness.equal(control.monitors[0].percentage, 40, "and the last value stands");
+};
+
+cases["a monitor that has never answered is not offered"] = function () {
+    let each = started(DETECT_TWO, 0, "VCP 10 ERR\n");
+    Harness.equal(each.control.monitors[0].known, false, "nothing ever came back");
+    Harness.equal(each.control.monitors[0].available, false, "so there is nothing to move");
+};
+
+cases["a re-detection before the first one starts it instead"] = function () {
+    let each = { run: detecting(DETECT_TWO, 0) };
+    let control = new Ddc.DdcBacklight(null, null, each.run);
+    control.redetect();
+    Harness.equal(control.monitors.length, 2, "the probe ran");
+    Harness.equal(each.run.calls[0], "ddcutil --brief detect", "as the first probe");
 };
 
 cases["starting twice probes once"] = function () {

@@ -222,9 +222,20 @@ var DdcMonitor = class DdcMonitor {
         this.available = false;
         this.percentage = null;
         this.destroyed = false;
+        /* Whether this monitor has ever answered. See refresh(). */
+        this.known = false;
 
         this._run = run;
         this._busy = false;
+    }
+
+    /* Kept across a re-detection: the display number ddcutil hands out is a
+     * position in its own list and moves when something else is unplugged,
+     * and the name can change when a monitor is switched for another on the
+     * same socket. What does not change is the bus, which is the id. */
+    adopt(display) {
+        this.number = display.number;
+        this.name = display.name;
     }
 
     /*
@@ -246,8 +257,23 @@ var DdcMonitor = class DdcMonitor {
                 return;
             }
             let value = status === 0 ? parseBrightness(output) : null;
-            this.available = value !== null;
-            this.percentage = value;
+            if (value !== null) {
+                this.known = true;
+                this.available = true;
+                this.percentage = value;
+            } else if (!this.known) {
+                this.available = false;
+                this.percentage = null;
+            }
+            /*
+             * A monitor that has answered before and misses one read is
+             * asleep, or busy answering something else on the same bus - not
+             * gone. Taking the slider away for that meant a row vanishing and
+             * coming back under the pointer, and a drag in progress thrown
+             * away with the widget. The last value stands; moving the slider
+             * wakes the monitor, which is what a slider is for. A monitor that
+             * really has gone is removed by the next detection.
+             */
             done();
         });
     }
@@ -314,6 +340,7 @@ var DdcBacklight = class DdcBacklight {
         this._onReady = onReady || function () {};
         this._run = run || runCommand;
         this._started = false;
+        this._detecting = false;
     }
 
     /*
@@ -326,16 +353,71 @@ var DdcBacklight = class DdcBacklight {
         if (this._started || this.destroyed)
             return;
         this._started = true;
-        this._detect();
+        this._detect(() => this._onReady());
     }
 
-    _detect() {
+    /*
+     * Look again, because the screens have changed.
+     *
+     * Detection used to happen once and never again, so a monitor plugged in,
+     * switched on or woken after the applet started had no slider until the
+     * applet was reloaded - and one that was asleep when the first probe ran
+     * was gone for the session. That was survivable when a single slider stood
+     * for every monitor; a list of named ones that silently never grows is
+     * not.
+     *
+     * The caller decides when. This is deliberately not on the poll: a probe
+     * talks to every display on the I2C bus and wakes a sleeping one, which is
+     * not something to do every few seconds for no reason. A monitor being
+     * connected or disconnected is a thing the desktop already knows about and
+     * says so exactly once.
+     */
+    redetect() {
+        if (this.destroyed || this._detecting)
+            return;
+        if (!this._started) {
+            this.start();
+            return;
+        }
+        this._detect(() => this._onReady());
+    }
+
+    /*
+     * The monitors that are there now, keeping the ones that were there
+     * before.
+     *
+     * A monitor is its bus - /dev/i2c-15 - and not its display number, which
+     * is a position in ddcutil's own list and shuffles up when something
+     * earlier is unplugged. Recognising it means its brightness, its slider
+     * and a drag in progress all survive the monitor next to it being
+     * switched off.
+     */
+    _adopt(found) {
+        let existing = new Map(this.monitors.map(monitor => [monitor.id, monitor]));
+        let monitors = found.map(display => {
+            let id = display.bus || ("display:" + display.number);
+            let monitor = existing.get(id);
+            if (!monitor)
+                return new DdcMonitor(display, this._run);
+            existing.delete(id);
+            monitor.adopt(display);
+            return monitor;
+        });
+        for (let gone of existing.values())
+            gone.destroy();
+        return monitors;
+    }
+
+    _detect(onDone) {
+        let done = onDone || function () {};
+        this._detecting = true;
         this._run(["ddcutil", "--brief", "detect"], (output, status) => {
+            this._detecting = false;
             if (this.destroyed)
                 return;
             if (status !== 0) {
                 /* No ddcutil, no permission, or no display answered. */
-                this._onReady();
+                done();
                 return;
             }
 
@@ -345,13 +427,13 @@ var DdcBacklight = class DdcBacklight {
                 Log.error("more than " + MAX_DISPLAYS + " monitors answered DDC/CI; " +
                           this.hidden + " of them have no slider");
 
-            this.monitors = found.slice(0, MAX_DISPLAYS)
-                .map(display => new DdcMonitor(display, this._run));
+            this.monitors = this._adopt(found.slice(0, MAX_DISPLAYS));
             if (this.monitors.length === 0) {
-                this._onReady();
+                this._sync();
+                done();
                 return;
             }
-            this.refresh(() => this._onReady());
+            this.refresh(done);
         });
     }
 

@@ -1733,6 +1733,12 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._iconTheme = Gtk.IconTheme.get_default();
         this._iconThemeId = this._iconTheme.connect("changed", () => this._onIconThemeChanged());
 
+        /* Which screens exist is a fact about the desktop, and it is the only
+         * warning there is that the monitors this applet found are no longer
+         * the monitors that are there. */
+        this._monitorsId = Main.layoutManager.connect("monitors-changed",
+                                                      () => this._onMonitorsChanged());
+
         this._registerHotkeys();
         this._startPolling();
         this._update();
@@ -1834,6 +1840,22 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _considerMonitorBacklight() {
         if (this.monitorBrightness && !this._backlights.screen.available)
             this._backlights.monitor.start();
+    }
+
+    /*
+     * A monitor has been plugged in, unplugged or rearranged.
+     *
+     * The desktop knows this exactly once and says so, which is the only cheap
+     * moment there is to look again: a DDC/CI probe talks to every display on
+     * the bus and wakes a sleeping one, so it is not something to do on a
+     * timer. Anything the settings daemon can drive has a kernel backlight and
+     * is not this applet's to find, hence the same guard as the first probe.
+     */
+    _onMonitorsChanged() {
+        if (this._destroyed)
+            return;
+        if (this.monitorBrightness && !this._backlights.screen.available)
+            this._backlights.monitor.redetect();
     }
 
     /*
@@ -2662,6 +2684,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
         if (this._iconThemeId) {
             this._iconTheme.disconnect(this._iconThemeId);
             this._iconThemeId = 0;
+        }
+        if (this._monitorsId) {
+            Main.layoutManager.disconnect(this._monitorsId);
+            this._monitorsId = 0;
         }
         this._destroyMenu();
         if (this._profiles)
