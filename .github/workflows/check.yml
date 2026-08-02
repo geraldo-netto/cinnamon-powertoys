@@ -51,6 +51,9 @@ jobs:
 
       # The template has to match the strings that are actually in the source,
       # or a translator is working from a list that has moved on without them.
+      # This can only be a diff because `make pot` strips the creation stamp -
+      # see the Makefile - so a template regenerated over unchanged sources is
+      # byte for byte the one in the tree.
       - name: Translation template is current
         run: |
           sudo apt-get install --no-install-recommends -y cinnamon-common || true

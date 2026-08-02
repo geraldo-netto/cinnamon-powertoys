@@ -7,6 +7,8 @@ TARGET  := $(DESTDIR)$(PREFIX)/cinnamon/applets/$(UUID)
 # out in three places - here, in the action, and in applet.js - and `make
 # check` fails if they stop agreeing, because a mismatch would quietly mean
 # the action never applies and every change asks for a password again.
+POT         := $(UUID)/po/$(UUID).pot
+
 POLICY      := io.github.geraldo-netto.cinnamon-powertoys.policy
 POLICY_DIR  := $(DESTDIR)/usr/share/polkit-1/actions
 HELPER_PATH := /usr/local/lib/cinnamon-powertoys/powertoys-helper
@@ -73,8 +75,19 @@ check:
 		&& grep -q '>$(HELPER_PATH)<' polkit/$(POLICY) \
 		&& echo "paths ok     $(HELPER_PATH)"
 
+# The template, as a function of the sources and of nothing else.
+#
+# cinnamon-xlet-makepot stamps POT-Creation-Date from the clock, so two runs
+# over identical sources differed by that one line: a contributor who ran this
+# got a dirty tree for no reason, and the workflow step that checks the
+# template is current could never pass, whatever the strings said. The field
+# records when the extraction ran rather than anything about the strings, and
+# nothing downstream needs it - msginit writes its own, msgmerge works from
+# PO-Revision-Date - so it is taken back out.
 pot:
 	@cinnamon-xlet-makepot $(UUID)
+	@sed -i '/^"POT-Creation-Date:/d' $(POT)
+	@echo "pot ok       $(POT), reproducible"
 
 restart:
 	@cinnamon --replace > /dev/null 2>&1 &
