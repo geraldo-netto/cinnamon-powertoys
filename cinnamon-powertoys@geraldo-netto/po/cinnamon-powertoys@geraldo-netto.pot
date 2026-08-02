@@ -24,7 +24,7 @@ msgstr ""
 msgid "Profile"
 msgstr ""
 
-#: applet.js:376 applet.js:1221 applet.js:1703 lib/reading.js:120
+#: applet.js:376 applet.js:1221 applet.js:1705 lib/reading.js:120
 msgid "Governor"
 msgstr ""
 
@@ -43,8 +43,8 @@ msgid "and %d more"
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:412 applet.js:1961 applet.js:2663 applet.js:2732 applet.js:2779
-#: applet.js:2788
+#: applet.js:412 applet.js:1963 applet.js:2665 applet.js:2739 applet.js:2786
+#: applet.js:2795
 msgid "Power Toys"
 msgstr ""
 
@@ -64,7 +64,7 @@ msgstr ""
 msgid "Keyboard"
 msgstr ""
 
-#: applet.js:1165 applet.js:2732
+#: applet.js:1165 applet.js:2739
 msgid "Power profile"
 msgstr ""
 
@@ -80,7 +80,7 @@ msgstr ""
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1224 applet.js:1706 lib/reading.js:122
+#: applet.js:1224 applet.js:1708 lib/reading.js:122
 msgid "Energy preference"
 msgstr ""
 
@@ -113,35 +113,35 @@ msgstr ""
 msgid "On AC power"
 msgstr ""
 
-#: applet.js:1497
+#: applet.js:1499
 msgid "an application"
 msgstr ""
 
-#: applet.js:1516
+#: applet.js:1518
 msgid "Connected"
 msgstr ""
 
-#: applet.js:1516
+#: applet.js:1518
 msgid "Disconnected"
 msgstr ""
 
-#: applet.js:1689
+#: applet.js:1691
 msgid "Frequency"
 msgstr ""
 
-#: applet.js:1694
+#: applet.js:1696
 msgid "Scaling driver"
 msgstr ""
 
-#: applet.js:1725
+#: applet.js:1727
 msgid "No sensor matches"
 msgstr ""
 
-#: applet.js:1739
+#: applet.js:1741
 msgid "No sensors found"
 msgstr ""
 
-#: applet.js:1962
+#: applet.js:1964
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "
@@ -149,15 +149,15 @@ msgid ""
 "shortcuts."
 msgstr ""
 
-#: applet.js:2646
+#: applet.js:2648
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2664
+#: applet.js:2666
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:2789
+#: applet.js:2796
 msgid "The change could not be applied."
 msgstr ""
 

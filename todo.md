@@ -28,7 +28,6 @@ shape of the project and the rest are things that fall out of it.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-130 | low | XS | Three places ask which profile to draw and two of them call [`shownProfile`](cinnamon-powertoys@geraldo-netto/applet.js#L222). [`_updateProfiles`](cinnamon-powertoys@geraldo-netto/applet.js#L1680) spells `options.pendingProfile \|\| data.profile.active` out again instead. It is the same expression today; the helper exists so that it stays the same tomorrow. |
 | PT-131 | low | XS | `DdcBacklight`'s doc says onReady "is called once, when the first probe has finished". Since PT-124 that is no longer true — `stop()` then `start()` probes again and calls it again — and it was already beside the point, because the applet passes `() => this._onBacklightChanged()` as *both* onReady and onChanged, so the distinction the class draws is used by nobody. Say what it now does, or collapse the two into one callback. Mine to fix: the contract went stale in this session. |
 
 ## Closed

@@ -1485,8 +1485,10 @@ class MenuPresenter {
         let show = options.showProfiles && data.profile.available && data.profile.list.length > 0;
         /* The filled segment follows what was asked for, not what has arrived:
          * a selection that springs back for a second while the daemon thinks
-         * about it reads as the click having missed. */
-        let active = options.pendingProfile || data.profile.active;
+         * about it reads as the click having missed. The panel gauge and the
+         * panel label answer the same question, which is why all three ask it
+         * of one function rather than each spelling it out. */
+        let active = Reading.shownProfile(data, options);
         this._profileGroup.setVisible(show);
         this._profileControl.sync(show ? data.profile.list : [], active);
 
@@ -2702,6 +2704,11 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * nothing at all for the whole of it - while the hotkey went on announcing
      * a change that was not happening, because it announced whether or not the
      * call had been taken.
+     *
+     * "The profile that has been asked for" is the same question the panel
+     * gauge, the panel label and the filled segment all ask, so it is asked of
+     * the same function. _profileState has already established that there is a
+     * reading to ask it about.
      */
     _stepProfile(step, wrap, announce) {
         let state = this._profileState();
@@ -2709,7 +2716,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             return false;
 
         let ordered = this._orderedProfiles(state);
-        let from = this._pendingProfile || state.active;
+        let from = Reading.shownProfile(this._latest, { pendingProfile: this._pendingProfile });
         let index = ordered.indexOf(from);
         if (index < 0)
             index = 0;
