@@ -35,18 +35,3 @@ about what the interface asks of the person reading it.
 |----|----------|--------|-------------|
 | PT-57 | medium | S | **Serial Position Effect.** The last row of the menu is the one people remember and reach for, and it holds `Power Toys 1.0.0`, which cannot be acted on. The two things that can — *System power settings* and *Configure Power Toys* — sit above it. Put the version in the settings window or on the configure row and give the end of the menu back to an action. |
 | PT-63 | low | XS | **Von Restorff Effect.** Bold now marks three different things: the summary line, the group headings, and a warning. The one that is supposed to stand out is the one competing with the other two. |
-## Bugs and incongruences
-
-A pass looking for things that are wrong rather than things that are untidy.
-
-| id | severity | effort | description |
-|----|----------|--------|-------------|
-## Architecture, performance and robustness
-
-A pass over shape rather than behaviour: coupling, cost, timing, teardown and
-state. Vectorisation has no purchase here — there is no bulk numeric work
-anywhere in the applet; its cost is entirely file and bus IO, which is what
-these rows are about.
-
-| id | severity | effort | description |
-|----|----------|--------|-------------|
