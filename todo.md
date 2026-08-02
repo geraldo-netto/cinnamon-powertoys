@@ -17,20 +17,20 @@ Nothing open.
 
 The twelfth pass asked what is in flight, what can start twice, what can be
 replaced while something still holds the old one, and which flags have no way
-back. Its six rows are closed between `4c780b9` and the commit that follows
-this line. Four were races that only open when two asynchronous things slip
-past each other, which is why none of them had ever been seen: a queued pkexec
-outliving the applet, two ddcutil calls on one bus, a wheel flick outrunning a
-monitor, and a rediscovery landing inside a reading.
+back. Its six rows are closed between `4c780b9` and `d327587`. Four were
+races that only open when two asynchronous things slip past each other, which
+is why none of them had ever been seen: a queued pkexec outliving the applet,
+two ddcutil calls on one bus, a wheel flick outrunning a monitor, and a
+rediscovery landing inside a reading.
 
 The eleventh pass asked where the seams are, what has to agree with what, and
 what is wired to nothing. Its seven rows are closed between `286327a` and
-`4cb4bbb`. The first was the shape of the project: 43% of
-the JavaScript sat in the one file no case can load, so `lib/alerts.js` and
-`lib/reading.js` are what came out of it, and applet.js is 3161 lines down to
-2932. Two of the remaining rows were paid for by that move within the hour —
-the battery-threshold clamp and the profile-drawn helper are both covered now
-by cases that could not have been written the day before.
+`4cb4bbb`. The first was the shape of the project: 43% of the JavaScript sat
+in the one file no case can load, so `lib/alerts.js` and `lib/reading.js` are
+what came out of it, and applet.js is 3161 lines down to 2932. Two of the
+remaining rows were paid for by that move within the hour — the
+battery-threshold clamp and the profile-drawn helper are both covered now by
+cases that could not have been written the day before.
 
 The tenth pass read every tracked file again, this time including the two tools
 the ninth pass had only run: the loader emulation was compared against
