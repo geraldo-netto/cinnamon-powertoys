@@ -18,13 +18,15 @@ The panel item, between the other applets:
 
 ![The panel item](docs/panel.png)
 
-Taken on a desktop, so three things are missing because that machine does not
+Taken on a desktop, so several things are missing because that machine does not
 have them or cannot reach them: the charger row, which needs a UPower line
-power device; the backlight sliders, because there is no kernel backlight; and
-the monitor slider, because the account was not in the `i2c` group when the
-session started — see
-[External monitor brightness](#external-monitor-brightness). All of them hide
-themselves rather than sitting there empty.
+power device; the whole *Brightness* group, because there is no kernel
+backlight and the account was not in the `i2c` group when the session started,
+which is what a monitor on a cable needs — see
+[External monitor brightness](#external-monitor-brightness). The governor and
+the energy preference are readings there rather than controls because
+power-profiles-daemon is running and owns them. All of it hides itself rather
+than sitting there empty.
 
 ## Features
 
