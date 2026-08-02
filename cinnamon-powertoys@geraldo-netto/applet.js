@@ -1458,6 +1458,18 @@ class MenuPresenter {
             this._chargeGroup = new SelectorGroup(chargeSection, limit => limit + "%",
                                                   value => this._actions.setChargeLimit(value),
                                                   _("Charge limit"));
+
+            /*
+             * Where the batteries have been set apart by something else there
+             * is no one figure to dot, and a group of limits with none of them
+             * marked reads as a control that has stopped working. Say what it
+             * is instead, and say that choosing one ends it - which is true,
+             * because the helper writes every battery that has the node.
+             */
+            this._chargeDividedRow = new NoteRow(
+                _("The batteries are set to different limits; choosing one sets both"));
+            this._chargeDividedRow.actor.hide();
+            menu.addMenuItem(this._chargeDividedRow);
         }
     }
 
@@ -1931,6 +1943,7 @@ class MenuPresenter {
             return;
         this._chargeGroup.sync(options.privileged && !options.busy ? CHARGE_LIMITS : [],
                                data.chargeLimit);
+        this._chargeDividedRow.actor.visible = data.chargeLimitDivided === true;
     }
 }
 
@@ -2339,6 +2352,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         let powers = readings.powers.concat(upower.powers);
         let power = this._pickPower(upower.primary, readings.packageWatts, powers);
         let picked = this._pickTemperature(temperatures);
+        let charge = this._readChargeLimit();
 
         return {
             upowerAvailable: upower.available,
@@ -2353,7 +2367,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
             packageWatts: readings.packageWatts,
             cpu: this._cpu.snapshot(),
             profile: this._collectProfile(),
-            chargeLimit: this._readChargeLimit(),
+            chargeLimit: charge.limit,
+            /* two batteries something else has set apart; see _updateCharge */
+            chargeLimitDivided: charge.divided,
             cpuTemperature: picked.sensor === null ? null : picked.sensor.celsius,
             /* whether the user's hint is the reason it came from there -
              * false means they asked for a sensor and it was not found,
@@ -2378,10 +2394,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
      */
     _readChargeLimit() {
         if (!this._chargeControl || !this.enablePrivilegedControls)
-            return null;
+            return { limit: null, divided: false };
         if (!this.menu || !this.menu.isOpen)
-            return null;
-        return this._chargeControl.limit;
+            return { limit: null, divided: false };
+        return this._chargeControl.reading();
     }
 
     /*

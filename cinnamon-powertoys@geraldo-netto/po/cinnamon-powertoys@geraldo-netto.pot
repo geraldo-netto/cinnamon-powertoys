@@ -28,11 +28,11 @@ msgstr ""
 msgid "GPU"
 msgstr ""
 
-#: applet.js:250 applet.js:548 applet.js:1412 applet.js:1882
+#: applet.js:250 applet.js:548 applet.js:1412 applet.js:1894
 msgid "Governor"
 msgstr ""
 
-#: applet.js:252 applet.js:1415 applet.js:1885
+#: applet.js:252 applet.js:1415 applet.js:1897
 msgid "Energy preference"
 msgstr ""
 
@@ -44,7 +44,7 @@ msgstr ""
 msgid "Turbo boost off"
 msgstr ""
 
-#: applet.js:256 applet.js:1356 applet.js:2880
+#: applet.js:256 applet.js:1356 applet.js:2896
 msgid "Power profile"
 msgstr ""
 
@@ -87,8 +87,8 @@ msgid "and %d more"
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:584 applet.js:2126 applet.js:2811 applet.js:2880 applet.js:2927
-#: applet.js:2936
+#: applet.js:584 applet.js:2139 applet.js:2827 applet.js:2896 applet.js:2943
+#: applet.js:2952
 msgid "Power Toys"
 msgstr ""
 
@@ -128,48 +128,52 @@ msgstr ""
 msgid "Nothing with a battery is connected"
 msgstr ""
 
-#: applet.js:1465
+#: applet.js:1470
+msgid "The batteries are set to different limits; choosing one sets both"
+msgstr ""
+
+#: applet.js:1477
 msgid "Sensors"
 msgstr ""
 
-#: applet.js:1559
+#: applet.js:1571
 #, javascript-format
 msgid "Only the first %d monitors have a slider"
 msgstr ""
 
-#: applet.js:1658
+#: applet.js:1670
 msgid "On AC power"
 msgstr ""
 
-#: applet.js:1676
+#: applet.js:1688
 msgid "an application"
 msgstr ""
 
-#: applet.js:1695
+#: applet.js:1707
 msgid "Connected"
 msgstr ""
 
-#: applet.js:1695
+#: applet.js:1707
 msgid "Disconnected"
 msgstr ""
 
-#: applet.js:1868
+#: applet.js:1880
 msgid "Frequency"
 msgstr ""
 
-#: applet.js:1873
+#: applet.js:1885
 msgid "Scaling driver"
 msgstr ""
 
-#: applet.js:1904
+#: applet.js:1916
 msgid "No sensor matches"
 msgstr ""
 
-#: applet.js:1918
+#: applet.js:1930
 msgid "No sensors found"
 msgstr ""
 
-#: applet.js:2127
+#: applet.js:2140
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "
@@ -177,15 +181,15 @@ msgid ""
 "shortcuts."
 msgstr ""
 
-#: applet.js:2794
+#: applet.js:2810
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2812
+#: applet.js:2828
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:2937
+#: applet.js:2953
 msgid "The change could not be applied."
 msgstr ""
 

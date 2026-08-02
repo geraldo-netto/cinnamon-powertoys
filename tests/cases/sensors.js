@@ -436,8 +436,47 @@ cases["the charge limit is found on the battery that has one"] = function () {
     on("machine", function () {
         let control = PowerSupply.discoverChargeControl();
         Harness.ok(control, "not found");
-        Harness.equal(control.battery, "BAT0", "the mains entry is not a battery");
-        Harness.equal(control.path, "/sys/class/power_supply/BAT0/charge_control_end_threshold", "path");
+        Harness.deepEqual(control.batteries,
+                          [{ name: "BAT0",
+                             path: "/sys/class/power_supply/BAT0/charge_control_end_threshold" }],
+                          "the mains entry is not a battery");
+    });
+};
+
+cases["every battery with a threshold is found, not the first"] = function () {
+    on("two-batteries", function () {
+        let control = PowerSupply.discoverChargeControl();
+        Harness.deepEqual(control.batteries.map(battery => battery.name), ["BAT0", "BAT1"],
+                          "the helper writes both, so both have to be read");
+        Harness.deepEqual(control.limits, [80, 100], "each one's own");
+    });
+};
+
+cases["two batteries set apart read as no one limit, and say so"] = function () {
+    on("two-batteries", function () {
+        let reading = PowerSupply.discoverChargeControl().reading();
+        Harness.equal(reading.limit, null,
+                      "one of the two would be a number the other battery is not at");
+        Harness.equal(reading.divided, true, "and that is worth saying out loud");
+    });
+};
+
+cases["one battery reads as its own limit"] = function () {
+    on("machine", function () {
+        let reading = PowerSupply.discoverChargeControl().reading();
+        Harness.equal(reading.limit, 80, "what the one battery says");
+        Harness.equal(reading.divided, false, "with nothing to disagree with");
+    });
+};
+
+cases["a battery that will not answer is not two batteries disagreeing"] = function () {
+    on("two-batteries", function () {
+        let control = PowerSupply.discoverChargeControl();
+        IO.setRoot("/nonexistent");
+        let reading = control.reading();
+        Harness.equal(reading.limit, null, "nothing to show");
+        Harness.equal(reading.divided, false,
+                      "a control with nothing behind it speaks for itself");
     });
 };
 

@@ -22,25 +22,59 @@ var PLATFORM_PROFILE_CHOICES = "/sys/firmware/acpi/platform_profile_choices";
 var PLATFORM_BACKEND = "acpi-platform-profile";
 
 /*
- * The charge limit of one battery.
+ * The charge limit, across every battery that has one.
  *
- * `limit` is read every time it is asked for rather than captured once: the
- * firmware, a vendor tool or another copy of this applet can move it, and a
- * value remembered from startup would quietly disagree with the hardware.
+ * Every battery, not the first. The helper writes the threshold to all of
+ * them - a laptop with a main battery and a bay battery wants both moved
+ * together, which is what somebody picking one number from one menu means -
+ * and a control that wrote two and read one would show the first battery's
+ * number and call it both. So the read is the same set as the write.
  *
- * Writing it needs root, so it goes to a runner the caller supplies - in the
+ * The values are read every time they are asked for rather than captured
+ * once: the firmware, a vendor tool or another copy of this applet can move
+ * them, and a value remembered from startup would quietly disagree with the
+ * hardware.
+ *
+ * Writing needs root, so it goes to a runner the caller supplies - in the
  * applet, the pkexec helper - which keeps the read and the write of one
  * setting in the same place.
  */
 var ChargeControl = class ChargeControl {
-    constructor(battery, path, runner) {
-        this.battery = battery;
-        this.path = path;
+    /* `batteries` is every battery that exposes an end threshold, as
+     * { name, path }, in the order they were found. */
+    constructor(batteries, runner) {
+        this.batteries = batteries || [];
         this._runner = runner || function () {};
     }
 
+    /* One per battery, in that order, null for one that will not answer now. */
+    get limits() {
+        return this.batteries.map(battery => IO.readNumber(battery.path));
+    }
+
+    /*
+     * What those come to, in one look rather than two.
+     *
+     * `limit` is the number where every battery says the same and null where
+     * they do not: no battery, one that will not answer, or two that
+     * something else has set apart. `divided` picks out that last case, which
+     * is the only one of the three the caller has anything to say about - the
+     * others are a control with nothing behind it, which speaks for itself.
+     */
+    reading() {
+        let values = this.limits;
+        let readable = values.filter(value => value !== null);
+        let agreed = readable.length === values.length && readable.length > 0 &&
+                     readable.every(value => value === readable[0]);
+        return {
+            limits: values,
+            limit: agreed ? readable[0] : null,
+            divided: readable.length > 1 && !agreed,
+        };
+    }
+
     get limit() {
-        return IO.readNumber(this.path);
+        return this.reading().limit;
     }
 
     setLimit(percent, onDone) {
@@ -54,6 +88,7 @@ var ChargeControl = class ChargeControl {
  * battery longevity.
  */
 function discoverChargeControl(runner) {
+    let batteries = [];
     for (let name of IO.listDir(POWER_SUPPLY_DIR)) {
         let base = POWER_SUPPLY_DIR + "/" + name;
         if (IO.readString(base + "/type") !== "Battery")
@@ -61,9 +96,9 @@ function discoverChargeControl(runner) {
         let endPath = base + "/charge_control_end_threshold";
         if (!IO.exists(endPath))
             continue;
-        return new ChargeControl(name, endPath, runner);
+        batteries.push({ name: name, path: endPath });
     }
-    return null;
+    return batteries.length > 0 ? new ChargeControl(batteries, runner) : null;
 }
 
 /* ACPI platform profile, used as a fallback when power-profiles-daemon is absent. */

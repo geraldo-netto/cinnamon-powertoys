@@ -25,7 +25,6 @@ these are things the code has been doing all along.
 | id | severity | effort | description |
 |----|----------|--------|-------------|
 | PT-118 | medium | S | [`lib/bluez.js`](cinnamon-powertoys@geraldo-netto/lib/bluez.js#L184) subscribes to `PropertiesChanged` on the whole of `org.bluez` with no path and no `arg0` filter, and every one of those signals costs a full `GetManagedObjects` round trip. A `MediaTransport1` volume change while music is playing, or `Device1.RSSI` while the adapter is discovering, each fire several times a second and none of them can alter a battery percentage. Filter on the two interfaces this module actually parses, or gather a burst into one idle refresh. |
-| PT-122 | low | XS | The charge limit is read from one battery and written to all of them. [`discoverChargeControl`](cinnamon-powertoys@geraldo-netto/lib/power-supply.js#L56) returns the first battery carrying `charge_control_end_threshold` and `limit` reads that one node, while the helper's [`set_charge_threshold`](cinnamon-powertoys@geraldo-netto/powertoys-helper#L153) loops over every battery that has it. On a ThinkPad with two batteries the menu shows BAT0's number for both, and where a vendor tool has set them apart it shows one and hides the other without saying so. Read them all and show the disagreement, or narrow the helper to match the reader. |
 
 ## Presentation
 
