@@ -388,12 +388,17 @@ class InfoRow extends PopupMenu.PopupBaseMenuItem {
     }
 }
 
-/* Two line entry for one powered device: title with icon, details below. */
+/*
+ * Two line entry for one powered device: title with icon, details below.
+ *
+ * It is handed a view model and sets what it is told. It used to be handed
+ * the applet instead, and call back into it for the sentence, the limit and
+ * whether the device was draining, which meant a row could not exist without
+ * a running applet behind it.
+ */
 class DeviceRow extends PopupMenu.PopupBaseMenuItem {
-    _init(device, applet) {
+    _init(model) {
         super._init.call(this, { reactive: false });
-
-        this._applet = applet;
 
         this._icon = new St.Icon({ icon_size: 16,
                                    icon_type: St.IconType.SYMBOLIC,
@@ -411,38 +416,21 @@ class DeviceRow extends PopupMenu.PopupBaseMenuItem {
 
         this.addActor(box, { expand: true, span: -1 });
 
-        this.path = device.path;
-        this.update(device);
+        this.update(model);
     }
 
-    update(device) {
-        let title = Format.deviceTitle(device);
-        if (Format.reportsPrecisePercentage(device))
-            title += "  " + Format.percent(device.percentage);
-        else if (device.batteryLevel !== UPDeviceLevel.NONE)
-            title += "  " + Format.batteryLevelName(device.batteryLevel);
-        this._title.set_text(title);
+    update(model) {
+        this._title.set_text(model.title);
+        this._details.set_text(model.details);
 
-        /* Peripherals get an icon for what they are, since UPower often
-         * reports battery-missing for them. Real batteries keep the UPower
-         * icon, which encodes the charge level. St appends "-symbolic" itself,
-         * so the suffix has to be stripped from the UPower name. */
-        let iconName = device.powerSupply ? null : Format.deviceIconName(device.kind, null);
-        if (!iconName && device.icon)
-            iconName = device.icon.replace(/-symbolic$/, "");
-        if (!iconName)
-            iconName = Format.batteryIconName();
-        if (iconName !== this._iconName) {
-            this._iconName = iconName;
-            this._icon.icon_name = iconName;
+        /* Setting an icon name that has not changed still costs a texture
+         * lookup, and this runs on every poll. */
+        if (model.icon !== this._iconName) {
+            this._iconName = model.icon;
+            this._icon.icon_name = model.icon;
         }
 
-        this._details.set_text(this._applet.describeDevice(device));
-
-        let low = device.percentage !== null &&
-                  this._applet.isDraining(device) &&
-                  device.percentage <= this._applet.lowThresholdFor(device);
-        if (low)
+        if (model.warning)
             this._details.add_style_class_name("powertoys-warning");
         else
             this._details.remove_style_class_name("powertoys-warning");
@@ -618,15 +606,11 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
  * clicks is reported through the actions it was handed, and everything it
  * displays arrives as an argument.
  *
- * The exception is `host`, which the device rows still ask for the sentence
- * under a device and for the limit that colours it. PT-33 is what replaces
- * that with a view model.
  */
 class MenuPresenter {
-    constructor(menu, actions, host, capabilities, backlights) {
+    constructor(menu, actions, capabilities, backlights) {
         this._menu = menu;
         this._actions = actions;
-        this._host = host;
         this._build(capabilities || {}, backlights || {});
     }
 
@@ -673,8 +657,8 @@ class MenuPresenter {
         let deviceSection = new PopupMenu.PopupMenuSection();
         this._menu.addMenuItem(deviceSection);
         this._deviceList = new KeyedList(deviceSection,
-                                         entry => new DeviceRow(entry.device, this._host),
-                                         (row, entry) => row.update(entry.device));
+                                         entry => new DeviceRow(entry.model),
+                                         (row, entry) => row.update(entry.model));
 
         this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
@@ -817,7 +801,10 @@ class MenuPresenter {
             label: Format.deviceTitle(device),
             value: device.online ? _("Connected") : _("Disconnected"),
         })));
-        this._deviceList.sync(devices.map(device => ({ key: device.path, device: device })));
+        this._deviceList.sync(devices.map(device => ({
+            key: device.path,
+            model: Device.viewModel(device, options),
+        })));
     }
 
     _updateCpu(data, options) {
@@ -1072,7 +1059,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
                 this._onMenuOpened();
         });
 
-        this._menuPresenter = new MenuPresenter(this.menu, this._menuActions(), this,
+        this._menuPresenter = new MenuPresenter(this.menu, this._menuActions(),
                                                { chargeLimit: !!this._chargeControl,
                                                  version: this.metadata.version },
                                                this._backlights);
@@ -1103,6 +1090,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
             showAllSensors: this.showAllSensors,
             privileged: this.enablePrivilegedControls,
             highTempCelsius: this.highTempCelsius,
+            /* what a device row colours itself against */
+            lowLevel: this.lowBatteryThreshold,
+            peripheralLevel: this.peripheralBatteryThreshold,
         };
     }
 
@@ -1324,21 +1314,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
             highTempCelsius: this.highTempCelsius,
             tempUnit: this.tempUnit,
         };
-    }
-
-    /* The settings applied to the rules in lib/device.js. DeviceRow asks the
-     * applet for these while it colours itself; PT-33 is what stops it. */
-    lowThresholdFor(device) {
-        return Device.lowThreshold(device, this.lowBatteryThreshold,
-                                   this.peripheralBatteryThreshold);
-    }
-
-    isDraining(device) {
-        return Device.isDraining(device);
-    }
-
-    describeDevice(device) {
-        return Device.describe(device, this.tempUnit);
     }
 
     /* ------------------------------------------------------------------ */

@@ -110,3 +110,50 @@ cases["nothing empty is left in the sentence"] = function () {
     Harness.equal(text, "Charging", "no stray separators");
     Harness.equal(text.indexOf("··"), -1, "and none doubled");
 };
+
+/* ---------------------------------------------------------------- */
+/* what a row is told to show                                        */
+
+const OPTIONS = { tempUnit: "celsius", lowLevel: 20, peripheralLevel: 15 };
+
+cases["a row is given everything it needs and no rules"] = function () {
+    let model = Device.viewModel(battery({ percentage: 42 }), OPTIONS);
+    Harness.deepEqual(Object.keys(model).sort(),
+                      ["details", "icon", "key", "title", "warning"], "the whole model");
+    Harness.equal(model.key, "/bat", "keyed by path");
+    Harness.equal(model.title, "ACME BAT0  42%", "title");
+};
+
+cases["a coarse level is shown as a level, not as a number"] = function () {
+    Harness.equal(Device.viewModel(mouse({ percentage: 55, batteryLevel: Level.LOW }), OPTIONS).title,
+                  "ACME MX  Low", "a device that cannot really measure");
+    Harness.equal(Device.viewModel(mouse({ percentage: 55, batteryLevel: Level.NONE }), OPTIONS).title,
+                  "ACME MX  55%", "one that can");
+};
+
+cases["a battery keeps UPower's icon, a peripheral gets one for what it is"] = function () {
+    Harness.equal(Device.viewModel(battery({ icon: "battery-good-symbolic" }), OPTIONS).icon,
+                  "battery-good", "the level is in that name, so it is kept");
+    Harness.equal(Device.viewModel(mouse(), OPTIONS).icon, "xsi-input-mouse",
+                  "UPower says battery-missing for a mouse, which helps nobody");
+};
+
+cases["the warning follows the limit that applies to the device"] = function () {
+    Harness.equal(Device.viewModel(battery({ percentage: 21 }), OPTIONS).warning, false, "21 of 20");
+    Harness.equal(Device.viewModel(battery({ percentage: 20 }), OPTIONS).warning, true, "20 of 20");
+    Harness.equal(Device.viewModel(mouse({ percentage: 18 }), OPTIONS).warning, false,
+                  "18 is fine for a mouse, whose limit is 15");
+    Harness.equal(Device.viewModel(mouse({ percentage: 15 }), OPTIONS).warning, true, "15 of 15");
+};
+
+cases["a device that is charging is never warned about"] = function () {
+    Harness.equal(Device.viewModel(battery({ percentage: 5, state: State.CHARGING }), OPTIONS).warning,
+                  false, "on the cable at 5%");
+    Harness.equal(Device.viewModel(battery({ percentage: 5, state: State.DISCHARGING }), OPTIONS).warning,
+                  true, "off it at 5%");
+};
+
+cases["a device with no percentage is never warned about"] = function () {
+    Harness.equal(Device.viewModel(battery({ percentage: null }), OPTIONS).warning, false,
+                  "nothing to compare");
+};

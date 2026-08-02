@@ -83,3 +83,53 @@ function describe(device, tempUnit) {
 
     return parts.filter(part => part !== "").join(" · ");
 }
+
+/*
+ * The name at the top of a device's row: what it is, and how full.
+ *
+ * Devices that cannot measure a real percentage report a coarse level
+ * instead, and saying "Low" is more honest than turning that into a number.
+ */
+function title(device) {
+    let text = Format.deviceTitle(device);
+    if (Format.reportsPrecisePercentage(device))
+        return text + "  " + Format.percent(device.percentage);
+    if (device.batteryLevel !== UPowerGlib.DeviceLevel.NONE)
+        return text + "  " + Format.batteryLevelName(device.batteryLevel);
+    return text;
+}
+
+/*
+ * Which icon the row shows.
+ *
+ * A real battery keeps the one UPower chose, because that one encodes the
+ * charge level. A peripheral gets an icon for what it is instead: UPower
+ * hands out battery-missing for most of them, which says nothing useful about
+ * a headset. St appends "-symbolic" itself, so UPower's name has to lose it.
+ */
+function iconName(device) {
+    let name = device.powerSupply ? null : Format.deviceIconName(device.kind, null);
+    if (!name && device.icon)
+        name = device.icon.replace(/-symbolic$/, "");
+    return name || Format.batteryIconName();
+}
+
+/*
+ * Everything a row needs, worked out from a device and the settings in force.
+ *
+ * The row that displays this holds no rules at all - it sets three strings and
+ * a style class - and none of what is decided here needs a widget to be
+ * checked.
+ */
+function viewModel(device, options) {
+    return {
+        key: device.path,
+        title: title(device),
+        icon: iconName(device),
+        details: describe(device, options.tempUnit),
+        warning: device.percentage !== null &&
+                 isDraining(device) &&
+                 device.percentage <= lowThreshold(device, options.lowLevel,
+                                                   options.peripheralLevel),
+    };
+}
