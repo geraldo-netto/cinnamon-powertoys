@@ -33,6 +33,25 @@ if [ -n "${DESTDIR:-}" ]; then
     exit 0
 fi
 
+# Reloading an xlet does not drop the stylesheet it loaded, so a rule that was
+# changed or deleted goes on applying until the theme is reloaded. The theme
+# goes first and the applet second, deliberately: done the other way round the
+# two races, and the theme reload can tear down an applet that is still coming
+# up and leave it off the panel altogether. The files are already in place by
+# now, so the theme reload sees the new stylesheet either way.
+themed=no
+if command -v gdbus > /dev/null 2>&1; then
+    # Eval is refused unless the session has debugging enabled, hence the note
+    # further down when this does not work.
+    if gdbus call --session \
+            --dest org.Cinnamon \
+            --object-path /org/Cinnamon \
+            --method org.Cinnamon.Eval \
+            'imports.ui.main.themeManager._changeTheme();' 2>/dev/null | grep -q '^(true,'; then
+        themed=yes
+    fi
+fi
+
 # Reloading only works once the applet is enabled on a panel; on a first
 # install the call fails and the instructions below apply.
 reloaded=no
@@ -46,19 +65,10 @@ if command -v gdbus > /dev/null 2>&1; then
 fi
 
 if [ "$reloaded" = yes ]; then
-    echo "Reloaded the running applet."
-    # Reloading an xlet does not drop the stylesheet it loaded, so a rule that
-    # was changed or deleted goes on applying until the theme is reloaded.
-    # That surprises whoever has just edited one and seen nothing happen, so
-    # the theme is reloaded too where the shell will do it. Eval is refused
-    # unless the session has debugging enabled, hence the fallback message.
-    if gdbus call --session \
-            --dest org.Cinnamon \
-            --object-path /org/Cinnamon \
-            --method org.Cinnamon.Eval \
-            'imports.ui.main.themeManager._changeTheme();' 2>/dev/null | grep -q '^(true,'; then
-        echo "Reloaded the theme, so stylesheet changes are in too."
+    if [ "$themed" = yes ]; then
+        echo "Reloaded the running applet and the theme, so stylesheet changes are in too."
     else
+        echo "Reloaded the running applet."
         echo
         echo "Note: a reload does not drop the old stylesheet. If you changed"
         echo "stylesheet.css, restart Cinnamon (Alt+F2, then r) to see it."
