@@ -44,7 +44,7 @@ msgstr ""
 msgid "Turbo boost off"
 msgstr ""
 
-#: applet.js:230 applet.js:1164 applet.js:2469
+#: applet.js:230 applet.js:1164 applet.js:2482
 msgid "Power profile"
 msgstr ""
 
@@ -81,8 +81,8 @@ msgid "Power draw"
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:520 applet.js:1817 applet.js:2418 applet.js:2469 applet.js:2516
-#: applet.js:2525
+#: applet.js:520 applet.js:1830 applet.js:2431 applet.js:2482 applet.js:2529
+#: applet.js:2538
 msgid "Power Toys"
 msgstr ""
 
@@ -143,45 +143,45 @@ msgstr ""
 msgid "Only the first %d monitors have a slider"
 msgstr ""
 
-#: applet.js:1401
+#: applet.js:1414
 msgid "On AC power"
 msgstr ""
 
-#: applet.js:1424
+#: applet.js:1437
 msgid "an application"
 msgstr ""
 
-#: applet.js:1443
+#: applet.js:1456
 msgid "Connected"
 msgstr ""
 
-#: applet.js:1443
+#: applet.js:1456
 msgid "Disconnected"
 msgstr ""
 
-#: applet.js:1600
+#: applet.js:1613
 msgid "No sensor matches"
 msgstr ""
 
-#: applet.js:1612
+#: applet.js:1625
 msgid "No sensors found"
 msgstr ""
 
-#: applet.js:1818
+#: applet.js:1831
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "Right click the panel to configure it."
 msgstr ""
 
-#: applet.js:2403
+#: applet.js:2416
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2419
+#: applet.js:2432
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:2526
+#: applet.js:2539
 msgid "The change could not be applied."
 msgstr ""
 
@@ -197,11 +197,11 @@ msgstr ""
 msgid "until full"
 msgstr ""
 
-#: lib/device.js:78
+#: lib/device.js:84
 msgid "health"
 msgstr ""
 
-#: lib/device.js:80
+#: lib/device.js:86
 msgid "cycles"
 msgstr ""
 
@@ -489,7 +489,7 @@ msgstr ""
 msgid "Fan"
 msgstr ""
 
-#: lib/format.js:384 lib/sensors.js:174
+#: lib/format.js:384 lib/sensors.js:180
 msgid "Power"
 msgstr ""
 
@@ -517,11 +517,19 @@ msgstr ""
 msgid "Other"
 msgstr ""
 
-#: lib/sensors.js:172
+#: lib/sensors.js:175 lib/sensors.js:177
+msgid "CCD"
+msgstr ""
+
+#: lib/sensors.js:176
+msgid "Die"
+msgstr ""
+
+#: lib/sensors.js:178
 msgid "Memory"
 msgstr ""
 
-#: lib/sensors.js:173
+#: lib/sensors.js:179
 msgid "Core voltage"
 msgstr ""
 

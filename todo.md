@@ -21,7 +21,6 @@ that work and were found by looking outside the applet for once.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-102 | low | XS | `SHORT_LABELS` in [lib/sensors.js](cinnamon-powertoys@geraldo-netto/lib/sensors.js) passes translated strings as the replacement argument of `String.replace`, where `$&`, `$1` and `$'` are substitution patterns rather than characters. A translator who writes a `$` gets a mangled sensor name. Only `CCD $1` needs the substitution; the rest can be returned as they stand. |
 | PT-103 | low | XS | [lib/hardware.js](cinnamon-powertoys@geraldo-netto/lib/hardware.js) remembers that a PCI address has no name for the life of the applet. An external graphics card, or anything else that appears at an address already asked about, keeps showing the raw address until a reload. A missing table is already treated as "not known yet" rather than "no such device"; a missing entry could be too, at the cost of one table read per rediscovery. |
 | PT-104 | low | XS | `DdcBacklight._onChanged` is stored in the constructor and never called from anywhere, while the applet passes it a live callback that would re-sync the sliders. Either the group should use it when a monitor's value moves under it - which is the only way a change made with the monitor's own buttons could ever reach the menu - or the parameter should go, because as it stands it promises a notification that never arrives. |
 

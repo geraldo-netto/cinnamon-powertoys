@@ -164,14 +164,20 @@ function _hwmonIdentity(base) {
  *
  * A reading the driver never labelled is named after what it measures, which
  * under the chip's own heading is all there is left to say about it.
+ *
+ * Each entry answers with the name rather than being a replacement string.
+ * These are translated, and a replacement string is not text: `$&`, `$1` and
+ * `$'` are substitutions to String.replace, so a translator who wrote a `$`
+ * got it eaten or got part of the label repeated back at them. Only the CCD
+ * number needs what the pattern matched, and it can ask for it.
  */
 const SHORT_LABELS = [
-    [/^tccd(\d+)$/i, "CCD $1"],
-    [/^tdie$/i, "Die"],
-    [/^tccd$/i, "CCD"],
-    [/^mem$/i, _("Memory")],
-    [/^vddgfx$/i, _("Core voltage")],
-    [/^ppt$/i, _("Power")],
+    [/^tccd(\d+)$/i, match => _("CCD") + " " + match[1]],
+    [/^tdie$/i, () => _("Die")],
+    [/^tccd$/i, () => _("CCD")],
+    [/^mem$/i, () => _("Memory")],
+    [/^vddgfx$/i, () => _("Core voltage")],
+    [/^ppt$/i, () => _("Power")],
 ];
 
 function _shortName(entry) {
@@ -184,9 +190,10 @@ function _shortName(entry) {
     if (label.toLowerCase().indexOf(entry.chip.toLowerCase()) === 0)
         label = label.slice(entry.chip.length).trim() || label;
 
-    for (let [pattern, replacement] of SHORT_LABELS) {
-        if (pattern.test(label))
-            return label.replace(pattern, replacement);
+    for (let [pattern, name] of SHORT_LABELS) {
+        let match = pattern.exec(label);
+        if (match)
+            return name(match);
     }
     return Format.capitalize(label);
 }

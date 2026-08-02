@@ -126,6 +126,17 @@ cases["a row under a named group drops the chip and the address"] = function () 
     });
 };
 
+cases["a tidied label is text, not a replacement pattern"] = function () {
+    on("machine", function () {
+        let found = Sensors.discoverSensors();
+        /* Tccd1 is the one entry that uses what the pattern matched. If these
+         * were replacement strings a translation containing $ would be eaten
+         * by String.replace, so the table answers with a name instead. */
+        Harness.equal(byId(found.temperatures, "hwmon:hwmon0:temp2").short, "CCD 1", "first");
+        Harness.equal(byId(found.temperatures, "hwmon:hwmon0:temp3").short, "CCD 2", "second");
+    });
+};
+
 cases["everything one chip says stays together, in kind order"] = function () {
     on("machine", function () {
         let found = Sensors.discoverSensors();
