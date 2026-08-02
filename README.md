@@ -213,6 +213,12 @@ cjs tests/run.js      # tests only
 cjs tests/run.js io   # only cases whose name contains "io"
 ```
 
+`make check` also runs on every push and pull request, along with a staged
+install of the applet and of the polkit action — see
+[.github/workflows/check.yml](.github/workflows/check.yml). None of it needs
+Cinnamon, a session bus or real hardware, because the libraries take their
+file root, their D-Bus calls and their spawns as parameters.
+
 `tests/harness.js` loads the libraries exactly as Cinnamon does — strict mode,
 the same export collection, a `require()` bound to the xlet directory — so a
 test exercises what the shell actually runs. Cases live in `tests/cases/` and

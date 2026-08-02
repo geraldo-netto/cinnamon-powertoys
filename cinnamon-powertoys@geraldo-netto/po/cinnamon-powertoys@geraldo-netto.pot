@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-02 12:03+0200\n"
+"POT-Creation-Date: 2026-08-02 13:04+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,141 +17,168 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: applet.js:169
+#: applet.js:187
 msgid "battery"
 msgstr ""
 
-#: applet.js:170
+#: applet.js:188
 msgid "package"
 msgstr ""
 
-#: applet.js:171
+#: applet.js:189
 msgid "GPU"
 msgstr ""
 
-#: applet.js:244
-msgid "Battery critically low"
-msgstr ""
-
-#: applet.js:251
-msgid "Battery low"
-msgstr ""
-
-#: applet.js:269
-msgid "High temperature"
-msgstr ""
-
-#: applet.js:363
-msgid "Running on AC power"
-msgstr ""
-
-#: applet.js:367
-msgid "Profile"
-msgstr ""
-
-#: applet.js:369 applet.js:782
+#: applet.js:225 applet.js:452 applet.js:951
 msgid "Governor"
 msgstr ""
 
-#: applet.js:371 applet.js:776
+#: applet.js:227 applet.js:953
+msgid "Energy preference"
+msgstr ""
+
+#: applet.js:229
+msgid "Turbo boost on"
+msgstr ""
+
+#: applet.js:229
+msgid "Turbo boost off"
+msgstr ""
+
+#: applet.js:231 applet.js:836 applet.js:1879
+msgid "Power profile"
+msgstr ""
+
+#: applet.js:233 applet.js:884
+msgid "Charge limit"
+msgstr ""
+
+#: applet.js:300
+msgid "Battery critically low"
+msgstr ""
+
+#: applet.js:307
+msgid "Battery low"
+msgstr ""
+
+#: applet.js:325
+msgid "High temperature"
+msgstr ""
+
+#: applet.js:446
+msgid "Running on AC power"
+msgstr ""
+
+#: applet.js:450
+msgid "Profile"
+msgstr ""
+
+#: applet.js:454 applet.js:945
 msgid "Temperature"
 msgstr ""
 
-#: applet.js:374
+#: applet.js:457
 msgid "Power draw"
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:382 applet.js:760 applet.js:1425 applet.js:1476 applet.js:1496
-#: applet.js:1534
+#: applet.js:465 applet.js:814 applet.js:1377 applet.js:1828 applet.js:1879
+#: applet.js:1926 applet.js:1935
 msgid "Power Toys"
 msgstr ""
 
-#: applet.js:691
+#: applet.js:788
 msgid "Brightness"
 msgstr ""
 
-#: applet.js:693
+#: applet.js:790
+msgid "Monitor brightness"
+msgstr ""
+
+#: applet.js:793
 msgid "Keyboard backlight"
 msgstr ""
 
-#: applet.js:701
-msgid "Performance limited"
-msgstr ""
-
-#: applet.js:728 lib/sensors.js:35
-msgid "Processor"
-msgstr ""
-
-#: applet.js:732
-msgid "Sensors"
-msgstr ""
-
-#: applet.js:742 applet.js:975
-msgid "Battery charge limit"
-msgstr ""
-
-#: applet.js:749
+#: applet.js:803
 msgid "System power settings"
 msgstr ""
 
-#: applet.js:751
+#: applet.js:805
 msgid "Configure Power Toys"
 msgstr ""
 
-#: applet.js:775
+#: applet.js:828 applet.js:1015 lib/format.js:227 lib/format.js:311
+#: lib/format.js:329
+msgid "Performance"
+msgstr ""
+
+#: applet.js:838
+msgid "Performance limited"
+msgstr ""
+
+#: applet.js:853 applet.js:1056
+msgid "Batteries and devices"
+msgstr ""
+
+#: applet.js:875
+msgid "Nothing with a battery is connected"
+msgstr ""
+
+#: applet.js:889 applet.js:1199
+msgid "Sensors"
+msgstr ""
+
+#: applet.js:944
 msgid "Frequency"
 msgstr ""
 
-#: applet.js:777
+#: applet.js:946
 msgid "Scaling driver"
 msgstr ""
 
-#: applet.js:784
-msgid "Energy preference"
-msgstr ""
-
-#: applet.js:790
+#: applet.js:959
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:828
+#: applet.js:996
 msgid "On AC power"
 msgstr ""
 
-#: applet.js:846
+#: applet.js:1023
 msgid "an application"
 msgstr ""
 
-#: applet.js:865
+#: applet.js:1042
 msgid "Connected"
 msgstr ""
 
-#: applet.js:865
+#: applet.js:1042
 msgid "Disconnected"
 msgstr ""
 
-#: applet.js:890
-msgid "unknown"
+#: applet.js:1064
+msgid "none"
 msgstr ""
 
-#: applet.js:964
+#: applet.js:1205
+msgid "No sensor matches"
+msgstr ""
+
+#: applet.js:1217
 msgid "No sensors found"
 msgstr ""
 
-#: applet.js:1426
+#: applet.js:1378
+msgid ""
+"Power profiles, processor settings, batteries and sensors are in this menu. "
+"Right click the panel to configure it."
+msgstr ""
+
+#: applet.js:1829
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:1476
-msgid "Power profile"
-msgstr ""
-
-#: applet.js:1496
-msgid "Helper script not found"
-msgstr ""
-
-#: applet.js:1534
+#: applet.js:1936
 msgid "The change could not be applied."
 msgstr ""
 
@@ -347,10 +374,6 @@ msgstr ""
 msgid "Balanced performance"
 msgstr ""
 
-#: lib/format.js:227 lib/format.js:260 lib/format.js:278
-msgid "Performance"
-msgstr ""
-
 #: lib/format.js:228
 msgid "Quiet"
 msgstr ""
@@ -363,40 +386,96 @@ msgstr ""
 msgid "Cool"
 msgstr ""
 
-#: lib/format.js:261
-msgid "Power save"
+#: lib/format.js:274
+msgid "AMD, hardware managed"
 msgstr ""
 
-#: lib/format.js:262
-msgid "On demand"
+#: lib/format.js:275
+msgid "AMD"
 msgstr ""
 
-#: lib/format.js:263
-msgid "Conservative"
-msgstr ""
-
-#: lib/format.js:264
-msgid "Scheduler guided"
-msgstr ""
-
-#: lib/format.js:265
-msgid "Userspace"
+#: lib/format.js:276
+msgid "ACPI"
 msgstr ""
 
 #: lib/format.js:277
-msgid "Default"
+msgid "Intel"
+msgstr ""
+
+#: lib/format.js:278
+msgid "Intel, kernel managed"
 msgstr ""
 
 #: lib/format.js:279
-msgid "Balance performance"
+msgid "ACPI hardware managed"
 msgstr ""
 
 #: lib/format.js:280
-msgid "Balance power"
+msgid "Intel SpeedStep"
 msgstr ""
 
 #: lib/format.js:281
+msgid "AMD PowerNow"
+msgstr ""
+
+#: lib/format.js:282
+msgid "Processor Clocking Control"
+msgstr ""
+
+#: lib/format.js:291
+msgid "hardware managed"
+msgstr ""
+
+#: lib/format.js:292
+msgid "guided"
+msgstr ""
+
+#: lib/format.js:293
+msgid "kernel managed"
+msgstr ""
+
+#: lib/format.js:298
+msgid "unknown"
+msgstr ""
+
+#: lib/format.js:312
+msgid "Power save"
+msgstr ""
+
+#: lib/format.js:313
+msgid "On demand"
+msgstr ""
+
+#: lib/format.js:314
+msgid "Conservative"
+msgstr ""
+
+#: lib/format.js:315
+msgid "Scheduler guided"
+msgstr ""
+
+#: lib/format.js:316
+msgid "Userspace"
+msgstr ""
+
+#: lib/format.js:328
+msgid "Default"
+msgstr ""
+
+#: lib/format.js:330
+msgid "Balance performance"
+msgstr ""
+
+#: lib/format.js:331
+msgid "Balance power"
+msgstr ""
+
+#: lib/format.js:332
 msgid "Power saving"
+msgstr ""
+
+#: lib/sensors.js:35
+msgid "Processor"
 msgstr ""
 
 #: lib/sensors.js:37
@@ -459,13 +538,14 @@ msgid "Fahrenheit"
 msgstr ""
 
 #. settings-schema.json->cpu-sensor-hint->description
-msgid "Preferred CPU sensor"
+msgid "Preferred temperature sensor"
 msgstr ""
 
 #. settings-schema.json->cpu-sensor-hint->tooltip
 msgid ""
-"Chip or label fragment of the sensor used for the panel temperature, e.g. "
-"'Tctl' or 'k10temp'. Leave empty for automatic detection."
+"Chip or label fragment of the sensor shown as the machine's temperature, in "
+"the tooltip, the menu summary and the Performance panel, e.g. 'Tctl' or "
+"'k10temp'. Leave empty for automatic detection."
 msgstr ""
 
 #. settings-schema.json->panel-section->description
@@ -540,6 +620,17 @@ msgstr ""
 msgid "Open the CPU and sensor sections by default"
 msgstr ""
 
+#. settings-schema.json->monitor-brightness->description
+msgid "Control external monitor brightness"
+msgstr ""
+
+#. settings-schema.json->monitor-brightness->tooltip
+msgid ""
+"For monitors on a cable, which have no kernel backlight. Needs ddcutil "
+"installed and permission on /dev/i2c-*, and is only used on machines with no"
+" built-in backlight of their own."
+msgstr ""
+
 #. settings-schema.json->control-section->description
 msgid "Controls"
 msgstr ""
@@ -559,11 +650,28 @@ msgid "Mouse wheel over the applet"
 msgstr ""
 
 #. settings-schema.json->scroll-action->options
-msgid "Do nothing"
+msgid "Change screen brightness"
 msgstr ""
 
 #. settings-schema.json->scroll-action->options
 msgid "Change power profile"
+msgstr ""
+
+#. settings-schema.json->scroll-action->options
+#. settings-schema.json->middle-click-action->options
+msgid "Do nothing"
+msgstr ""
+
+#. settings-schema.json->middle-click-action->description
+msgid "Middle click on the applet"
+msgstr ""
+
+#. settings-schema.json->middle-click-action->options
+msgid "Toggle keyboard backlight"
+msgstr ""
+
+#. settings-schema.json->middle-click-action->options
+msgid "Cycle power profile"
 msgstr ""
 
 #. settings-schema.json->cycle-profile-hotkey->description

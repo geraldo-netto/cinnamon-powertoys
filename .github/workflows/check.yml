@@ -1,0 +1,55 @@
+# Everything `make check` does, on every push and every pull request.
+#
+# The runner has no Cinnamon, no session bus and no /sys worth reading, which
+# is exactly why the applet's libraries take their file root, their D-Bus
+# calls and their spawns as parameters: the tests run against fixtures and
+# stubs, so none of that is needed here.
+
+name: check
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # cjs is Cinnamon's JavaScript interpreter and is what the parse check
+      # and the tests are run with, so that they fail here for the same
+      # reasons they would fail in the shell.
+      - name: Install cjs and gettext
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y cjs gettext
+
+      - name: Check
+        run: make check
+
+      # A staged install, so the packaging is exercised without any of it
+      # reaching the runner's own home directory.
+      - name: Staged install
+        run: |
+          make install DESTDIR="$PWD/staged"
+          test -f "staged$HOME/.local/share/cinnamon/applets/cinnamon-powertoys@geraldo-netto/applet.js"
+          make install-policy DESTDIR="$PWD/staged"
+          test -f "$PWD/staged/usr/share/polkit-1/actions/io.github.geraldo-netto.cinnamon-powertoys.policy"
+          test -x "$PWD/staged/usr/local/lib/cinnamon-powertoys/powertoys-helper"
+
+      # The template has to match the strings that are actually in the source,
+      # or a translator is working from a list that has moved on without them.
+      - name: Translation template is current
+        run: |
+          sudo apt-get install --no-install-recommends -y cinnamon-common || true
+          if command -v cinnamon-xlet-makepot > /dev/null; then
+            make pot
+            git diff --exit-code -- cinnamon-powertoys@geraldo-netto/po \
+              || { echo "run 'make pot' and commit the result"; exit 1; }
+          else
+            echo "cinnamon-xlet-makepot not available on the runner, skipping"
+          fi
