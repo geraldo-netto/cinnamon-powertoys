@@ -694,11 +694,12 @@ var SensorSet = class SensorSet {
         };
     }
 
-    _powers(keep, readNumber) {
+    _powers(keep, readNumber, lists) {
+        let found = lists || this._lists();
         let readings = [];
         let packageWatts = null;
 
-        for (let meter of this.energyMeters) {
+        for (let meter of found.meters) {
             if (!keep(meter))
                 continue;
             meter.sample(undefined, readNumber);
@@ -720,7 +721,7 @@ var SensorSet = class SensorSet {
                 packageWatts = (packageWatts || 0) + meter.watts;
         }
 
-        for (let sensor of this.powerSensors) {
+        for (let sensor of found.powers) {
             if (!keep(sensor))
                 continue;
             let raw = readNumber(sensor.path);
@@ -785,35 +786,64 @@ var SensorSet = class SensorSet {
      */
     readAsync(wanted, onDone) {
         let keep = wanted || (() => true);
-        IO.readStringsAsync(this._paths(keep), values => {
-            onDone(this._assemble(keep, path => IO.toNumber(values[path])));
+        /*
+         * The lists are taken now, not when the answer comes back.
+         *
+         * A rediscovery can land in between - the poll asks for one every
+         * minute, opening the menu asks for one every time - and it replaces
+         * every list on this object. The paths were collected before the read
+         * and the reading used to be assembled out of whatever the lists held
+         * afterwards, so a sweep in the middle meant looking up new sensors in
+         * an answer keyed by the old ones: every value missing, and one poll
+         * where the whole machine read null.
+         *
+         * Both callers refresh before they update, so it takes the two to slip
+         * past each other - an update deferred by an in-flight read finishing
+         * after the next tick's sweep. Rare, and it costs one array of
+         * references to make impossible.
+         */
+        let found = this._lists();
+        IO.readStringsAsync(this._paths(keep, found), values => {
+            onDone(this._assemble(keep, path => IO.toNumber(values[path]), found));
         });
     }
 
+    /* What was discovered, as one thing that can be held on to. */
+    _lists() {
+        return {
+            temperatures: this.temperatureSensors,
+            fans: this.fanSensors,
+            meters: this.energyMeters,
+            powers: this.powerSensors,
+        };
+    }
+
     /* Every node one reading touches, for whoever wants to load them first. */
-    _paths(keep) {
+    _paths(keep, lists) {
+        let found = lists || this._lists();
         let paths = [];
-        for (let sensor of this.temperatureSensors)
+        for (let sensor of found.temperatures)
             if (keep(sensor))
                 paths.push(sensor.path);
-        for (let sensor of this.fanSensors)
+        for (let sensor of found.fans)
             if (keep(sensor))
                 paths.push(sensor.path);
-        for (let meter of this.energyMeters)
+        for (let meter of found.meters)
             if (keep(meter))
                 paths.push(meter.counter.path);
-        for (let sensor of this.powerSensors)
+        for (let sensor of found.powers)
             if (keep(sensor))
                 paths.push(sensor.path);
         return paths;
     }
 
-    _assemble(keep, readNumber) {
-        let powers = this._powers(keep, readNumber);
+    _assemble(keep, readNumber, lists) {
+        let found = lists || this._lists();
+        let powers = this._powers(keep, readNumber, found);
         return {
-            temperatures: this.temperatureSensors.filter(keep)
+            temperatures: found.temperatures.filter(keep)
                 .map(sensor => this._temperature(sensor, readNumber)),
-            fans: this.fanSensors.filter(keep).map(sensor => this._fan(sensor, readNumber)),
+            fans: found.fans.filter(keep).map(sensor => this._fan(sensor, readNumber)),
             powers: powers.readings,
             packageWatts: powers.packageWatts,
         };

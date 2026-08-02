@@ -29,7 +29,6 @@ machines between them; these are the ones with a hole in.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-137 | low | S | [`SensorSet.refresh()`](cinnamon-powertoys@geraldo-netto/lib/sensors.js#L655) can replace the sensor lists while a [`readAsync`](cinnamon-powertoys@geraldo-netto/lib/sensors.js#L786) is still out. The paths are collected before the read and `_assemble` walks `this.temperatureSensors` *after* it, so a rediscovery in between assembles the new lists out of values keyed by the old paths and every lookup misses — one poll where every sensor reads null. Both callers refresh before updating, which is why this needs the two to slip: an update deferred by `_collectAgain` finishes after the next tick's refresh. Rare, self-correcting on the next poll, and avoidable by taking the lists at read time rather than at assembly time. |
 
 ## Architecture
 

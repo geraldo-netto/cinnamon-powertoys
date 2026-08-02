@@ -738,3 +738,51 @@ cases["a machine with no platform profile snapshots as unavailable"] = function 
         IO.setRoot("");
     }
 };
+
+cases["a rediscovery during a reading does not empty it"] = function () {
+    /*
+     * The paths are collected before the read and the reading used to be
+     * assembled out of whatever the lists held afterwards, so a sweep in
+     * between meant looking up the new machine's sensors in an answer keyed by
+     * the old machine's: every value missing, and one poll where everything
+     * read null.
+     *
+     * Both callers refresh before they update, so it takes an update deferred
+     * by an in-flight read to finish after the next tick's sweep. The sweep
+     * here finds a machine with no hwmon at all, which is the whole of what
+     * makes this different from rediscovering the same fixture twice.
+     */
+    on("machine", function () {
+        let set = new Sensors.SensorSet();
+        let before = set.temperatureSensors.length;
+        Harness.ok(before > 0, "the fixture has sensors to lose");
+
+        let answer = Harness.settle(function (done) {
+            set.readAsync(null, done);
+            IO.setRoot(Harness.fixture("inverted-boost"));
+            set.discover();
+        }, "the reading");
+
+        Harness.equal(set.temperatureSensors.length, 0, "the sweep did land, and found nothing");
+        Harness.equal(answer.temperatures.length, before,
+                      "and the reading is still of the machine it was taken from");
+        Harness.ok(answer.temperatures.every(entry => entry.celsius !== null),
+                   "with every value in it, rather than a null where the lookup missed");
+    });
+};
+
+cases["a reading taken after a rediscovery is the new machine's"] = function () {
+    /* The other half: holding the lists for one read must not mean holding
+     * them for the next. */
+    on("inverted-boost", function () {
+        let set = new Sensors.SensorSet();
+        Harness.equal(set.temperatureSensors.length, 0, "nothing here to read");
+
+        IO.setRoot(Harness.fixture("machine"));
+        set.discover();
+        let answer = Harness.settle(done => set.readAsync(null, done), "the reading");
+        Harness.equal(answer.temperatures.length, set.temperatureSensors.length,
+                      "as many as the sweep that just ran found");
+        Harness.ok(answer.temperatures.length > 0, "which is some");
+    });
+};
