@@ -1918,8 +1918,14 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._scheduleUpdate();
         });
 
+        /*
+         * No update is scheduled here. Issuing the call changes nothing that
+         * is on screen: the daemon has not applied anything yet, so the
+         * reading still says the old profile, and the pending profile is only
+         * ever drawn in the menu, which is closing on the next line. The one
+         * in the callback is the one that has something new to show.
+         */
         this.menu.close();
-        this._scheduleUpdate();
     }
 
     /* Gio prefixes a remote error with the D-Bus error name, which means

@@ -41,7 +41,6 @@ A pass looking for things that are wrong rather than things that are untidy.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-71 | low | XS | An accepted profile change polls twice: `_setProfile()` schedules an update inside the D-Bus callback and again immediately after issuing it. |
 | PT-72 | low | XS | Opening the menu calls `UPowerMonitor.refresh()`, which asks UPower to re-poll every system battery. On a laptop that is a real device poll on every menu open, for data that arrives by signal anyway. |
 | PT-73 | low | XS | The panel can say the same thing twice. With no battery the icon source resolves to `profile`, so the coloured gauge already shows which profile is active, and *Show active power profile in the panel* then repeats it in words beside it. |
 ## Architecture, performance and robustness
