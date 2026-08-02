@@ -2093,9 +2093,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
      *
      * Nobody reads a README before using a panel applet, and there is not
      * much to go on otherwise: on a desktop the applet is an icon with no
-     * text beside it. The menu itself now shows everything it can do as soon
-     * as it is opened, so this only has to say that the menu is worth opening
-     * and where the settings are.
+     * text beside it. The menu itself shows everything it can do as soon as
+     * it is opened, so this says that the menu is worth opening and where the
+     * settings are.
+     *
+     * It also names the wheel and the middle button, because those two are
+     * the only things this applet does that leave no trace of themselves
+     * anywhere: an icon does not look scrollable, and nobody middle clicks a
+     * panel to find out what happens. This notification is the one moment
+     * somebody is certain to be reading, so it is where they get said.
      */
     _introduce() {
         if (this.introduced)
@@ -2120,7 +2126,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
         try {
             Main.notify(_("Power Toys"),
                         _("Power profiles, processor settings, batteries and sensors " +
-                          "are in this menu. Right click the panel to configure it."));
+                          "are in this menu. The wheel over the icon changes screen " +
+                          "brightness, a middle click toggles the keyboard backlight. " +
+                          "Right click to configure those, and to set shortcuts."));
         } catch (error) {
             Log.error("could not show the first-run notification: " + error);
         }

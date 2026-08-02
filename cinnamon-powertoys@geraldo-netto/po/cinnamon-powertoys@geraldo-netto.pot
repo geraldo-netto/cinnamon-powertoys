@@ -44,7 +44,7 @@ msgstr ""
 msgid "Turbo boost off"
 msgstr ""
 
-#: applet.js:254 applet.js:1354 applet.js:2776
+#: applet.js:254 applet.js:1354 applet.js:2784
 msgid "Power profile"
 msgstr ""
 
@@ -86,8 +86,8 @@ msgid "and %d more"
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:582 applet.js:2121 applet.js:2725 applet.js:2776 applet.js:2823
-#: applet.js:2832
+#: applet.js:582 applet.js:2127 applet.js:2733 applet.js:2784 applet.js:2831
+#: applet.js:2840
 msgid "Power Toys"
 msgstr ""
 
@@ -168,21 +168,23 @@ msgstr ""
 msgid "No sensors found"
 msgstr ""
 
-#: applet.js:2122
+#: applet.js:2128
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
-"Right click the panel to configure it."
+"The wheel over the icon changes screen brightness, a middle click toggles "
+"the keyboard backlight. Right click to configure those, and to set "
+"shortcuts."
 msgstr ""
 
-#: applet.js:2710
+#: applet.js:2718
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2726
+#: applet.js:2734
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:2833
+#: applet.js:2841
 msgid "The change could not be applied."
 msgstr ""
 
