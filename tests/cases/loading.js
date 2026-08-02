@@ -22,43 +22,70 @@ for (let name of MODULES) {
     };
 }
 
-/* Everything applet.js names on a library, listed here so a rename in either
- * place is a failure rather than an undefined at the point of use. */
-const USED = {
-    "io": ["readNumber", "exists", "readString", "readWords", "readLink",
-           "listDir", "setRoot", "resolve", "naturalCompare", "isReadable"],
-    "log": ["error", "setSink"],
-    "gettext": ["_", "UUID"],
-    "format": ["deviceTitle", "sensorLabel", "temperature", "watts", "percent",
-               "batteryIconName", "setIconLookup", "DEVICE_ICONS",
-               "frequency", "rpm", "volts", "energy", "duration", "profileLabel",
-               "profileIconName", "governorLabel", "energyPreferenceLabel",
-               "deviceKindName", "deviceStateName", "batteryLevelName",
-               "deviceIconName", "reportsPrecisePercentage", "driverLabel"],
-    "sensors": ["SensorSet", "EnergyMeter", "discoverSensors", "discoverEnergyCounters",
-                "isPrimaryKind", "bySensorOrder", "kindLabel", "classifyChip", "KINDS",
-                "sensorMatches"],
-    "device": ["isDraining", "lowThreshold", "remainingText", "describe",
-               "title", "iconName", "viewModel"],
-    "cpu": ["CpuControl"],
-    "power-supply": ["discoverChargeControl", "platformProfile", "ChargeControl",
-                     "PlatformProfileClient"],
-    "upower": ["UPowerMonitor"],
-    "profiles": ["PowerProfilesClient", "PROFILE_ORDER"],
-    "backlight": ["BacklightControl", "SCREEN", "KEYBOARD"],
-    "ddc": ["DdcBacklight", "parseDisplays", "parseBrightness"],
-    "bluez": ["BluezBatteries", "parseObjects", "addressOf"],
-    "privileged": ["PrivilegedHelper"],
-};
-
-for (let name in USED) {
-    cases["lib/" + name + ".js exports what the applet uses"] = function () {
-        let module = Harness.requireXlet("./lib/" + name + ".js");
-        for (let symbol of USED[name])
-            Harness.ok(module[symbol] !== undefined && module[symbol] !== null,
-                       name + "." + symbol + " is missing");
-    };
+/*
+ * Every name any source file reaches for on a library, found by reading the
+ * sources rather than by keeping a list.
+ *
+ * A list was kept here, and it drifted exactly where the newest code was:
+ * three names the applet had started using were absent, one it had stopped
+ * using was still there, and what one library used from another was outside
+ * its scope entirely. A list of what the code does, maintained by hand
+ * alongside the code, is a second place to forget.
+ *
+ * So the requires are read out of each file, and every `Alias.symbol` on one
+ * of them has to resolve. A rename that a parse check cannot see - the file
+ * is still valid JavaScript - fails here, whichever file did the renaming and
+ * whichever did the using.
+ */
+function sourceFiles() {
+    let files = [Harness.xletDir() + "/applet.js"];
+    for (let name of MODULES)
+        files.push(Harness.xletDir() + "/lib/" + name + ".js");
+    return files;
 }
+
+/* `const Sensors = require("./lib/sensors.js")` - the alias and what it is. */
+function requiresIn(source) {
+    let aliases = {};
+    let pattern = /(?:const|var|let)\s+([A-Za-z_$][\w$]*)\s*=\s*require\("\.\/lib\/([\w-]+)\.js"\)/g;
+    let match;
+    while ((match = pattern.exec(source)) !== null)
+        aliases[match[1]] = match[2];
+    return aliases;
+}
+
+function usedNames(source, alias) {
+    let names = {};
+    let pattern = new RegExp("\\b" + alias + "\\.([A-Za-z_$][\\w$]*)", "g");
+    let match;
+    while ((match = pattern.exec(source)) !== null)
+        names[match[1]] = true;
+    return Object.keys(names).sort();
+}
+
+cases["every name a source reaches for on a library is exported"] = function () {
+    let missing = [];
+    let checked = 0;
+
+    for (let file of sourceFiles()) {
+        let source = Harness.readFile(file);
+        let aliases = requiresIn(source);
+        for (let alias in aliases) {
+            let module = Harness.requireXlet("./lib/" + aliases[alias] + ".js");
+            for (let symbol of usedNames(source, alias)) {
+                checked++;
+                if (module[symbol] === undefined || module[symbol] === null)
+                    missing.push(file.replace(Harness.xletDir() + "/", "") +
+                                 " uses " + aliases[alias] + "." + symbol);
+            }
+        }
+    }
+
+    Harness.deepEqual(missing, [], "named and not exported");
+    /* If this ever reads zero the regexes have stopped matching and the case
+     * is passing by finding nothing at all. */
+    Harness.ok(checked > 60, "only " + checked + " names checked, which is too few to be right");
+};
 
 cases["the libraries load without a shell"] = function () {
     /* lib/log.js exists so that nothing in lib/ touches Cinnamon's globals at

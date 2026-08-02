@@ -121,6 +121,16 @@ function _show(value) {
     }
 }
 
+/*
+ * A source file as text, for the cases that check what the code says rather
+ * than what it does. applet.js cannot be loaded outside Cinnamon - it imports
+ * the shell's own modules at the top - so reading it is the only way to hold
+ * it to anything.
+ */
+function readFile(path) {
+    return Loader.read(path);
+}
+
 /* ---------------------------------------------------------------- */
 /* asynchronous results                                              */
 
