@@ -8,8 +8,8 @@ what the machine has been told to do — **Power profile** and **Processor**,
 which are two levels of one decision, and under them **Brightness**, a slider
 for each screen the machine can move and one for the keyboard backlight where
 there is one — then what is plugged into it, **Devices**, then what all of
-that is doing to the temperature, **Sensors**, with the supply the machine is
-running on at the top of it. A column that has nothing in it is not there at
+that is doing to the temperature, **Sensors**, whose first line is the supply
+the machine is running on. A column that has nothing in it is not there at
 all. Nothing is folded away, and every figure is stated once.
 
 ![The menu](docs/menu.png)
@@ -64,22 +64,27 @@ names are supported). Shows when the firmware degrades performance and which
 application is holding a profile. On machines without the daemon it falls back
 to the ACPI platform profile in `/sys/firmware/acpi/platform_profile`.
 
-**CPU.** *Processor* holds the three things that can be changed — turbo boost,
-governor and energy performance preference — and nothing else, none of it
-behind a disclosure. What the processor is *doing* is a reading and is filed
-with its other readings: the current and maximum frequency and the scaling
-driver sit under the chip's own name in **Sensors**, above its temperatures.
-Its temperature is not repeated at all; it was the same number as `Tctl` three
-rows below.
+**CPU.** *Processor* holds what can be changed and is nobody else's to write,
+none of it behind a disclosure. What the processor is *doing* is a reading and
+is filed with its other readings: the current and maximum frequency and the
+scaling driver sit under the chip's own name in **Sensors**, above its
+temperatures. Its temperature is not repeated at all; it was the same number as
+`Tctl` three rows below.
 
-The governor and the energy preference are what a power profile sets, so where
-power-profiles-daemon is running the menu says which of them it is writing:
-without that line the profile and the two settings below it read the same word
-for no stated reason, which looks like three copies of one control rather than
-one control and its two outputs. They stay changeable — a governor set by hand
-holds until the next profile change or mains transition — but nothing pretends
-the daemon has stopped writing them. Where a setting has only one value to
-offer, and `amd_pstate` narrows the energy preferences to exactly one, it is
+Under power-profiles-daemon the governor and the energy preference are not
+controls, because the daemon writes both from whichever profile is in force and
+writes them again on the next profile change or mains transition. One thing to
+set, under one name: the power profile. What the daemon then wrote is stated
+with the other readings, next to the frequency and the scaling driver. The
+menu used to offer all three, with a line under the profile explaining which of
+the two below it that profile was writing — three controls agreeing on the same
+word, and a sentence to account for it.
+
+They are controls where nothing else is writing them: a machine with no
+profiles at all, and one whose only profile is the ACPI platform profile, which
+writes firmware and never touches cpufreq. There the governor is the way to ask
+for speed and it sits in *Processor*, and where a setting has only one value to
+offer — `amd_pstate` narrows the energy preferences to exactly one — it is
 shown as a value rather than as a choice of one.
 
 Governor, energy preference, boost and the battery charge limit are kernel

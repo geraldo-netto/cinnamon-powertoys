@@ -76,7 +76,7 @@
         "type": "switch",
         "default": true,
         "description": "Show Processor",
-        "tooltip": "Turbo boost, governor and energy preference. The processor's frequency, scaling driver and temperature are readings and are under Sensors."
+        "tooltip": "Turbo boost, and the governor and energy preference where the power profile is not the one writing them. What the processor is doing - frequency, scaling driver, governor, temperature - is under Sensors."
     },
     "show-devices": {
         "type": "switch",

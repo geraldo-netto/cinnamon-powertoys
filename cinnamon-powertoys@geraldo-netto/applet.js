@@ -777,11 +777,24 @@ class ChoiceControl {
         this._group = new SelectorGroup(section, labelFunction, onActivate, title);
     }
 
-    sync(values, active, editable) {
-        let choices = editable && values.length > 1 ? values : [];
+    /*
+     * `show` is false where this setting is not this menu's to offer - the
+     * governor under a daemon that rewrites it - and the whole control goes,
+     * row and list together, rather than being drawn insensitive. A control
+     * nobody may use is not a control.
+     */
+    sync(values, active, editable, show) {
+        let visible = show !== false;
+        let choices = visible && editable && values.length > 1 ? values : [];
         this._group.sync(choices, active);
         this._row.setValue(this._labelFunction(active));
-        this._row.actor.visible = choices.length === 0 && !!active;
+        this._row.actor.visible = visible && choices.length === 0 && !!active;
+    }
+
+    /* Whether anything of it is on screen, so a group holding nothing but
+     * these can hide its heading too. */
+    get visible() {
+        return this._row.actor.visible || this._group.items.length > 0;
     }
 
     get items() {
@@ -842,6 +855,26 @@ class SegmentedControl extends PopupMenu.PopupBaseMenuItem {
      */
     getColumnWidths() {
         return [];
+    }
+
+    /*
+     * Its own width, though, rather than the column's.
+     *
+     * PopupBaseMenuItem answers get-preferred-width with whatever column
+     * widths it was handed, and the method above contributes none to them - so
+     * a column holding nothing else asked for the width of its headings, and
+     * the three buttons were drawn as "Powe...", "Balan...", "Perfo...". That
+     * did not show while the governor rows shared the column and set a width
+     * for it; it appeared the moment they left it.
+     *
+     * The minimum is the natural width on purpose. A button too narrow for its
+     * word is not a smaller button, it is a button that no longer says what it
+     * does, and there is nothing else in this row to give way instead.
+     */
+    _getPreferredWidth(actor, forHeight, alloc) {
+        let [, natural] = this._box.get_preferred_width(forHeight);
+        alloc.min_size = natural;
+        alloc.natural_size = natural;
     }
 
     sync(values, active) {
@@ -934,6 +967,19 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
         return [];
     }
 
+    /*
+     * And its own width when asked, for the reason set out in
+     * SegmentedControl: a row that contributes no column width is otherwise
+     * told to ask for the other rows' widths, which have nothing to do with a
+     * slider. Unlike the buttons this one may be squeezed - the name gives way
+     * first - so the minimum is the row's own minimum and not its natural.
+     */
+    _getPreferredWidth(actor, forHeight, alloc) {
+        let [min, natural] = this._row.get_preferred_width(forHeight);
+        alloc.min_size = min;
+        alloc.natural_size = natural;
+    }
+
     _init(label, iconName, control) {
         super._init.call(this, 0);
 
@@ -975,6 +1021,7 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
         row.add(this._label, { y_fill: false, y_align: St.Align.MIDDLE });
         row.add(this._slider, { expand: true, x_fill: true });
         row.add(this._reading, { y_fill: false, y_align: St.Align.MIDDLE });
+        this._row = row;
         this.addActor(row, { span: -1, expand: true });
 
         this.tooltip = new Tooltips.Tooltip(this.actor, label);
@@ -1049,6 +1096,25 @@ class PanelSection extends PopupMenu.PopupMenuSection {
     setColumnWidths() {
         super.setColumnWidths(super.getColumnWidths());
     }
+}
+
+/*
+ * Whether the power profile is what writes the governor and the energy
+ * preference.
+ *
+ * power-profiles-daemon does: it sets both from whichever profile is in force
+ * and sets them again on the next profile change or mains transition, so a
+ * governor chosen by hand holds until then and no longer. To anybody using the
+ * machine the profile and the governor are then one setting with two names,
+ * and the menu says it once - as the profile, which is the one that sticks.
+ *
+ * The ACPI platform profile is not that. It writes firmware and never goes
+ * near cpufreq, so where it is the only backend the governor is a separate
+ * question and stays a control of its own. Same on a machine with no profiles.
+ */
+function profileOwnsGovernor(data) {
+    return data.profile.available && !!data.profile.backend &&
+           data.profile.backend !== PowerSupply.PLATFORM_BACKEND;
 }
 
 /*
@@ -1266,24 +1332,20 @@ class MenuPresenter {
         menu.addMenuItem(this._boostSwitch);
 
         /*
-         * Who owns the two below, said where they are.
+         * The governor and the energy preference, where they are anybody's to
+         * set. Under power-profiles-daemon they are not: the daemon writes
+         * both from whichever profile is in force and writes them again on the
+         * next profile change or mains transition, so the power profile above
+         * is the control and these are its result. They are hidden there and
+         * stated under the processor's name in the sensors, with the frequency
+         * and the scaling driver, which is what they are - a reading of what
+         * the machine was told.
          *
-         * The profile at the top of this column and these two read the same
-         * word - "Performance", three times over - because the first is what
-         * wrote the other two. Three controls agreeing for no stated reason
-         * read as three copies of one setting. Both are named rather than the
-         * line saying "these", because it now sits under the boost switch,
-         * which power-profiles-daemon does not necessarily touch and which
-         * this must not be read as covering.
-         *
-         * Only shown where a daemon is really holding them: the ACPI platform
-         * profile writes firmware and never goes near cpufreq, and on a machine
-         * with no profiles at all these are the only controls there are.
+         * They stay controls where nothing else is writing them: a machine
+         * with no profiles at all, or one whose only profile is the ACPI
+         * platform profile, which writes firmware and never goes near cpufreq.
+         * There the governor is the only way to ask for speed.
          */
-        this._governorNote =
-            this._createNote(_("Governor and energy preference follow the power profile"));
-        menu.addMenuItem(this._governorNote);
-
         this._governorControl = new ChoiceControl(menu, _("Governor"),
                                                   Format.governorLabel,
                                                   value => this._actions.setGovernor(value));
@@ -1337,21 +1399,25 @@ class MenuPresenter {
     }
 
     _buildSensorGroup() {
+        this._sensorGroup = this._sensorColumn.group(_("Sensors"));
+
         /*
-         * What the machine is running on, at the top of this column.
+         * What the machine is running on, first thing under the heading.
          *
          * It was a strip across the whole menu, and it carried the processor
          * temperature and the power draw beside it - both of which are rows
          * further down this very column, so the widest line in the menu was
          * two numbers repeated from underneath it. What is left is the one
          * thing the strip said that nothing else does: which supply the
-         * machine is on. It goes above the heading rather than under it,
-         * because it is not a sensor reading.
+         * machine is on.
+         *
+         * It sits inside the group, above the chips, rather than over the
+         * heading. Whether the machine is on the mains is of a piece with what
+         * that is doing to it, and a line on its own above a heading reads as
+         * a heading for the heading.
          */
         this._summary = new InfoRow("", "");
-        this._sensorColumn.menu.addMenuItem(this._summary);
-
-        this._sensorGroup = this._sensorColumn.group(_("Sensors"));
+        this._sensorGroup.menu.addMenuItem(this._summary);
 
         /* Only ever shown when the preferred sensor setting names something
          * this machine does not have. Somebody who typed a name has no other
@@ -1476,10 +1542,11 @@ class MenuPresenter {
                                                 this._cpuGroup.heading.actor.visible ||
                                                 this._brightnessGroup.heading.actor.visible;
         this._deviceColumn.actor.visible = this._deviceGroup.heading.actor.visible;
-        /* The supply line lives at the top of this column and is worth having
-         * on its own, so switching the sensors off does not take it away. */
-        this._sensorColumn.actor.visible = this._sensorGroup.heading.actor.visible ||
-                                           this._summary.actor.visible;
+        /* The supply line is inside the sensors group now, so it goes with it:
+         * switching the sensors off takes the whole column, that line
+         * included. On battery it is still in the panel tooltip, and the
+         * battery itself is a row under Devices. */
+        this._sensorColumn.actor.visible = this._sensorGroup.heading.actor.visible;
 
         let visible = this._columnList.filter(column => column.actor.visible);
         visible.forEach((column, index) => {
@@ -1587,24 +1654,10 @@ class MenuPresenter {
          * on screen and a second click can only queue behind it, so the
          * controls say so rather than pretending to be ready. */
         let editable = options.privileged && !options.busy;
-        this._governorControl.sync(data.cpu.governors, data.cpu.governor, editable);
-        this._energyControl.sync(data.cpu.energyPreferences, data.cpu.energyPreference, editable);
-
-        /*
-         * power-profiles-daemon writes the governor and the energy preference
-         * from whichever profile is in force, and writes them again on the
-         * next profile change or mains transition - so a governor set by hand
-         * here holds until then and no longer. The two are left changeable,
-         * because until then it does work and some people want it; what they
-         * were not was honest about who else is writing them.
-         *
-         * The line goes with them, so it is not there when they are not: a
-         * machine with no cpufreq has neither row for it to describe.
-         */
-        let daemonOwned = data.profile.available && !!data.profile.backend &&
-                          data.profile.backend !== PowerSupply.PLATFORM_BACKEND;
-        this._governorNote.actor.visible = daemonOwned &&
-                                           (!!data.cpu.governor || !!data.cpu.energyPreference);
+        let owned = profileOwnsGovernor(data);
+        this._governorControl.sync(data.cpu.governors, data.cpu.governor, editable, !owned);
+        this._energyControl.sync(data.cpu.energyPreferences, data.cpu.energyPreference,
+                                 editable, !owned);
 
         this._boostSwitch.actor.visible = data.cpu.boostSupported;
         if (data.cpu.boostSupported) {
@@ -1612,6 +1665,12 @@ class MenuPresenter {
                 this._boostSwitch.setToggleState(data.cpu.boostEnabled);
             this._boostSwitch.setSensitive(editable);
         }
+
+        /* Under a daemon that owns cpufreq, and on a machine with no turbo
+         * switch, this group has nothing left in it to head. */
+        if (!this._boostSwitch.actor.visible && !this._governorControl.visible &&
+            !this._energyControl.visible)
+            this._cpuGroup.setVisible(false);
     }
 
     /*
@@ -1750,6 +1809,20 @@ class MenuPresenter {
         if (data.cpu.driver)
             rows.push({ key: "cpu:driver", label: _("Scaling driver"),
                         value: driver, warning: false });
+
+        /* Where the power profile writes these, they are not settings this
+         * menu offers - they are what it was told, which is a reading. Where
+         * they are still controls they are in the Processor group, and saying
+         * them here as well would be the same word twice. */
+        if (profileOwnsGovernor(data)) {
+            if (data.cpu.governor)
+                rows.push({ key: "cpu:governor", label: _("Governor"),
+                            value: Format.governorLabel(data.cpu.governor), warning: false });
+            if (data.cpu.energyPreference)
+                rows.push({ key: "cpu:energy", label: _("Energy preference"),
+                            value: Format.energyPreferenceLabel(data.cpu.energyPreference),
+                            warning: false });
+        }
 
         return {
             group: host ? host.group : "cpu:processor",
