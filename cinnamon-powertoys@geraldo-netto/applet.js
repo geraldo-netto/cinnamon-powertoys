@@ -63,26 +63,6 @@ const RAPL_PACKAGE = /^rapl:(intel|amd)-rapl:\d+$/;
 /* Charge limits offered in the menu, in percent. */
 const CHARGE_LIMITS = [60, 70, 80, 90, 95, 100];
 
-/* Sensors are listed in this order, so the interesting ones come first. */
-const SENSOR_KIND_ORDER = ["cpu", "gpu", "package", "battery", "board", "disk", "network", "other"];
-
-/* Kept when the menu is not asked to list every sensor on the machine. */
-const PRIMARY_SENSOR_KINDS = ["cpu", "gpu", "battery", "package"];
-
-function bySensorOrder(a, b) {
-    let rankA = SENSOR_KIND_ORDER.indexOf(a.kind);
-    let rankB = SENSOR_KIND_ORDER.indexOf(b.kind);
-    if (rankA < 0)
-        rankA = SENSOR_KIND_ORDER.length;
-    if (rankB < 0)
-        rankB = SENSOR_KIND_ORDER.length;
-    if (rankA !== rankB)
-        return rankA - rankB;
-    if (a.label === b.label)
-        return 0;
-    return a.label < b.label ? -1 : 1;
-}
-
 /*
  * Everything the applet reads the machine through, gathered in one bag. The
  * applet holds no direct reference to the sysfs, UPower or profile modules, so
@@ -1063,8 +1043,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _sensorEntries(readings, isReadable, toEntry) {
         let usable = readings.filter(isReadable);
         if (!this.showAllSensors)
-            usable = usable.filter(reading => PRIMARY_SENSOR_KINDS.indexOf(reading.kind) >= 0);
-        return usable.sort(bySensorOrder).map(toEntry);
+            usable = usable.filter(reading => Sensors.isPrimaryKind(reading.kind));
+        return usable.sort(Sensors.bySensorOrder).map(toEntry);
     }
 
     _updateSensorSection(data) {

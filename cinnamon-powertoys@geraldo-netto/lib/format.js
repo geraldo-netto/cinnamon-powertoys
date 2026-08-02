@@ -255,20 +255,6 @@ function energyPreferenceLabel(name) {
     return capitalize(name.replace(/_/g, " "));
 }
 
-var SENSOR_KIND_LABELS = {
-    "cpu": _("Processor"),
-    "gpu": _("Graphics"),
-    "disk": _("Storage"),
-    "network": _("Network"),
-    "board": _("Mainboard"),
-    "battery": _("Battery"),
-    "other": _("Other"),
-};
-
-function sensorKindLabel(kind) {
-    return SENSOR_KIND_LABELS[kind] || SENSOR_KIND_LABELS["other"];
-}
-
 /* Display name computed at discovery time, e.g. "k10temp Tctl", "drivetemp (sda)". */
 function sensorLabel(sensor) {
     return sensor.display || sensor.label || sensor.chip || "";

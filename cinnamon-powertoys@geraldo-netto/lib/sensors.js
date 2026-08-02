@@ -8,27 +8,84 @@
 
 const GLib = imports.gi.GLib;
 
+const Format = require("./lib/format.js");
 const IO = require("./lib/io.js");
+
+const _ = Format._;
 
 var HWMON_DIR = "/sys/class/hwmon";
 var THERMAL_DIR = "/sys/class/thermal";
 var POWERCAP_DIR = "/sys/class/powercap";
 
-const CHIP_KINDS = [
-    { kind: "cpu",     pattern: /^(k10temp|zenpower|coretemp|cpu_thermal|cpu-thermal|x86_pkg_temp|soc_thermal|cpu\d*_thermal)/i },
-    { kind: "gpu",     pattern: /^(amdgpu|radeon|nouveau|nvidia|i915|xe|gpu_thermal|gpu-thermal)/i },
-    { kind: "disk",    pattern: /^(nvme|drivetemp)/i },
-    { kind: "network", pattern: /^(iwlwifi|ath\d*k|mt79|mt76|rtw|brcm|r8\d{3}|igb|igc|e1000|ixgbe)/i },
-    { kind: "board",   pattern: /^(acpitz|pch_|nct\d|it87|thinkpad|asus|dell_smm|gigabyte|corsair)/i },
-    { kind: "battery", pattern: /^(bat\d*|bq\d|max\d{4}|rt\d{4})/i },
+/*
+ * What a sensor can be, said once.
+ *
+ * Each kind carries everything anyone needs to know about it: the chip name
+ * prefixes that select it, the name it is shown under, whether it is worth
+ * listing when the menu is not asked for every sensor on the machine, and -
+ * as the position in this array - where it sorts. Keeping those apart is how
+ * "package" came to exist in the sort order and nowhere else.
+ *
+ * The order is the display order, and a chip is classified by the first
+ * pattern that matches it, so a more specific kind has to come first. The two
+ * kinds without a pattern are never guessed from a chip name: "package" is
+ * what the powercap counters report, "other" is what is left.
+ */
+var KINDS = [
+    { kind: "cpu",     primary: true,  label: _("Processor"),
+      pattern: /^(k10temp|zenpower|coretemp|cpu_thermal|cpu-thermal|x86_pkg_temp|soc_thermal|cpu\d*_thermal)/i },
+    { kind: "gpu",     primary: true,  label: _("Graphics"),
+      pattern: /^(amdgpu|radeon|nouveau|nvidia|i915|xe|gpu_thermal|gpu-thermal)/i },
+    { kind: "package", primary: true,  label: _("Package"),   pattern: null },
+    { kind: "battery", primary: true,  label: _("Battery"),
+      pattern: /^(bat\d*|bq\d|max\d{4}|rt\d{4})/i },
+    { kind: "board",   primary: false, label: _("Mainboard"),
+      pattern: /^(acpitz|pch_|nct\d|it87|thinkpad|asus|dell_smm|gigabyte|corsair)/i },
+    { kind: "disk",    primary: false, label: _("Storage"),
+      pattern: /^(nvme|drivetemp)/i },
+    { kind: "network", primary: false, label: _("Network"),
+      pattern: /^(iwlwifi|ath\d*k|mt79|mt76|rtw|brcm|r8\d{3}|igb|igc|e1000|ixgbe)/i },
+    { kind: "other",   primary: false, label: _("Other"),     pattern: null },
 ];
 
+function _kind(name) {
+    return KINDS.find(entry => entry.kind === name) || null;
+}
+
 function classifyChip(name) {
-    for (let entry of CHIP_KINDS) {
-        if (entry.pattern.test(name))
+    for (let entry of KINDS) {
+        if (entry.pattern && entry.pattern.test(name))
             return entry.kind;
     }
     return "other";
+}
+
+function kindLabel(kind) {
+    let entry = _kind(kind);
+    return entry ? entry.label : _kind("other").label;
+}
+
+/* Whether the kind survives the "only the interesting ones" menu filter. */
+function isPrimaryKind(kind) {
+    let entry = _kind(kind);
+    return entry ? entry.primary : false;
+}
+
+/* Sort position; anything unrecognised goes last. */
+function kindRank(kind) {
+    let index = KINDS.findIndex(entry => entry.kind === kind);
+    return index < 0 ? KINDS.length : index;
+}
+
+/* Temperatures, fans and meters listed together, interesting kinds first. */
+function bySensorOrder(a, b) {
+    let rankA = kindRank(a.kind);
+    let rankB = kindRank(b.kind);
+    if (rankA !== rankB)
+        return rankA - rankB;
+    if (a.label === b.label)
+        return 0;
+    return a.label < b.label ? -1 : 1;
 }
 
 function _label(base, prefix, index) {
