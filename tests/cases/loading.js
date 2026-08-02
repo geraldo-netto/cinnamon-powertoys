@@ -34,7 +34,7 @@ const USED = {
                "frequency", "rpm", "volts", "energy", "duration", "profileLabel",
                "profileIconName", "governorLabel", "energyPreferenceLabel",
                "deviceKindName", "deviceStateName", "batteryLevelName",
-               "deviceIconName", "reportsPrecisePercentage"],
+               "deviceIconName", "reportsPrecisePercentage", "driverLabel"],
     "sensors": ["SensorSet", "EnergyMeter", "discoverSensors", "discoverEnergyCounters",
                 "isPrimaryKind", "bySensorOrder", "kindLabel", "classifyChip", "KINDS",
                 "sensorMatches"],

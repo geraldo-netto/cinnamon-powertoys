@@ -93,3 +93,20 @@ cases["a profile this applet has no icon for gets none"] = function () {
                   "rather than dressing it up as one of the three");
     Harness.equal(Format.profileIconName(null), null, "nothing active");
 };
+
+cases["a scaling driver is named in words, with the kernel's own name kept"] = function () {
+    Harness.equal(Format.driverLabel("amd-pstate-epp", "active"),
+                  "AMD, hardware managed  (amd-pstate-epp)",
+                  "the mode is already in the label, so it is not repeated");
+    Harness.equal(Format.driverLabel("amd-pstate", "passive"),
+                  "AMD, kernel managed  (amd-pstate)", "the mode says something here");
+    Harness.equal(Format.driverLabel("intel_pstate", null),
+                  "Intel  (intel_pstate)", "no pstate mode to add");
+    Harness.equal(Format.driverLabel("acpi-cpufreq", null), "ACPI  (acpi-cpufreq)", "acpi");
+};
+
+cases["a driver nobody has heard of is shown as it is"] = function () {
+    Harness.equal(Format.driverLabel("brand-new-driver", null), "brand-new-driver",
+                  "not dressed up, and not repeated in brackets either");
+    Harness.equal(Format.driverLabel(null, null), "unknown", "no driver at all");
+};

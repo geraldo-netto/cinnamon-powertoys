@@ -262,6 +262,51 @@ function profileIconName(name) {
     }
 }
 
+/*
+ * The cpufreq drivers, in words.
+ *
+ * "amd-pstate-epp" is what the kernel calls it and means nothing to anyone
+ * who has not read the kernel documentation. The name is kept in brackets
+ * because it is the thing to search for when something goes wrong, but it is
+ * no longer the whole of what the row says.
+ */
+var DRIVER_LABELS = {
+    "amd-pstate-epp": _("AMD, hardware managed"),
+    "amd-pstate": _("AMD"),
+    "acpi-cpufreq": _("ACPI"),
+    "intel_pstate": _("Intel"),
+    "intel_cpufreq": _("Intel, kernel managed"),
+    "cppc_cpufreq": _("ACPI hardware managed"),
+    "speedstep-centrino": _("Intel SpeedStep"),
+    "powernow-k8": _("AMD PowerNow"),
+    "pcc-cpufreq": _("Processor Clocking Control"),
+};
+
+/*
+ * amd_pstate has three modes and the difference matters: "active" means the
+ * hardware chooses the frequency and the energy preference is what steers it,
+ * "guided" and "passive" leave more of the decision to the kernel.
+ */
+var PSTATE_MODES = {
+    "active": _("hardware managed"),
+    "guided": _("guided"),
+    "passive": _("kernel managed"),
+};
+
+function driverLabel(name, pstateMode) {
+    if (!name)
+        return _("unknown");
+
+    let text = DRIVER_LABELS[name] || name;
+    /* Only worth adding where it says something the driver name does not. */
+    if (pstateMode && PSTATE_MODES[pstateMode] &&
+        text.indexOf(PSTATE_MODES[pstateMode]) < 0)
+        text += ", " + PSTATE_MODES[pstateMode];
+    if (text !== name)
+        text += "  (" + name + ")";
+    return text;
+}
+
 var GOVERNOR_LABELS = {
     "performance": _("Performance"),
     "powersave": _("Power save"),

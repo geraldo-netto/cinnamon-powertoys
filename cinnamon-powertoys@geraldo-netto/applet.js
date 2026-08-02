@@ -1075,10 +1075,7 @@ class MenuPresenter {
             this._cpuTempRow.setWarning(data.cpuTemperature >= options.highTempCelsius);
         }
 
-        let driver = data.cpu.driver || _("unknown");
-        if (data.cpu.amdPstateStatus)
-            driver += " (" + data.cpu.amdPstateStatus + ")";
-        this._cpuDriverRow.setValue(driver);
+        this._cpuDriverRow.setValue(Format.driverLabel(data.cpu.driver, data.cpu.amdPstateStatus));
 
         /* While a privileged change is in flight there is a password dialog
          * on screen and a second click can only queue behind it, so the
