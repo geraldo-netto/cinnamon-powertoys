@@ -14,6 +14,14 @@ var PLATFORM_PROFILE = "/sys/firmware/acpi/platform_profile";
 var PLATFORM_PROFILE_CHOICES = "/sys/firmware/acpi/platform_profile_choices";
 
 /*
+ * What this backend answers when a reading asks where its profiles came from.
+ * It is compared against, not just displayed: this backend writes firmware and
+ * never touches cpufreq, so unlike power-profiles-daemon it does not own the
+ * governor or the energy preference, and the menu has to be able to tell.
+ */
+var PLATFORM_BACKEND = "acpi-platform-profile";
+
+/*
  * The charge limit of one battery.
  *
  * `limit` is read every time it is asked for rather than captured once: the
@@ -96,7 +104,7 @@ var PlatformProfileClient = class PlatformProfileClient {
     /* What this backend is, for a reading that wants to say where its
      * profiles came from. */
     get busName() {
-        return "acpi-platform-profile";
+        return PLATFORM_BACKEND;
     }
 
     get active() {

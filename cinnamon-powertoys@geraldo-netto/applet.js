@@ -667,30 +667,46 @@ class SelectorItem extends PopupMenu.PopupMenuItem {
 }
 
 /*
- * A radio group: an optional heading, then one dot item per value.
+ * A radio group: a heading carrying the current value, then one dot item per
+ * value.
  *
- * Power profiles, governors, energy preferences and charge limits are all the
- * same widget, and the first three change their option list while the applet
- * runs - the daemon appears, the scaling driver is swapped, the privileged
- * controls are turned off - so the list rides on KeyedList and only the dots
- * move on an ordinary update.
+ * Governors, energy preferences and charge limits are all the same widget, and
+ * the first two change their option list while the applet runs - the daemon
+ * appears, the scaling driver is swapped, the privileged controls are turned
+ * off - so the list rides on KeyedList and only the dots move on an ordinary
+ * update.
+ *
+ * The heading says the value as well as the name, which it did not, and that
+ * was the whole of what a glance at this group could tell you: the selection
+ * was a dot four pixels wide, drawn outside the row box at the far left, on a
+ * row whose text is at the right. The power profile above stopped being a list
+ * like this for exactly that reason; these cannot follow it, because
+ * acpi-cpufreq offers five governors and five buttons do not fit a column, so
+ * they say it in words instead.
  */
 class SelectorGroup {
     constructor(section, labelFunction, onActivate, title) {
         this._title = title || "";
+        this._labelFunction = labelFunction;
         this._list = new KeyedList(
             section,
             entry => entry.header
                 ? this._createHeader()
                 : new SelectorItem(labelFunction(entry.value), entry.value, false, onActivate),
             (item, entry) => {
-                if (!entry.header)
+                if (entry.header)
+                    item.setValue(this._valueText(entry.active));
+                else
                     item.setSelected(entry.value === entry.active);
             });
     }
 
+    _valueText(active) {
+        return active === null || active === undefined ? "" : this._labelFunction(active);
+    }
+
     _createHeader() {
-        let header = new PopupMenu.PopupMenuItem(this._title, { reactive: false });
+        let header = new InfoRow(this._title, "");
         header.actor.add_style_class_name("powertoys-group-title");
         return header;
     }
@@ -699,7 +715,7 @@ class SelectorGroup {
     sync(values, active) {
         let entries = [];
         if (values.length > 0 && this._title)
-            entries.push({ key: "title", header: true });
+            entries.push({ key: "title", header: true, active: active });
         for (let value of values)
             entries.push({ key: "v:" + value, value: value, active: active });
         this._list.sync(entries);
@@ -718,6 +734,12 @@ class SelectorGroup {
  * "label ... value" row instead. Both belong to the control, so callers pass a
  * list, the active value and whether it may be changed, rather than lining two
  * widgets up against a visibility matrix themselves.
+ *
+ * A list of one is not a list, so it takes the row too. amd-pstate narrows the
+ * energy preferences to just "performance" while the governor is performance,
+ * and what that drew was a heading, one radio item, and a dot on it: a control
+ * offering a choice that does not exist, which claims the user has a say they
+ * have not got.
  */
 class ChoiceControl {
     constructor(menu, title, labelFunction, onActivate) {
@@ -731,9 +753,10 @@ class ChoiceControl {
     }
 
     sync(values, active, editable) {
-        this._group.sync(editable ? values : [], active);
+        let choices = editable && values.length > 1 ? values : [];
+        this._group.sync(choices, active);
         this._row.setValue(this._labelFunction(active));
-        this._row.actor.visible = !editable && !!active;
+        this._row.actor.visible = choices.length === 0 && !!active;
     }
 
     get items() {
@@ -1201,6 +1224,22 @@ class MenuPresenter {
 
         this._advanced = new PopupMenu.PopupSubMenuMenuItem(_("Advanced"));
         menu.addMenuItem(this._advanced);
+
+        /*
+         * Who owns these two, said once, where they are.
+         *
+         * The profile above and the governor and energy preference in here
+         * read the same word - "Performance", three times over - because the
+         * first is what wrote the other two. Nothing in the menu said so, and
+         * three controls agreeing for no stated reason read as three copies of
+         * one setting. Only shown where a daemon is really holding them: the
+         * ACPI platform profile writes firmware and never touches cpufreq, and
+         * on a machine with no profiles at all these are the only controls
+         * there are.
+         */
+        this._advancedNote = this._createNote(_("Set by the power profile"));
+        this._advanced.menu.addMenuItem(this._advancedNote);
+
         this._governorControl = new ChoiceControl(this._advanced.menu, _("Governor"),
                                                   Format.governorLabel,
                                                   value => this._actions.setGovernor(value));
@@ -1493,6 +1532,18 @@ class MenuPresenter {
         let editable = options.privileged && !options.busy;
         this._governorControl.sync(data.cpu.governors, data.cpu.governor, editable);
         this._energyControl.sync(data.cpu.energyPreferences, data.cpu.energyPreference, editable);
+
+        /*
+         * power-profiles-daemon writes the governor and the energy preference
+         * from whichever profile is in force, and writes them again on the
+         * next profile change or mains transition - so a governor set by hand
+         * here holds until then and no longer. The two are left changeable,
+         * because until then it does work and some people want it; what they
+         * were not was honest about who else is writing them.
+         */
+        this._advancedNote.actor.visible = data.profile.available &&
+                                           !!data.profile.backend &&
+                                           data.profile.backend !== PowerSupply.PLATFORM_BACKEND;
 
         /*
          * Advanced is only there when there is something behind it. On a

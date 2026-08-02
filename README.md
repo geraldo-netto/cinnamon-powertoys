@@ -59,10 +59,17 @@ to the ACPI platform profile in `/sys/firmware/acpi/platform_profile`.
 
 **CPU.** Current and maximum frequency, scaling driver (including the
 `amd_pstate` mode) and turbo boost, with the governor and the energy
-performance preference behind *Advanced* — they are what a power profile sets,
-so they are worth reading and rarely worth changing by hand. Governor, energy
-preference, boost and the battery charge limit are kernel owned, so they are
-applied through a small validating helper launched with `pkexec`.
+performance preference behind *Advanced*. Those two are what a power profile
+sets, so where power-profiles-daemon is running *Advanced* says so: without
+that line the profile and the two settings under it read the same word for no
+stated reason, which looks like three copies of one control rather than one
+control and its two outputs. They stay changeable — a governor set by hand
+holds until the next profile change or mains transition — but nothing pretends
+the daemon has stopped writing them. Where a setting has only one value to
+offer, and `amd_pstate` narrows the energy preferences to exactly one, it is
+shown as a value rather than as a choice of one. Governor, energy preference,
+boost and the battery charge limit are kernel owned, so they are applied
+through a small validating helper launched with `pkexec`.
 
 **Temperature and power.** Every hwmon and thermal zone sensor plus fan speeds,
 hwmon power meters (for example the amdgpu GPU package power), RAPL package
