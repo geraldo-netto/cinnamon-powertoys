@@ -119,10 +119,7 @@ moves every few seconds pulls the eye without ever being worth acting on — a
 charge and a draw move slowly and say something at a glance, and a profile does
 not move unless you move it. The icon follows the battery level, the active
 profile, or stays fixed, and it shows a profile change the moment you ask for
-it rather than when the daemon gets round to confirming it. A profile is drawn
-with the desktop's own `power-profile-*-symbolic` icons where the theme has
-them, so it is painted in the panel's colour like everything beside it; the
-applet's own coloured gauges are the fallback. The wheel
+it rather than when the daemon gets round to confirming it. The wheel
 over the applet changes screen brightness — every monitor together, since the
 gesture names no screen — and a middle click toggles the keyboard backlight,
 as they do on the applet this one can replace; either can be pointed at the
