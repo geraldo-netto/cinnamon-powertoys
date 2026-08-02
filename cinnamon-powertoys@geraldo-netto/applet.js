@@ -207,6 +207,25 @@ function powerText(data) {
  * desktop that cannot read its RAPL counters would show the graphics card's
  * 54 W as if it were the lot. Those say which.
  */
+/*
+ * The profile the panel should be drawing.
+ *
+ * Neither backend answers at once - the daemon replies over D-Bus, the ACPI
+ * path goes through a password dialog - and the panel used to keep the old
+ * gauge and the old word until the next poll caught up, four seconds later by
+ * default. Somebody who has just cycled the profile with the wheel or the
+ * hotkey is looking straight at the panel, and what it said was that nothing
+ * had happened; a notification was doing the work the panel should have been.
+ *
+ * So it draws what was asked for while that is in flight, which is what the
+ * menu has always done with the same value. Nothing is invented: the applet
+ * clears the pending profile when the machine confirms it, and clears it on
+ * an error too, so a change that is refused takes the panel back with it.
+ */
+function shownProfile(data, options) {
+    return (options && options.pendingProfile) || data.profile.active;
+}
+
 function panelPowerText(data) {
     if (data.systemWattsSource === "battery")
         return Format.watts(data.systemWatts);
@@ -378,9 +397,10 @@ class PanelPresenter {
     }
 
     update(data, options) {
-        let source = this._iconSource(data, options.iconSource);
-        this._applet.set_applet_label(this._labelText(data, options, source));
-        this._updateIcon(data, source);
+        let profile = shownProfile(data, options);
+        let source = this._iconSource(data, options.iconSource, profile);
+        this._applet.set_applet_label(this._labelText(data, options, source, profile));
+        this._updateIcon(data, source, profile);
 
         this._reading = data;
         this._readingOptions = options;
@@ -397,11 +417,11 @@ class PanelPresenter {
 
     /* "auto" settled: the battery if there is one, otherwise the profile if
      * there is one. The label needs to know as well as the icon does. */
-    _iconSource(data, wanted) {
+    _iconSource(data, wanted, profile) {
         let source = wanted || "auto";
         if (source !== "auto")
             return source;
-        return data.primary ? "battery" : (data.profile.active ? "profile" : "static");
+        return data.primary ? "battery" : (profile ? "profile" : "static");
     }
 
     /* The icon actor is rebuilt from scratch by a panel resize or an
@@ -419,7 +439,7 @@ class PanelPresenter {
      * on 61 rather than 59. It is still in the tooltip, in the menu summary
      * and in the processor section, where it is looked at on purpose.
      */
-    _labelText(data, options, source) {
+    _labelText(data, options, source, profile) {
         let parts = [];
         if (options.showBattery && data.primary && data.primary.percentage !== null)
             parts.push(Format.percent(data.primary.percentage));
@@ -427,8 +447,8 @@ class PanelPresenter {
             parts.push(panelPowerText(data));
         if (options.showFrequency && data.cpu.averageFrequency !== null)
             parts.push(Format.frequency(data.cpu.averageFrequency));
-        if (options.showProfile && this._profileNeedsSpelling(data, source))
-            parts.push(Format.profileLabel(data.profile.active));
+        if (options.showProfile && this._profileNeedsSpelling(data, source, profile))
+            parts.push(Format.profileLabel(profile));
         return parts.join(" ");
     }
 
@@ -441,15 +461,15 @@ class PanelPresenter {
      * draw the same gauge, though, the word is the only thing telling them
      * apart, and it stays.
      */
-    _profileNeedsSpelling(data, source) {
-        if (!data.profile.active)
+    _profileNeedsSpelling(data, source, profile) {
+        if (!profile)
             return false;
         if (source !== "profile")
             return true;
-        return !Format.profileIconIsUnambiguous(data.profile.active, data.profile.list);
+        return !Format.profileIconIsUnambiguous(profile, data.profile.list);
     }
 
-    _updateIcon(data, source) {
+    _updateIcon(data, source, profile) {
         if (source === "battery" && data.primary) {
             let icon = data.primary.icon;
             let key = "battery:" + icon;
@@ -462,8 +482,8 @@ class PanelPresenter {
             return;
         }
 
-        let profileIcon = source === "profile" && data.profile.active
-            ? Format.profileIconName(data.profile.active) : null;
+        let profileIcon = source === "profile" && profile
+            ? Format.profileIconName(profile) : null;
         if (profileIcon) {
             let key = "profile:" + profileIcon;
             if (key === this._iconKey)
@@ -502,8 +522,9 @@ class PanelPresenter {
             lines.push(_("Running on AC power"));
         }
 
-        if (data.profile.active)
-            lines.push(_("Profile") + ": " + Format.profileLabel(data.profile.active));
+        let profile = shownProfile(data, options);
+        if (profile)
+            lines.push(_("Profile") + ": " + Format.profileLabel(profile));
         if (data.cpu.governor)
             lines.push(_("Governor") + ": " + Format.governorLabel(data.cpu.governor));
         if (data.cpuTemperature !== null)
@@ -2578,6 +2599,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
             showProfile: this.panelShowProfile,
             iconSource: this.panelIconSource,
             tempUnit: this.tempUnit,
+            /* a change the machine has not confirmed yet; see shownProfile */
+            pendingProfile: this._pendingProfile,
         };
     }
 
