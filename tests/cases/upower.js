@@ -1,20 +1,26 @@
 /*
- * What UPower's devices contribute to the sensor lists.
+ * What UPower's devices contribute to the sensor lists, and which of them are
+ * listed at all.
  *
  * Everything else about lib/upower.js needs a system bus and is covered by
- * live.js, which skips itself where there is not one. This part does not: it
- * is a function of a device list, and it is the one path into the menu's
- * sensor list that does not come from lib/sensors.js. The menu concatenates
- * the two and groups the result without knowing which came from where, so the
- * two have to produce the same shape - which is exactly the sort of agreement
- * that rots silently.
+ * live.js, which skips itself where there is not one. These two parts do not:
+ * each is a function of a device list. sensorReadings is the one path into the
+ * menu's sensor list that does not come from lib/sensors.js - the menu
+ * concatenates the two and groups the result without knowing which came from
+ * where, so the two have to produce the same shape, which is exactly the sort
+ * of agreement that rots silently. reportedDevices is what decides whether a
+ * device gets a row.
  */
 
 const Harness = imports.harness;
+const UPowerGlib = imports.gi.UPowerGlib;
 
 const Format = Harness.requireXlet("./lib/format.js");
 const Sensors = Harness.requireXlet("./lib/sensors.js");
 const UPower = Harness.requireXlet("./lib/upower.js");
+
+const Kind = UPowerGlib.DeviceKind;
+const State = UPowerGlib.DeviceState;
 
 /* A UPower device with everything the readings look at, plus overrides. */
 function device(overrides) {
@@ -25,6 +31,7 @@ function device(overrides) {
         vendor: "Sony",
         model: "BAT0",
         powerSupply: true,
+        present: true,
         percentage: 62,
         energyRate: 11.2,
         temperature: 31.5,
@@ -129,6 +136,45 @@ cases["and carry no field nothing reads"] = function () {
         }
     }
     Harness.deepEqual(extra, [], "set here and read nowhere");
+};
+
+cases["a battery that is not fitted is not a battery at 0%"] = function () {
+    /*
+     * The case the two guards this replaced were written for and could not
+     * reach. UPower publishes Percentage as a plain double, so an empty bay
+     * reads 0.0 and not nothing, and both guards asked whether it was nothing.
+     * A laptop with its battery out got a row saying 0%, and with no display
+     * device composed it became the machine's own battery in the panel.
+     */
+    let out = UPower.reportedDevices([device({ present: false, percentage: 0, state: State.UNKNOWN })]);
+    Harness.deepEqual(out, [], "IsPresent is the field that says so");
+
+    let fitted = UPower.reportedDevices([device({ percentage: 0, state: State.EMPTY })]);
+    Harness.equal(fitted.length, 1,
+                  "a battery that really is flat still has a row, which is the whole difference");
+};
+
+cases["a device that says nothing at all is dropped"] = function () {
+    /* What the second guard was for: a proxy that carries no properties
+     * answers false to IsPresent as well, so one test covers both. */
+    Harness.deepEqual(UPower.reportedDevices([{ path: "/x", kind: Kind.MOUSE }]), [],
+                      "nothing to say about it and no row for it");
+};
+
+cases["the charger is reported elsewhere, not here"] = function () {
+    let out = UPower.reportedDevices([device({ path: "/ac", kind: Kind.LINE_POWER }), device()]);
+    Harness.equal(out.length, 1, "whether the cable is in is a different question");
+    Harness.equal(out[0].kind, 2, "and the battery is what is left");
+};
+
+cases["the machine's own batteries come before what is plugged into it"] = function () {
+    let out = UPower.reportedDevices([
+        device({ path: "/mouse", kind: Kind.MOUSE, powerSupply: false }),
+        device({ path: "/headset", kind: Kind.HEADSET, powerSupply: false }),
+        device({ path: "/bat" }),
+    ]);
+    Harness.deepEqual(out.map(entry => entry.path), ["/bat", "/mouse", "/headset"],
+                      "the system battery, then peripherals by kind");
 };
 
 cases["their kind is one the menu knows and keeps"] = function () {

@@ -11,7 +11,34 @@ row keeps the effort for the whole and is done when its parts are. Parts were
 only split out where each one can be written, reviewed and committed on its
 own — items that are genuinely a single change were left whole.
 
-Nothing open.
+## Thirteenth pass — guards, and what arrives while something is in flight
+
+Every source, case, tool and packaging file was read again. Two questions,
+both grown out of the twelfth pass: which guards test for an answer the live
+system never gives — a percentage that is never null, a comparison that hears
+half of what the watch forwards — and what happens to the thing that arrives
+while its backend is busy with the one before. And one row about the thread
+all of this runs on.
+
+## External monitors
+
+| id | severity | effort | description |
+|----|----------|--------|-------------|
+| PT-140 | high | S | [`DdcMonitor.setPercentage`](cinnamon-powertoys@geraldo-netto/lib/ddc.js#L309) refuses a second write while one is in flight, which is right for the bus — and drops the refused value, which is not. A drag emits a value per motion event against a monitor that answers in tenths of a second, so the value the drag ends on very often lands inside the previous write's round trip: it is dropped, the monitor stops where the last taken write put it, the number beside the handle says so — drag to 90, release, read 65 — and the next refresh pulls the handle back to match. PT-136 met the same arithmetic on the wheel and gathered the flick; the drag has no gather. The monitor can hold the one value that matters — the last one refused while busy — and write it when the in-flight call answers, which coalesces any drag into at most one trailing write. |
+| PT-141 | low | S | [`DdcBacklight.stepBy`](cinnamon-powertoys@geraldo-netto/lib/ddc.js#L586) says "Every monitor, by the same count" and does something else: it takes the first monitor's percentage, adds the notches, and [`setPercentage`](cinnamon-powertoys@geraldo-netto/lib/ddc.js#L562) broadcasts that one absolute value to all of them. Two monitors set apart on purpose — the class doc above sells the per-monitor sliders precisely as the way to "leave them set differently" — are flattened to the first one's value by a single flick of the wheel. Two cases assert the broadcast ([the panel wheel](tests/cases/ddc.js#L375), [a gathered flick](tests/cases/ddc.js#L637)), so this is a decision rather than a slip: either each monitor steps from its own value by the count, and the two cases move with it, or the comment and the class doc stop promising that. |
+
+## Guards that never fire
+
+| id | severity | effort | description |
+|----|----------|--------|-------------|
+| PT-143 | low | XS | [`_settle`](cinnamon-powertoys@geraldo-netto/lib/bluez.js#L213) answers "is this the list that was there" by path and percentage alone. [`WATCHED_INTERFACES`](cinnamon-powertoys@geraldo-netto/lib/bluez.js#L31) forwards `Device1` property changes precisely so the list follows the device — and a change of `Alias`, or of the `Icon` that decides a row's kind, comes through that watch, updates `this.devices`, and is reported to nobody, because the path and the percentage still match. The menu keeps the old name until the next poll happens to redraw it. Compare what the row is made of: model and kind beside path and percentage. |
+
+## Queues, and the thread that draws
+
+| id | severity | effort | description |
+|----|----------|--------|-------------|
+| PT-144 | medium | M | [`systemBus().proxy`](cinnamon-powertoys@geraldo-netto/lib/profiles.js#L67) constructs its proxy with no callback, which in GJS is the synchronous form: a GetAll round trip on the system bus, taken on the thread that draws the desktop, in the applet's constructor and again each time the daemon's name appears. Every sibling connects the other way — [upower.js](cinnamon-powertoys@geraldo-netto/lib/upower.js#L152) and [backlight.js](cinnamon-powertoys@geraldo-netto/lib/backlight.js#L71) both hand their proxy a callback — and lib/ddc.js opens with "nothing here is synchronous and nothing blocks the shell". A daemon slow to answer, or wedged, is a stalled compositor for as long as D-Bus is willing to wait. M rather than S because `available` becomes an answer that arrives: [`_chooseProfileBackend`](cinnamon-powertoys@geraldo-netto/applet.js#L2216) reads it synchronously today, and the stubbed bus in the cases does too. |
+| PT-142 | low | XS | [`_refresh`](cinnamon-powertoys@geraldo-netto/lib/bluez.js#L189) skips when a read of the tree is already in flight, and forgets it was asked: the settle timer has fired and cleared itself, nothing re-arms, and the change behind the signal — a headset disconnecting, say — is not read until the next unrelated signal, which on a quiet desk is whenever. The comment above prices the two-concurrent-reads ordering problem, which skipping does solve; it does not price the loss. The applet met the same shape in [`_update`](cinnamon-powertoys@geraldo-netto/applet.js#L2335) and remembered — `_collectAgain`, one flag, taken when the in-flight reading settles. Same flag here. |
 
 ## Closed
 

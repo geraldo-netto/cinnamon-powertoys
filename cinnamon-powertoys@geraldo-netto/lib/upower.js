@@ -131,6 +131,41 @@ function sensorReadings(devices) {
     return { temperatures: temperatures, powers: powers };
 }
 
+/*
+ * The devices worth a row, in the order they are shown.
+ *
+ * A plain function of described devices, so what gets dropped can be checked
+ * without a system bus - which is how the two guards this replaces went so long
+ * without anyone noticing that neither could fire. Both asked whether the
+ * percentage was null, and on a live bus it never is: Percentage is a plain `d`
+ * with no "is present" beside it, so a battery that is not fitted publishes 0.0
+ * exactly as a flat one does. This file already knew that trap - it is the
+ * whole of the comment over the temperature in sensorReadings - and the guards
+ * walked into it from the other side.
+ *
+ * IsPresent is the field they meant to ask, so a device that says it is not
+ * there is dropped whatever else it says. A laptop with its battery out listed
+ * one at 0%, and where UPower composes no display device _primaryDevice took
+ * that absent battery as the machine's own, so the panel read 0% too. It covers
+ * what the second guard was for as well: a proxy carrying no properties at all
+ * answers false here.
+ *
+ * Line power adapters are not dropped so much as reported elsewhere, through
+ * lineDevices(), because whether the cable is in is a different question from
+ * what is carrying a charge.
+ */
+function reportedDevices(devices) {
+    return devices
+        .filter(device => device.kind !== UPDeviceKind.LINE_POWER && device.present)
+        .sort((a, b) => {
+            if (a.powerSupply !== b.powerSupply)
+                return a.powerSupply ? -1 : 1;
+            if (a.kind !== b.kind)
+                return a.kind - b.kind;
+            return a.path < b.path ? -1 : 1;
+        });
+}
+
 var UPowerMonitor = class UPowerMonitor {
     /*
      * onChanged is called whenever the device set or any device property
@@ -283,28 +318,15 @@ var UPowerMonitor = class UPowerMonitor {
 
     /*
      * Every device that carries a charge, batteries first, then peripherals.
-     * Line power adapters are reported separately through lineDevices().
+     * Which those are, and what order they come in, is reportedDevices - a
+     * function of the descriptions, and so something that can be held to
+     * without a bus.
      */
     snapshot() {
         let devices = [];
-        for (let [path, proxy] of this._devices) {
-            if (proxy.Type === UPDeviceKind.LINE_POWER)
-                continue;
-            let device = this._describe(proxy, path);
-            if (!device.present && device.percentage === null)
-                continue;
-            if (device.state === UPDeviceState.UNKNOWN && device.percentage === null)
-                continue;
-            devices.push(device);
-        }
-        devices.sort((a, b) => {
-            if (a.powerSupply !== b.powerSupply)
-                return a.powerSupply ? -1 : 1;
-            if (a.kind !== b.kind)
-                return a.kind - b.kind;
-            return a.path < b.path ? -1 : 1;
-        });
-        return devices;
+        for (let [path, proxy] of this._devices)
+            devices.push(this._describe(proxy, path));
+        return reportedDevices(devices);
     }
 
     lineDevices() {
