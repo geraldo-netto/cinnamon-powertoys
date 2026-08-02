@@ -326,26 +326,44 @@ var EnergyMeter = class EnergyMeter {
         this._lastTime = 0;
     }
 
-    sample() {
+    /*
+     * Advances the counter, and answers nothing.
+     *
+     * What it produced is `watts`, which is null until two readings far
+     * enough apart have been taken. It used to return that value and, when
+     * the pair was unusable, quietly return the one before it - so a caller
+     * could not tell a fresh reading from a stale one. Now an unusable pair
+     * says so.
+     *
+     * `now` is the monotonic clock in microseconds, and is a parameter only
+     * so the arithmetic can be exercised without waiting for real time to
+     * pass.
+     */
+    sample(now) {
         let value = IO.readNumber(this.counter.path);
-        let now = GLib.get_monotonic_time();
+        let taken = now === undefined ? GLib.get_monotonic_time() : now;
+
         if (value === null) {
             this.watts = null;
             this._lastValue = null;
-            return null;
+            return;
         }
-        if (this._lastValue !== null) {
+
+        if (this._lastValue === null) {
+            /* First reading: nothing to subtract from. */
+            this.watts = null;
+        } else {
             let energy = value - this._lastValue;
+            /* The counter is a fixed width, so it wraps back to zero. */
             if (energy < 0 && this.counter.maxRange)
                 energy += this.counter.maxRange;
-            let elapsed = now - this._lastTime;
+            let elapsed = taken - this._lastTime;
             /* microjoules per microsecond is watts */
-            if (elapsed > 0 && energy >= 0)
-                this.watts = energy / elapsed;
+            this.watts = (elapsed > 0 && energy >= 0) ? energy / elapsed : null;
         }
+
         this._lastValue = value;
-        this._lastTime = now;
-        return this.watts;
+        this._lastTime = taken;
     }
 };
 
@@ -429,20 +447,20 @@ var SensorSet = class SensorSet {
         let packageWatts = null;
 
         for (let meter of this.energyMeters) {
-            let watts = meter.sample();
-            if (watts === null)
+            meter.sample();
+            if (meter.watts === null)
                 continue;
             readings.push({
                 id: meter.id,
                 measure: meter.measure,
                 kind: meter.kind,
                 label: meter.label,
-                watts: watts,
+                watts: meter.watts,
             });
             /* The sub-domains are inside the top level ones, so adding both
              * would count the same joules twice. */
             if (meter.topLevel)
-                packageWatts = (packageWatts || 0) + watts;
+                packageWatts = (packageWatts || 0) + meter.watts;
         }
 
         for (let sensor of this.powerSensors) {
