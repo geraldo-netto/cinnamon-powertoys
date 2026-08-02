@@ -87,7 +87,7 @@ msgid "and %d more"
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:584 applet.js:2132 applet.js:2798 applet.js:2849 applet.js:2896
+#: applet.js:584 applet.js:2126 applet.js:2798 applet.js:2849 applet.js:2896
 #: applet.js:2905
 msgid "Power Toys"
 msgstr ""
@@ -169,7 +169,7 @@ msgstr ""
 msgid "No sensors found"
 msgstr ""
 
-#: applet.js:2133
+#: applet.js:2127
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "
@@ -177,7 +177,7 @@ msgid ""
 "shortcuts."
 msgstr ""
 
-#: applet.js:2783
+#: applet.js:2781
 msgid "Privileged controls are turned off"
 msgstr ""
 

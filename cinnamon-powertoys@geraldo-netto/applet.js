@@ -205,15 +205,6 @@ function powerText(data) {
 }
 
 /*
- * The same figure for the panel, where every character is expensive.
- *
- * What a battery is losing is the whole machine and needs no explanation. The
- * other two sources are one part of it - the processor package, a graphics
- * card - and a bare number there reads as system power when it is not: a
- * desktop that cannot read its RAPL counters would show the graphics card's
- * 54 W as if it were the lot. Those say which.
- */
-/*
  * The profile the panel should be drawing.
  *
  * Neither backend answers at once - the daemon replies over D-Bus, the ACPI
@@ -232,6 +223,15 @@ function shownProfile(data, options) {
     return (options && options.pendingProfile) || data.profile.active;
 }
 
+/*
+ * The same figure for the panel, where every character is expensive.
+ *
+ * What a battery is losing is the whole machine and needs no explanation. The
+ * other two sources are one part of it - the processor package, a graphics
+ * card - and a bare number there reads as system power when it is not: a
+ * desktop that cannot read its RAPL counters would show the graphics card's
+ * 54 W as if it were the lot. Those say which.
+ */
 function panelPowerText(data) {
     if (data.systemWattsSource === "battery")
         return Format.watts(data.systemWatts);
@@ -2088,12 +2088,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     /*
-     * A key that is not in the schema binds without complaint and leaves its
-     * property undefined, and undefined reads as "off" at every one of the
-     * places that use it. Saying so once, at startup, is the difference
-     * between a five minute fix and a puzzling bug report.
-     */
-    /*
      * The first run, and only the first.
      *
      * Nobody reads a README before using a panel applet, and there is not
@@ -2193,6 +2187,12 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._menuPresenter.syncBacklights();
     }
 
+    /*
+     * A key that is not in the schema binds without complaint and leaves its
+     * property undefined, and undefined reads as "off" at every one of the
+     * places that use it. Saying so once, at startup, is the difference
+     * between a five minute fix and a puzzling bug report.
+     */
     _reportUnboundSettings() {
         let missing = SETTINGS
             .filter(setting => this[setting.property] === undefined)
@@ -2298,15 +2298,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
     /* ------------------------------------------------------------------ */
     /* data collection                                                     */
+    /*                                                                     */
+    /* One reading of the whole machine, in two halves: _collect takes it,   */
+    /* _assemble makes it. Each backend describes its own part; what is left */
+    /* here is putting the parts side by side and answering the two          */
+    /* questions that need more than one of them - which sensor the panel    */
+    /* shows, and which of several numbers counts as the machine's power     */
+    /* draw.                                                                 */
+    /* ------------------------------------------------------------------ */
 
-    /*
-     * One reading of the whole machine.
-     *
-     * Each backend describes its own part; what is left here is putting the
-     * parts side by side and answering the two questions that need more than
-     * one of them - which sensor the panel shows, and which of several
-     * numbers counts as the machine's power draw.
-     */
     /* Answers exactly once, with the reading or with null when there is not
      * one. The caller has an in-flight flag riding on that promise. */
     _collect(onDone) {
@@ -2771,8 +2771,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._scheduleUpdate();
     }
 
-    /* Gio prefixes a remote error with the D-Bus error name, which means
-     * nothing to the person reading the notification. */
     /*
      * The helper without the notification policy, for a caller that reports
      * the outcome in its own words - a profile that will not switch is not
@@ -2792,6 +2790,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
         });
     }
 
+    /* Gio prefixes a remote error with the D-Bus error name, which means
+     * nothing to the person reading the notification. */
     _notifyProfileError(name, error) {
         let detail = error && error.message ? error.message : String(error);
         detail = detail.replace(/^GDBus\.Error:[^\s:]+:\s*/, "").trim();

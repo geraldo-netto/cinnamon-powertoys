@@ -251,13 +251,6 @@ function profileLabel(name) {
 }
 
 /*
- * Icons shipped in the applet's own icons/ directory, one per profile.
- *
- * Null for a profile this does not recognise - some firmware exports its own
- * names - so the caller shows the plain applet icon rather than pretending an
- * unknown profile is one of these three.
- */
-/*
  * Whether this profile's icon tells it apart from the rest on offer.
  *
  * Several profiles share one: power-saver, low-power, quiet and cool all draw
@@ -274,6 +267,13 @@ function profileIconIsUnambiguous(name, available) {
                                             profileIconName(other) !== icon);
 }
 
+/*
+ * Icons shipped in the applet's own icons/ directory, one per profile.
+ *
+ * Null for a profile this does not recognise - some firmware exports its own
+ * names - so the caller shows the plain applet icon rather than pretending an
+ * unknown profile is one of these three.
+ */
 function profileIconName(name) {
     switch (name) {
         case "power-saver":
