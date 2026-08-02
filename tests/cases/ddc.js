@@ -577,3 +577,59 @@ cases["a refresh answers once, after every monitor has"] = function () {
     Harness.equal(answers, 1, "answered exactly once, at the end");
     Harness.equal(control.available, true, "and the group took the answer");
 };
+
+cases["a monitor is asked one thing at a time, reads included"] = function () {
+    /*
+     * The write guard was there from the start; the read checked the same flag
+     * and never set it, so it was the one call that could overlap itself.
+     * Opening the menu twice inside a probe's round trip does it, and so does
+     * a monitors-changed re-detection landing on a menu open - and what comes
+     * back from two getvcp on one bus is nothing, which on a monitor that has
+     * answered before is kept as the value it already had.
+     */
+    let waiting = [];
+    let run = function (argv, onDone) {
+        waiting.push({ argv: argv.join(" "), onDone: onDone });
+    };
+    let monitor = new Ddc.DdcMonitor({ number: "1", bus: "/dev/i2c-4", name: "Dell U2415" }, run);
+
+    monitor.refresh();
+    Harness.equal(waiting.length, 1, "the first read went out");
+    monitor.refresh();
+    Harness.equal(waiting.length, 1, "and the second waits rather than joining it on the bus");
+
+    waiting.shift().onDone("VCP 10 C 40 100\n", 0);
+    Harness.equal(monitor.percentage, 40, "the first answered");
+
+    monitor.refresh();
+    Harness.equal(waiting.length, 1, "and now the bus is free again");
+};
+
+cases["a read in flight holds off a write, as a write already held off a read"] = function () {
+    let waiting = [];
+    let run = function (argv, onDone) {
+        waiting.push({ argv: argv.join(" "), onDone: onDone });
+    };
+    let monitor = new Ddc.DdcMonitor({ number: "1", bus: "/dev/i2c-4", name: "Dell U2415" }, run);
+
+    monitor.refresh();
+    monitor.setPercentage(70);
+    Harness.deepEqual(waiting.map(call => call.argv),
+                      ["ddcutil --brief --display 1 getvcp 10"],
+                      "the write did not go out on top of the read");
+};
+
+cases["a read that never answers does not lock the monitor out"] = function () {
+    /* runCommand has an eight second timeout behind it, and it answers with a
+     * failure rather than not answering, which is what clears the flag. */
+    let answer = null;
+    let monitor = new Ddc.DdcMonitor({ number: "1", bus: "/dev/i2c-4", name: "Dell U2415" },
+                                     (argv, onDone) => { answer = onDone; });
+    monitor.refresh();
+    answer("", -1);
+
+    let calls = [];
+    monitor._run = (argv, onDone) => calls.push(argv.join(" "));
+    monitor.refresh();
+    Harness.equal(calls.length, 1, "asking again is allowed once the last one gave up");
+};

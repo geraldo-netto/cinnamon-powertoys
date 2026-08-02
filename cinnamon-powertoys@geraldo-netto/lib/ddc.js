@@ -226,6 +226,7 @@ var DdcMonitor = class DdcMonitor {
         this.known = false;
 
         this._run = run;
+        /* One ddcutil at a time for this monitor, read or write. See refresh. */
         this._busy = false;
     }
 
@@ -239,10 +240,21 @@ var DdcMonitor = class DdcMonitor {
     }
 
     /*
-     * Reading is skipped while a write is in flight. The value being asked
-     * for is about to be overwritten by the write anyway, and asking a
-     * monitor two things at once over a bus it answers in tenths of a second
-     * is how ddcutil comes back with nothing.
+     * One conversation with this monitor at a time, whichever kind.
+     *
+     * Reading is skipped while a write is in flight, because the value being
+     * asked for is about to be overwritten by the write anyway - and, more to
+     * the point, asking a monitor two things at once over a bus it answers in
+     * tenths of a second is how ddcutil comes back with nothing.
+     *
+     * That second reason is the whole reason, and it applies just as much to
+     * two reads. This checked the flag and never set it, so it was the one
+     * call that could overlap itself: opening the menu twice inside a probe's
+     * round trip refreshes every backlight again, and a monitors-changed
+     * re-detection can land on top of a menu open. What came back from that
+     * was nothing, which on a monitor that has answered before is silently
+     * kept as the value it had - so a bus collision looked exactly like a
+     * monitor that had gone to sleep.
      */
     refresh(onDone) {
         let done = onDone || function () {};
@@ -250,8 +262,10 @@ var DdcMonitor = class DdcMonitor {
             done();
             return;
         }
+        this._busy = true;
         this._run(["ddcutil", "--brief", "--display", this.number,
                    "getvcp", BRIGHTNESS_FEATURE], (output, status) => {
+            this._busy = false;
             if (this.destroyed) {
                 done();
                 return;

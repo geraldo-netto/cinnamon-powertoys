@@ -194,3 +194,22 @@ cases["a change is only reported when something actually changed"] = function ()
     Harness.equal(changes, 2, "a new level is");
     control.destroy();
 };
+
+cases["one read of the tree at a time"] = function () {
+    /* The settle timer stops a burst arming twice; it does nothing about a
+     * burst that spans two of them, and two GetManagedObjects then settle in
+     * whatever order they come back in. */
+    let waiting = [];
+    let control = new Bluez.BluezBatteries(null, (path, iface, method, onDone) => {
+        waiting.push(onDone);
+    });
+    Harness.equal(waiting.length, 1, "the constructor's read");
+
+    control._refresh();
+    Harness.equal(waiting.length, 1, "and a second is not started on top of it");
+
+    waiting.shift()(tree({ [HEADSET]: device("BW01", "audio-headset", true, 90) }));
+    control._refresh();
+    Harness.equal(waiting.length, 1, "once the first answered, the next one may go");
+    control.destroy();
+};
