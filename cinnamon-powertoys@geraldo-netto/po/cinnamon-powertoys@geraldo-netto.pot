@@ -44,7 +44,7 @@ msgstr ""
 msgid "Turbo boost off"
 msgstr ""
 
-#: applet.js:256 applet.js:1356 applet.js:2849
+#: applet.js:256 applet.js:1356 applet.js:2880
 msgid "Power profile"
 msgstr ""
 
@@ -87,8 +87,8 @@ msgid "and %d more"
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:584 applet.js:2126 applet.js:2798 applet.js:2849 applet.js:2896
-#: applet.js:2905
+#: applet.js:584 applet.js:2126 applet.js:2811 applet.js:2880 applet.js:2927
+#: applet.js:2936
 msgid "Power Toys"
 msgstr ""
 
@@ -177,15 +177,15 @@ msgid ""
 "shortcuts."
 msgstr ""
 
-#: applet.js:2781
+#: applet.js:2794
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2799
+#: applet.js:2812
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:2906
+#: applet.js:2937
 msgid "The change could not be applied."
 msgstr ""
 

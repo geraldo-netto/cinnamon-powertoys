@@ -2740,15 +2740,27 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * does, the menu was still showing the old selection. So the obvious
      * thing to do was click again, which sent a second write for a change
      * already in flight.
+     *
+     * It answers whether the call was taken, so a caller that says something
+     * about the change - the wheel, the hotkey - can say it only when there
+     * was one. Asking again for the profile already in flight is not one.
      */
     _setProfile(name) {
         if (name === this._pendingProfile)
-            return;
+            return false;
         this._pendingProfile = name;
 
         this._profileBackend.setProfile(name, error => {
             if (error) {
-                this._pendingProfile = null;
+                /*
+                 * Only where this is still the change in flight. A second
+                 * profile asked for while this one was pending has already
+                 * replaced it, and clearing it on the older call's failure
+                 * would take the panel back to a profile nobody asked for and
+                 * leave the newer change with nothing saying it is pending.
+                 */
+                if (this._pendingProfile === name)
+                    this._pendingProfile = null;
                 /* Cancelling a password dialog is not news; the user did it. */
                 if (error.message !== "cancelled")
                     this._notifyProfileError(name, error);
@@ -2769,6 +2781,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * The click dismisses it if that is what was wanted.
          */
         this._scheduleUpdate();
+        return true;
     }
 
     /*
@@ -2824,13 +2837,28 @@ class PowerToysApplet extends Applet.TextIconApplet {
         return ordered;
     }
 
+    /*
+     * One step along that list, from the profile that has been asked for
+     * rather than from the one the machine has got round to.
+     *
+     * Those are the same value except while a change is in flight, and that
+     * window is not always short. Under power-profiles-daemon it is a D-Bus
+     * round trip; on the ACPI platform profile the write goes through a
+     * password dialog and stays pending for as long as that is on screen.
+     * Stepping from the old value there computed the same target again,
+     * _setProfile dropped it as a duplicate, and the wheel and the hotkey did
+     * nothing at all for the whole of it - while the hotkey went on announcing
+     * a change that was not happening, because it announced whether or not the
+     * call had been taken.
+     */
     _stepProfile(step, wrap, announce) {
         let state = this._profileState();
         if (!state)
             return false;
 
         let ordered = this._orderedProfiles(state);
-        let index = ordered.indexOf(state.active);
+        let from = this._pendingProfile || state.active;
+        let index = ordered.indexOf(from);
         if (index < 0)
             index = 0;
 
@@ -2841,10 +2869,13 @@ class PowerToysApplet extends Applet.TextIconApplet {
             target = Math.max(0, Math.min(ordered.length - 1, target));
 
         let name = ordered[target];
-        if (name === state.active)
+        if (name === from)
             return false;
 
-        this._setProfile(name);
+        /* Announced only where the call was taken, which is the whole of what
+         * the return value above is for. */
+        if (!this._setProfile(name))
+            return false;
         if (announce)
             Main.notify(_("Power Toys"), _("Power profile") + ": " + Format.profileLabel(name));
         return true;
