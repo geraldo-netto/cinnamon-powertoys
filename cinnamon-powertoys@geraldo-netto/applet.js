@@ -73,7 +73,7 @@ function defaultBackends() {
         discoverSensors: () => Sensors.discoverSensors(),
         energyMeters: () => Sensors.discoverEnergyCounters()
             .map(counter => new Sensors.EnergyMeter(counter)),
-        cpuControl: () => new Cpu.CpuControl(),
+        cpuControl: runner => new Cpu.CpuControl(runner),
         chargeControl: () => PowerSupply.discoverChargeControl(),
         platformProfile: () => PowerSupply.platformProfile(),
         profilesClient: onChanged => new Profiles.PowerProfilesClient(onChanged),
@@ -320,7 +320,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         this._sensors = this._backends.discoverSensors();
         this._energyMeters = this._backends.energyMeters();
-        this._cpu = this._backends.cpuControl();
+        this._cpu = this._backends.cpuControl((args, onDone) => this._runHelper(args, onDone));
         this._chargeControl = this._backends.chargeControl();
 
         this._profiles = this._backends.profilesClient(() => this._scheduleUpdate());
@@ -512,17 +512,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
         menu.addMenuItem(this._cpuDriverRow);
 
         this._governorControl = new ChoiceControl(menu, _("Governor"), Format.governorLabel,
-                                                  value => this._runHelper(["governor", value]));
+                                                  value => this._cpu.setGovernor(value));
         this._energyControl = new ChoiceControl(menu, _("Energy preference"),
                                                 Format.energyPreferenceLabel,
-                                                value => this._runHelper(["epp", value]));
+                                                value => this._cpu.setEnergyPreference(value));
 
         /* The switch carries its own read-only mode, so unlike the two lists
          * above it needs no second widget: insensitive still shows the state. */
         this._boostSwitch = new PopupMenu.PopupSwitchMenuItem(_("Turbo boost"), false);
-        this._boostSwitch.connect("toggled", (item, state) => {
-            this._runHelper(["boost", state ? "1" : "0"]);
-        });
+        this._boostSwitch.connect("toggled", (item, state) => this._cpu.setBoost(state));
         menu.addMenuItem(this._boostSwitch);
     }
 

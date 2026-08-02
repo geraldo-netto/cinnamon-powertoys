@@ -4,6 +4,12 @@
  * cpufreq exposes one policy directory per core group. The settings that are
  * uniform across them - driver, governor, energy preference, boost - are read
  * from the first policy; the frequencies are read from all of them.
+ *
+ * All of those nodes are owned by root, so writing one is not something this
+ * module can do on its own. It takes a runner - in the applet, the pkexec
+ * helper - and calls it with the command and the value. Read and write for a
+ * setting then sit next to each other, rather than the getter being here and
+ * the name of the setting being spelled out again at the call site.
  */
 
 const IO = require("./lib/io.js");
@@ -12,7 +18,8 @@ var CPU_DIR = "/sys/devices/system/cpu";
 var CPUFREQ_DIR = CPU_DIR + "/cpufreq";
 
 var CpuControl = class CpuControl {
-    constructor() {
+    constructor(runner) {
+        this._runner = runner || function () {};
         this.refresh();
     }
 
@@ -50,8 +57,18 @@ var CpuControl = class CpuControl {
         return this.reference ? IO.readString(this.reference + "/scaling_governor") : null;
     }
 
+    /* The names below are the helper's vocabulary, and the only place in the
+     * applet that knows them. */
+    setGovernor(name, onDone) {
+        this._runner(["governor", String(name)], onDone);
+    }
+
     get energyPreference() {
         return this.reference ? IO.readString(this.reference + "/energy_performance_preference") : null;
+    }
+
+    setEnergyPreference(name, onDone) {
+        this._runner(["epp", String(name)], onDone);
     }
 
     get boostSupported() {
@@ -65,6 +82,12 @@ var CpuControl = class CpuControl {
         if (value === null)
             return null;
         return this.boostInverted ? value === 0 : value === 1;
+    }
+
+    /* The helper knows about the intel_pstate inversion too, so it is told
+     * what the user asked for and not what to write. */
+    setBoost(enabled, onDone) {
+        this._runner(["boost", enabled ? "1" : "0"], onDone);
     }
 
     /* Average of the current frequency of every policy, in MHz. */
