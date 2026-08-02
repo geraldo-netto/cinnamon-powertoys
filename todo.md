@@ -11,26 +11,9 @@ row keeps the effort for the whole and is done when its parts are. Parts were
 only split out where each one can be written, reviewed and committed on its
 own — items that are genuinely a single change were left whole.
 
-## Ninth pass — the whole tree, read again
-
-Every tracked file except the fixtures and the two screenshots: `applet.js`,
-all sixteen libraries, the helper, the schema, the stylesheet, the Makefile,
-`install.sh`, the workflow, the polkit action, the udev rule, the tests and the
-README. Nothing generated and nothing under a cache was read. The suite is at
-188 passing and the tree is clean, so none of what follows is a regression —
-these are things the code has been doing all along.
-
-## Behaviour
-
-| id | severity | effort | description |
-|----|----------|--------|-------------|
-
-## Code and tests
-
-| id | severity | effort | description |
-|----|----------|--------|-------------|
-
-## Packaging and supply chain
-
-| id | severity | effort | description |
-|----|----------|--------|-------------|
+Nothing open. The ninth pass read every tracked file except the fixtures and
+the two screenshots, and all ten of its rows are closed in the run of commits
+that follows it in the log. Two of them found more than they were opened for:
+the first case written against the new profiles seam caught a property being
+unpacked twice per read, and moving the doc blocks turned up a fifth that had
+drifted the same way.
