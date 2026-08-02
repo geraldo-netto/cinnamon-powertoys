@@ -17,6 +17,28 @@ const IO = require("./lib/io.js");
 var CPU_DIR = "/sys/devices/system/cpu";
 var CPUFREQ_DIR = CPU_DIR + "/cpufreq";
 
+/*
+ * A field that is only worked out if somebody reads it, and then only once.
+ * Used for the values in a reading that are expensive to produce and that
+ * most configurations never display.
+ */
+function _lazy(object, name, produce) {
+    let value = null;
+    let produced = false;
+    Object.defineProperty(object, name, {
+        configurable: true,
+        enumerable: true,
+        get: () => {
+            if (!produced) {
+                value = produce();
+                produced = true;
+            }
+            return value;
+        },
+    });
+    return object;
+}
+
 var CpuControl = class CpuControl {
     constructor(runner) {
         this._runner = runner || function () {};
@@ -121,7 +143,7 @@ var CpuControl = class CpuControl {
      * null rather than having to ask first.
      */
     snapshot() {
-        return {
+        let reading = {
             available: this.available,
             driver: this.driver,
             governor: this.governor,
@@ -130,9 +152,16 @@ var CpuControl = class CpuControl {
             energyPreferences: this.energyPreferences,
             boostSupported: this.boostSupported,
             boostEnabled: this.boostEnabled,
-            averageFrequency: this.averageFrequency(),
             maxFrequency: this.maxFrequency(),
             amdPstateStatus: this.amdPstateStatus,
         };
+
+        /* The current frequency is the one value here that costs a file read
+         * per policy - 32 of them on a sixteen core machine, every few
+         * seconds - and it is also the one a configuration can be showing
+         * nowhere. So it is worked out when somebody asks for it, which on a
+         * panel without the frequency and with the CPU section turned off is
+         * never. */
+        return _lazy(reading, "averageFrequency", () => this.averageFrequency());
     }
 };
