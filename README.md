@@ -108,8 +108,10 @@ to CPU and GPU only.
 thresholds for peripherals, and an optional high temperature warning. All with
 hysteresis, so a value sitting on the limit does not spam the tray.
 
-**Panel.** Choose what appears next to the icon: battery percentage, power
-draw, active power profile, any combination, separated by a dot. Temperature
+**Panel.** What appears next to the icon is one list — the battery percentage,
+the battery and the power draw, nothing, or *Choose below* for the switches
+underneath, which is where the active power profile is. Whatever is on shows
+separated by a dot. Temperature
 and CPU frequency are in the menu rather than the panel, where a figure that
 moves every few seconds pulls the eye without ever being worth acting on — a
 charge and a draw move slowly and say something at a glance, and a profile does

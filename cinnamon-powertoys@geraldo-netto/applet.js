@@ -150,9 +150,13 @@ const SETTINGS = [
     { key: "cpu-sensor-hint", property: "cpuSensorHint" },
 
     { key: "panel-icon-source", property: "panelIconSource", onChange: "icon" },
+    { key: "panel-text", property: "panelText" },
     { key: "panel-show-battery", property: "panelShowBattery" },
     { key: "panel-show-power", property: "panelShowPower" },
     { key: "panel-show-profile", property: "panelShowProfile" },
+    /* Not shown anywhere: whether the three above have been read once into
+     * the list that replaced them. */
+    { key: "panel-text-migrated", property: "panelTextMigrated" },
 
     { key: "show-profiles", property: "showProfiles" },
     { key: "show-cpu", property: "showCpu" },
@@ -2052,6 +2056,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         this._registerHotkeys();
         this._startPolling();
+        /* Before the greeting: it is the greeting that marks the install as
+         * one that has run before, which is what this reads. */
+        this._migratePanelText();
         this._update();
         this._introduce();
     }
@@ -2646,11 +2653,71 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._alerts.check(data, this._alertLimits());
     }
 
+    /*
+     * What the panel text is, from one list rather than three switches.
+     *
+     * Three independent switches are eight arrangements to consider, and the
+     * ones anybody wants are the charge, the charge and the draw, or nothing
+     * at all. Those are the list; the switches are still there under "Choose
+     * below" for the arrangement that is not on it.
+     */
+    _panelText() {
+        switch (this.panelText) {
+            case "none":
+                return { battery: false, power: false, profile: false };
+            case "battery-power":
+                return { battery: true, power: true, profile: false };
+            case "custom":
+                return { battery: this.panelShowBattery, power: this.panelShowPower,
+                         profile: this.panelShowProfile };
+            default:
+                return { battery: true, power: false, profile: false };
+        }
+    }
+
+    /*
+     * The switches, read once into the list that replaced them.
+     *
+     * A machine that has run this applet before has three switches set the way
+     * somebody wanted them, and a new setting arrives at its default - so
+     * without this, an upgrade would quietly take the power draw out of
+     * somebody's panel. Where the switches say what one of the list's entries
+     * says, that entry is chosen; where they say something else, the list is
+     * put on "Choose below" and the switches keep doing exactly what they did.
+     *
+     * A fresh install has nothing to read: `introduced` is still false, the
+     * switches are still at their defaults, and the default entry already
+     * means what they mean. Run this before the greeting, which is what sets
+     * that flag.
+     */
+    _migratePanelText() {
+        if (this.panelTextMigrated)
+            return;
+        this.settings.setValue("panel-text-migrated", true);
+        if (!this.introduced)
+            return;
+
+        let battery = this.panelShowBattery;
+        let power = this.panelShowPower;
+        let profile = this.panelShowProfile;
+        let wanted = "custom";
+        if (battery && !power && !profile)
+            wanted = "battery";
+        else if (battery && power && !profile)
+            wanted = "battery-power";
+        else if (!battery && !power && !profile)
+            wanted = "none";
+
+        if (wanted !== this.panelText)
+            this.settings.setValue("panel-text", wanted);
+    }
+
     _panelOptions() {
+        let text = this._panelText();
         return {
-            showBattery: this.panelShowBattery,
-            showPower: this.panelShowPower,
-            showProfile: this.panelShowProfile,
+            showBattery: text.battery,
+            showPower: text.power,
+            showProfile: text.profile,
             iconSource: this.panelIconSource,
             tempUnit: this.tempUnit,
             /* a change the machine has not confirmed yet; see shownProfile */

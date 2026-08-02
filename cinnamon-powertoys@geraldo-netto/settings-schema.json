@@ -43,20 +43,39 @@
             "Fixed icon": "static"
         }
     },
+    "panel-text": {
+        "type": "combobox",
+        "default": "battery",
+        "description": "Text beside the icon",
+        "tooltip": "Temperature and CPU frequency are deliberately not offered: a figure that moves every few seconds in the corner of the eye cannot be ignored and is not worth acting on. Both are in the menu.",
+        "options": {
+            "Battery percentage": "battery",
+            "Battery and power draw": "battery-power",
+            "Nothing": "none",
+            "Choose below": "custom"
+        }
+    },
     "panel-show-battery": {
         "type": "switch",
         "default": true,
-        "description": "Show battery percentage in the panel"
+        "description": "Battery percentage",
+        "dependency": "panel-text=custom"
     },
     "panel-show-power": {
         "type": "switch",
         "default": false,
-        "description": "Show power draw in the panel"
+        "description": "Power draw",
+        "dependency": "panel-text=custom"
     },
     "panel-show-profile": {
         "type": "switch",
         "default": false,
-        "description": "Show active power profile in the panel"
+        "description": "Active power profile",
+        "dependency": "panel-text=custom"
+    },
+    "panel-text-migrated": {
+        "type": "generic",
+        "default": false
     },
     "menu-section": {
         "type": "section",
