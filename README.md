@@ -11,7 +11,9 @@ The panel item, between the other applets:
 
 Captured on a desktop, so two things are not in the shot because that machine
 does not have them: the charger row, which needs a UPower line power device,
-and the backlight sliders, which need a backlight. Both hide themselves.
+and the backlight sliders, which need a backlight. Both hide themselves. The
+panel shot also predates temperature being taken out of the panel label, so
+the °C beside the icon is no longer shown there.
 
 ## Features
 
@@ -50,8 +52,10 @@ to CPU and GPU only.
 thresholds for peripherals, and an optional high temperature warning. All with
 hysteresis, so a value sitting on the limit does not spam the tray.
 
-**Panel.** Choose what appears next to the icon: battery percentage,
-temperature, power draw, CPU frequency, active profile, any combination. The
+**Panel.** Choose what appears next to the icon: battery percentage, power
+draw, CPU frequency, active profile, any combination. Temperature is in the
+tooltip and the menu rather than the panel, where a figure that moves every few
+seconds pulls the eye without ever being worth acting on. The
 icon follows the battery level, the active profile, or stays fixed. Optional
 keyboard shortcuts to cycle the profile and to open the menu, and an optional
 scroll-to-change-profile action.

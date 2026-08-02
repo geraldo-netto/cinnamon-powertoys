@@ -28,7 +28,6 @@
         "description": "Preferred CPU sensor",
         "tooltip": "Chip or label fragment of the sensor used for the panel temperature, e.g. 'Tctl' or 'k10temp'. Leave empty for automatic detection."
     },
-
     "panel-section": {
         "type": "section",
         "description": "Panel"
@@ -49,11 +48,6 @@
         "default": true,
         "description": "Show battery percentage in the panel"
     },
-    "panel-show-temp": {
-        "type": "switch",
-        "default": true,
-        "description": "Show temperature in the panel"
-    },
     "panel-show-power": {
         "type": "switch",
         "default": false,
@@ -69,7 +63,6 @@
         "default": false,
         "description": "Show active power profile in the panel"
     },
-
     "menu-section": {
         "type": "section",
         "description": "Menu"
@@ -106,7 +99,6 @@
         "default": false,
         "description": "Open the CPU and sensor sections by default"
     },
-
     "control-section": {
         "type": "section",
         "description": "Controls"
@@ -136,7 +128,6 @@
         "default": "",
         "description": "Shortcut to open the applet menu"
     },
-
     "alerts-section": {
         "type": "section",
         "description": "Alerts"

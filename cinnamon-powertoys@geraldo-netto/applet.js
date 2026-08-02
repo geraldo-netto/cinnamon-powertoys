@@ -132,7 +132,6 @@ const SETTINGS = [
 
     { key: "panel-icon-source", property: "panelIconSource", onChange: "icon" },
     { key: "panel-show-battery", property: "panelShowBattery" },
-    { key: "panel-show-temp", property: "panelShowTemp" },
     { key: "panel-show-power", property: "panelShowPower" },
     { key: "panel-show-frequency", property: "panelShowFrequency" },
     { key: "panel-show-profile", property: "panelShowProfile" },
@@ -301,12 +300,19 @@ class PanelPresenter {
         this._iconKey = null;
     }
 
+    /*
+     * The text beside the icon.
+     *
+     * Temperature is deliberately not among the choices. A number that moves
+     * every few seconds in the corner of the eye is the one thing on a panel
+     * that will not be ignored, and this one is not actionable: nobody acts
+     * on 61 rather than 59. It is still in the tooltip, in the menu summary
+     * and in the processor section, where it is looked at on purpose.
+     */
     _labelText(data, options) {
         let parts = [];
         if (options.showBattery && data.primary && data.primary.percentage !== null)
             parts.push(Format.percent(data.primary.percentage));
-        if (options.showTemp && data.cpuTemperature !== null)
-            parts.push(Format.temperature(data.cpuTemperature, options.tempUnit, 0));
         if (options.showPower && data.systemWatts !== null)
             parts.push(panelPowerText(data));
         if (options.showFrequency && data.cpu.averageFrequency !== null)
@@ -1371,7 +1377,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _panelOptions() {
         return {
             showBattery: this.panelShowBattery,
-            showTemp: this.panelShowTemp,
             showPower: this.panelShowPower,
             showFrequency: this.panelShowFrequency,
             showProfile: this.panelShowProfile,
