@@ -1174,7 +1174,6 @@ class MenuPresenter {
 
         this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this._menu.addSettingsAction(_("System power settings"), "power");
-        this._addConfigureRow(capabilities.version);
     }
 
     /*
@@ -1218,34 +1217,6 @@ class MenuPresenter {
 
         if (backlights.keyboard)
             this._addBacklight(_("Keyboard"), "keyboard-brightness", backlights.keyboard);
-    }
-
-    /*
-     * The last row of the menu, which is the one people remember where it is
-     * and go straight to.
-     *
-     * It used to hold "Power Toys 1.0.0", which cannot be done anything with,
-     * and the two rows that can be were above it. So the end of the menu now
-     * belongs to the applet's own settings - the likelier of the two, since
-     * the other opens a window this applet is not part of - and the version
-     * rides along on the right of it.
-     *
-     * The version is still worth carrying. It is what the Applets manager
-     * lists, and somebody reporting a problem should not have to go and find
-     * it. On a row that does something, it costs nothing to keep.
-     */
-    _addConfigureRow(version) {
-        let configure = new PopupMenu.PopupIconMenuItem(_("Configure Power Toys"),
-                                                        "system-run", St.IconType.SYMBOLIC);
-        configure.connect("activate", () => this._actions.configure());
-
-        if (version) {
-            let label = new St.Label({ text: version });
-            label.add_style_class_name("powertoys-about");
-            configure.addActor(label, { expand: true, span: -1, align: St.Align.END });
-        }
-
-        this._menu.addMenuItem(configure);
     }
 
     /*
@@ -2133,8 +2104,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         });
 
         this._menuPresenter = new MenuPresenter(this.menu, this._menuActions(),
-                                               { chargeLimit: !!this._chargeControl,
-                                                 version: this.metadata.version },
+                                               { chargeLimit: !!this._chargeControl },
                                                this._backlights);
     }
 
@@ -2147,8 +2117,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
             setEnergyPreference: value => this._cpu.setEnergyPreference(value),
             setBoost: state => this._cpu.setBoost(state),
             setChargeLimit: value => this._chargeControl.setLimit(value),
-            configure: () => Util.spawnCommandLine("cinnamon-settings applets " +
-                                                   UUID + " " + this.instanceId),
         };
     }
 

@@ -221,9 +221,3 @@
     opacity: 1.0;
 }
 
-/* The version, riding on the right of the configure row. Quiet enough to be
- * read only when looked for. */
-.powertoys-about {
-    font-size: 0.68em;
-    opacity: 0.6;
-}
