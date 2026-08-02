@@ -12,11 +12,35 @@
  */
 
 const Gio = imports.gi.Gio;
+const GLib = imports.gi.GLib;
 const UPowerGlib = imports.gi.UPowerGlib;
 
 const Log = require("./lib/log.js");
 
 var BUS_NAME = "org.bluez";
+
+/*
+ * The interfaces this module reads, and so the only ones worth waking for.
+ *
+ * PropertiesChanged carries the interface as its first argument, which means
+ * the bus can do the filtering. Without it every property BlueZ publishes came
+ * through: a media transport's volume for each notch of a headset's own
+ * buttons, an adapter's discovery state, a characteristic's value. None of
+ * those can move a battery percentage, and each one cost a round trip.
+ */
+const WATCHED_INTERFACES = ["org.bluez.Device1", "org.bluez.Battery1"];
+
+/*
+ * How long a burst of BlueZ signals is allowed to settle before the tree is
+ * read again.
+ *
+ * The filter above drops what is not this module's business; this is for what
+ * is. Device1 carries RSSI, which BlueZ republishes several times a second per
+ * device while an adapter is discovering, and every one of those was a
+ * GetManagedObjects of its own. Long enough to gather a burst into one read,
+ * short enough that nobody watching the menu sees the wait.
+ */
+var REFRESH_SETTLE_MS = 250;
 
 const UPDeviceKind = UPowerGlib.DeviceKind;
 const UPDeviceState = UPowerGlib.DeviceState;
@@ -130,6 +154,7 @@ var BluezBatteries = class BluezBatteries {
         this._onChanged = onChanged || function () {};
         this._call = call || ((path, iface, method, onDone) => this._dbusCall(path, iface, method, onDone));
         this._signalIds = [];
+        this._refreshTimerId = 0;
 
         this._refresh();
         this._watch();
@@ -169,25 +194,47 @@ var BluezBatteries = class BluezBatteries {
         });
     }
 
-    /* Anything at all moving in BlueZ's tree is cheap to react to, because
-     * reacting means one D-Bus call that BlueZ answers out of memory. */
+    /*
+     * A device coming or going, and a property changing on one of the two
+     * interfaces this module parses.
+     *
+     * Reacting means one D-Bus call that BlueZ answers out of memory, which is
+     * cheap - but it was subscribed to every property BlueZ publishes and
+     * taken on every one of them, which is not the same thing. See
+     * WATCHED_INTERFACES and REFRESH_SETTLE_MS.
+     */
     _watch() {
-        for (let signal of ["InterfacesAdded", "InterfacesRemoved"]) {
-            try {
-                this._signalIds.push(Gio.DBus.system.signal_subscribe(
-                    BUS_NAME, "org.freedesktop.DBus.ObjectManager", signal, null, null,
-                    Gio.DBusSignalFlags.NONE, () => this._refresh()));
-            } catch (error) {
-                Log.error("cannot watch BlueZ for " + signal + ": " + error);
-            }
-        }
+        for (let signal of ["InterfacesAdded", "InterfacesRemoved"])
+            this._subscribe("org.freedesktop.DBus.ObjectManager", signal, null);
+        for (let iface of WATCHED_INTERFACES)
+            this._subscribe("org.freedesktop.DBus.Properties", "PropertiesChanged", iface);
+    }
+
+    _subscribe(iface, member, arg0) {
         try {
             this._signalIds.push(Gio.DBus.system.signal_subscribe(
-                BUS_NAME, "org.freedesktop.DBus.Properties", "PropertiesChanged", null, null,
-                Gio.DBusSignalFlags.NONE, () => this._refresh()));
+                BUS_NAME, iface, member, null, arg0,
+                Gio.DBusSignalFlags.NONE, () => this._scheduleRefresh()));
         } catch (error) {
-            Log.error("cannot watch BlueZ for property changes: " + error);
+            Log.error("cannot watch BlueZ for " + member +
+                      (arg0 ? " on " + arg0 : "") + ": " + error);
         }
+    }
+
+    /*
+     * One read per burst. The first signal arms the timer and the rest of the
+     * burst finds it armed, so twenty signals in a quarter of a second are one
+     * GetManagedObjects rather than twenty.
+     */
+    _scheduleRefresh() {
+        if (this.destroyed || this._refreshTimerId)
+            return;
+        this._refreshTimerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, REFRESH_SETTLE_MS, () => {
+            this._refreshTimerId = 0;
+            if (!this.destroyed)
+                this._refresh();
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     /*
@@ -207,6 +254,10 @@ var BluezBatteries = class BluezBatteries {
 
     destroy() {
         this.destroyed = true;
+        if (this._refreshTimerId) {
+            GLib.source_remove(this._refreshTimerId);
+            this._refreshTimerId = 0;
+        }
         for (let id of this._signalIds) {
             try {
                 Gio.DBus.system.signal_unsubscribe(id);

@@ -24,7 +24,6 @@ these are things the code has been doing all along.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-118 | medium | S | [`lib/bluez.js`](cinnamon-powertoys@geraldo-netto/lib/bluez.js#L184) subscribes to `PropertiesChanged` on the whole of `org.bluez` with no path and no `arg0` filter, and every one of those signals costs a full `GetManagedObjects` round trip. A `MediaTransport1` volume change while music is playing, or `Device1.RSSI` while the adapter is discovering, each fire several times a second and none of them can alter a battery percentage. Filter on the two interfaces this module actually parses, or gather a burst into one idle refresh. |
 
 ## Presentation
 

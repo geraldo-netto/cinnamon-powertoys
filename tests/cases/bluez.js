@@ -6,6 +6,7 @@
  * manager really answers with, taken from this machine's own tree.
  */
 
+const GLib = imports.gi.GLib;
 const Harness = imports.harness;
 
 const Bluez = Harness.requireXlet("./lib/bluez.js");
@@ -110,6 +111,40 @@ cases["a machine with no bluetooth daemon says nothing and breaks nothing"] = fu
     Harness.deepEqual(control.devices, [], "no devices");
     Harness.deepEqual(control.missingFrom([]), [], "and nothing to add");
     control.destroy();
+};
+
+cases["a burst of signals is one read of the tree"] = function () {
+    /*
+     * What BlueZ does while an adapter is discovering: RSSI republished
+     * several times a second per device, each of which used to be a
+     * GetManagedObjects of its own for a value that cannot move a battery
+     * percentage.
+     */
+    let objects = tree({ [HEADSET]: device("BW01", "audio-headset", true, 90) });
+    let reads = 0;
+    let control = new Bluez.BluezBatteries(null, (path, iface, method, onDone) => {
+        reads++;
+        onDone(objects);
+    });
+    Harness.equal(reads, 1, "the first read, taken as the control is built");
+
+    for (let i = 0; i < 20; i++)
+        control._scheduleRefresh();
+    Harness.equal(reads, 1, "and none of the burst has gone out yet");
+
+    Harness.settle(done => GLib.timeout_add(GLib.PRIORITY_DEFAULT, Bluez.REFRESH_SETTLE_MS + 150,
+                                            () => { done(); return GLib.SOURCE_REMOVE; }),
+                   "the settle window");
+    Harness.equal(reads, 2, "one read for the whole burst");
+    control.destroy();
+};
+
+cases["a refresh that has not fired yet is dropped with the control"] = function () {
+    let control = new Bluez.BluezBatteries(null, (path, iface, method, onDone) => onDone(tree()));
+    control._scheduleRefresh();
+    control.destroy();
+    Harness.equal(control._refreshTimerId, 0,
+                  "or the timer outlives the applet and fires into a destroyed object");
 };
 
 cases["a change is only reported when something actually changed"] = function () {
