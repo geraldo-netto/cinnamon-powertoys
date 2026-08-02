@@ -17,6 +17,7 @@ const Mainloop = imports.mainloop;
 const PopupMenu = imports.ui.popupMenu;
 const Settings = imports.ui.settings;
 const St = imports.gi.St;
+const Tooltips = imports.ui.tooltips;
 const UPowerGlib = imports.gi.UPowerGlib;
 const Util = imports.misc.util;
 
@@ -31,6 +32,7 @@ const UUID = "cinnamon-powertoys@geraldo-netto";
  * drops the cached modules for the directory when the xlet is unloaded, while
  * the legacy importer caches them for the life of the process.
  */
+const Backlight = require("./lib/backlight.js");
 const Cpu = require("./lib/cpu.js");
 const IO = require("./lib/io.js");
 const PowerSupply = require("./lib/power-supply.js");
@@ -74,6 +76,8 @@ function defaultBackends() {
         chargeControl: () => PowerSupply.discoverChargeControl(),
         platformProfile: () => PowerSupply.platformProfile(),
         profilesClient: onChanged => new Profiles.PowerProfilesClient(onChanged),
+        backlight: (kind, onChanged, onReady) =>
+            new Backlight.BacklightControl(kind, onChanged, onReady),
         upowerMonitor: (onChanged, onReady) => new UPower.UPowerMonitor(onChanged, onReady),
         readNumber: path => IO.readNumber(path),
         fileExists: path => IO.exists(path),
@@ -548,6 +552,77 @@ class ChoiceControl {
     }
 }
 
+/* Brightness moves in steps a panel can actually show; asking for every value
+ * the pointer passes over would be a D-Bus call per motion event. */
+const BACKLIGHT_STEP = 5;
+
+/*
+ * A backlight as a menu row: an icon, a slider, and the value in the tooltip.
+ *
+ * The row stays hidden until the daemon has confirmed there is a backlight
+ * behind it, so a desktop with none never sees a slider that does nothing.
+ */
+class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
+    _init(label, iconName, control) {
+        super._init.call(this, 0);
+
+        this._control = control;
+        this._name = label;
+        this._seeking = false;
+        this.actor.hide();
+
+        this._icon = new St.Icon({ icon_name: iconName, icon_type: St.IconType.SYMBOLIC,
+                                   icon_size: 16 });
+        this.removeActor(this._slider);
+        this.addActor(this._icon, { span: 0 });
+        this.addActor(this._slider, { span: -1, expand: true });
+
+        this.tooltip = new Tooltips.Tooltip(this.actor, label);
+
+        this.connect("drag-begin", () => { this._seeking = true; });
+        this.connect("drag-end", () => { this._seeking = false; });
+        this.connect("value-changed", (item, value) => this._onDragged(value));
+    }
+
+    _onDragged(value) {
+        let wanted = Math.round(value * 100 / BACKLIGHT_STEP) * BACKLIGHT_STEP;
+        if (wanted === this._control.percentage)
+            return;
+        this._control.setPercentage(wanted, () => this._showValue());
+    }
+
+    /*
+     * Called when the control has news: the daemon has answered, or something
+     * else has moved this backlight - a function key, the settings daemon
+     * dimming on idle. Ignored mid-drag, where the handle would fight the
+     * pointer.
+     */
+    sync() {
+        this.actor.visible = this._control.available;
+        if (!this._control.available || this._seeking)
+            return;
+        this.setValue((this._control.percentage || 0) / 100);
+        this._showValue();
+    }
+
+    _showValue() {
+        let text = this._name;
+        if (this._control.percentage !== null)
+            text += ": " + this._control.percentage + "%";
+        this.tooltip.set_text(text);
+    }
+
+    /* The daemon owns the notch size, and it is the one the brightness keys
+     * use, so the wheel and the keyboard agree. */
+    _onScrollEvent(actor, event) {
+        let direction = event.get_scroll_direction();
+        if (direction === Clutter.ScrollDirection.UP)
+            this._control.step(true, () => this.sync());
+        else if (direction === Clutter.ScrollDirection.DOWN)
+            this._control.step(false, () => this.sync());
+    }
+}
+
 /*
  * The menu, from the summary line at the top to the settings entry at the
  * bottom.
@@ -562,17 +637,25 @@ class ChoiceControl {
  * that with a view model.
  */
 class MenuPresenter {
-    constructor(menu, actions, host, capabilities) {
+    constructor(menu, actions, host, capabilities, backlights) {
         this._menu = menu;
         this._actions = actions;
         this._host = host;
-        this._build(capabilities || {});
+        this._build(capabilities || {}, backlights || {});
     }
 
-    _build(capabilities) {
+    _build(capabilities, backlights) {
         this._summary = new InfoRow("", "");
         this._summary.actor.add_style_class_name("powertoys-summary");
         this._menu.addMenuItem(this._summary);
+
+        /* Brightness sits at the top because it is the control in here that
+         * gets used most, and because that is where the applet this one can
+         * replace keeps it. Each slider hides itself when there is no such
+         * backlight. */
+        this._backlightSliders = [];
+        if (backlights.screen)
+            this._addBacklight(_("Brightness"), "display-brightness", backlights.screen);
 
         let profileSection = new PopupMenu.PopupMenuSection();
         this._menu.addMenuItem(profileSection);
@@ -635,6 +718,12 @@ class MenuPresenter {
         this._menu.addMenuItem(configure);
     }
 
+    _addBacklight(label, iconName, control) {
+        let slider = new BacklightSlider(label, iconName, control);
+        this._menu.addMenuItem(slider);
+        this._backlightSliders.push(slider);
+    }
+
     _buildCpuSection() {
         let menu = this._cpuMenu.menu;
 
@@ -671,6 +760,8 @@ class MenuPresenter {
     }
 
     update(data, options) {
+        for (let slider of this._backlightSliders)
+            slider.sync();
         this._updateSummary(data, options);
         this._updateProfiles(data, options);
         this._updateDevices(data, options);
@@ -860,6 +951,12 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._cpu = this._backends.cpuControl((args, onDone) => this._runHelper(args, onDone));
         this._chargeControl = this._backends.chargeControl();
 
+        this._backlights = {
+            screen: this._backends.backlight(Backlight.SCREEN,
+                                             () => this._scheduleUpdate(),
+                                             () => this._scheduleUpdate()),
+        };
+
         this._profiles = this._backends.profilesClient(() => this._scheduleUpdate());
         this._upower = this._backends.upowerMonitor(() => this._scheduleUpdate(),
                                                     () => this._scheduleUpdate());
@@ -960,7 +1057,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
         });
 
         this._menuPresenter = new MenuPresenter(this.menu, this._menuActions(), this,
-                                               { chargeLimit: !!this._chargeControl });
+                                               { chargeLimit: !!this._chargeControl },
+                                               this._backlights);
         this._menuPresenter.applyExpandState(this.expandSections);
     }
 
@@ -1160,6 +1258,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._cpu.refresh();
         if (this._upower.available)
             this._upower.refresh();
+        for (let name in this._backlights)
+            this._backlights[name].refresh(() => this._scheduleUpdate());
         this._update();
     }
 
@@ -1457,6 +1557,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._profiles.destroy();
         if (this._upower)
             this._upower.destroy();
+        for (let name in this._backlights)
+            this._backlights[name].destroy();
         if (this.settings)
             this.settings.finalize();
     }
