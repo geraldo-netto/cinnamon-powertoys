@@ -106,9 +106,15 @@ cases["a device that reports nothing says what it is"] = function () {
                   "better than the word Unknown");
 };
 
-cases["freezing is a reading, and nothing else at zero is"] = function () {
-    Harness.equal(Device.describe(battery({ temperature: 0 }), "celsius").indexOf("0.0 °C") >= 0,
-                  true, "a battery left in a car overnight is the one time anybody looks");
+cases["a device that measures nothing does not claim to be at freezing"] = function () {
+    /* UPower publishes Temperature as 0.0 for a device with no thermometer,
+     * and offers nothing to tell that apart from a device that is genuinely
+     * at 0 °C, so the reading a bluetooth headset never took has to go. */
+    Harness.equal(Device.describe(mouse({ temperature: 0 }), "celsius").indexOf("°C"), -1,
+                  "a mouse is not at freezing, it is not measuring");
+    Harness.equal(Device.describe(battery({ temperature: 31.5 }), "celsius").indexOf("31.5 °C") >= 0,
+                  true, "and a battery that does measure still says so");
+
     let idle = Device.describe(battery({ energyRate: 0, voltage: 0 }), "celsius");
     Harness.equal(idle.indexOf("W"), -1, "a battery at rest draws nothing worth a row");
     Harness.equal(idle.indexOf("V"), -1, "and 0 V is a battery that is not reporting");

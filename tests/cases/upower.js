@@ -78,10 +78,16 @@ cases["a device that reports neither contributes nothing"] = function () {
     Harness.deepEqual(readings, { temperatures: [], powers: [] }, "nothing to say");
 };
 
-cases["freezing is a reading; drawing nothing is not"] = function () {
+cases["nothing at zero is taken as a reading"] = function () {
+    /*
+     * UPower has no "is present" beside Temperature: a device with no
+     * thermometer publishes 0.0, and so would a battery that really was at
+     * freezing. Every bluetooth peripheral on a desk reads 0.0, so trusting it
+     * put a sensor group under a headset's name with one row in it saying the
+     * headset was at 0 °C. The rare true reading is the one that has to go.
+     */
     let cold = UPower.sensorReadings([device({ temperature: 0 })]);
-    Harness.equal(cold.temperatures.length, 1, "0 °C is a temperature and used to be dropped");
-    Harness.equal(cold.temperatures[0].celsius, 0, "as it stands");
+    Harness.equal(cold.temperatures.length, 0, "not a temperature UPower can vouch for");
 
     let idle = UPower.sensorReadings([device({ energyRate: 0 })]);
     Harness.equal(idle.powers.length, 0,

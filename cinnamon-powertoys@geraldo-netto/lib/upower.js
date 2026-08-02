@@ -87,9 +87,19 @@ function sensorReadings(devices) {
         let title = Format.deviceTitle(device);
         let group = "upower:" + device.path;
 
-        /* Zero degrees is a reading. It used to be dropped as falsy, which
-         * hid the one temperature anybody would go looking for. */
-        if (device.temperature !== null && device.temperature !== undefined)
+        /*
+         * Zero degrees is dropped, and it is a reading.
+         *
+         * It has to be, because UPower cannot say the other thing. Temperature
+         * is a plain `d` on the interface with no "is present" beside it, and
+         * a device with no thermometer in it publishes 0.0 rather than
+         * declining to answer - a bluetooth headset does exactly that. Letting
+         * 0 through put "Temperature 0.0 °C" under a heading with the
+         * headset's name on it, on a machine where nothing was measuring
+         * anything. A battery that really is at freezing loses its row; a
+         * dozen devices that measure nothing would otherwise gain one.
+         */
+        if (device.temperature)
             temperatures.push({
                 id: "upower:" + device.path,
                 measure: "temperature",

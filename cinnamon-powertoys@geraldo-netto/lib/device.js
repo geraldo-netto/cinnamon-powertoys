@@ -73,12 +73,14 @@ function describe(device, tempUnit) {
     if (device.voltage)
         parts.push(Format.volts(device.voltage));
     /*
-     * Zero degrees is a reading and the rest are not. A battery drawing 0 W is
-     * a battery at rest and a battery at 0 V is one that is not reporting, so
-     * those stay falsy tests; a battery at 0 °C is a battery that has been
-     * left in a car overnight, which is the one time anybody would look.
+     * Zero is dropped here for the same reason it is dropped in
+     * lib/upower.js: UPower publishes Temperature as 0.0 for a device that has
+     * no thermometer in it, with nothing on the interface to tell that apart
+     * from a device that is actually at freezing. Every bluetooth peripheral
+     * on the machine reads 0.0, so trusting it means every one of them
+     * claiming a temperature it never took.
      */
-    if (device.temperature !== null && device.temperature !== undefined)
+    if (device.temperature)
         parts.push(Format.temperature(device.temperature, tempUnit, 1));
     if (device.capacity && device.capacity < 100)
         parts.push(_("health") + " " + Format.percent(device.capacity));
