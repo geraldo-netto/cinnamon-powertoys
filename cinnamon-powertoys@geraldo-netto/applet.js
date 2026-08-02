@@ -81,6 +81,109 @@ function defaultBackends() {
 }
 
 /*
+ * Whether the device is spending its charge rather than taking it in.
+ * System batteries report a state that can be trusted; peripherals very often
+ * report none at all, so for those anything that is not explicitly on the
+ * cable counts as draining.
+ */
+function isDeviceDraining(device) {
+    if (device.powerSupply)
+        return device.state === UPDeviceState.DISCHARGING;
+    return device.state !== UPDeviceState.CHARGING &&
+           device.state !== UPDeviceState.FULLY_CHARGED &&
+           device.state !== UPDeviceState.PENDING_CHARGE;
+}
+
+/*
+ * The level at which a device counts as low. A mouse at 18% is not a laptop
+ * at 18%, so peripherals carry their own limit; both the row colour and the
+ * notification read it from here.
+ */
+function deviceLowThreshold(device, systemLevel, peripheralLevel) {
+    return device.powerSupply ? systemLevel : peripheralLevel;
+}
+
+/*
+ * When to say something, and how not to say it twice.
+ *
+ * Each poll hands over the reading and the limits in force; this decides
+ * whether any of it is news. A device that has already been reported stays
+ * quiet until it recovers, and recovering means climbing five points clear of
+ * the limit, so one sitting exactly on it does not alternate.
+ *
+ * Nothing here touches a widget or reads a setting of its own, so a run of
+ * readings can be pushed through it and the notifications counted.
+ */
+class AlertPolicy {
+    constructor(notify) {
+        this._notify = notify || function (urgent, title, body) {
+            if (urgent)
+                Main.criticalNotify(title, body);
+            else
+                Main.notify(title, body);
+        };
+        this._alerted = new Map();
+        this._tempAlerted = false;
+    }
+
+    check(data, limits) {
+        for (let device of data.devices)
+            this._checkDevice(device, limits);
+        this._checkTemperature(data.cpuTemperature, limits);
+    }
+
+    _checkDevice(device, limits) {
+        if (device.percentage === null)
+            return;
+
+        let system = device.powerSupply;
+        let enabled = system ? limits.lowBattery : limits.peripheralBattery;
+        let threshold = deviceLowThreshold(device, limits.lowLevel, limits.peripheralLevel);
+        let level = this._alerted.get(device.path) || "";
+
+        if (!enabled || !isDeviceDraining(device)) {
+            this._alerted.delete(device.path);
+            return;
+        }
+
+        if (system && device.percentage <= limits.criticalLevel) {
+            if (level !== "critical") {
+                this._alerted.set(device.path, "critical");
+                this._notify(true, _("Battery critically low"),
+                             Format.deviceTitle(device) + " - " +
+                             Format.percent(device.percentage));
+            }
+        } else if (device.percentage <= threshold) {
+            if (level === "") {
+                this._alerted.set(device.path, "low");
+                this._notify(false, _("Battery low"),
+                             Format.deviceTitle(device) + " - " +
+                             Format.percent(device.percentage));
+            }
+        } else if (device.percentage > threshold + 5) {
+            /* hysteresis, so a device hovering at the limit is not noisy */
+            this._alerted.delete(device.path);
+        }
+    }
+
+    _checkTemperature(celsius, limits) {
+        if (!limits.highTemp || celsius === null) {
+            this._tempAlerted = false;
+            return;
+        }
+        if (celsius >= limits.highTempCelsius) {
+            if (!this._tempAlerted) {
+                this._tempAlerted = true;
+                this._notify(false, _("High temperature"),
+                             Format.temperature(celsius, limits.tempUnit, 1));
+            }
+        } else if (celsius < limits.highTempCelsius - 5) {
+            this._tempAlerted = false;
+        }
+    }
+}
+
+/*
  * Menu rows that follow a list of values.
  *
  * Tearing a section down on every poll would drop whatever the pointer is
@@ -309,8 +412,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         this._timerId = 0;
         this._iconKey = null;
-        this._alerted = new Map();
-        this._tempAlerted = false;
+        this._alerts = new AlertPolicy();
         this._hotkeyIds = [];
 
         this._bindSettings();
@@ -712,7 +814,20 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._latest = data;
         this._updatePanel(data);
         this._updateMenu(data);
-        this._checkAlerts(data);
+        this._alerts.check(data, this._alertLimits());
+    }
+
+    _alertLimits() {
+        return {
+            lowBattery: this.notifyLowBattery,
+            peripheralBattery: this.notifyPeripheralBattery,
+            lowLevel: this.lowBatteryThreshold,
+            peripheralLevel: this.peripheralBatteryThreshold,
+            criticalLevel: this.criticalBatteryThreshold,
+            highTemp: this.notifyHighTemp,
+            highTempCelsius: this.highTempCelsius,
+            tempUnit: this.tempUnit,
+        };
     }
 
     /* ------------------------------------------------------------------ */
@@ -803,27 +918,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
         return "";
     }
 
-    /*
-     * The level at which a device counts as low. A mouse at 18% is not a
-     * laptop at 18%, so peripherals carry their own limit; both the row colour
-     * and the notification read it from here.
-     */
+    /* Both of these are the settings applied to the rules above, and are what
+     * DeviceRow asks the applet for while it colours itself. */
     lowThresholdFor(device) {
-        return device.powerSupply ? this.lowBatteryThreshold : this.peripheralBatteryThreshold;
+        return deviceLowThreshold(device, this.lowBatteryThreshold,
+                                  this.peripheralBatteryThreshold);
     }
 
-    /*
-     * Whether the device is spending its charge rather than taking it in.
-     * System batteries report a state that can be trusted; peripherals very
-     * often report none at all, so for those anything that is not explicitly
-     * on the cable counts as draining.
-     */
     isDraining(device) {
-        if (device.powerSupply)
-            return device.state === UPDeviceState.DISCHARGING;
-        return device.state !== UPDeviceState.CHARGING &&
-               device.state !== UPDeviceState.FULLY_CHARGED &&
-               device.state !== UPDeviceState.PENDING_CHARGE;
+        return isDeviceDraining(device);
     }
 
     /* One line summary of a device, used in the menu rows. */
@@ -1205,58 +1308,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
         for (let name of this._hotkeyIds)
             Main.keybindingManager.removeHotKey(name);
         this._hotkeyIds = [];
-    }
-
-    /* ------------------------------------------------------------------ */
-    /* alerts                                                              */
-
-    _checkAlerts(data) {
-        for (let device of data.devices) {
-            if (device.percentage === null)
-                continue;
-
-            let system = device.powerSupply;
-            let enabled = system ? this.notifyLowBattery : this.notifyPeripheralBattery;
-            let threshold = this.lowThresholdFor(device);
-            let level = this._alerted.get(device.path) || "";
-
-            if (!enabled || !this.isDraining(device)) {
-                this._alerted.delete(device.path);
-                continue;
-            }
-
-            if (system && device.percentage <= this.criticalBatteryThreshold) {
-                if (level !== "critical") {
-                    this._alerted.set(device.path, "critical");
-                    Main.criticalNotify(_("Battery critically low"),
-                                        Format.deviceTitle(device) + " - " +
-                                        Format.percent(device.percentage));
-                }
-            } else if (device.percentage <= threshold) {
-                if (level === "") {
-                    this._alerted.set(device.path, "low");
-                    Main.notify(_("Battery low"),
-                                Format.deviceTitle(device) + " - " + Format.percent(device.percentage));
-                }
-            } else if (device.percentage > threshold + 5) {
-                /* hysteresis, so a device hovering at the limit is not noisy */
-                this._alerted.delete(device.path);
-            }
-        }
-
-        if (!this.notifyHighTemp || data.cpuTemperature === null) {
-            this._tempAlerted = false;
-            return;
-        }
-        if (data.cpuTemperature >= this.highTempCelsius) {
-            if (!this._tempAlerted) {
-                this._tempAlerted = true;
-                Main.notify(_("High temperature"),
-                            Format.temperature(data.cpuTemperature, this.tempUnit, 1));
-            }
-        } else if (data.cpuTemperature < this.highTempCelsius - 5) {
-            this._tempAlerted = false;
-        }
     }
 
     /* ------------------------------------------------------------------ */
