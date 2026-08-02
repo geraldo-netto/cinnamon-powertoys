@@ -108,6 +108,47 @@ function _show(value) {
 }
 
 /* ---------------------------------------------------------------- */
+/* asynchronous results                                              */
+
+/*
+ * Runs a main loop until an asynchronous call has answered, and gives back
+ * what it answered with. `start` is handed the callback to pass on.
+ *
+ * This is what lets a case that exercises an asynchronous read stay an
+ * ordinary function that throws, like every other case here. A call that
+ * answers before the loop is entered is handled too, since an empty batch of
+ * work is allowed to finish immediately, and one that never answers fails
+ * after a few seconds rather than hanging the suite.
+ */
+function settle(start, what) {
+    const GLib = imports.gi.GLib;
+    let loop = new GLib.MainLoop(null, false);
+    let result = null;
+    let answered = false;
+
+    start(function (value) {
+        result = value;
+        answered = true;
+        loop.quit();
+    });
+
+    if (!answered) {
+        let guard = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 5000, function () {
+            guard = 0;
+            loop.quit();
+            return GLib.SOURCE_REMOVE;
+        });
+        loop.run();
+        if (guard)
+            GLib.source_remove(guard);
+    }
+
+    if (!answered)
+        fail((what || "the asynchronous call") + " never answered");
+    return result;
+}
+
+/* ---------------------------------------------------------------- */
 /* fixtures                                                          */
 
 /* A captured /sys tree the IO layer can be pointed at. */

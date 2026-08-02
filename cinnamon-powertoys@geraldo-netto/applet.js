@@ -1413,6 +1413,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._destroyed = false;
 
         this._timerId = 0;
+        /* A reading is in flight; another was asked for while it was. */
+        this._collecting = false;
+        this._collectAgain = false;
         this._scrollTimerId = 0;
         this._pendingScroll = 0;
         this._pendingProfile = null;
@@ -1680,9 +1683,32 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * one of them - which sensor the panel shows, and which of several
      * numbers counts as the machine's power draw.
      */
-    _collect() {
+    _collect(onDone) {
+        this._sensors.readAsync(this._sensorFilter(), readings => {
+            if (this._destroyed)
+                return;
+            let data;
+            try {
+                data = this._assemble(readings);
+            } catch (error) {
+                Log.error("collection failed: " + error);
+                return;
+            }
+            onDone(data);
+        });
+    }
+
+    /*
+     * The sensor readings, and everything else that describes the machine,
+     * put side by side.
+     *
+     * The other backends answer from memory - UPower and the profile daemon
+     * from their proxies, the processor from a snapshot of files small enough
+     * and hot enough that reading them costs tens of microseconds. The sensors
+     * were the part that could block, and they arrive here already read.
+     */
+    _assemble(readings) {
         let upower = this._upower.read();
-        let readings = this._sensors.read(this._sensorFilter());
         /* Anything with a charge that UPower did not mention. */
         let devices = upower.devices.concat(this._bluetooth.missingFrom(upower.devices));
 
@@ -1895,20 +1921,60 @@ class PowerToysApplet extends Applet.TextIconApplet {
          */
         for (let name in this._backlights)
             this._backlights[name].refresh(() => this._onBacklightChanged());
+
+        /*
+         * The menu is filled from the reading already in hand, and only then
+         * is a fresh one asked for.
+         *
+         * That reading is at most one poll old, and the menu is not updated
+         * while it is shut, so without this the menu would be laid out with
+         * whatever it last held - nothing at all, the first time - and filled
+         * in a millisecond later when the asynchronous read answers. A
+         * millisecond is long enough to see: the panels appear, then find
+         * their size.
+         */
+        if (this._latest)
+            this._menuPresenter.update(this._latest, this._menuOptions());
         this._update();
     }
 
+    /*
+     * One turn of the applet: read the machine, then show what was read.
+     *
+     * The reading is taken asynchronously, so this returns before the answer
+     * exists and _present does the showing when it arrives. Two things follow
+     * from that. A second update asked for while one is in flight is not
+     * dropped and does not start a second read - it is remembered and taken
+     * once the first has been shown, so the sequence stays one reading at a
+     * time in the order they were asked for. And the applet may be gone by the
+     * time the answer comes back, which is what the _destroyed check is for.
+     */
     _update() {
         if (this._destroyed)
             return;
-
-        let data;
-        try {
-            data = this._collect();
-        } catch (error) {
-            Log.error("collection failed: " + error);
+        if (this._collecting) {
+            this._collectAgain = true;
             return;
         }
+
+        this._collecting = true;
+        this._collect(data => {
+            this._collecting = false;
+            if (this._destroyed)
+                return;
+            try {
+                this._present(data);
+            } catch (error) {
+                Log.error("could not show the reading: " + error);
+            }
+            if (this._collectAgain) {
+                this._collectAgain = false;
+                this._update();
+            }
+        });
+    }
+
+    _present(data) {
         /* The machine has caught up with what was asked for. */
         if (this._pendingProfile && data.profile.active === this._pendingProfile)
             this._pendingProfile = null;

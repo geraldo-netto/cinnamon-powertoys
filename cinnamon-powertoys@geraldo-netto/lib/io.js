@@ -46,12 +46,64 @@ function readString(path) {
     }
 }
 
-function readNumber(path) {
-    let raw = readString(path);
-    if (raw === null || raw === "")
+/* What a sysfs node's contents mean as a number, or null. Separate from the
+ * reading so that a value fetched any other way is understood the same way. */
+function toNumber(raw) {
+    if (raw === null || raw === undefined || raw === "")
         return null;
     let value = Number(raw);
     return Number.isFinite(value) ? value : null;
+}
+
+function readNumber(path) {
+    return toNumber(readString(path));
+}
+
+/*
+ * Several nodes at once, off the calling thread.
+ *
+ * GLib has no asynchronous file_get_contents - the async read of a whole file
+ * is Gio.File.load_contents_async, which hands the open, read and close to a
+ * worker thread and calls back on the main loop. That is the difference that
+ * matters here: a sysfs read is not always quick, and a temperature node on a
+ * sleeping NVMe drive blocks for milliseconds while the drive is woken. In the
+ * process that draws the desktop, that is dropped frames.
+ *
+ * The callback gets one object of path to contents, with null for anything
+ * that could not be read - the same answer readString gives, since a node that
+ * is missing, root-only or busy is an ordinary state here and not a failure.
+ * It is called exactly once, including for an empty list.
+ */
+function readStringsAsync(paths, onDone) {
+    let values = {};
+    let outstanding = paths.length;
+
+    if (outstanding === 0) {
+        onDone(values);
+        return;
+    }
+
+    for (let path of paths) {
+        let settle = contents => {
+            values[path] = contents;
+            outstanding--;
+            if (outstanding === 0)
+                onDone(values);
+        };
+
+        try {
+            Gio.File.new_for_path(resolve(path)).load_contents_async(null, (file, result) => {
+                try {
+                    let [ok, contents] = file.load_contents_finish(result);
+                    settle(ok ? _decode(contents).trim() : null);
+                } catch (e) {
+                    settle(null);
+                }
+            });
+        } catch (e) {
+            settle(null);
+        }
+    }
 }
 
 function readWords(path) {

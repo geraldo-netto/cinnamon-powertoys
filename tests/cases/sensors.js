@@ -429,6 +429,76 @@ cases["a filter that says no to everything reads nothing"] = function () {
 };
 
 /* ---------------------------------------------------------------- */
+/* reading without blocking                                          */
+
+/*
+ * A fresh set per reading, because the energy meters remember their last
+ * counter value: the same set read twice would compute watts the second time
+ * and not the first, and the two answers would differ for a reason that has
+ * nothing to do with how they were read.
+ */
+cases["an asynchronous reading says exactly what a synchronous one says"] = function () {
+    on("machine", function () {
+        let expected = new Sensors.SensorSet().read();
+        let set = new Sensors.SensorSet();
+        let actual = Harness.settle(done => set.readAsync(null, done), "readAsync");
+        Harness.deepEqual(actual, expected,
+                          "the two share one assembly, so only the bytes' route differs");
+    });
+};
+
+cases["an asynchronous reading reads only what it was asked for"] = function () {
+    on("machine", function () {
+        let set = new Sensors.SensorSet();
+        let readings = Harness.settle(
+            done => set.readAsync(sensor => Sensors.isPrimaryKind(sensor.kind), done),
+            "readAsync");
+        Harness.equal(readings.temperatures.length, 4, "the cpu and gpu ones only");
+        Harness.equal(readings.temperatures.every(t => t.kind === "cpu" || t.kind === "gpu"), true,
+                      "and nothing else");
+        Harness.equal(readings.fans.length, 1, "the card's fan");
+    });
+};
+
+cases["an asynchronous reading with nothing to read still answers"] = function () {
+    on("machine", function () {
+        let set = new Sensors.SensorSet();
+        let readings = Harness.settle(done => set.readAsync(() => false, done), "readAsync");
+        Harness.equal(readings.temperatures.length, 0, "temperatures");
+        Harness.equal(readings.fans.length, 0, "fans");
+        Harness.equal(readings.powers.length, 0, "powers");
+        Harness.equal(readings.packageWatts, null, "and no package total");
+    });
+};
+
+cases["a machine whose nodes cannot be read answers with nulls"] = function () {
+    IO.setRoot(Harness.fixture("machine"));
+    let set = new Sensors.SensorSet();
+    IO.setRoot("/nonexistent");
+    try {
+        let readings = Harness.settle(done => set.readAsync(null, done), "readAsync");
+        Harness.equal(readings.temperatures.length, 7, "the sensors are still known");
+        Harness.equal(readings.temperatures.every(t => t.celsius === null), true,
+                      "with nothing to say, rather than never answering at all");
+        Harness.equal(readings.fans.every(f => f.rpm === null), true, "and the same for fans");
+    } finally {
+        IO.setRoot("");
+    }
+};
+
+cases["a batch of paths comes back keyed by path"] = function () {
+    on("machine", function () {
+        let values = Harness.settle(
+            done => IO.readStringsAsync(["/sys/class/hwmon/hwmon0/name",
+                                         "/sys/class/hwmon/nothing-here"], done),
+            "readStringsAsync");
+        Harness.equal(values["/sys/class/hwmon/hwmon0/name"], "k10temp", "what the driver calls it");
+        Harness.equal(values["/sys/class/hwmon/nothing-here"], null,
+                      "a node that is not there is null, not an error");
+    });
+};
+
+/* ---------------------------------------------------------------- */
 /* the platform profile as a backend                                 */
 
 cases["the platform profile answers the same questions the daemon does"] = function () {

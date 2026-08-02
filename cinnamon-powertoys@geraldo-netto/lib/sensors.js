@@ -375,10 +375,12 @@ var EnergyMeter = class EnergyMeter {
      *
      * `now` is the monotonic clock in microseconds, and is a parameter only
      * so the arithmetic can be exercised without waiting for real time to
-     * pass.
+     * pass. `readNumber` is where the counter is read from, which is how the
+     * same meter works against a value already loaded off the main loop.
      */
-    sample(now) {
-        let value = IO.readNumber(this.counter.path);
+    sample(now, readNumber) {
+        let read = readNumber || IO.readNumber;
+        let value = read(this.counter.path);
         let taken = now === undefined ? GLib.get_monotonic_time() : now;
 
         if (value === null) {
@@ -456,8 +458,8 @@ var SensorSet = class SensorSet {
         return true;
     }
 
-    _temperature(sensor) {
-        let raw = IO.readNumber(sensor.path);
+    _temperature(sensor, readNumber) {
+        let raw = readNumber(sensor.path);
         return {
             id: sensor.id,
             measure: sensor.measure,
@@ -472,25 +474,25 @@ var SensorSet = class SensorSet {
         };
     }
 
-    _fan(sensor) {
+    _fan(sensor, readNumber) {
         return {
             id: sensor.id,
             measure: sensor.measure,
             chip: sensor.chip,
             kind: sensor.kind,
             label: Format.sensorLabel(sensor),
-            rpm: IO.readNumber(sensor.path),
+            rpm: readNumber(sensor.path),
         };
     }
 
-    _powers(keep) {
+    _powers(keep, readNumber) {
         let readings = [];
         let packageWatts = null;
 
         for (let meter of this.energyMeters) {
             if (!keep(meter))
                 continue;
-            meter.sample();
+            meter.sample(undefined, readNumber);
             if (meter.watts === null)
                 continue;
             readings.push({
@@ -509,7 +511,7 @@ var SensorSet = class SensorSet {
         for (let sensor of this.powerSensors) {
             if (!keep(sensor))
                 continue;
-            let raw = IO.readNumber(sensor.path);
+            let raw = readNumber(sensor.path);
             if (raw === null)
                 continue;
             readings.push({
@@ -542,10 +544,61 @@ var SensorSet = class SensorSet {
      */
     read(wanted) {
         let keep = wanted || (() => true);
-        let powers = this._powers(keep);
+        return this._assemble(keep, IO.readNumber);
+    }
+
+    /*
+     * The same reading, without holding up the caller.
+     *
+     * Every node the reading will touch is loaded first, all at once and off
+     * the main loop, and then the reading is assembled out of what came back.
+     * That is the whole difference: read() and readAsync() share one assembly,
+     * so a value can only be understood one way, and what changes is where the
+     * bytes came from.
+     *
+     * It matters because a sysfs read is not reliably quick. On the machine
+     * this was written on, reading every sensor takes about a tenth of a
+     * millisecond each for the chips that are awake and tens of milliseconds
+     * in total once the disks are included, because reading a drive's
+     * temperature wakes the drive. Synchronously, in the process that draws
+     * the desktop, that is several dropped frames every poll.
+     *
+     * The energy meters take their elapsed time when the reading is assembled
+     * rather than when the counter was read. Those are a few milliseconds
+     * apart against an interval of seconds, which the watts figure does not
+     * notice.
+     */
+    readAsync(wanted, onDone) {
+        let keep = wanted || (() => true);
+        IO.readStringsAsync(this._paths(keep), values => {
+            onDone(this._assemble(keep, path => IO.toNumber(values[path])));
+        });
+    }
+
+    /* Every node one reading touches, for whoever wants to load them first. */
+    _paths(keep) {
+        let paths = [];
+        for (let sensor of this.temperatureSensors)
+            if (keep(sensor))
+                paths.push(sensor.path);
+        for (let sensor of this.fanSensors)
+            if (keep(sensor))
+                paths.push(sensor.path);
+        for (let meter of this.energyMeters)
+            if (keep(meter))
+                paths.push(meter.counter.path);
+        for (let sensor of this.powerSensors)
+            if (keep(sensor))
+                paths.push(sensor.path);
+        return paths;
+    }
+
+    _assemble(keep, readNumber) {
+        let powers = this._powers(keep, readNumber);
         return {
-            temperatures: this.temperatureSensors.filter(keep).map(s => this._temperature(s)),
-            fans: this.fanSensors.filter(keep).map(s => this._fan(s)),
+            temperatures: this.temperatureSensors.filter(keep)
+                .map(sensor => this._temperature(sensor, readNumber)),
+            fans: this.fanSensors.filter(keep).map(sensor => this._fan(sensor, readNumber)),
             powers: powers.readings,
             packageWatts: powers.packageWatts,
         };

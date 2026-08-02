@@ -50,4 +50,3 @@ these rows are about.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-75 | medium | M | Everything runs on the compositor's main loop: ten milliseconds of synchronous `open`/`read`/`close` every four seconds, in the process that draws the desktop, on a machine where one of those reads can block for over a millisecond on a sleeping disk. `GLib.file_get_contents_async` exists. |
