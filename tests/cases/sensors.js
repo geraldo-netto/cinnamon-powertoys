@@ -404,3 +404,26 @@ cases["a charge limit is written through the runner"] = function () {
         Harness.deepEqual(sent, ["charge-threshold 80"], "the helper's own vocabulary");
     });
 };
+
+cases["a reading only touches the sensors it was asked for"] = function () {
+    on("machine", function () {
+        let set = new Sensors.SensorSet();
+        let all = set.read();
+        let primary = set.read(sensor => Sensors.isPrimaryKind(sensor.kind));
+        Harness.equal(all.temperatures.length, 7, "everything");
+        Harness.equal(primary.temperatures.length, 4, "the cpu and gpu ones only");
+        Harness.equal(primary.temperatures.every(t => t.kind === "cpu" || t.kind === "gpu"), true,
+                      "and nothing else got read");
+        Harness.equal(primary.fans.length, 1, "the card's fan is a gpu sensor");
+    });
+};
+
+cases["a filter that says no to everything reads nothing"] = function () {
+    on("machine", function () {
+        let readings = new Sensors.SensorSet().read(() => false);
+        Harness.equal(readings.temperatures.length, 0, "temperatures");
+        Harness.equal(readings.fans.length, 0, "fans");
+        Harness.equal(readings.powers.length, 0, "powers");
+        Harness.equal(readings.packageWatts, null, "and no package total");
+    });
+};

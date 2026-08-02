@@ -1327,7 +1327,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
      */
     _collect() {
         let upower = this._upower.read();
-        let readings = this._sensors.read();
+        let readings = this._sensors.read(this._sensorFilter());
         /* Anything with a charge that UPower did not mention. */
         let devices = upower.devices.concat(this._bluetooth.missingFrom(upower.devices));
 
@@ -1352,6 +1352,24 @@ class PowerToysApplet extends Applet.TextIconApplet {
             cpuTemperature: this._pickTemperature(temperatures),
             systemWatts: power.watts,
             systemWattsSource: power.source,
+        };
+    }
+
+    /*
+     * Which sensors are worth reading at all.
+     *
+     * The menu shows the interesting kinds unless it was asked for every one,
+     * and reading the rest costs more than everything else in a poll put
+     * together. A sensor named by the user's hint is kept whatever its kind,
+     * or setting the hint to a disk would quietly stop working.
+     */
+    _sensorFilter() {
+        let all = this.showAllSensors;
+        let hint = (this.cpuSensorHint || "").trim();
+        return function (sensor) {
+            if (all || Sensors.isPrimaryKind(sensor.kind))
+                return true;
+            return hint !== "" && Sensors.sensorMatches(sensor, hint);
         };
     }
 

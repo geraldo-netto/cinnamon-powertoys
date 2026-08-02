@@ -483,11 +483,13 @@ var SensorSet = class SensorSet {
         };
     }
 
-    _powers() {
+    _powers(keep) {
         let readings = [];
         let packageWatts = null;
 
         for (let meter of this.energyMeters) {
+            if (!keep(meter))
+                continue;
             meter.sample();
             if (meter.watts === null)
                 continue;
@@ -505,6 +507,8 @@ var SensorSet = class SensorSet {
         }
 
         for (let sensor of this.powerSensors) {
+            if (!keep(sensor))
+                continue;
             let raw = IO.readNumber(sensor.path);
             if (raw === null)
                 continue;
@@ -521,12 +525,27 @@ var SensorSet = class SensorSet {
         return { readings: readings, packageWatts: packageWatts };
     }
 
-    /* One value per sensor, as of now. */
-    read() {
-        let powers = this._powers();
+    /*
+     * One value per sensor, as of now - but only for the sensors `wanted`
+     * says yes to.
+     *
+     * That filter is not an optimisation detail, it is most of the cost of a
+     * poll. Reading a disk temperature wakes the drive: on the machine this
+     * was written on, nvme and drivetemp nodes take between 0.1 and 1.6
+     * milliseconds each while every other sensor takes about 50 microseconds,
+     * and those are exactly the ones the menu hides by default. Reading them
+     * anyway meant spending nine tenths of every poll on numbers that were
+     * then filtered out.
+     *
+     * Without a filter everything is read, which is what discovery-only
+     * callers want.
+     */
+    read(wanted) {
+        let keep = wanted || (() => true);
+        let powers = this._powers(keep);
         return {
-            temperatures: this.temperatureSensors.map(sensor => this._temperature(sensor)),
-            fans: this.fanSensors.map(sensor => this._fan(sensor)),
+            temperatures: this.temperatureSensors.filter(keep).map(s => this._temperature(s)),
+            fans: this.fanSensors.filter(keep).map(s => this._fan(s)),
             powers: powers.readings,
             packageWatts: powers.packageWatts,
         };
