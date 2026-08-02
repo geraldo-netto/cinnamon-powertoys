@@ -260,6 +260,15 @@ function _resolve(text, ids) {
  * six times. An address that cannot be named is absent from the answer rather
  * than present and null, so a caller can ask with `names[address] ||
  * something-else`.
+ *
+ * Only the answers are remembered. That a device is called something is true
+ * for as long as it is plugged in, and the caller asks again whenever the
+ * hardware changes; that an address has no name is not a fact about hardware
+ * at all - it is a fact about what happened to be at that address the last
+ * time anyone looked, and an external card, a dock or a bus rescan makes it
+ * wrong. Remembering the misses meant those kept the raw slot number for the
+ * rest of the session. Not remembering them costs one read of the table per
+ * rediscovery, which is what a rediscovery is for.
  */
 function pciDeviceNames(addresses) {
     let names = {};
@@ -268,27 +277,26 @@ function pciDeviceNames(addresses) {
     for (let address of addresses) {
         if (!address || names[address])
             continue;
-        if (_pciNames[address] !== undefined) {
-            if (_pciNames[address])
-                names[address] = _pciNames[address];
-        } else if (wanted.indexOf(address) < 0) {
+        if (_pciNames[address])
+            names[address] = _pciNames[address];
+        else if (wanted.indexOf(address) < 0)
             wanted.push(address);
-        }
     }
 
     if (wanted.length === 0)
         return names;
 
     let text = _firstReadable(PCI_IDS_PATHS);
+    if (!text)
+        return names;
+
     for (let address of wanted) {
-        let ids = text ? _pciIds(address) : null;
+        let ids = _pciIds(address);
         let name = ids ? _resolve(text, ids) : null;
-        /* A missing table is not a fact about this address, so nothing is
-         * remembered about it and a later call can try again. */
-        if (text)
+        if (name) {
             _pciNames[address] = name;
-        if (name)
             names[address] = name;
+        }
     }
     return names;
 }

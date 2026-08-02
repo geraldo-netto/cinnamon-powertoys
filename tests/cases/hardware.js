@@ -131,6 +131,27 @@ cases["a missing table is not remembered as a missing device"] = function () {
     });
 };
 
+cases["an address that had nothing at it is asked about again"] = function () {
+    /*
+     * Only answers are remembered. That a slot has no name is a fact about
+     * what was in it when somebody last looked, and a card plugged into it
+     * later would otherwise keep showing the raw address for the session.
+     */
+    Hardware.forget();
+    IO.setRoot(Harness.fixture("inverted-boost"));
+    try {
+        Harness.equal(Hardware.pciDeviceNames(["0000:03:00.0"])["0000:03:00.0"], undefined,
+                      "nothing there yet");
+        IO.setRoot(Harness.fixture("machine"));
+        Harness.equal(Hardware.pciDeviceNames(["0000:03:00.0"])["0000:03:00.0"],
+                      "Radeon RX 6600/6600 XT/6600M",
+                      "and it is found without the cache having been dropped");
+    } finally {
+        IO.setRoot("");
+        Hardware.forget();
+    }
+};
+
 /* ---------------------------------------------------------------- */
 /* monitors                                                          */
 
