@@ -57,6 +57,15 @@ var CpuControl = class CpuControl {
             ? IO.readWords(this.reference + "/energy_performance_available_preferences") : [];
         this.amdPstateStatus = IO.readString(CPU_DIR + "/amd_pstate/status");
 
+        /*
+         * The ceiling the silicon was built with. It is read here with the
+         * rest of what a scaling driver swap can change, rather than on every
+         * poll with the values that actually move: nothing short of new
+         * hardware alters it, and a poll is IO on the thread that draws.
+         */
+        this._maxFrequency = this.reference
+            ? IO.readNumber(this.reference + "/cpuinfo_max_freq") : null;
+
         this.boostPath = null;
         this.boostInverted = false;
         if (IO.exists(CPUFREQ_DIR + "/boost")) {
@@ -124,9 +133,9 @@ var CpuControl = class CpuControl {
         return count > 0 ? (total / count) / 1000 : null;
     }
 
+    /* Read once per refresh, in MHz. */
     maxFrequency() {
-        let value = this.reference ? IO.readNumber(this.reference + "/cpuinfo_max_freq") : null;
-        return value === null ? null : value / 1000;
+        return this._maxFrequency === null ? null : this._maxFrequency / 1000;
     }
 
     /*
@@ -142,22 +151,30 @@ var CpuControl = class CpuControl {
         let reading = {
             available: this.available,
             driver: this.driver,
-            governor: this.governor,
             governors: this.governors,
-            energyPreference: this.energyPreference,
             energyPreferences: this.energyPreferences,
             boostSupported: this.boostSupported,
-            boostEnabled: this.boostEnabled,
             maxFrequency: this.maxFrequency(),
             amdPstateStatus: this.amdPstateStatus,
         };
 
-        /* The current frequency is the one value here that costs a file read
-         * per policy - 32 of them on a sixteen core machine, every few
-         * seconds - and it is also the one a configuration can be showing
-         * nowhere. So it is worked out when somebody asks for it, which on a
-         * panel without the frequency and with the CPU section turned off is
-         * never. */
-        return _lazy(reading, "averageFrequency", () => this.averageFrequency());
+        /*
+         * Everything above is already in hand. The four below each cost a
+         * file read - the frequency one per policy, which is 32 of them on a
+         * sixteen core machine - and every one of them can be displayed
+         * nowhere: the governor only in the menu and the tooltip, the energy
+         * preference and the boost state only in the menu, the frequency only
+         * where the panel was asked for it.
+         *
+         * So they are worked out when somebody asks. With the menu shut and
+         * the pointer elsewhere - which is nearly always - a poll now reads
+         * no cpufreq node at all, and the values that are read are read at
+         * the moment they are shown rather than up to four seconds before.
+         */
+        _lazy(reading, "governor", () => this.governor);
+        _lazy(reading, "energyPreference", () => this.energyPreference);
+        _lazy(reading, "boostEnabled", () => this.boostEnabled);
+        _lazy(reading, "averageFrequency", () => this.averageFrequency());
+        return reading;
     }
 };
