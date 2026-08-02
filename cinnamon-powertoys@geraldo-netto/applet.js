@@ -81,6 +81,16 @@ const PKEXEC_DISMISSED = 126;
 const PKEXEC_UNAUTHORISED = 127;
 
 /*
+ * How often the set of sensors is looked at again.
+ *
+ * Discovery is expensive - every hwmon directory listed, every label read -
+ * and hardware does not come and go often, so this is deliberately slow. The
+ * check itself is three directory listings and only leads to a sweep when
+ * something has actually changed.
+ */
+const REDISCOVER_SECONDS = 60;
+
+/*
  * How long the wheel has to stop for before a profile change is applied.
  *
  * One flick of a finger sends several clicks, and each one used to be its own
@@ -1481,7 +1491,19 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _startPolling() {
         this._stopPolling();
         let interval = Math.max(1, this.refreshInterval || 4);
+        this._sinceRediscover = 0;
         this._timerId = Mainloop.timeout_add_seconds(interval, () => {
+            /*
+             * A card that wakes up, a USB sensor plugged in, a driver loaded.
+             * Opening the menu used to be the only thing that noticed, which
+             * since the menu stopped updating while shut meant the panel
+             * could go the whole session without seeing new hardware.
+             */
+            this._sinceRediscover += interval;
+            if (this._sinceRediscover >= REDISCOVER_SECONDS) {
+                this._sinceRediscover = 0;
+                this._sensors.refresh();
+            }
             this._update();
             return GLib.SOURCE_CONTINUE;
         });
@@ -1495,9 +1517,11 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     _onMenuOpened() {
-        /* Sensors can appear at runtime (a USB device, a card waking up), so
-         * the set is checked here - cheaply, and swept again only if it moved. */
+        /* Cheap, and only sweeps again if something moved. The poll does this
+         * too, on a much slower cadence; here it is because someone opening
+         * the menu wants what is true now. */
         this._sensors.refresh();
+        this._sinceRediscover = 0;
         this._cpu.refresh();
         if (this._upower.available)
             this._upower.refresh();
