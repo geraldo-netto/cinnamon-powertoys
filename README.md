@@ -4,10 +4,12 @@ A Cinnamon applet that puts a single power icon in the panel and, from one
 menu, monitors and configures power management for the whole machine.
 
 One strip across the top says what the machine is running on, then a
-brightness slider per screen, then two columns: the left is how hard the
-machine is being asked to work — **Power profile**, **Processor**,
-**Devices** — and the right is what that is doing to it, **Sensors**. Nothing
-is folded away, and every figure is stated once.
+brightness slider per screen, then three columns, one subject each and in the
+order they answer to each other: what the machine has been told to do —
+**Power profile** and **Processor**, which are two levels of one decision —
+then what is plugged into it, **Devices**, then what all of that is doing to
+the temperature, **Sensors**. A column that has nothing in it is not there at
+all. Nothing is folded away, and every figure is stated once.
 
 ![The menu](docs/menu.png)
 
@@ -218,7 +220,7 @@ settings.
   and is not tracked here.
 
   The xlet `require()` loader. `PopupMenuSection` and the fact that its actor
-  *is* its box, which is what lets the two menu columns sit side by side.
+  *is* its box, which is what lets the three menu columns sit side by side.
   `PopupMenuBase.getColumnWidths` and `setColumnWidths`, which the columns
   override so their rows line up with themselves and not with the whole menu —
   and which the segmented profile control overrides for the opposite reason, so

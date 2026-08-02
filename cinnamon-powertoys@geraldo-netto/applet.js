@@ -1065,22 +1065,23 @@ class MenuPresenter {
     }
 
     /*
-     * Two columns, with the full width strip and the sliders above them and
+     * Three columns, with the full width strip and the sliders above them and
      * the settings rows below.
      *
-     * The menu used to be one column of everything, then three side by side.
-     * Three answered what belongs with what, but the widths told a different
-     * story from the contents: the sensors are ten rows and the devices on a
-     * desktop are one, so a third of the menu was an empty column beside a
-     * full one. Two columns hold the same rows in the same order at close to
-     * the same height, which is the shape the eye reads down rather than
-     * hunting across.
+     * One subject each, left to right in the order they answer to each other:
+     * what the machine has been told to do, what is plugged into it, and what
+     * all of that is doing to the temperature. The profile and the processor
+     * share the first because the profile is what sets the processor - they
+     * are two levels of one decision, not two subjects.
      *
-     * The left column is the machine as it is being asked to work - the
-     * profile, the processor, what is plugged into it - and the right is what
-     * that is doing to the temperature. The strip and the sliders stay full
-     * width above them: they are what most visits here are for, and a slider
-     * reads as a track rather than as a column.
+     * The strip and the sliders stay full width above them: they are what most
+     * visits here are for, and a slider reads as a track rather than as a
+     * column.
+     *
+     * A column is only there while something in it is, so a machine with no
+     * profiles and no cpufreq, or a user who has switched the devices off,
+     * gets two columns or one rather than a gap where a column would have
+     * been. See _syncColumns.
      */
     _build(capabilities, backlights) {
         this._summary = new InfoRow("", "");
@@ -1096,9 +1097,10 @@ class MenuPresenter {
         this._columns.actor.add_style_class_name("powertoys-columns");
         this._menu.addMenuItem(this._columns);
 
-        this._leftColumn = new Column(this._columns);
-        this._rightColumn = new Column(this._columns);
-        this._columnList = [this._leftColumn, this._rightColumn];
+        this._performanceColumn = new Column(this._columns);
+        this._deviceColumn = new Column(this._columns);
+        this._sensorColumn = new Column(this._columns);
+        this._columnList = [this._performanceColumn, this._deviceColumn, this._sensorColumn];
 
         this._buildProfileGroup();
         this._buildCpuGroup();
@@ -1184,7 +1186,7 @@ class MenuPresenter {
      * visits are for, so it is the first thing in the first column.
      */
     _buildProfileGroup() {
-        this._profileGroup = this._leftColumn.group(_("Power profile"));
+        this._profileGroup = this._performanceColumn.group(_("Power profile"));
 
         this._profileControl = new SegmentedControl(
             Format.profileLabel, value => this._actions.setProfile(value));
@@ -1206,7 +1208,7 @@ class MenuPresenter {
      * they are behind Advanced.
      */
     _buildCpuGroup() {
-        this._cpuGroup = this._leftColumn.group(_("Processor"));
+        this._cpuGroup = this._performanceColumn.group(_("Processor"));
         let menu = this._cpuGroup.menu;
 
         this._cpuFreqRow = new InfoRow(_("Frequency"), "");
@@ -1258,7 +1260,7 @@ class MenuPresenter {
      * promising batteries is promising something that is not there.
      */
     _buildDeviceGroup(capabilities) {
-        this._deviceGroup = this._leftColumn.group(_("Devices"));
+        this._deviceGroup = this._deviceColumn.group(_("Devices"));
         let menu = this._deviceGroup.menu;
 
         /* The charger goes above the batteries: whether it is plugged in is
@@ -1293,7 +1295,7 @@ class MenuPresenter {
     }
 
     _buildSensorGroup() {
-        this._sensorGroup = this._rightColumn.group(_("Sensors"));
+        this._sensorGroup = this._sensorColumn.group(_("Sensors"));
 
         /* Only ever shown when the preferred sensor setting names something
          * this machine does not have. Somebody who typed a name has no other
@@ -1401,8 +1403,8 @@ class MenuPresenter {
      *
      * It is applied here rather than styled because St has no :first-child,
      * and because which column is leftmost is not fixed: a machine with no
-     * profiles and no processor controls, and a user who has switched the
-     * devices off, leaves the left column empty and the sensors at the edge.
+     * profiles and no cpufreq leaves the devices at the edge, and a user who
+     * has switched those off as well leaves the sensors there.
      *
      * The columns are not made equal. That was tried, by measuring the widest
      * and giving it to the others as a floor, and it cannot be done this way:
@@ -1415,10 +1417,10 @@ class MenuPresenter {
      * short one does not look starved.
      */
     _syncColumns() {
-        this._leftColumn.actor.visible = this._profileGroup.heading.actor.visible ||
-                                         this._cpuGroup.heading.actor.visible ||
-                                         this._deviceGroup.heading.actor.visible;
-        this._rightColumn.actor.visible = this._sensorGroup.heading.actor.visible;
+        this._performanceColumn.actor.visible = this._profileGroup.heading.actor.visible ||
+                                                this._cpuGroup.heading.actor.visible;
+        this._deviceColumn.actor.visible = this._deviceGroup.heading.actor.visible;
+        this._sensorColumn.actor.visible = this._sensorGroup.heading.actor.visible;
 
         let visible = this._columnList.filter(column => column.actor.visible);
         visible.forEach((column, index) => {
