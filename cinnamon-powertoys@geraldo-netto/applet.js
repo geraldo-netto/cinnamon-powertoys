@@ -258,7 +258,22 @@ class AlertPolicy {
     check(data, limits) {
         for (let device of data.devices)
             this._checkDevice(device, limits);
+        this._forgetAbsent(data.devices);
         this._checkTemperature(data.cpuTemperature, limits);
+    }
+
+    /*
+     * A device that has been reported is remembered so it is not reported
+     * again, and it used to be remembered until it was seen back above its
+     * limit. A headset switched off while low never got that far, so it kept
+     * its entry for the session - and came back at the same level to silence.
+     */
+    _forgetAbsent(devices) {
+        let present = new Set(devices.map(device => device.path));
+        for (let path of Array.from(this._alerted.keys())) {
+            if (!present.has(path))
+                this._alerted.delete(path);
+        }
     }
 
     _checkDevice(device, limits) {
