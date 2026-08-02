@@ -20,12 +20,6 @@ half of what the watch forwards — and what happens to the thing that arrives
 while its backend is busy with the one before. And one row about the thread
 all of this runs on.
 
-## External monitors
-
-| id | severity | effort | description |
-|----|----------|--------|-------------|
-| PT-141 | low | S | [`DdcBacklight.stepBy`](cinnamon-powertoys@geraldo-netto/lib/ddc.js#L586) says "Every monitor, by the same count" and does something else: it takes the first monitor's percentage, adds the notches, and [`setPercentage`](cinnamon-powertoys@geraldo-netto/lib/ddc.js#L562) broadcasts that one absolute value to all of them. Two monitors set apart on purpose — the class doc above sells the per-monitor sliders precisely as the way to "leave them set differently" — are flattened to the first one's value by a single flick of the wheel. Two cases assert the broadcast ([the panel wheel](tests/cases/ddc.js#L375), [a gathered flick](tests/cases/ddc.js#L637)), so this is a decision rather than a slip: either each monitor steps from its own value by the count, and the two cases move with it, or the comment and the class doc stop promising that. |
-
 ## Guards that never fire
 
 | id | severity | effort | description |

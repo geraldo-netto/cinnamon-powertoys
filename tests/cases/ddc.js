@@ -730,6 +730,34 @@ cases["a gathered flick is one write, not one per notch"] = function () {
                       "four notches up from 40, in one write per monitor");
 };
 
+cases["a flick moves each monitor from its own value, not to one value"] = function () {
+    /*
+     * The sliders exist so that a bright screen and a dim one can be left set
+     * differently. The group's stepBy took its own percentage - the first
+     * monitor that answered - added the notches and broadcast that one number
+     * to both, so one flick of the wheel flattened them together.
+     */
+    let run = runner(function (argv) {
+        if (argv.indexOf("detect") >= 0)
+            return [DETECT_TWO, 0];
+        if (argv.indexOf("getvcp") >= 0)
+            return [argv[argv.indexOf("--display") + 1] === "1"
+                ? "VCP 10 C 80 100\n" : "VCP 10 C 20 100\n", 0];
+        return ["", 0];
+    });
+    let control = new Ddc.DdcBacklight(null, run);
+    control.start();
+    Harness.equal(control.monitors[0].percentage, 80, "one bright");
+    Harness.equal(control.monitors[1].percentage, 20, "and one dim");
+
+    run.calls.length = 0;
+    control.stepBy(2);
+    Harness.deepEqual(run.calls,
+                      ["ddcutil --display 1 setvcp 10 90",
+                       "ddcutil --display 2 setvcp 10 30"],
+                      "each ten points up from where it was, and still sixty apart");
+};
+
 cases["a gathered flick down is the same the other way"] = function () {
     let each = started(DETECT_TWO, 0);
     each.run.calls.length = 0;

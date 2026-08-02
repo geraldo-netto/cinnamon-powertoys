@@ -606,7 +606,15 @@ var DdcBacklight = class DdcBacklight {
         this.percentage = live.length > 0 ? live[0].percentage : null;
     }
 
-    setPercentage(value, onDone) {
+    /*
+     * Ask every monitor to move, and answer once the last of them has.
+     *
+     * They are on separate buses and do not wait for each other, so the count
+     * is the only thing that knows when the group has finished - and each
+     * monitor answers exactly once whether its write went out, was replaced by
+     * a later one or was dropped with the monitor. See DdcMonitor.setPercentage.
+     */
+    _moveEach(ask, onDone) {
         let done = onDone || function () {};
         let pending = this.monitors.length;
         if (pending === 0) {
@@ -626,13 +634,31 @@ var DdcBacklight = class DdcBacklight {
         };
 
         for (let monitor of this.monitors)
-            monitor.setPercentage(value, settle);
+            ask(monitor, settle);
     }
 
-    /* Every monitor, by the same count; see DdcMonitor.stepBy. */
+    /* One value, on every screen. A number is a number wherever it is sent,
+     * which is why this one does not step: there is no such thing as 70%
+     * relative to where each screen already was. */
+    setPercentage(value, onDone) {
+        this._moveEach((monitor, settle) => monitor.setPercentage(value, settle), onDone);
+    }
+
+    /*
+     * Every monitor by the same count, each from where it is.
+     *
+     * This used to take the group's own percentage - which is the first
+     * monitor that answered, not a fact about any of the others - add the
+     * notches, and broadcast that one absolute value to all of them. A bright
+     * screen beside a dim one was flattened to the bright one's value by a
+     * single flick of the wheel, and the whole reason there is a slider per
+     * monitor is that the two can be left set differently.
+     *
+     * The notch is the same everywhere; where it starts from is each monitor's
+     * own business. See DdcMonitor.stepBy.
+     */
     stepBy(notches, onDone) {
-        let from = this.percentage === null ? 50 : this.percentage;
-        this.setPercentage(from + notches * STEP, onDone);
+        this._moveEach((monitor, settle) => monitor.stepBy(notches, settle), onDone);
     }
 
     step(up, onDone) {
