@@ -15,11 +15,13 @@ The panel item, between the other applets:
 
 ![The panel item](docs/panel.png)
 
-Both shots are older than the menu they show: they were taken on a desktop
-with one column of panels, before the sliders, the segmented profile control
-and the two column layout. The panel shot also predates temperature being
-taken out of the panel label, so the °C beside the icon is no longer shown
-there.
+Taken on a desktop, so three things are missing because that machine does not
+have them or cannot reach them: the charger row, which needs a UPower line
+power device; the backlight sliders, because there is no kernel backlight; and
+the monitor slider, because the account was not in the `i2c` group when the
+session started — see
+[External monitor brightness](#external-monitor-brightness). All of them hide
+themselves rather than sitting there empty.
 
 ## Features
 
