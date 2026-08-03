@@ -2496,13 +2496,41 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * It used to close here, which made a liar of the control: the point
          * of filling the segment that was chosen is that the change can be
          * seen, and it cannot be seen from a menu that has just shut. Nothing
-         * else in this menu closes it either - the boost switch, the governor
-         * and the charge limit all leave it up - and a profile change is the
-         * moment the temperatures and the draw underneath are worth watching.
-         * The click dismisses it if that is what was wanted.
+         * else in this menu closes it either, except on the one path that has
+         * to - a change going through pkexec closes it so the password dialog
+         * can be answered, see _closeMenuForAuthentication - and a profile
+         * change is the moment the temperatures and the draw underneath are
+         * worth watching. The click dismisses it if that is what was wanted.
+         *
+         * On a machine without power-profiles-daemon a profile is a platform
+         * profile, and that write is one of those pkexec calls: the menu shuts
+         * there, because a dialog nobody can answer is worse than a segment
+         * nobody can watch fill.
          */
         this._scheduleUpdate();
         return true;
+    }
+
+    /*
+     * A password dialog cannot be answered from underneath an open menu.
+     *
+     * An applet menu holds a modal grab for as long as it is up, and the
+     * dialog pkexec puts on screen belongs to the polkit agent rather than to
+     * us. While the grab is still ours that dialog gets no keyboard and no
+     * pointer: the password cannot be typed, Cancel cannot be clicked, and the
+     * desktop reads as hung - dimmed, with a dialog on it that answers
+     * nothing - until the agent is killed from a terminal or another session.
+     *
+     * The grab is dropped before the spawn, which is the whole of the fix.
+     * Everything else in this menu deliberately stays open while it works -
+     * a change that can be watched happening is the point of the controls -
+     * so the menu is closed here and nowhere else, only on the way to an
+     * authentication, and without the animation so the grab is gone before
+     * pkexec is asked for.
+     */
+    _closeMenuForAuthentication() {
+        if (this.menu && this.menu.isOpen)
+            this.menu.close(false);
     }
 
     /*
@@ -2515,6 +2543,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             onDone({ applied: false, error: _("Privileged controls are turned off") });
             return;
         }
+        this._closeMenuForAuthentication();
         this._helper.run(args, outcome => {
             if (this._destroyed)
                 return;
@@ -2615,6 +2644,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
         /* So the menu shows the change as in flight straight away rather
          * than when the helper answers. */
         this._scheduleUpdate();
+
+        this._closeMenuForAuthentication();
 
         this._helper.run(args, outcome => {
             if (this._destroyed)
