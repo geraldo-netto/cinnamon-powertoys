@@ -98,7 +98,11 @@ function runCommand(argv, onDone) {
     process.communicate_utf8_async(null, null, (source, result) => {
         try {
             let [, stdout] = source.communicate_utf8_finish(result);
-            finish(stdout || "", source.get_exit_status());
+            /* A process that was killed never exited, and asking one for an
+             * exit status is a GLib CRITICAL rather than a number. The timer
+             * above kills the ones that hang, so this is the ordinary end of
+             * every monitor that stopped answering. */
+            finish(stdout || "", source.get_if_exited() ? source.get_exit_status() : -1);
         } catch (error) {
             finish("", -1);
         }
