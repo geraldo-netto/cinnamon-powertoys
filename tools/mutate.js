@@ -179,10 +179,21 @@ function run(argv, environment) {
     return status;
 }
 
+/*
+ * The copy to work on, and a short fuse on anything asynchronous.
+ *
+ * A mutant that breaks a callback does not fail a case, it stops one
+ * answering - and the harness waits five seconds before calling that a
+ * failure. At one whole suite run per mutant, that is the difference between
+ * a run somebody makes and a run somebody means to make one day. Half a second
+ * is far longer than anything here legitimately takes; the cases that talk to
+ * a real daemon keep the generous default in an ordinary run.
+ */
 function environmentWith(xletDir) {
     return GLib.get_environ()
-        .filter(entry => entry.indexOf("POWERTOYS_XLET_DIR=") !== 0)
-        .concat(["POWERTOYS_XLET_DIR=" + xletDir]);
+        .filter(entry => entry.indexOf("POWERTOYS_XLET_DIR=") !== 0 &&
+                         entry.indexOf("POWERTOYS_SETTLE_MS=") !== 0)
+        .concat(["POWERTOYS_XLET_DIR=" + xletDir, "POWERTOYS_SETTLE_MS=500"]);
 }
 
 function sourceFiles() {
@@ -241,7 +252,19 @@ if (run(["cp", "-r", ROOT + "/" + UUID, copy], null) !== 0) {
 }
 
 let environment = environmentWith(copy);
-let suite = ["cjs", ROOT + "/tests/run.js"];
+
+/*
+ * The suite, under a clock.
+ *
+ * A mutant does not only make cases fail; it can stop the run finishing at
+ * all. A loop that no longer reaches its end, a callback that no longer
+ * answers something the harness is waiting on - and there is no answer coming,
+ * so a run without a limit waits for ever and takes the mutation run with it.
+ *
+ * A mutant that hangs the suite is a mutant the suite noticed, so the timeout
+ * counts as a kill: it is a failure like any other, and a slower one.
+ */
+let suite = ["timeout", "--kill-after=2", "10", "cjs", ROOT + "/tests/run.js"];
 
 /* A suite that is not green against the copy says nothing about a mutant. */
 if (run(suite, environment) !== 0) {

@@ -238,8 +238,19 @@ function settle(start, what) {
         loop.quit();
     });
 
+    /*
+     * How long a call that is never going to answer is waited out.
+     *
+     * Generous by default, because a case here can be talking to a real daemon
+     * on a machine under load. The mutation runner shortens it: a mutant that
+     * breaks a callback is a case that waits the whole guard out, and at one
+     * suite run per mutant those seconds are the difference between a run
+     * somebody makes and a run somebody means to make.
+     */
+    let limit = Number(GLib.getenv("POWERTOYS_SETTLE_MS")) || 5000;
+
     if (!answered) {
-        let guard = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 5000, function () {
+        let guard = GLib.timeout_add(GLib.PRIORITY_DEFAULT, limit, function () {
             guard = 0;
             loop.quit();
             return GLib.SOURCE_REMOVE;

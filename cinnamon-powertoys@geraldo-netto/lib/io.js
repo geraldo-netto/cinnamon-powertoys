@@ -106,11 +106,20 @@ function readStringsAsync(paths, onDone) {
     }
 }
 
+/*
+ * A node that holds a list, as the list.
+ *
+ * There is no empty word to filter out afterwards: readString has already
+ * trimmed, so the only string that could produce one is the empty string, and
+ * the guard above answers that first. The filter that used to be here could
+ * not remove anything, which is a thing worth knowing rather than a thing
+ * worth keeping - it read as though the split were untrustworthy.
+ */
 function readWords(path) {
     let raw = readString(path);
     if (!raw)
         return [];
-    return raw.split(/\s+/).filter(word => word.length > 0);
+    return raw.split(/\s+/);
 }
 
 /* The target of a symlink, undecoded: callers only ever want its basename. */
