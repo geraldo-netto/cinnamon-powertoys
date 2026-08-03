@@ -34,7 +34,6 @@ memory.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-163 | low | S | The charge limit is discovered once and never again. [`discoverChargeControl`](cinnamon-powertoys@geraldo-netto/lib/power-supply.js#L90) walks `/sys/class/power_supply` in the applet's constructor ([applet.js:1839](cinnamon-powertoys@geraldo-netto/applet.js#L1839)) and its answer decides two things for the session: whether the menu is built with a charge limit group at all ([applet.js:2226](cinnamon-powertoys@geraldo-netto/applet.js#L2226)), and which batteries a write reaches. A battery that appears afterwards — a dock, a bay battery, a driver that loads late — has a `charge_control_end_threshold` nobody reads and no control to write it, while the sensors beside it are rediscovered every minute by design. The read half is already live on purpose (the comment over `ChargeControl` says the firmware and vendor tools move these); it is the set of batteries that is frozen. |
 
 ## Guards asked of the wrong thing
 

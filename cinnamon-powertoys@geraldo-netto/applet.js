@@ -1053,10 +1053,10 @@ class Column {
  *
  */
 class MenuPresenter {
-    constructor(menu, actions, capabilities, backlights) {
+    constructor(menu, actions, backlights) {
         this._menu = menu;
         this._actions = actions;
-        this._build(capabilities || {}, backlights || {});
+        this._build(backlights || {});
     }
 
     /*
@@ -1080,7 +1080,7 @@ class MenuPresenter {
      * gets two columns or one rather than a gap where a column would have
      * been. See _syncColumns.
      */
-    _build(capabilities, backlights) {
+    _build(backlights) {
         /* A section laid out the other way round is a row of columns. */
         this._columns = new PopupMenu.PopupMenuSection();
         this._columns.actor.set_vertical(false);
@@ -1095,7 +1095,7 @@ class MenuPresenter {
         this._buildProfileGroup();
         this._buildCpuGroup();
         this._buildBrightness(backlights);
-        this._buildDeviceGroup(capabilities);
+        this._buildDeviceGroup();
         this._buildSensorGroup();
 
         this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -1222,7 +1222,7 @@ class MenuPresenter {
      * device, and on a desktop where the only entry is a headset a heading
      * promising batteries is promising something that is not there.
      */
-    _buildDeviceGroup(capabilities) {
+    _buildDeviceGroup() {
         this._deviceGroup = this._deviceColumn.group(_("Devices"));
         let menu = this._deviceGroup.menu;
 
@@ -1248,25 +1248,33 @@ class MenuPresenter {
         this._noDevicesRow.actor.hide();
         menu.addMenuItem(this._noDevicesRow);
 
-        if (capabilities.chargeLimit) {
-            let chargeSection = new PopupMenu.PopupMenuSection();
-            menu.addMenuItem(chargeSection);
-            this._chargeGroup = new SelectorGroup(chargeSection, limit => limit + "%",
-                                                  value => this._actions.setChargeLimit(value),
-                                                  _("Charge limit"));
+        /*
+         * The charge limit, whether or not this machine has one today.
+         *
+         * It used to be built only where the applet had found a battery with a
+         * threshold node in its constructor, which made the menu's shape a
+         * fact from startup: a dock or a bay battery plugged in afterwards had
+         * nowhere to appear. The group empties itself when there is nothing to
+         * offer, the same way every other group in this menu hides, and
+         * _updateCharge asks the reading rather than the constructor.
+         */
+        let chargeSection = new PopupMenu.PopupMenuSection();
+        menu.addMenuItem(chargeSection);
+        this._chargeGroup = new SelectorGroup(chargeSection, limit => limit + "%",
+                                              value => this._actions.setChargeLimit(value),
+                                              _("Charge limit"));
 
-            /*
-             * Where the batteries have been set apart by something else there
-             * is no one figure to dot, and a group of limits with none of them
-             * marked reads as a control that has stopped working. Say what it
-             * is instead, and say that choosing one ends it - which is true,
-             * because the helper writes every battery that has the node.
-             */
-            this._chargeDividedRow = new NoteRow(
-                _("The batteries are set to different limits; choosing one sets both"));
-            this._chargeDividedRow.actor.hide();
-            menu.addMenuItem(this._chargeDividedRow);
-        }
+        /*
+         * Where the batteries have been set apart by something else there
+         * is no one figure to dot, and a group of limits with none of them
+         * marked reads as a control that has stopped working. Say what it
+         * is instead, and say that choosing one ends it - which is true,
+         * because the helper writes every battery that has the node.
+         */
+        this._chargeDividedRow = new NoteRow(
+            _("The batteries are set to different limits; choosing one sets both"));
+        this._chargeDividedRow.actor.hide();
+        menu.addMenuItem(this._chargeDividedRow);
     }
 
     _buildSensorGroup() {
@@ -1749,10 +1757,12 @@ class MenuPresenter {
     /* Under the devices heading, so it is beside the battery it applies to
      * rather than being a submenu of its own. */
     _updateCharge(data, options) {
-        if (!this._chargeGroup)
-            return;
-        this._chargeGroup.sync(options.privileged && !options.busy ? CHARGE_LIMITS : [],
-                               data.chargeLimit);
+        /* Whether this machine has a battery whose limit can be written is
+         * asked of the reading rather than of what was true when the menu was
+         * built: a dock or a bay battery arrives after that, and the applet
+         * looks again. An empty list clears the group, which is how it hides. */
+        let show = data.chargeLimitAvailable && options.privileged && !options.busy;
+        this._chargeGroup.sync(show ? CHARGE_LIMITS : [], data.chargeLimit);
         this._chargeDividedRow.actor.visible = data.chargeLimitDivided === true;
     }
 }
@@ -1836,8 +1846,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         this._sensors = this._backends.sensors();
         this._cpu = this._backends.cpuControl((args, onDone) => this._runHelper(args, onDone));
-        this._chargeControl =
-            this._backends.chargeControl((args, onDone) => this._runHelper(args, onDone));
+        this._chargeControl = null;
+        this._rediscoverChargeControl();
 
         this._backlights = {
             screen: this._backends.backlight(Backlight.SCREEN,
@@ -2223,7 +2233,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
         });
 
         this._menuPresenter = new MenuPresenter(this.menu, this._menuActions(),
-                                               { chargeLimit: !!this._chargeControl },
                                                this._backlights);
     }
 
@@ -2235,7 +2244,13 @@ class PowerToysApplet extends Applet.TextIconApplet {
             setGovernor: value => this._cpu.setGovernor(value),
             setEnergyPreference: value => this._cpu.setEnergyPreference(value),
             setBoost: state => this._cpu.setBoost(state),
-            setChargeLimit: value => this._chargeControl.setLimit(value),
+            /* The control is looked for again while the applet runs, so the
+             * one this closure reaches is whichever is there when the click
+             * happens - and on a machine with none, there is none. */
+            setChargeLimit: value => {
+                if (this._chargeControl)
+                    this._chargeControl.setLimit(value);
+            },
         };
     }
 
@@ -2329,6 +2344,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
             packageWatts: readings.packageWatts,
             cpu: this._cpu.snapshot(),
             profile: this._collectProfile(),
+            /* whether this machine has a battery whose limit can be written */
+            chargeLimitAvailable: charge.available,
             chargeLimit: charge.limit,
             /* two batteries something else has set apart; see _updateCharge */
             chargeLimitDivided: charge.divided,
@@ -2340,6 +2357,29 @@ class PowerToysApplet extends Applet.TextIconApplet {
             systemWatts: power.watts,
             systemWattsSource: power.source,
         };
+    }
+
+    /*
+     * Which batteries a charge limit could be written to, looked for again.
+     *
+     * This was asked once, in the constructor, and its answer decided two
+     * things for the whole session: whether the menu was built with a charge
+     * limit group in it at all, and which batteries a write reached. A battery
+     * that appears afterwards - a dock, a bay battery, a vendor module that
+     * loads late - had a threshold node nobody read and no control to write
+     * it, while the sensors beside it were being rediscovered every minute by
+     * design. The read half was already deliberately live, because the
+     * firmware and vendor tools move these; it was the set of batteries that
+     * was frozen.
+     *
+     * Cheap enough to ask where the sensors are asked: a listing of
+     * /sys/class/power_supply and a type node per entry. The group in the menu
+     * now follows the reading rather than the constructor, so an answer that
+     * changes is drawn either way.
+     */
+    _rediscoverChargeControl() {
+        this._chargeControl =
+            this._backends.chargeControl((args, onDone) => this._runHelper(args, onDone));
     }
 
     /*
@@ -2359,11 +2399,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * fill in a moment later.
      */
     _readChargeLimit() {
-        if (!this._chargeControl || !this.enablePrivilegedControls)
-            return { limit: null, divided: false };
+        /* Whether there is a control at all is a fact about the machine and is
+         * reported whatever the menu is doing; the value is what costs a read
+         * and is only worth taking while somebody could be looking at it. */
+        let available = !!this._chargeControl;
+        if (!available || !this.enablePrivilegedControls)
+            return { available: available, limit: null, divided: false };
         if (!this.menu || !this.menu.isOpen)
-            return { limit: null, divided: false };
-        return this._chargeControl.reading();
+            return { available: available, limit: null, divided: false };
+        return Object.assign({ available: true }, this._chargeControl.reading());
     }
 
     /*
@@ -2445,6 +2489,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
             if (this._sinceRediscover >= REDISCOVER_SECONDS) {
                 this._sinceRediscover = 0;
                 this._sensors.refresh();
+                /* A battery can arrive the same way a sensor does, and the
+                 * limit that can be written to it is discovered once. */
+                this._rediscoverChargeControl();
             }
             this._update();
             return GLib.SOURCE_CONTINUE;
@@ -2464,6 +2511,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * the menu wants what is true now. */
         this._sensors.refresh();
         this._sinceRediscover = 0;
+        this._rediscoverChargeControl();
         this._cpu.refresh();
         /*
          * UPower is deliberately not asked to re-poll. Its properties arrive
@@ -2509,6 +2557,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
      */
     _adoptChargeLimit(data) {
         let charge = this._readChargeLimit();
+        data.chargeLimitAvailable = charge.available;
         data.chargeLimit = charge.limit;
         data.chargeLimitDivided = charge.divided;
     }
