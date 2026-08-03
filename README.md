@@ -54,12 +54,16 @@ with no backlight of its own — a desktop, or a laptop with the lid shut on an
 external screen — gets one slider per monitor instead, over DDC/CI through
 `ddcutil`, each named after the monitor it moves: make and model out of the
 EDID, the socket appended where two monitors are the same model. Up to ten,
-and past that a line saying so rather than nothing. Plugging a monitor in or
-unplugging one is looked for and the sliders follow, which is the only time
-the I2C bus is disturbed for that — probing wakes a sleeping monitor, so it is
-not done on a timer. The wheel over the panel icon has no monitor in mind and
-so still moves all of them together. Each slider is hidden where there is
-nothing behind it.
+and past that a line saying so rather than nothing. Monitors are looked for
+when the desktop says a connector changed, and once a second while you are
+actually looking at the applet — the menu open, or the pointer resting on the
+icon — because a monitor that was asleep, switched on without a hotplug event
+or slow to answer produces no signal at all and would otherwise have no slider
+for the rest of the session. Never on the poll, never while nobody is looking,
+and never on a machine that has a backlight of its own: probing spawns
+`ddcutil`, talks to every display on the I2C bus and wakes a sleeping one. The
+wheel over the panel icon has no monitor in mind and so still moves all of them
+together. Each slider is hidden where there is nothing behind it.
 
 **Power profiles.** Reads and switches profiles through power-profiles-daemon
 (both the `net.hadess.PowerProfiles` and `org.freedesktop.UPower.PowerProfiles`
@@ -111,7 +115,11 @@ to CPU and GPU only.
 
 **Alerts.** Configurable low and critical battery notifications, separate
 thresholds for peripherals, and an optional high temperature warning. All with
-hysteresis, so a value sitting on the limit does not spam the tray.
+hysteresis, so a value sitting on the limit does not spam the tray. The two
+battery levels are separate spinbuttons with overlapping ranges, so a critical
+level set at or above the low one is held just under it — a battery falling
+past both is tested against critical first, and the low warning would otherwise
+be unreachable without anything saying so.
 
 **Panel.** What appears next to the icon is one list — the battery percentage,
 the battery and the power draw, nothing, or *Choose below* for the switches
@@ -207,6 +215,14 @@ against the list the kernel advertises, so it cannot be used to write arbitrary
 data. Turn the whole group off with *Allow changing CPU governor…* in the
 applet settings if you would rather not be asked.
 
+The menu closes as one of those changes is made, and only those. An applet menu
+holds a modal grab for as long as it is open, and the password dialog belongs to
+the polkit agent rather than to the applet: with the grab still the menu's, the
+dialog gets no keyboard and no pointer, so the password cannot be typed, Cancel
+cannot be clicked, and the desktop reads as hung until the agent is killed from
+elsewhere. Everything else in the menu leaves it open, deliberately, so that a
+change can be watched happening.
+
 RAPL energy counters (`/sys/class/powercap/*/energy_uj`) are root-only on most
 kernels since CVE-2020-8694. When they are unreadable the package power row is
 simply not shown; battery draw and GPU power still work.
@@ -244,8 +260,14 @@ publishes.
 
 Out of the box every one of those changes asks for the password again, because
 `pkexec` with no policy of its own never keeps an authorisation. Changing the
-governor, the energy preference and the charge limit in one visit to the menu
-is three prompts.
+governor, the energy preference and the charge limit is three prompts, and —
+since the menu has to close for each dialog to be answerable — three trips back
+to the menu.
+
+With the action installed the first change still asks and the ones within the
+next few minutes do not. The menu closes for each of them either way: whether
+the kept authorisation is still good is polkit's answer to give, and the applet
+has to have let go of the grab before it can ask.
 
 ```sh
 sudo make install-policy      # optional
@@ -380,27 +402,38 @@ settings.
 
 ```
 cinnamon-powertoys@geraldo-netto/
-├── applet.js            panel item, menu, polling, alerts
-├── lib/io.js            file reads, rooted so a captured /sys can stand in
-├── lib/hardware.js      what a chip, a card and a monitor are called
-├── lib/sensors.js       hwmon, thermal and powercap discovery
-├── lib/backlight.js     screen and keyboard backlight through csd
-├── lib/ddc.js           external monitor brightness through ddcutil
-├── lib/bluez.js         bluetooth batteries UPower does not bridge
-├── lib/cpu.js           cpufreq scaling interface
-├── lib/power-supply.js  charge limit and ACPI platform profile nodes
-├── lib/upower.js        UPower D-Bus client
-├── lib/profiles.js      power-profiles-daemon client
-├── lib/device.js        what a powered device is, in words
-├── lib/privileged.js    finding, running and queueing the pkexec helper
-├── lib/format.js        value formatting and UPower enum naming
-├── lib/gettext.js       the text domain, bound once
-├── lib/log.js           the one thing in lib/ that knows about the shell
-├── powertoys-helper     validating pkexec helper for root owned settings
+├── applet.js               panel item, menu, wiring, polling
+│
+│   reading the machine, and writing to it
+├── lib/io.js               file reads, rooted so a captured /sys can stand in
+├── lib/hardware.js         what a chip, a card and a monitor are called
+├── lib/sensors.js          hwmon, thermal and powercap discovery
+├── lib/backlight.js        screen and keyboard backlight through csd
+├── lib/ddc.js              external monitor brightness through ddcutil
+├── lib/bluez.js            bluetooth batteries UPower does not bridge
+├── lib/cpu.js              cpufreq scaling interface
+├── lib/power-supply.js     charge limit and ACPI platform profile nodes
+├── lib/upower.js           UPower D-Bus client
+├── lib/profiles.js         power-profiles-daemon client
+├── lib/privileged.js       finding, running and queueing the pkexec helper
+│
+│   what is made of a reading; no widget, no shell, all of it checkable
+├── lib/reading.js          the questions the panel and the menu ask of one
+├── lib/panel-text.js       the label beside the icon, and the tooltip
+├── lib/sensor-rows.js      one reading as the rows of a sensor list
+├── lib/device.js           what a powered device is, in words
+├── lib/alerts.js           when to interrupt somebody, and how not to twice
+├── lib/pending-profile.js  a profile asked for and not yet arrived
+├── lib/format.js           value formatting and UPower enum naming
+│
+├── lib/keyed-list.js       menu rows that follow a list of values
+├── lib/gettext.js          the text domain, bound once
+├── lib/log.js              the one thing in lib/ that knows about the shell
+├── powertoys-helper        validating pkexec helper for root owned settings
 ├── metadata.json
 ├── settings-schema.json
 ├── stylesheet.css
-├── po/                  the translation template and any translations
+├── po/                     the translation template and any translations
 └── icons/
 
 tests/                   harness, runner, the cases and a captured machine
@@ -426,10 +459,17 @@ directory into `~/.local/share/locale` where the applet looks for it.
 
 After changing any translatable string, `make pot` regenerates the template;
 `msgmerge -U <lang>.po cinnamon-powertoys@geraldo-netto.pot` carries an
-existing translation onto it. Regenerating over unchanged sources produces the
-same bytes — the extraction timestamp is stripped, deliberately, so that the
-template is a function of the strings and the check below can be a plain
-diff.
+existing translation onto it. The extraction timestamp is stripped,
+deliberately, so that a regenerated template does not differ from the committed
+one merely for having been made later.
+
+What it does still carry is a `#: file:line` reference per string, and that is a
+fact about the current line numbering rather than about the string: any commit
+that inserts a line above a translatable one moves them, and moves the entries
+with them, since they sort by file and line. So the check below compares the
+strings rather than the file, and `make pot` is worth re-running after a
+refactor as a courtesy to whoever follows those references — nothing breaks
+while they are stale.
 
 ## Tests
 
@@ -441,7 +481,11 @@ cjs tests/run.js io   # only cases whose name contains "io"
 
 On every push and pull request the same `make check` runs, then a staged
 install of the applet and of the polkit action, then a check that the
-translation template still matches the strings in the source — see
+translation template still matches the strings in the source — the template is
+regenerated and both sides are put through `msgcat --no-location
+--sort-output`, so what is held to is the msgids, their plurals and flags and
+the comments that tell a translator what a string is for, and not the line
+numbers a refactor moves. See
 [.github/workflows/check.yml](.github/workflows/check.yml). None of it needs
 Cinnamon, a session bus or real hardware, because the libraries take their
 file root, their D-Bus calls and their spawns as parameters. It does need one
