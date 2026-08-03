@@ -12,6 +12,7 @@
  */
 
 const Harness = imports.harness;
+const Fuzz = imports.fuzz;
 const UPowerGlib = imports.gi.UPowerGlib;
 
 const Alerts = Harness.requireXlet("./lib/alerts.js");
@@ -220,4 +221,202 @@ cases["a machine that reports no temperature is not warned about"] = function ()
     each.alerts.check(reading([], null), limits());
     each.alerts.check(reading([]), limits({ highTemp: false }));
     Harness.equal(each.said.length, 0, "nothing to compare");
+};
+
+cases["a level that never bound is left alone rather than clamped"] = function () {
+    /*
+     * A key missing from the schema binds to nothing and leaves its property
+     * undefined, which _reportUnboundSettings says out loud at startup. What
+     * must not happen in the meantime is arithmetic on it: clamping undefined
+     * against a number answers NaN, and a limit of NaN is a comparison that is
+     * false whichever way a battery is going - the alert that setting exists
+     * for would never fire again, silently.
+     */
+    Harness.equal(Alerts.criticalBelow(undefined, 20), undefined,
+                  "no critical level to clamp");
+    Harness.equal(Alerts.criticalBelow(7, undefined), 7,
+                  "nothing to clamp it against");
+    Harness.equal(Alerts.criticalBelow(null, 20), null, "nor a null one");
+    Harness.equal(Alerts.criticalBelow("7", 20), "7", "nor one that is not a number at all");
+};
+
+cases["the critical level is always somewhere a battery can reach"] = function () {
+    /*
+     * The two are spinbuttons on one axis with overlapping ranges - 1 to 30
+     * against 5 to 50 - and nothing in the settings window stops critical
+     * being set at or above low. Where it is, a battery falling past both is
+     * tested against critical first and the low warning can never happen.
+     *
+     * So whatever the pair, what comes back has to be a level under the low
+     * one and still above nought, or the clamp has moved the problem rather
+     * than fixed it.
+     */
+    Fuzz.forAll({ what: "criticalBelow", runs: 500 },
+                random => [random.between(-10, 60), random.between(-10, 60)],
+                ([critical, low]) => {
+                    let clamped = Fuzz.answers(() => Alerts.criticalBelow(critical, low));
+                    if (typeof clamped !== "number" || !Number.isFinite(clamped))
+                        throw new Error("answered " + String(clamped));
+                    if (clamped < 1)
+                        throw new Error("clamped to " + clamped + ", which no battery reports");
+                    /* Raised only off the floor: the spinbutton's own range
+                     * starts at 1, and a critical level of nought or less is
+                     * a level no battery ever falls past. */
+                    if (clamped > critical && critical >= 1)
+                        throw new Error("raised " + critical + " to " + clamped);
+                    if (clamped !== 1 && clamped > critical)
+                        throw new Error("raised " + critical + " to " + clamped);
+                    if (clamped >= low && low > 1)
+                        throw new Error("left " + clamped + " at or above the low level " + low);
+                });
+};
+
+cases["nothing a machine can report makes the policy throw"] = function () {
+    /*
+     * check() runs on every poll with whatever the machine said, and a throw
+     * here is a poll that never finishes drawing. The devices it is handed
+     * come from UPower and from BlueZ, both of which can answer with less than
+     * this applet expects - a percentage that is not there, a state nobody has
+     * seen, a path that is not a string.
+     */
+    let kinds = [UPowerGlib.DeviceKind.BATTERY, UPowerGlib.DeviceKind.MOUSE,
+                 UPowerGlib.DeviceKind.HEADSET, 9999];
+    let states = [State.DISCHARGING, State.CHARGING, State.UNKNOWN, State.FULLY_CHARGED, 9999];
+
+    Fuzz.forAll({ what: "check", runs: 400 }, random => {
+        let devices = [];
+        let count = random.below(4);
+        for (let i = 0; i < count; i++) {
+            devices.push({
+                /* One path per device. Both backends key their devices by an
+                 * object path that is unique by construction, and the two
+                 * lists are merged on the address inside it, so two rows
+                 * carrying one path is not a machine this can meet - and what
+                 * it would mean is not "the same device twice" but two
+                 * different devices sharing one entry in the memory of what
+                 * has already been said. */
+                path: "/device/" + i,
+                kind: random.pick(kinds),
+                state: random.pick(states),
+                powerSupply: random.chance(2),
+                vendor: "", model: "thing",
+                percentage: random.chance(4) ? Fuzz.value(random) : random.between(0, 100),
+            });
+        }
+        return {
+            data: reading(devices, random.chance(3) ? null : Fuzz.number(random)),
+            limits: limits({
+                lowLevel: random.between(0, 60),
+                peripheralLevel: random.between(0, 60),
+                criticalLevel: random.between(0, 60),
+                highTempCelsius: random.between(-20, 200),
+                lowBattery: random.chance(4) !== true,
+                peripheralBattery: random.chance(4) !== true,
+                highTemp: random.chance(4) !== true,
+            }),
+        };
+    }, input => {
+        let each = policy();
+        Fuzz.answers(() => each.alerts.check(input.data, input.limits));
+        /* And again with the same reading, which is what a poll does: nothing
+         * has changed, so nothing more is worth saying. */
+        let saidOnce = each.said.length;
+        Fuzz.answers(() => each.alerts.check(input.data, input.limits));
+        if (each.said.length !== saidOnce)
+            throw new Error("said " + (each.said.length - saidOnce) +
+                            " more things about a reading that had not changed");
+        for (let said of each.said) {
+            Fuzz.isText(said.title, "the title");
+            Fuzz.isString(said.body, "the body");
+        }
+    });
+};
+
+cases["a device sitting exactly on its limit is not announced twice"] = function () {
+    /*
+     * The reason there is a hysteresis at all. A battery resting on the
+     * threshold - which is where a laptop left plugged in at its charge limit
+     * sits for days - would otherwise alternate between reported and forgotten
+     * on every poll, and say so every time.
+     */
+    let each = policy();
+    for (let i = 0; i < 20; i++)
+        each.alerts.check(reading([battery(20)]), limits());
+    Harness.equal(each.said.length, 1, "twenty polls on the limit, one notification");
+
+    /* Climbing to the limit plus five is still not clear of it. */
+    each.alerts.check(reading([battery(25)]), limits());
+    each.alerts.check(reading([battery(20)]), limits());
+    Harness.equal(each.said.length, 1, "and it has not recovered enough to be news again");
+
+    each.alerts.check(reading([battery(26)]), limits());
+    each.alerts.check(reading([battery(20)]), limits());
+    Harness.equal(each.said.length, 2, "a point clear of the hysteresis, and it counts again");
+};
+
+cases["a temperature sitting exactly on its limit is not announced twice"] = function () {
+    let each = policy();
+    for (let i = 0; i < 20; i++)
+        each.alerts.check(reading([], 90), limits());
+    Harness.equal(each.said.length, 1, "twenty polls at ninety, one notification");
+
+    each.alerts.check(reading([], 85), limits());
+    each.alerts.check(reading([], 90), limits());
+    Harness.equal(each.said.length, 1, "eighty-five is not clear of it");
+
+    each.alerts.check(reading([], 84.9), limits());
+    each.alerts.check(reading([], 90), limits());
+    Harness.equal(each.said.length, 2, "and now it has cooled enough to be news again");
+};
+
+cases["what an alert says is the device and where it is"] = function () {
+    /*
+     * The body of the notification, which is the whole of what somebody sees:
+     * a title that is the same every time, and this. A body naming the wrong
+     * device, or naming it without saying how bad it is, is a notification
+     * that has to be acted on by opening the menu - which is the thing it
+     * exists to save.
+     */
+    let each = policy();
+    each.alerts.check(reading([battery(7)]), limits());
+    Harness.equal(each.said.length, 1, "exactly on the critical level is critical");
+    Harness.equal(each.said[0].urgent, true, "and urgent");
+    Harness.equal(each.said[0].title, "Battery critically low", "the title");
+    Harness.equal(each.said[0].body, "BAT0 - 7%", "the device, and where it is");
+
+    let low = policy();
+    low.alerts.check(reading([battery(20)]), limits());
+    Harness.equal(low.said[0].urgent, false, "low is not urgent");
+    Harness.equal(low.said[0].title, "Battery low", "its own title");
+    Harness.equal(low.said[0].body, "BAT0 - 20%", "and the same shape of body");
+
+    let hot = policy();
+    hot.alerts.check(reading([], 90), limits());
+    Harness.equal(hot.said[0].title, "High temperature", "the temperature's title");
+    Harness.equal(hot.said[0].body, "90.0 °C",
+                  "and the reading itself, to the tenth the menu shows");
+
+    let fahrenheit = policy();
+    fahrenheit.alerts.check(reading([], 90), limits({ tempUnit: "fahrenheit" }));
+    Harness.equal(fahrenheit.said[0].body, "194.0 °F", "in whichever unit is set");
+};
+
+cases["a temperature alert switched off says nothing at any temperature"] = function () {
+    /*
+     * The switch is read in the same breath as "is there a reading at all",
+     * and the two are an either-or: off, or nothing to judge. Read as an
+     * and-both, a machine with the alert switched off and a temperature to
+     * report would be warned anyway - which is the one thing switching it off
+     * is for.
+     */
+    let each = policy();
+    for (let celsius of [90, 120, 200]) {
+        each.alerts.check(reading([], celsius), limits({ highTemp: false }));
+        Harness.deepEqual(each.said, [], "nothing said at " + celsius);
+    }
+
+    /* And it is not remembering it either, or the first reading after it is
+     * switched back on would be silence. */
+    each.alerts.check(reading([], 95), limits());
+    Harness.equal(each.said.length, 1, "switched back on, and the machine is still hot");
 };
