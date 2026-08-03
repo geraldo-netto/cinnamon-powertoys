@@ -11,14 +11,4 @@ row keeps the effort for the whole and is done when its parts are. Parts were
 only split out where each one can be written, reviewed and committed on its
 own — items that are genuinely a single change were left whole.
 
-## External monitors
-
-| id | severity | effort | description |
-|----|----------|--------|-------------|
-
-## Seams and contracts
-
-| id | severity | effort | description |
-|----|----------|--------|-------------|
-| PT-150 | low | XS | [`BluezBatteries._dbusCall`](cinnamon-powertoys@geraldo-netto/lib/bluez.js#L186) reaches `Gio.DBus.system` with nothing catching, and it is called from the constructor's first `_refresh()`. On a machine with no system bus that getter throws — tests/cases/live.js wraps the same call in a try for exactly this — and a throw there ends the applet's constructor: no icon, nothing on the panel. lib/upower.js wraps its equivalent; `_subscribe` in this same file wraps its own. One try around the call, answering `onDone(null)`, makes no-bus read as bluetoothd-not-running, which is what the module already treats as ordinary. |
-
+Nothing open.

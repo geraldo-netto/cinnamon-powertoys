@@ -183,18 +183,36 @@ var BluezBatteries = class BluezBatteries {
         this._watch();
     }
 
+    /*
+     * The reach for the bus is inside the try as well as the reply.
+     *
+     * Gio.DBus.system is a getter that connects, and on a machine with no
+     * system bus at all it throws rather than answering - which is why
+     * lib/upower.js wraps its own, why _subscribe below wraps its, and why
+     * tests/cases/live.js asks the same question in a try before it decides
+     * whether it can run. This one was the reach that was not wrapped, and it
+     * is called from the constructor, so the throw would have come up through
+     * the applet's constructor and left nothing on the panel at all.
+     *
+     * No bus reads as no bluetoothd, which this module already treats as an
+     * ordinary state of a desktop with no radio in it.
+     */
     _dbusCall(path, iface, method, onDone) {
-        Gio.DBus.system.call(BUS_NAME, path, iface, method, null, null,
-                             Gio.DBusCallFlags.NONE, -1, null,
-                             (connection, result) => {
-                                 try {
-                                     onDone(connection.call_finish(result).deepUnpack()[0]);
-                                 } catch (error) {
-                                     /* bluetoothd is not running, which is
-                                      * ordinary on a desktop without a radio. */
-                                     onDone(null);
-                                 }
-                             });
+        try {
+            Gio.DBus.system.call(BUS_NAME, path, iface, method, null, null,
+                                 Gio.DBusCallFlags.NONE, -1, null,
+                                 (connection, result) => {
+                                     try {
+                                         onDone(connection.call_finish(result).deepUnpack()[0]);
+                                     } catch (error) {
+                                         /* bluetoothd is not running, which is
+                                          * ordinary on a desktop without a radio. */
+                                         onDone(null);
+                                     }
+                                 });
+        } catch (error) {
+            onDone(null);
+        }
     }
 
     /*

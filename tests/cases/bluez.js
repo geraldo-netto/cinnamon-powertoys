@@ -113,6 +113,29 @@ cases["a machine with no bluetooth daemon says nothing and breaks nothing"] = fu
     control.destroy();
 };
 
+cases["the module's own call answers rather than throwing"] = function () {
+    /*
+     * Every other case here hands in its own call, so the one this module
+     * makes for itself - the only one a running applet uses - was exercised by
+     * none of them. It reaches Gio.DBus.system, which is a getter that
+     * connects and throws where there is nothing to connect to, and it is
+     * called from the constructor: a throw there comes up through the applet's
+     * constructor and leaves nothing on the panel at all.
+     *
+     * What is asserted is that it answers. Whether bluetoothd is on this bus,
+     * or whether there is a bus, decides what the answer says and not whether
+     * one arrives - which is the whole point.
+     */
+    /* Constructed with a call of its own so that building it reads nothing;
+     * the real one is then asked directly. */
+    let control = new Bluez.BluezBatteries(null, (path, iface, method, onDone) => onDone(null));
+
+    Harness.settle(function (done) {
+        control._dbusCall("/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects", done);
+    }, "the module's own D-Bus call");
+    control.destroy();
+};
+
 cases["bluetoothd going away empties the list and says so"] = function () {
     let objects = tree({ [HEADSET]: device("BW01", "audio-headset", true, 90) });
     let running = true;
