@@ -88,6 +88,18 @@ const DEFAULT_ICON = "powertoys";
 const REDISCOVER_SECONDS = 60;
 
 /*
+ * How often monitors are looked for while somebody is looking at the applet.
+ *
+ * A DDC/CI probe spawns ddcutil, talks to every display on the I2C bus and
+ * wakes a sleeping one, which is why this is not on the poll and why the timer
+ * does not exist unless there is a reason for it - see _watchMonitors. A second
+ * is what a monitor that was asleep, plugged in unnoticed or slow to answer
+ * costs before its slider appears, which is about as long as somebody who has
+ * just opened the menu will wait without deciding the applet cannot see it.
+ */
+const MONITOR_PROBE_SECONDS = 1;
+
+/*
  * How long the wheel has to stop for before a profile change is applied.
  *
  * One flick of a finger sends several clicks, and each one used to be its own
@@ -1755,6 +1767,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._collectAgain = false;
         this._scrollTimerId = 0;
         this._pendingScroll = 0;
+        /* Why monitors are being looked for, and the timer that does it. Both
+         * empty means nobody is looking at the applet; see _watchMonitors. */
+        this._probeReasons = new Set();
+        this._probeTimerId = 0;
         /* A profile asked for and not yet arrived, which the panel and the
          * menu draw until it does - or until it is clear it will not. */
         this._pending = new PendingProfile.PendingProfile((asked, actual) => {
@@ -1974,15 +1990,82 @@ class PowerToysApplet extends Applet.TextIconApplet {
     /*
      * A monitor has been plugged in, unplugged or rearranged.
      *
-     * The desktop knows this exactly once and says so, which is the only cheap
-     * moment there is to look again: a DDC/CI probe talks to every display on
-     * the bus and wakes a sleeping one, so it is not something to do on a
-     * timer. Anything the settings daemon can drive has a kernel backlight and
-     * is not this applet's to find, hence the same guard as the first probe.
+     * The desktop knows this and says so, which is the cheapest moment there
+     * is to look again. It is not the only one - see _watchMonitors - because
+     * it only fires for a connector changing, and a monitor that was asleep,
+     * switched on without a hotplug event or slow to answer produces none.
      */
     _onMonitorsChanged() {
         if (this._destroyed)
             return;
+        this._probeMonitors();
+    }
+
+    /*
+     * Look for monitors while somebody is looking at the applet.
+     *
+     * The desktop's own signal misses the monitor that was asleep when the
+     * applet started, the adapter that answers late, and every switch-on that
+     * produces no hotplug event - each of which is a slider that never appears
+     * for the rest of the session, on exactly the machines where these sliders
+     * are the only brightness control there is.
+     *
+     * The cost is why this is bounded to the moments the applet is being read
+     * rather than put on the poll: a probe spawns ddcutil, talks to every
+     * display on the I2C bus and wakes a sleeping monitor. Somebody with the
+     * menu open or the pointer resting on the icon is looking at the applet
+     * and can be spent on; nobody else is, and the timer does not exist while
+     * nobody is.
+     *
+     * What holds it up is a set of reasons rather than a flag, because the
+     * reasons overlap: the tooltip goes away as the menu opens under the
+     * pointer, and stopping the probe there only to start it again a moment
+     * later is a probe wasted on the same person still looking.
+     *
+     * The first probe goes out at once rather than a second later. Whatever
+     * has just given a reason is being looked at now, and a slider that
+     * appears a second after the menu opens is a slider that was not there
+     * when it was looked for.
+     */
+    _watchMonitors(reason, wanted) {
+        if (this._destroyed)
+            return;
+        if (wanted)
+            this._probeReasons.add(reason);
+        else
+            this._probeReasons.delete(reason);
+
+        if (this._probeReasons.size === 0) {
+            this._stopProbingMonitors();
+            return;
+        }
+        if (this._probeTimerId)
+            return;
+
+        this._probeMonitors();
+        this._probeTimerId = Mainloop.timeout_add_seconds(MONITOR_PROBE_SECONDS, () => {
+            this._probeMonitors();
+            return GLib.SOURCE_CONTINUE;
+        });
+    }
+
+    _stopProbingMonitors() {
+        if (this._probeTimerId) {
+            Mainloop.source_remove(this._probeTimerId);
+            this._probeTimerId = 0;
+        }
+    }
+
+    /*
+     * One look for monitors, from wherever the reason came from.
+     *
+     * Anything the settings daemon can drive has a kernel backlight and is not
+     * this applet's to find, hence the same guard as the first probe. A probe
+     * that lands while the last one is still out is dropped by the control
+     * itself rather than queued (PT-145c), so nothing here has to know how
+     * long ddcutil is taking.
+     */
+    _probeMonitors() {
         if (this.monitorBrightness && !this._backlights.screen.available)
             this._backlights.monitor.redetect();
     }
@@ -2059,6 +2142,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this.menu.connect("open-state-changed", (menu, open) => {
             if (open)
                 this._onMenuOpened();
+            /*
+             * Opening the menu already refreshes every backlight, but a
+             * refresh only re-reads the monitors already known and cannot find
+             * one that was not there before - which is why opening the menu
+             * did not fix a missing slider. The flag this handler carries is
+             * the whole of the menu's part in it: up while it is open, down
+             * when it shuts.
+             */
+            this._watchMonitors("menu", open);
         });
 
         this._menuPresenter = new MenuPresenter(this.menu, this._menuActions(),
@@ -2101,6 +2193,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _destroyMenu() {
         if (!this.menu)
             return;
+        /* An orientation change throws the menu away wholesale, and a menu
+         * that is gone never says it shut. */
+        this._watchMonitors("menu", false);
         this.menuManager.removeMenu(this.menu);
         this.menu.destroy();
         this.menu = null;
@@ -2886,6 +2981,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
     on_applet_removed_from_panel() {
         this._destroyed = true;
         this._stopPolling();
+        this._stopProbingMonitors();
         this._cancelPendingScroll();
         if (this._idleId) {
             Mainloop.source_remove(this._idleId);

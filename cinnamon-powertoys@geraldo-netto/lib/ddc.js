@@ -502,11 +502,12 @@ var DdcBacklight = class DdcBacklight {
      * for every monitor; a list of named ones that silently never grows is
      * not.
      *
-     * The caller decides when. This is deliberately not on the poll: a probe
-     * talks to every display on the I2C bus and wakes a sleeping one, which is
-     * not something to do every few seconds for no reason. A monitor being
-     * connected or disconnected is a thing the desktop already knows about and
-     * says so exactly once.
+     * The caller decides when, and this is deliberately not on the poll: a
+     * probe talks to every display on the I2C bus and wakes a sleeping one,
+     * which is not something to do every few seconds for no reason. The applet
+     * asks when the desktop says a connector changed, and otherwise only while
+     * somebody is looking at the applet - see _watchMonitors there, which is
+     * also where the reason a hotplug event is not enough on its own is.
      */
     redetect() {
         /* Asked for inside a probe, this is dropped and not queued; see
