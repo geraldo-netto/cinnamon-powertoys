@@ -8,6 +8,8 @@
 
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
+
+const Fuzz = imports.fuzz;
 const Harness = imports.harness;
 
 const Bluez = Harness.requireXlet("./lib/bluez.js");
@@ -475,4 +477,107 @@ cases["the tree BlueZ really answers with is one this module can read"] = functi
     } finally {
         control.destroy();
     }
+};
+
+/* ---------------------------------------------------------------- */
+/* a tree nobody here wrote                                          */
+
+/*
+ * BlueZ's object tree is whatever bluetoothd has in memory, unpacked out of a
+ * variant by GJS. A device half way through pairing carries an interface with
+ * no properties on it; one that has just connected carries an Icon a moment
+ * later than it carries a Battery; a firmware that reports a percentage as a
+ * string is a firmware somebody is running.
+ *
+ * The rows this makes of that are what the menu draws, so what is held here is
+ * their shape: a title that is a string, a charge that is a number, and no
+ * row at all where there is nothing to say.
+ */
+function fuzzTree(random) {
+    let objects = {};
+    let count = random.below(4);
+    for (let i = 0; i < count; i++) {
+        let path = random.chance(4) ? Fuzz.text(random, 3)
+                                    : "/org/bluez/hci0/dev_" + random.between(10, 99);
+        let interfaces = {};
+        if (!random.chance(6)) {
+            /*
+             * The types are the ones the interface declares - a property BlueZ
+             * publishes as a string arrives as one - so what is varied is what
+             * is missing, what is empty, and what a name can contain. A
+             * property that has not arrived yet is the ordinary case: BlueZ
+             * works an Icon out a moment after a device connects.
+             */
+            let device = {};
+            if (!random.chance(3))
+                device.Alias = Fuzz.text(random, 3);
+            if (!random.chance(3))
+                device.Name = Fuzz.text(random, 3);
+            if (!random.chance(3))
+                device.Icon = random.chance(2) ? random.pick(["audio-headset", "input-mouse",
+                                                              "input-keyboard", "phone"])
+                                               : Fuzz.text(random, 2);
+            if (!random.chance(4))
+                device.Connected = random.chance(2);
+            interfaces["org.bluez.Device1"] = device;
+        }
+        if (random.chance(2)) {
+            /* Percentage is a byte on the wire, and the module still asks
+             * whether it is a number: a device half way through pairing
+             * publishes the interface before the value. */
+            interfaces["org.bluez.Battery1"] = random.chance(4)
+                ? {} : { Percentage: random.chance(5) ? Fuzz.value(random)
+                                                      : random.between(0, 100) };
+        }
+        if (random.chance(5))
+            interfaces[Fuzz.text(random, 2)] = { Anything: Fuzz.value(random) };
+        objects[path] = interfaces;
+    }
+    return objects;
+}
+
+cases["whatever BlueZ has in memory becomes rows or nothing"] = function () {
+    Fuzz.forAll({ what: "the tree parsing", runs: 400 }, fuzzTree, function (objects) {
+        let found = Fuzz.answers(() => Bluez.parseObjects(objects));
+
+        for (let entry of found) {
+            Fuzz.isString(entry.model, "the row title");
+            Harness.equal(typeof entry.percentage, "number",
+                          "a charge that is a number: " + JSON.stringify(entry.percentage));
+            Harness.equal(typeof entry.kind, "number", "a kind the menu can pick an icon by");
+            Harness.equal(entry.powerSupply, false, "nothing here powers the machine");
+            Harness.ok(entry.path in objects, "and every row came out of the tree");
+        }
+    });
+};
+
+cases["a list that follows a fuzzed tree only reports what changed"] = function () {
+    /*
+     * The other half: two trees in a row, and whether the menu is told. It is
+     * told when a row would be drawn differently and not when it would not,
+     * whatever the trees carried - a redraw per poll is a menu that flickers,
+     * and no redraw on a change is a stale charge.
+     */
+    Fuzz.forAll({ what: "the change reporting", runs: 200 }, function (random) {
+        return [fuzzTree(random), fuzzTree(random)];
+    }, function (trees) {
+        let answer = null;
+        let changes = 0;
+        let control = new Bluez.BluezBatteries(() => changes++,
+                                               (path, iface, method, onDone) => onDone(answer));
+        answer = trees[0];
+        Fuzz.answers(() => control._refresh());
+        let first = control.devices.map(entry => entry.path + ":" + entry.percentage +
+                                                 ":" + entry.model + ":" + entry.kind).join("|");
+
+        let told = changes;
+        answer = trees[1];
+        Fuzz.answers(() => control._refresh());
+        let second = control.devices.map(entry => entry.path + ":" + entry.percentage +
+                                                  ":" + entry.model + ":" + entry.kind).join("|");
+
+        Harness.equal(changes > told, first !== second,
+                      "told exactly when the rows would be drawn differently");
+        control.destroy();
+    });
 };

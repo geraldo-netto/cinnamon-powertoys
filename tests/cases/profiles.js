@@ -13,6 +13,7 @@
  * empty profile list and nothing else.
  */
 
+const Fuzz = imports.fuzz;
 const Harness = imports.harness;
 
 const Profiles = Harness.requireXlet("./lib/profiles.js");
@@ -339,4 +340,87 @@ cases["a destroyed client unwatches both names"] = function () {
     Harness.deepEqual(system.unwatched, [1, 2], "both watches, or they outlive the applet");
     Harness.equal(stub.disconnected, 1, "and the property handler with them");
     Harness.equal(client.available, false, "nothing answers afterwards");
+};
+
+/* ---------------------------------------------------------------- */
+/* what a daemon says, when it is not what a daemon says             */
+
+/*
+ * Every property here arrives as a variant out of a proxy, and the daemon on
+ * the other end is one of two implementations across half a dozen versions.
+ * The list of profiles is an array of dictionaries of variants, and each of
+ * those three levels is somewhere an unpack can go wrong - which reads as an
+ * empty profile list and no explanation.
+ *
+ * So the shape is held rather than the values: names that are strings, a
+ * reading that has every field the menu reads off it, and nothing that throws
+ * at a caller which is a menu being drawn.
+ */
+function fuzzDaemon(random) {
+    /*
+     * The types are the ones the interface declares - a property the daemon
+     * publishes as a string arrives as one - so what is varied is what the
+     * dictionaries inside them carry. That is where the two implementations
+     * and the versions between them really differ, and it is three levels
+     * deep: an array, of dictionaries, of variants.
+     */
+    let profiles = [];
+    let count = random.below(5);
+    for (let i = 0; i < count; i++) {
+        switch (random.below(4)) {
+            case 0: profiles.push({ Profile: variant(Fuzz.text(random, 2)) }); break;
+            case 1: profiles.push({ Profile: variant("") }); break;
+            case 2: profiles.push({ Nothing: variant("balanced") }); break;
+            default: profiles.push({ Profile: random.pick(PROFILE_NAMES) });
+        }
+    }
+
+    let holds = [];
+    let held = random.below(3);
+    for (let i = 0; i < held; i++)
+        holds.push(random.chance(3) ? {}
+                                    : { ApplicationId: variant(Fuzz.text(random, 2)),
+                                        Profile: variant(Fuzz.text(random, 1)) });
+
+    let stub = {
+        ActiveProfileHolds: holds,
+        Profiles: profiles,
+        connect: () => 1,
+        disconnect: () => {},
+    };
+    if (!random.chance(3))
+        stub.ActiveProfile = random.chance(2) ? Fuzz.text(random, 2) : "balanced";
+    if (!random.chance(3))
+        stub.PerformanceDegraded = Fuzz.text(random, 2);
+    if (!random.chance(3))
+        stub.PerformanceInhibited = Fuzz.text(random, 2);
+    if (!random.chance(3))
+        stub.Version = Fuzz.text(random, 1);
+    return stub;
+}
+
+const PROFILE_NAMES = ["power-saver", "balanced", "performance"];
+
+cases["whatever the daemon answers with reads as a menu can draw it"] = function () {
+    Fuzz.forAll({ what: "a whole reading", runs: 400 }, fuzzDaemon, function (stub) {
+        let client = new Profiles.PowerProfilesClient(null, bus({ [UPOWER]: stub }));
+        let reading = Fuzz.answers(() => client.snapshot());
+
+        /* A daemon offering nothing this applet can name is not one it can
+         * use, and is passed over the way an unowned name is. */
+        Harness.ok(Array.isArray(reading.profiles), "the profiles are a list");
+        Harness.equal(reading.available, reading.profiles.length > 0,
+                      "available exactly where there is something to pick");
+        for (let name of reading.profiles)
+            Fuzz.isString(name, "a profile name");
+        Harness.ok(reading.active === null || typeof reading.active === "string",
+                   "the active profile is a name or nothing: " + Fuzz.show(reading.active));
+        Fuzz.isString(reading.degraded, "the degraded reason");
+        Harness.ok(Array.isArray(reading.holds), "the holds are a list");
+        for (let hold of reading.holds) {
+            Fuzz.isString(hold.application, "the application holding it");
+            Fuzz.isString(hold.profile, "the profile it is holding");
+        }
+        client.destroy();
+    });
 };

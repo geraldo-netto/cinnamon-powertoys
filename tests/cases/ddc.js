@@ -13,6 +13,7 @@
 
 const GLib = imports.gi.GLib;
 
+const Fuzz = imports.fuzz;
 const Harness = imports.harness;
 
 const Ddc = Harness.requireXlet("./lib/ddc.js");
@@ -1222,4 +1223,91 @@ cases["a timer that is not needed is not left armed"] = function () {
 
     Harness.equal(armed.length, 1, "one timer was armed for the call");
     Harness.deepEqual(removed, armed, "and it was taken back off when the answer came");
+};
+
+/* ---------------------------------------------------------------- */
+/* what a monitor answers with, when it is not what it should be     */
+
+/*
+ * ddcutil's output is a machine's answer, and a monitor that half answers
+ * gets it truncated, doubled or interleaved with whatever the tool wrote to
+ * stdout about the bus it could not open. The cases above pick the shapes
+ * somebody thought of; these throw shapes at it by the hundred and hold the
+ * parsing to a property rather than to an answer.
+ */
+function detectText(random) {
+    let lines = [];
+    let blocks = random.below(4);
+    for (let i = 0; i < blocks; i++) {
+        lines.push(random.chance(4) ? Fuzz.text(random, 3)
+                                    : "Display " + random.between(0, 12));
+        let fields = random.below(5);
+        for (let j = 0; j < fields; j++) {
+            let name = random.pick(["I2C bus", "DRM connector", "Monitor", "VCP version",
+                                    Fuzz.text(random, 2)]);
+            lines.push("   " + name + ":    " + Fuzz.text(random, 4));
+        }
+        if (random.chance(3))
+            lines.push(Fuzz.text(random, 3));
+        lines.push("");
+    }
+    return lines.join(random.chance(6) ? "\r\n" : "\n");
+}
+
+cases["whatever ddcutil says about the displays is parsed or refused"] = function () {
+    Fuzz.forAll({ what: "the detect parsing", runs: 400 }, detectText, function (input) {
+        let displays = Fuzz.answers(() => Ddc.parseDisplays(input));
+
+        for (let display of displays) {
+            Fuzz.isString(display.number, "the display number");
+            Harness.ok(/^\d+$/.test(display.number),
+                       "the number is what --display takes: " + display.number);
+            Fuzz.isString(display.manufacturer, "the maker code");
+            Fuzz.isString(display.model, "the model");
+            Fuzz.isString(display.serial, "the serial");
+            Harness.ok(display.bus === null || typeof display.bus === "string", "the bus");
+            Harness.ok(display.connector === null || typeof display.connector === "string",
+                       "the connector");
+        }
+    });
+};
+
+cases["every display that is parsed can be given a row title"] = function () {
+    /*
+     * The names are what the menu draws, and a display carrying none of the
+     * fields a name is built from still has to end up with one - a row with an
+     * empty title is a slider nobody can say which screen belongs to.
+     */
+    named(function () {
+        Fuzz.forAll({ what: "the naming", runs: 150 }, detectText, function (input) {
+            let displays = Ddc.parseDisplays(input);
+            let names = Fuzz.answers(() => Ddc.nameDisplays(displays));
+
+            Harness.equal(names.length, displays.length, "one name per display");
+            for (let display of names) {
+                Fuzz.isString(display.name, "the row title");
+                Harness.ok(display.name.trim().length > 0,
+                           "a title with something in it: " + JSON.stringify(display.name));
+            }
+        });
+    });
+};
+
+cases["a brightness reply is a percentage or nothing"] = function () {
+    /*
+     * The value behind every slider. It is worked out from two numbers the
+     * monitor reports, because the maximum is not always 100 - and a monitor
+     * that reports a current above its own maximum, or a maximum of nought,
+     * is a monitor that would otherwise put a figure on screen that is not a
+     * percentage of anything.
+     */
+    Fuzz.forAll({ what: "the brightness parsing", runs: 500 }, function (random) {
+        if (random.chance(3))
+            return "VCP 10 " + random.pick(["C", "SNC", "T", Fuzz.text(random, 1)]) + " " +
+                   random.between(0, 300) + " " + random.between(0, 300);
+        return Fuzz.text(random, 8);
+    }, function (input) {
+        let value = Fuzz.answers(() => Ddc.parseBrightness(input));
+        Fuzz.inRange(value, 0, 100, "the brightness");
+    });
 };

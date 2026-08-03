@@ -12,6 +12,7 @@
  * device gets a row.
  */
 
+const Fuzz = imports.fuzz;
 const Harness = imports.harness;
 const UPowerGlib = imports.gi.UPowerGlib;
 
@@ -727,4 +728,142 @@ cases["two batteries of the same kind are ordered by path"] = function () {
     Harness.deepEqual(monitor.snapshot().map(entry => entry.path), [BAT0, second],
                       "BAT0 first, whichever order they arrived in");
     monitor.destroy();
+};
+
+/* ---------------------------------------------------------------- */
+/* properties nobody here wrote                                      */
+
+/*
+ * A UPower proxy carries whatever the daemon published, and the daemon
+ * publishes what the kernel gave it: a battery reporting a capacity of 4000%
+ * because its firmware counts in a different unit, a device whose Percentage
+ * arrives before its Type does, a peripheral that answers every property with
+ * nothing at all.
+ *
+ * Everything the menu draws comes through _describe, so what is held here is
+ * the shape it produces: numbers that are numbers, names that are strings, and
+ * a list whose order is an order.
+ */
+function fuzzProxy(random) {
+    /*
+     * The types are the ones the interface declares, so what is varied is what
+     * a daemon can really vary: which properties have arrived at all - a proxy
+     * built the moment a device appeared has almost none of them - and what
+     * the numbers are, which come from firmware and are not bounded by
+     * anything. A capacity of four thousand percent is a real battery.
+     */
+    let proxy = {};
+    let maybe = function (name, value) {
+        if (!random.chance(4))
+            proxy[name] = value;
+    };
+
+    maybe("Type", random.chance(2) ? random.pick([Kind.BATTERY, Kind.UPS, Kind.MOUSE,
+                                                  Kind.LINE_POWER, Kind.KEYBOARD])
+                                   : random.between(-2, 20));
+    maybe("State", random.between(-2, 9));
+    maybe("BatteryLevel", random.between(-2, 9));
+    maybe("Vendor", Fuzz.text(random, 3));
+    maybe("Model", Fuzz.text(random, 3));
+    maybe("IconName", Fuzz.text(random, 2));
+    maybe("PowerSupply", random.chance(2));
+    maybe("Online", random.chance(2));
+    maybe("IsPresent", random.chance(2));
+    for (let name of ["Percentage", "Energy", "EnergyFull", "EnergyRate", "Voltage",
+                      "Temperature", "Capacity", "ChargeCycles", "TimeToEmpty", "TimeToFull"])
+        maybe(name, Fuzz.number(random));
+
+    proxy.connect = () => 1;
+    proxy.disconnect = () => {};
+    return proxy;
+}
+
+cases["whatever UPower publishes describes into something the menu can draw"] = function () {
+    const NUMBERS = ["percentage", "energy", "energyFull", "energyRate", "voltage",
+                     "temperature", "capacity", "cycles", "timeToEmpty", "timeToFull"];
+
+    Fuzz.forAll({ what: "a whole reading", runs: 300 }, function (random) {
+        let devices = {};
+        let paths = [];
+        let count = random.between(0, 3);
+        for (let i = 0; i < count; i++) {
+            let path = "/org/freedesktop/UPower/devices/fuzz_" + i;
+            devices[path] = fuzzProxy(random);
+            paths.push(path);
+        }
+        if (random.chance(3))
+            devices[DISPLAY] = fuzzProxy(random);
+        return { paths: paths, devices: devices };
+    }, function (input) {
+        let monitor = monitorOn(busFor(managerFor(input.paths), input.devices));
+        let reading = Fuzz.answers(() => monitor.read());
+
+        for (let device of reading.devices.concat(reading.lines)) {
+            Fuzz.isString(device.vendor, "the maker");
+            Fuzz.isString(device.model, "the model");
+            Fuzz.isString(device.icon, "the icon name");
+            Harness.equal(typeof device.kind, "number", "a kind: " + Fuzz.show(device.kind));
+            Harness.equal(typeof device.state, "number", "a state: " + Fuzz.show(device.state));
+            for (let field of NUMBERS) {
+                Harness.ok(device[field] === null || Number.isFinite(device[field]),
+                           field + " is a number or nothing: " + Fuzz.show(device[field]));
+            }
+        }
+
+        /* Every temperature and every draw the sensor list is given has to be
+         * a number, or a row in it says NaN °C. */
+        for (let entry of reading.temperatures)
+            Harness.ok(Number.isFinite(entry.celsius),
+                       "a temperature that is a number: " + Fuzz.show(entry.celsius));
+        for (let entry of reading.powers)
+            Harness.ok(Number.isFinite(entry.watts),
+                       "a draw that is a number: " + Fuzz.show(entry.watts));
+
+        Harness.ok(reading.primary === null ||
+                   reading.primary.path === DISPLAY ||
+                   reading.devices.some(device => device.path === reading.primary.path),
+                   "what the panel speaks for is on the list, or is the composite one");
+
+        monitor.destroy();
+    });
+};
+
+cases["the order the rows come out in is an order"] = function () {
+    /*
+     * The list is sorted on three keys - whether it powers the machine, its
+     * kind, then its path - and a comparator that is not consistent is a menu
+     * whose rows change places between polls for no reason anybody can see.
+     */
+    Fuzz.forAll({ what: "the ordering", runs: 300 }, function (random) {
+        let devices = [];
+        let count = random.between(0, 6);
+        for (let i = 0; i < count; i++) {
+            devices.push({
+                path: "/dev/" + random.between(0, 4),
+                kind: random.pick([Kind.BATTERY, Kind.UPS, Kind.MOUSE, Kind.KEYBOARD]),
+                powerSupply: random.chance(2),
+                present: true,
+            });
+        }
+        return devices;
+    }, function (devices) {
+        let out = Fuzz.answers(() => UPower.reportedDevices(devices));
+
+        for (let i = 1; i < out.length; i++) {
+            let before = out[i - 1];
+            let after = out[i];
+            if (before.powerSupply !== after.powerSupply) {
+                Harness.equal(before.powerSupply, true,
+                              "what powers the machine comes first");
+                continue;
+            }
+            if (before.kind !== after.kind) {
+                Harness.ok(before.kind < after.kind, "then by kind: " + before.kind +
+                                                     " before " + after.kind);
+                continue;
+            }
+            Harness.ok(before.path <= after.path,
+                       "then by path: " + before.path + " before " + after.path);
+        }
+    });
 };

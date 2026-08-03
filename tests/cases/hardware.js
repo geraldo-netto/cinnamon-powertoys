@@ -8,6 +8,7 @@
  * machine happens to have installed.
  */
 
+const Fuzz = imports.fuzz;
 const Harness = imports.harness;
 
 const Hardware = Harness.requireXlet("./lib/hardware.js");
@@ -353,4 +354,80 @@ cases["a model that already opens with its maker is left alone"] = function () {
                   "and the name at the front is left where it is");
     Harness.equal(Hardware.monitorName("DEL", "U2415"), "Dell U2415",
                   "while a model that says nothing about its maker gets one");
+};
+
+/* ---------------------------------------------------------------- */
+/* names nobody here wrote                                           */
+
+/*
+ * Every name in this file comes off hardware or out of a table shipped by
+ * somebody else: EDID strings are written by whoever assembled the monitor,
+ * and pci.ids is a text file the distribution updates. Both are read, not
+ * written, and both turn up truncated, in the wrong encoding, or with a field
+ * somebody left empty.
+ *
+ * What is held here is that a name comes back a string with something in it,
+ * and never a value's insides: "undefined Dell" in a menu is this side's
+ * mistake, whatever the monitor said.
+ */
+
+cases["a company name is tidied down to a name, whatever it was"] = function () {
+    Fuzz.forAll({ what: "tidyVendorName", runs: 600 },
+                random => (random.chance(3) ? Fuzz.text(random, 5)
+                                            : Fuzz.text(random, 2) + " " +
+                                              random.pick(["Inc.", "Ltd", "Electronics",
+                                                           "Corporation", "Co.,", "GmbH"])),
+                function (input) {
+                    let out = Fuzz.answers(() => Hardware.tidyVendorName(input));
+                    Fuzz.isString(out, "the tidied name");
+                    Harness.ok(out.length <= input.length + 1,
+                               "tidying does not grow a name: " + JSON.stringify(out));
+                });
+};
+
+cases["a monitor ends up with a name whatever its EDID says"] = function () {
+    /*
+     * The two halves come from different places - the code from a table, the
+     * model from the monitor - and either can be missing, empty or nonsense.
+     * The row still needs a title.
+     */
+    on("machine", function () {
+        Fuzz.forAll({ what: "monitorName", runs: 400 }, function (random) {
+            return {
+                code: random.chance(3) ? random.pick(["DEL", "GSM", "AOC", "SAM", "XXX"])
+                                       : Fuzz.text(random, 3),
+                model: random.chance(4) ? "" : Fuzz.text(random, 4),
+            };
+        }, function (input) {
+            /* isString rather than isText: the model is passed through from
+             * the monitor, and one of the strings this fuzzer throws about is
+             * literally "undefined". */
+            let name = Fuzz.answers(() => Hardware.monitorName(input.code, input.model));
+            Fuzz.isString(name, "the monitor name");
+            if (input.model.trim().length > 0)
+                Harness.ok(name.trim().length > 0,
+                           "a monitor that said something has a name: " + JSON.stringify(name));
+        });
+    });
+};
+
+cases["a block of a table is read for its name, whatever is in the block"] = function () {
+    /*
+     * pci.ids is 1.4 MB of two-space separated names, and a truncated download
+     * or a line the format grew is a block that does not look like one. The
+     * name of a block that says nothing is nothing, and never a slice taken
+     * past the end of it.
+     */
+    Fuzz.forAll({ what: "the block name", runs: 500 }, function (random) {
+        let lines = [];
+        let count = random.below(4);
+        for (let i = 0; i < count; i++)
+            lines.push(random.pick(["", "\t", "\t\t"]) + Fuzz.text(random, 3) +
+                       random.pick(["  ", " ", ":", ""]) + Fuzz.text(random, 3));
+        return lines.join("\n");
+    }, function (input) {
+        let name = Fuzz.answers(() => Hardware._blockName(input));
+        Fuzz.isString(name, "the block name");
+        Harness.equal(name.indexOf("\n"), -1, "one line's worth of it: " + JSON.stringify(name));
+    });
 };
