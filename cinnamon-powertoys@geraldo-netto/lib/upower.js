@@ -263,10 +263,16 @@ var UPowerMonitor = class UPowerMonitor {
             }
             for (let path of paths)
                 this._addDevice(path, () => {
-                    if (--pending === 0) {
-                        this._onReady();
-                        this._onChanged();
-                    }
+                    if (--pending > 0)
+                        return;
+                    /* The applet can be removed while the enumeration is still
+                     * being answered, and the last answer arriving is not a
+                     * reason to call back into a menu that has been taken
+                     * down. Every other guard in here says the same. */
+                    if (this.destroyed)
+                        return;
+                    this._onReady();
+                    this._onChanged();
                 });
         });
     }
