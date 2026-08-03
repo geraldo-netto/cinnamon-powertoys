@@ -203,10 +203,13 @@ const SETTINGS = [
  * nothing back out of it. What to show arrives with each update.
  */
 class PanelPresenter {
-    constructor(applet, iconDir) {
+    constructor(applet, iconDir, onTooltip) {
         this._applet = applet;
         this._iconDir = iconDir;
         this._iconKey = null;
+        /* Whether the tooltip is on screen, which this is the only thing that
+         * knows; what the applet does with it is the applet's business. */
+        this._onTooltip = onTooltip || function () {};
 
         /*
          * Themes centre tooltips, which is right for the one-line label most
@@ -234,9 +237,22 @@ class PanelPresenter {
         this._readingOptions = null;
         if (tooltip) {
             let show = tooltip.show.bind(tooltip);
+            let hide = tooltip.hide.bind(tooltip);
             tooltip.show = () => {
                 this._writeTooltip();
                 show();
+                /*
+                 * Whether it went up is read back rather than assumed.
+                 * Cinnamon's show() declines when there is no text yet or no
+                 * pointer position to draw at, and `visible` is where it says
+                 * so - taking the call for the fact would leave the applet
+                 * being told a tooltip is on screen when none is.
+                 */
+                this._onTooltip(!!tooltip.visible);
+            };
+            tooltip.hide = () => {
+                hide();
+                this._onTooltip(false);
             };
         }
     }
@@ -1786,7 +1802,16 @@ class PowerToysApplet extends Applet.TextIconApplet {
             else
                 Main.notify(title, body);
         });
-        this._panel = new PanelPresenter(this, metadata.path + "/icons");
+        /*
+         * The pointer resting on the icon is the other reason to look for
+         * monitors (PT-145b). It is worth being clear about what it buys and
+         * what it does not: the tooltip names no monitor, so a probe fired
+         * from here shows nothing in the tooltip itself - it means the sliders
+         * are already right when the menu is opened next, and it costs I2C
+         * traffic on every hover across the panel.
+         */
+        this._panel = new PanelPresenter(this, metadata.path + "/icons",
+                                         shown => this._watchMonitors("tooltip", shown));
         this._hotkeyIds = [];
 
         this._bindSettings();
