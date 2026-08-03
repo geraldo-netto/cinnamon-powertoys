@@ -175,6 +175,44 @@ cases["a destroyed control lets go and stops answering"] = function () {
                       "and nothing reaches a daemon on behalf of an applet that has left");
 };
 
+cases["every call answers its caller, even where there is nothing to call"] = function () {
+    /*
+     * The contract this class shares with lib/ddc.js, which counts callbacks
+     * down to know when a group of monitors has finished. A control that says
+     * nothing when there is no proxy behind it is one a counting caller waits
+     * on for ever.
+     */
+    let screen = control(Backlight.SCREEN, null, new Error("no such name"));
+    let answered = 0;
+    screen.refresh(() => answered++);
+    screen.setPercentage(50, () => answered++);
+    screen.toggle(() => answered++);
+    screen.stepBy(2, () => answered++);
+    Harness.equal(answered, 4, "no proxy is an answer, not a silence");
+};
+
+cases["a call in flight when the applet leaves still answers"] = function () {
+    /* The other way out that said nothing: the applet is removed while the
+     * daemon is thinking about it, and whoever asked is still counting.
+     * Destroyed on the way out, as removing the applet mid-call would. */
+    let stub = proxy({ GetPercentage: 40, SetPercentage: 70, Toggle: 0 });
+    let screen = control(Backlight.KEYBOARD, stub);
+
+    let answered = 0;
+    for (let name of ["GetPercentageRemote", "SetPercentageRemote", "ToggleRemote"]) {
+        let real = stub[name];
+        stub[name] = function () {
+            screen.destroyed = true;
+            return real.apply(stub, arguments);
+        };
+    }
+
+    screen.refresh(() => answered++);
+    screen.setPercentage(70, () => answered++);
+    screen.toggle(() => answered++);
+    Harness.equal(answered, 3, "a reply for an applet that has gone is still a reply");
+};
+
 cases["a gathered flick is that many of the daemon's own notches"] = function () {
     /*
      * Not turned into a percentage: the notch is the daemon's to size and it

@@ -122,8 +122,10 @@ var BacklightControl = class BacklightControl {
             return;
         }
         this._proxy.GetPercentageRemote((result, error) => {
-            if (this.destroyed)
+            if (this.destroyed) {
+                done();
                 return;
+            }
             if (error || !result) {
                 this.available = false;
                 this.percentage = null;
@@ -135,36 +137,56 @@ var BacklightControl = class BacklightControl {
         });
     }
 
+    /*
+     * Every call here answers its caller exactly once, whatever happened.
+     *
+     * That is not politeness, it is the contract this class shares with
+     * lib/ddc.js: the two stand for the same thing to a slider, to the wheel
+     * over the panel and to the middle click, and a control that stays silent
+     * when there is no proxy or when the applet went away mid-flight is one a
+     * counting caller waits on for ever. DdcBacklight pays for the guarantee
+     * per monitor and says so; this said nothing and left three ways out
+     * without a word.
+     */
     setPercentage(value, onDone) {
-        if (!this._proxy)
+        let done = onDone || function () {};
+        if (!this._proxy) {
+            done();
             return;
+        }
         let wanted = Math.max(0, Math.min(100, Math.round(value)));
         this._proxy.SetPercentageRemote(wanted, (result, error) => {
-            if (this.destroyed)
+            if (this.destroyed) {
+                done();
                 return;
+            }
             /* The daemon answers with what it actually set, which is not
              * always what was asked for: some panels have far fewer steps. */
             if (!error && result)
                 this.percentage = result[0];
-            if (onDone)
-                onDone();
+            done();
         });
     }
 
     /*
      * The keyboard backlight's own toggle: off, or back to where it was. Only
-     * that interface has it, and on the others this does nothing.
+     * that interface has it, and on the others this does nothing - and says so,
+     * for the reason above.
      */
     toggle(onDone) {
-        if (!this._proxy || typeof this._proxy.ToggleRemote !== "function")
+        let done = onDone || function () {};
+        if (!this._proxy || typeof this._proxy.ToggleRemote !== "function") {
+            done();
             return;
+        }
         this._proxy.ToggleRemote((result, error) => {
-            if (this.destroyed)
+            if (this.destroyed) {
+                done();
                 return;
+            }
             if (!error && result)
                 this.percentage = result[0];
-            if (onDone)
-                onDone();
+            done();
         });
     }
 

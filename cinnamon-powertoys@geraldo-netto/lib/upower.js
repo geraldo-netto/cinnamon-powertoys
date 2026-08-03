@@ -383,6 +383,10 @@ var UPowerMonitor = class UPowerMonitor {
 
     destroy() {
         this.destroyed = true;
+        /* Every other backend here lowers this on the way out, and a reading
+         * taken from a torn down monitor would otherwise say UPower is
+         * available and hand back no devices at all. */
+        this.available = false;
         if (this._manager) {
             for (let id of this._busSignalIds) {
                 try {
