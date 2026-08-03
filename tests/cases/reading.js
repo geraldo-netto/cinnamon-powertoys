@@ -223,3 +223,152 @@ cases["a machine that measures no power says so rather than showing a zero"] = f
     Harness.deepEqual(Reading.pickPower(null, null, []), { watts: null, source: null },
                       "nothing measured is not nought watts");
 };
+
+/* ---------------------------------------------------------------- */
+/* the questions asked of a reading, over readings nobody wrote      */
+
+cases["which sensor the machine is judged by is always one that answered"] = function () {
+    /*
+     * This one number is the panel tooltip's temperature and the value the
+     * high temperature alert fires against, so picking a sensor that has no
+     * reading means an alert that can never fire and a tooltip line that is
+     * blank on a machine full of working sensors.
+     *
+     * Whatever the list, what comes back has to be a sensor from it that has a
+     * temperature, or nothing at all - and hintMatched has to agree with what
+     * was asked for.
+     */
+    let kinds = ["cpu", "gpu", "board", "disk", "battery", "other"];
+    let labels = ["Tctl", "Tdie", "Package id 0", "edge", "junction", "Composite", ""];
+
+    Fuzz.forAll({ what: "pickTemperature", runs: 500 }, random => {
+        let sensors = [];
+        let count = random.below(6);
+        for (let i = 0; i < count; i++) {
+            sensors.push({
+                id: "sensor:" + i,
+                kind: random.pick(kinds),
+                chip: random.pick(["k10temp", "amdgpu", "nvme", "acpitz", ""]),
+                rawLabel: random.pick(labels),
+                celsius: random.chance(3) ? null : random.between(-40, 120),
+            });
+        }
+        return { sensors: sensors, hint: random.chance(3) ? Fuzz.text(random, 2) : "" };
+    }, input => {
+        let picked = Fuzz.answers(() => Reading.pickTemperature(input.sensors, input.hint));
+
+        if (picked.sensor !== null) {
+            if (input.sensors.indexOf(picked.sensor) < 0)
+                throw new Error("picked a sensor that is not in the list");
+            if (picked.sensor.celsius === null)
+                throw new Error("picked a sensor with no reading");
+        } else if (input.sensors.some(sensor => sensor.celsius !== null)) {
+            throw new Error("picked nothing while something was readable");
+        }
+
+        let asked = (input.hint || "").trim() !== "";
+        if (!asked && picked.hintMatched !== null)
+            throw new Error("nothing was asked for, and hintMatched is " + picked.hintMatched);
+        if (asked && picked.sensor === null && picked.hintMatched !== null)
+            throw new Error("nothing readable at all, and hintMatched is " + picked.hintMatched);
+        if (picked.hintMatched === true && picked.sensor === null)
+            throw new Error("matched a hint against nothing");
+    });
+};
+
+cases["a hint that matches nothing is said so rather than ignored"] = function () {
+    /* There is no other way to find out a typed name was not recognised: the
+     * applet quietly falls back to the processor and the row somebody was
+     * looking for never appears. */
+    let sensors = [{ id: "a", kind: "cpu", chip: "k10temp", rawLabel: "Tctl", celsius: 50 }];
+    Harness.equal(Reading.pickTemperature(sensors, "k10temp").hintMatched, true, "chip matched");
+    Harness.equal(Reading.pickTemperature(sensors, "Tctl").hintMatched, true, "label matched");
+    Harness.equal(Reading.pickTemperature(sensors, "nvme").hintMatched, false,
+                  "asked for, and not there");
+    Harness.equal(Reading.pickTemperature(sensors, "  ").hintMatched, null, "asked for nothing");
+    Harness.equal(Reading.pickTemperature([], "k10temp").hintMatched, null,
+                  "nothing readable, so the hint was never the reason");
+};
+
+cases["the power figure always says which power it is"] = function () {
+    /*
+     * These measure very different things - a whole machine on battery, a
+     * processor package, a graphics card - so a number without its source is
+     * misleading rather than incomplete: a desktop that cannot read its RAPL
+     * counters would show the card's 54 W as if it were the lot.
+     */
+    Fuzz.forAll({ what: "pickPower", runs: 400 }, random => ({
+        primary: random.chance(3) ? null : {
+            state: random.pick([UPowerGlib.DeviceState.DISCHARGING,
+                                UPowerGlib.DeviceState.CHARGING,
+                                UPowerGlib.DeviceState.FULLY_CHARGED]),
+            energyRate: random.chance(3) ? null : random.between(0, 90),
+        },
+        packageWatts: random.chance(2) ? null : random.between(0, 200),
+        powers: [0, 1, 2].slice(0, random.below(3)).map(i => ({
+            kind: random.pick(["gpu", "package", "battery"]),
+            watts: random.between(0, 200),
+        })),
+    }), input => {
+        let power = Fuzz.answers(() =>
+            Reading.pickPower(input.primary, input.packageWatts, input.powers));
+
+        if (power.watts === null) {
+            if (power.source !== null)
+                throw new Error("no figure, but a source of " + power.source);
+            return;
+        }
+        if (typeof power.watts !== "number" || !Number.isFinite(power.watts))
+            throw new Error("a figure of " + String(power.watts));
+        if (["battery", "package", "gpu"].indexOf(power.source) < 0)
+            throw new Error("a figure from " + String(power.source));
+
+        /* And the text that goes with it names that source, since the two are
+         * shown together and never apart. */
+        let text = Reading.powerText({ systemWatts: power.watts, systemWattsSource: power.source });
+        Fuzz.isText(text, "the power text");
+        if (text.indexOf("W") < 0)
+            throw new Error("no unit in " + JSON.stringify(text));
+    });
+};
+
+cases["the panel says which power it is, except where it cannot be anything else"] = function () {
+    /* Every character costs on a panel. What a battery is losing is the whole
+     * machine and needs no explanation; the other two are one part of it, and
+     * a bare number there reads as system power when it is not. */
+    Harness.equal(Reading.panelPowerText({ systemWatts: 12, systemWattsSource: "battery" }),
+                  "12 W", "on battery, the number alone");
+    Harness.equal(Reading.panelPowerText({ systemWatts: 54, systemWattsSource: "gpu" }),
+                  "54 W (GPU)", "a graphics card says so");
+    Harness.equal(Reading.panelPowerText({ systemWatts: 54, systemWattsSource: "package" }),
+                  "54 W (package)", "and so does a processor package");
+    Harness.equal(Reading.panelPowerText({ systemWatts: null, systemWattsSource: null }), "",
+                  "and nothing is nothing");
+};
+
+cases["a source with no name of its own is named as nothing"] = function () {
+    /* The label is concatenated into a line, so a source this does not know
+     * has to answer with a string. Anything else reaches the panel as itself. */
+    Harness.equal(Reading.powerSourceLabel("battery"), "battery", "one it knows");
+    Harness.equal(Reading.powerSourceLabel("something-new"), "",
+                  "and one it does not, as text rather than as nothing");
+    Harness.equal(Reading.powerSourceLabel(null), "", "or as no source at all");
+};
+
+cases["one graphics card on its own is still the machine's power figure"] = function () {
+    /*
+     * The last resort, and the common one on a desktop: no battery to measure
+     * and RAPL counters this user cannot read, so what is left is whatever the
+     * cards report. One card is a machine, not a special case.
+     */
+    let one = Reading.pickPower(null, null, [{ kind: "gpu", watts: 54 }]);
+    Harness.equal(one.watts, 54, "the one card");
+    Harness.equal(one.source, "gpu", "and it says so");
+
+    let two = Reading.pickPower(null, null,
+                                [{ kind: "gpu", watts: 54 }, { kind: "gpu", watts: 20 }]);
+    Harness.equal(two.watts, 74, "two cards are added together");
+
+    let none = Reading.pickPower(null, null, [{ kind: "battery", watts: 9 }]);
+    Harness.equal(none.watts, null, "and a meter that is not a card is not the machine");
+};
