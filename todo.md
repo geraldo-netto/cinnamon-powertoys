@@ -15,7 +15,6 @@ own — items that are genuinely a single change were left whole.
 
 | id | severity | effort | description |
 |----|----------|--------|-------------|
-| PT-147 | low | XS | The probe timer runs on machines where a probe can never fire. [`_watchMonitors`](cinnamon-powertoys@geraldo-netto/applet.js#L2055) arms on any reason, and the guard that decides whether looking is even allowed — the setting on, no kernel backlight — lives in [`_probeMonitors`](cinnamon-powertoys@geraldo-netto/applet.js#L2093), inside the tick. So on every laptop with a kernel backlight, which is most machines, each hover and every open menu spins a once-a-second timer whose every tick does nothing, against a comment that says the timer does not exist while there is nobody to spend it on. Checking the same condition before arming closes it; the condition can change while a reason is held (the settings daemon answers late, the setting is toggled), so either re-ask at those two moments — both already reach [`_considerMonitorBacklight`](cinnamon-powertoys@geraldo-netto/applet.js#L2006) — or accept one no-op tick and stop the timer from inside it. |
 
 ## Seams and contracts
 

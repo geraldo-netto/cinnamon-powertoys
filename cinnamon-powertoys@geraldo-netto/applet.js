@@ -2004,12 +2004,14 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * off will look at is whether the sliders went.
      */
     _considerMonitorBacklight() {
-        if (!this.monitorBrightness) {
+        if (!this.monitorBrightness)
             this._backlights.monitor.stop();
-            return;
-        }
-        if (!this._backlights.screen.available)
+        else if (!this._backlights.screen.available)
             this._backlights.monitor.start();
+        /* Both of the answers above can move under a reason that is already
+         * held - the daemon answering late, the setting switched with the menu
+         * open - and the watch is armed from them. See _considerProbing. */
+        this._considerProbing();
     }
 
     /*
@@ -2053,14 +2055,32 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * when it was looked for.
      */
     _watchMonitors(reason, wanted) {
-        if (this._destroyed)
-            return;
         if (wanted)
             this._probeReasons.add(reason);
         else
             this._probeReasons.delete(reason);
+        this._considerProbing();
+    }
 
-        if (this._probeReasons.size === 0) {
+    /*
+     * Arm the timer, or drop it, from what is true now.
+     *
+     * Two things have to hold for it to exist: somebody is looking, and there
+     * is something a look could find. The second was asked inside the tick and
+     * not before it, so on every machine with a kernel backlight of its own -
+     * which is every laptop, and the common case - each hover and each open
+     * menu started a timer whose every tick did nothing at all, against a
+     * comment saying the timer does not exist while there is nobody to spend
+     * it on.
+     *
+     * It is asked here rather than only at the two moments a reason arrives
+     * because the answer moves under a reason that is already held: the
+     * settings daemon can say late that there is a kernel backlight, and the
+     * setting can be switched with the menu open. Both of those already reach
+     * _considerMonitorBacklight, which asks again on the way out.
+     */
+    _considerProbing() {
+        if (this._destroyed || this._probeReasons.size === 0 || !this._canProbeMonitors()) {
             this._stopProbingMonitors();
             return;
         }
@@ -2074,6 +2094,18 @@ class PowerToysApplet extends Applet.TextIconApplet {
         });
     }
 
+    /*
+     * Whether looking for a monitor could find one worth having.
+     *
+     * The setting says whether this is wanted at all, and anything the settings
+     * daemon can drive has a kernel backlight and is not this applet's to find.
+     * Neither is about the moment - they are about the machine - which is why
+     * this decides whether the timer exists rather than what each tick does.
+     */
+    _canProbeMonitors() {
+        return !!this.monitorBrightness && !this._backlights.screen.available;
+    }
+
     _stopProbingMonitors() {
         if (this._probeTimerId) {
             Mainloop.source_remove(this._probeTimerId);
@@ -2084,14 +2116,13 @@ class PowerToysApplet extends Applet.TextIconApplet {
     /*
      * One look for monitors, from wherever the reason came from.
      *
-     * Anything the settings daemon can drive has a kernel backlight and is not
-     * this applet's to find, hence the same guard as the first probe. A probe
-     * that lands while the last one is still out is dropped by the control
-     * itself rather than queued (PT-145c), so nothing here has to know how
-     * long ddcutil is taking.
+     * A probe that lands while ddcutil is already talking to this machine is
+     * dropped by the control itself rather than queued (PT-145c, PT-146), so
+     * nothing here has to know how long ddcutil is taking or what else is on
+     * the bus.
      */
     _probeMonitors() {
-        if (this.monitorBrightness && !this._backlights.screen.available)
+        if (this._canProbeMonitors())
             this._backlights.monitor.redetect();
     }
 
