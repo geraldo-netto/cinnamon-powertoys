@@ -197,7 +197,8 @@ const SETTINGS = [
  *
  * It is given the applet only to reach the four calls that put something on
  * the panel - label, symbolic icon, icon actor and tooltip - and reads
- * nothing back out of it. What to show arrives with each update.
+ * nothing back out of it. What to show arrives with each update, and what any
+ * of it should say is lib/panel-text.js; what is left here is the putting.
  */
 class PanelPresenter {
     constructor(applet, iconDir, onTooltip) {
@@ -2546,17 +2547,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
         return state;
     }
 
-    /* Known names first, so stepping always runs power saver, balanced,
-     * performance, with anything unusual the backend offers appended. */
-    _orderedProfiles(state) {
-        let ordered = Profiles.PROFILE_ORDER.filter(name => state.list.indexOf(name) >= 0);
-        for (let name of state.list) {
-            if (ordered.indexOf(name) < 0)
-                ordered.push(name);
-        }
-        return ordered;
-    }
-
     /*
      * One step along that list, from the profile that has been asked for
      * rather than from the one the machine has got round to.
@@ -2581,20 +2571,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
         if (!state)
             return false;
 
-        let ordered = this._orderedProfiles(state);
         let from = Reading.shownProfile(this._latest, { pendingProfile: this._pending.value });
-        let index = ordered.indexOf(from);
-        if (index < 0)
-            index = 0;
-
-        let target = index + step;
-        if (wrap)
-            target = (target + ordered.length) % ordered.length;
-        else
-            target = Math.max(0, Math.min(ordered.length - 1, target));
-
-        let name = ordered[target];
-        if (name === from)
+        let name = Profiles.nextProfile(state.list, from, step, wrap);
+        if (!name)
             return false;
 
         /* Announced only where the call was taken, which is the whole of what

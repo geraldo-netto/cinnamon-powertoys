@@ -35,8 +35,68 @@ function _interfaceXml(name) {
 </node>';
 }
 
-/* Order is meaningful: it is the order used when cycling profiles. */
-var PROFILE_ORDER = ["power-saver", "balanced", "performance"];
+/*
+ * The profiles in the order stepping runs through them: the wheel, the hotkey
+ * and the middle click.
+ *
+ * It is the backend's own order, and that is the whole rule. Both of them
+ * publish their profiles from the least performant to the most - the daemon
+ * says so on its interface, and platform_profile_choices is printed from the
+ * kernel's own enum, which runs low-power, cool, quiet, balanced,
+ * balanced-performance, performance - so the backend has already answered the
+ * only question stepping asks, which is which way is up.
+ *
+ * This used to put three known names first and append everything else, so that
+ * stepping "always runs power saver, balanced, performance". On
+ * power-profiles-daemon that changes nothing, since those three in that order
+ * are exactly what it publishes; it was never tried against anything else. The
+ * ACPI platform profile is anything else: a firmware offering
+ * `low-power balanced performance` has only two names on the list, so it came
+ * out as balanced, performance, low-power. One flick of the wheel upward from
+ * balanced reached performance and the next reached the machine's lowest
+ * profile, and the segmented control two inches away drew the same three
+ * profiles in the order the firmware gave them. One control, two orders.
+ *
+ * The names with nothing in them are dropped rather than stepped onto, since
+ * a profile that cannot be asked for is not a stop on the way to one that can.
+ */
+function orderedProfiles(list) {
+    return (list || []).filter(name => typeof name === "string" && name !== "");
+}
+
+/*
+ * The profile a step of the wheel, the hotkey or the middle click lands on, or
+ * null where it lands where it already was.
+ *
+ * `from` is the profile being shown rather than the one the machine has got
+ * round to - those differ for as long as a change is in flight, which on the
+ * firmware path is as long as a password dialog is on screen - and a step that
+ * comes to the same name is not a change, so the caller can tell the wheel to
+ * do nothing rather than write a profile that is already asked for.
+ *
+ * The wheel clamps and the hotkey wraps: stopping at performance is what a
+ * wheel does at the end of its travel, and coming round again is what a single
+ * key that cycles has to do. A `from` that is not on the list at all - the
+ * daemon changed its profiles while a change was pending - starts at the
+ * beginning rather than nowhere.
+ */
+function nextProfile(list, from, step, wrap) {
+    let ordered = orderedProfiles(list);
+    if (ordered.length === 0)
+        return null;
+
+    let at = ordered.indexOf(from);
+    if (at < 0)
+        at = 0;
+
+    let target = at + step;
+    if (wrap)
+        target = ((target % ordered.length) + ordered.length) % ordered.length;
+    else
+        target = Math.max(0, Math.min(ordered.length - 1, target));
+
+    return ordered[target] === from ? null : ordered[target];
+}
 
 /*
  * The profile names a proxy really offers.
@@ -330,7 +390,7 @@ var PowerProfilesClient = class PowerProfilesClient {
     }
 
     /* Stepping through profiles lives in the applet, which also has to handle
-     * the ACPI platform profile fallback; PROFILE_ORDER above is the shared
+     * the ACPI platform profile fallback; orderedProfiles above is the shared
      * part. */
 
     destroy() {

@@ -424,3 +424,117 @@ cases["whatever the daemon answers with reads as a menu can draw it"] = function
         client.destroy();
     });
 };
+
+/* ------------------------------------------------------------------ */
+/* stepping                                                            */
+
+/* Every list this applet can be handed, in the order the backend gives it:
+ * the daemon's own three, and what the kernel prints for a firmware that
+ * offers three, four or two profiles. */
+const DAEMON = ["power-saver", "balanced", "performance"];
+const THINKPAD = ["low-power", "balanced", "performance"];
+const QUIET_FIRST = ["quiet", "balanced", "balanced-performance", "performance"];
+
+cases["stepping follows the order the backend published"] = function () {
+    /*
+     * Both backends list their profiles from the least performant to the
+     * most - the daemon says so on its interface, and platform_profile_choices
+     * is printed from the kernel's own enum, which runs low-power, cool,
+     * quiet, balanced, balanced-performance, performance. So the backend has
+     * already answered the only question stepping asks, which is which way is
+     * up.
+     */
+    Harness.deepEqual(Profiles.orderedProfiles(THINKPAD), THINKPAD, "as the firmware said it");
+    Harness.deepEqual(Profiles.orderedProfiles(DAEMON), DAEMON, "and as the daemon said it");
+};
+
+cases["a name with nothing in it is not a stop on the way"] = function () {
+    Harness.deepEqual(Profiles.orderedProfiles(["balanced", "", "performance"]),
+                      ["balanced", "performance"], "an empty name is not a profile");
+    Harness.deepEqual(Profiles.orderedProfiles(null), [], "and no list is no profiles");
+};
+
+cases["the wheel steps up towards performance on firmware too"] = function () {
+    /*
+     * This is what the ordering was wrong about. Three known names were put
+     * first and everything else appended, which on power-profiles-daemon is
+     * exactly what it publishes and changes nothing - and on a ThinkPad, whose
+     * lowest profile is called low-power, put that profile last. Scrolling up
+     * from balanced reached performance and then the machine's *lowest*
+     * setting, and scrolling down from balanced was clamped, so the low one
+     * could only be got at by going up twice.
+     */
+    Harness.equal(Profiles.nextProfile(THINKPAD, "balanced", 1, false), "performance", "up");
+    Harness.equal(Profiles.nextProfile(THINKPAD, "balanced", -1, false), "low-power", "and down");
+    Harness.equal(Profiles.nextProfile(THINKPAD, "performance", 1, false), null,
+                  "and the top of the travel is the top");
+    Harness.equal(Profiles.nextProfile(THINKPAD, "low-power", -1, false), null,
+                  "as is the bottom");
+};
+
+cases["what the wheel steps is what the buttons draw"] = function () {
+    /*
+     * The segmented control draws the backend's list as it stands, and it sits
+     * two inches from the pointer that is turning the wheel. One control with
+     * two orders in it is the whole of what was wrong here, so the property is
+     * stated rather than the three examples: stepping up from any profile
+     * lands on the one drawn to its right.
+     */
+    for (let list of [DAEMON, THINKPAD, QUIET_FIRST]) {
+        for (let i = 0; i < list.length - 1; i++) {
+            Harness.equal(Profiles.nextProfile(list, list[i], 1, false), list[i + 1],
+                          list[i] + " steps up to the one beside it in " + list.join(", "));
+            Harness.equal(Profiles.nextProfile(list, list[i + 1], -1, false), list[i],
+                          "and back down to it again");
+        }
+    }
+};
+
+cases["a gathered flick moves by as many notches as it counted"] = function () {
+    /* The wheel gathers a flick into one write rather than sending a step per
+     * click, so what arrives here is a count. */
+    Harness.equal(Profiles.nextProfile(QUIET_FIRST, "quiet", 3, false), "performance",
+                  "three notches");
+    Harness.equal(Profiles.nextProfile(QUIET_FIRST, "quiet", 9, false), "performance",
+                  "and past the end is the end, not nothing");
+    Harness.equal(Profiles.nextProfile(QUIET_FIRST, "performance", -9, false), "quiet",
+                  "the same the other way");
+};
+
+cases["the hotkey comes round again where the wheel stops"] = function () {
+    /* One key that cycles has to wrap, or it does nothing at all once it has
+     * reached the end. */
+    Harness.equal(Profiles.nextProfile(THINKPAD, "performance", 1, true), "low-power",
+                  "round to the bottom");
+    Harness.equal(Profiles.nextProfile(THINKPAD, "low-power", -1, true), "performance",
+                  "and round the other way");
+    Harness.equal(Profiles.nextProfile(THINKPAD, "balanced", 4, true), "performance",
+                  "and a step longer than the list still lands on the list");
+};
+
+cases["a step that lands where it started is not a change"] = function () {
+    /*
+     * The caller writes a profile only where there is one to write: asking for
+     * the profile already in force, or already in flight, is a duplicate that
+     * the pending profile would drop anyway - and the hotkey announces
+     * whatever it was told was taken.
+     */
+    Harness.equal(Profiles.nextProfile(DAEMON, "balanced", 0, false), null, "no notches");
+    Harness.equal(Profiles.nextProfile(["balanced"], "balanced", 1, true), null,
+                  "and a machine with one profile has nowhere to go");
+};
+
+cases["a machine with no profiles has nothing to step to"] = function () {
+    Harness.equal(Profiles.nextProfile([], "balanced", 1, false), null, "no list");
+    Harness.equal(Profiles.nextProfile(["", ""], "balanced", 1, true), null,
+                  "and nothing usable in one");
+};
+
+cases["a profile that is not on the list starts from the beginning"] = function () {
+    /* The daemon can change what it offers while a change is pending, and a
+     * step from a name that is no longer there has to land somewhere. */
+    Harness.equal(Profiles.nextProfile(THINKPAD, "vendor-turbo", 1, false), "balanced",
+                  "as though it were at the bottom");
+    Harness.equal(Profiles.nextProfile(THINKPAD, null, 1, false), "balanced",
+                  "and so does a machine that has not said yet");
+};

@@ -747,6 +747,12 @@ cases["the charger is the one device kept on the other list"] = function () {
     Harness.deepEqual(reading.lines.map(entry => entry.path), [mains], "the charger, on its own list");
     Harness.deepEqual(reading.devices.map(entry => entry.path), [BAT0], "and not on the other one");
     Harness.equal(reading.lineOnline, true, "the cable is in");
+
+    /* The same two questions asked one at a time, which is what a caller that
+     * wants only one of them does - and the answer has to be the reading's. */
+    Harness.deepEqual(monitor.lineDevices().map(entry => entry.path), [mains],
+                      "asked on its own");
+    Harness.deepEqual(monitor.snapshot().map(entry => entry.path), [BAT0], "and so is the other");
     monitor.destroy();
 };
 
