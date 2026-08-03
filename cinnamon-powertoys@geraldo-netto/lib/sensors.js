@@ -11,8 +11,9 @@ const GLib = imports.gi.GLib;
 const Format = require("./lib/format.js");
 const Hardware = require("./lib/hardware.js");
 const IO = require("./lib/io.js");
+const Translate = require("./lib/gettext.js");
 
-const _ = Format._;
+const _ = Translate._;
 
 var HWMON_DIR = "/sys/class/hwmon";
 var THERMAL_DIR = "/sys/class/thermal";

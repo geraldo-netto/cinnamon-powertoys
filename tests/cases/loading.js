@@ -122,6 +122,34 @@ cases["the loader emulation's import names are Cinnamon's own"] = function () {
                       "copy it verbatim, capitals and all - see the note on the list");
 };
 
+/*
+ * Where a file gets its translator from.
+ *
+ * lib/sensors.js took `_` off lib/format.js, which works only because the
+ * loader re-exports every top level declaration - so format.js was handing on a
+ * `const` it never meant to publish, and sensors.js depended on it for a reason
+ * that has nothing to do with formatting. The one file that owns the text
+ * domain is lib/gettext.js, and asking anything else for it is asking a file
+ * that happens to have already asked.
+ */
+cases["a file that translates asks lib/gettext.js for the translator"] = function () {
+    let wrong = [];
+    let checked = 0;
+
+    for (let file of sourceFiles()) {
+        let source = Harness.readFile(file);
+        let match = /(?:const|var|let)\s+_\s*=\s*([A-Za-z_$][\w$]*)\._\s*;/.exec(source);
+        if (!match)
+            continue;
+        checked++;
+        if (requiresIn(source)[match[1]] !== "gettext")
+            wrong.push(file.replace(Harness.xletDir() + "/", "") + " takes _ from " + match[1]);
+    }
+
+    Harness.deepEqual(wrong, [], "second hand translators");
+    Harness.ok(checked > 4, "only " + checked + " files checked, which is too few to be right");
+};
+
 cases["the libraries load without a shell"] = function () {
     /* lib/log.js exists so that nothing in lib/ touches Cinnamon's globals at
      * load time. If something starts to, this is where it shows. */
