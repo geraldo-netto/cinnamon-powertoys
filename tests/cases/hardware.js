@@ -185,3 +185,172 @@ cases["a company name is tidied to what is on the box"] = function () {
     Harness.equal(Hardware.tidyVendorName("Inc"), "Inc",
                   "the last word is never taken, or nothing is left");
 };
+
+/* ---------------------------------------------------------------- */
+/* the table parsing, at its edges                                   */
+
+cases["a block's name is what follows the two spaces"] = function () {
+    /*
+     * pci.ids separates an id from its name with exactly two spaces, and the
+     * name is everything after them. A block is one line or many, and the
+     * first line is the one that names it.
+     */
+    Harness.equal(Hardware._blockName("1002  Advanced Micro Devices"),
+                  "Advanced Micro Devices", "a block of one line");
+    Harness.equal(Hardware._blockName("1002  AMD\n\t164e  Raphael\n"), "AMD",
+                  "and the first line of a block of several");
+    Harness.equal(Hardware._blockName("1002 AMD"), "",
+                  "one space is not the separator, so there is no name here");
+    Harness.equal(Hardware._blockName("  starts with the separator"), "starts with the separator",
+                  "a line that opens with it still has a name after it");
+    Harness.equal(Hardware._blockName(""), "", "and nothing has none");
+};
+
+cases["a device block ends where the next unindented line begins"] = function () {
+    /*
+     * Devices are one tab in and their subsystems two, so a device's own block
+     * runs to the next line that is not two tabs in. Taking one character too
+     * few loses the newline the next search needs; one too many swallows the
+     * device after it, and its subsystems with it.
+     */
+    let vendor = "1002  AMD\n" +
+                 "\t73ff  Navi 23\n" +
+                 "\t\t1849 5001  Phantom Gaming\n" +
+                 "\t164e  Raphael\n";
+
+    let navi = Hardware._deviceBlock(vendor, "73ff");
+    Harness.equal(navi.indexOf("73ff  Navi 23") >= 0, true, "the device is in it");
+    Harness.equal(navi.indexOf("1849 5001") >= 0, true, "and its subsystem with it");
+    Harness.equal(navi.indexOf("Raphael"), -1, "and not the device after it");
+
+    let raphael = Hardware._deviceBlock(vendor, "164e");
+    Harness.equal(raphael.indexOf("Raphael") >= 0, true, "the last device runs to the end");
+    Harness.equal(Hardware._deviceBlock(vendor, "ffff"), null, "and one that is not there is null");
+
+    /* A block whose very first character starts the device, which is what a
+     * search finding position nought means. */
+    let leading = "\n\t73ff  Navi 23\n";
+    Harness.ok(Hardware._deviceBlock(leading, "73ff") !== null,
+               "a device at the very start of a block is still found");
+};
+
+cases["a subsystem is only used where the device really has one"] = function () {
+    /*
+     * A subsystem id names the card somebody bought - "Phantom Gaming Radeon
+     * RX 6600" - where the device id names only the chip on it. Most cards are
+     * not in the table under their subsystem, and a card whose subsystem
+     * vendor is 0000 has none at all, so all three parts have to be there
+     * before the lookup is worth making.
+     */
+    on("machine", function () {
+        let text = IO.readString("/usr/share/misc/pci.ids");
+
+        let board = Hardware._resolve(text, { vendor: "1002", device: "73ff",
+                                              subVendor: "1849", subDevice: "5001" });
+        Harness.equal(board, "ASRock Phantom Gaming Radeon RX 6600",
+                      "the board, with the maker in front of it");
+
+        let chip = Hardware._resolve(text, { vendor: "1002", device: "73ff",
+                                             subVendor: null, subDevice: null });
+        Harness.equal(chip, "Radeon RX 6600/6600 XT/6600M", "no subsystem, so the chip");
+
+        let unnamed = Hardware._resolve(text, { vendor: "1002", device: "73ff",
+                                                subVendor: "0000", subDevice: "0000" });
+        Harness.equal(unnamed, "Radeon RX 6600/6600 XT/6600M",
+                      "a subsystem vendor of nought names nobody");
+
+        let halfway = Hardware._resolve(text, { vendor: "1002", device: "73ff",
+                                                subVendor: "1849", subDevice: null });
+        Harness.equal(halfway, "Radeon RX 6600/6600 XT/6600M", "half a subsystem is not one");
+
+        let vendorOnly = Hardware._resolve(text, { vendor: "1002", device: "ffff",
+                                                   subVendor: null, subDevice: null });
+        Harness.equal(vendorOnly, "AMD",
+                      "a device nobody has heard of still knows whose it is");
+
+        Harness.equal(Hardware._resolve(text, { vendor: "ffff", device: "0001" }), null,
+                      "and a vendor nobody has heard of is nothing at all");
+    });
+};
+
+cases["a board that already names its maker does not name it twice"] = function () {
+    on("machine", function () {
+        let text = IO.readString("/usr/share/misc/pci.ids");
+        /* XFX Limited's own entry, where the board name opens with the maker.
+         * Prefixing it again would draw "XFX XFX Speedster". */
+        let name = Hardware._resolve(text, { vendor: "1002", device: "73ff",
+                                             subVendor: "1eae", subDevice: "9999" });
+        Harness.equal(name, "Radeon RX 6600/6600 XT/6600M",
+                      "no subsystem entry for that pair, so the chip stands");
+    });
+};
+
+cases["one address asked about twice is looked up once"] = function () {
+    /*
+     * The sensor sweep hands over one address per chip, and a machine with a
+     * graphics card that reports temperatures, fans and power hands over the
+     * same address three times. Reading the table again for each would be
+     * 1.4 MB three times over.
+     */
+    on("machine", function () {
+        let reads = 0;
+        let real = IO.readString;
+        IO.readString = function (path) {
+            if (path.indexOf("pci.ids") >= 0)
+                reads++;
+            return real(path);
+        };
+        try {
+            let names = Hardware.pciDeviceNames(["03:00.0", "03:00.0", "03:00.0"]);
+            Harness.equal(reads, 1, "the table was read once");
+            Harness.equal(Object.keys(names).length <= 1, true,
+                          "and one address is one answer");
+        } finally {
+            IO.readString = real;
+        }
+    });
+};
+
+cases["an address that is nothing at all is not looked up"] = function () {
+    on("machine", function () {
+        let names = Hardware.pciDeviceNames([null, "", undefined]);
+        Harness.deepEqual(names, {}, "nothing to name");
+    });
+};
+
+/* ---------------------------------------------------------------- */
+/* names, at their edges                                             */
+
+cases["the first word of a company name is not dropped as a company word"] = function () {
+    /*
+     * The words dropped from a registered name are the ones every registered
+     * name has - Inc, Ltd, Electronics - and they are dropped from the end.
+     * A name that is only one of those words is that company's whole name and
+     * has to stay, or a monitor ends up made by nobody.
+     */
+    Harness.equal(Hardware.tidyVendorName("Dell Inc."), "Dell", "the suffix goes");
+    Harness.equal(Hardware.tidyVendorName("LG Electronics Inc."), "LG", "and two of them go");
+    Harness.equal(Hardware.tidyVendorName("Inc"), "Inc",
+                  "a name that is nothing but a company word is still the name");
+    Harness.equal(Hardware.tidyVendorName("Samsung Electric Company"), "Samsung", "tidied");
+    Harness.equal(Hardware.tidyVendorName(""), "", "and nothing stays nothing");
+};
+
+cases["a monitor with only half a name is named by that half"] = function () {
+    Harness.equal(Hardware.monitorName("", "U2415"), "U2415",
+                  "no maker, so the model is the name");
+    Harness.equal(Hardware.monitorName("DEL", ""), "Dell",
+                  "no model, so the maker is");
+    Harness.equal(Hardware.monitorName("", ""), "", "and neither is nothing");
+};
+
+cases["a model that already opens with its maker is left alone"] = function () {
+    /* EDID strings are written by whoever assembled the monitor, and some of
+     * them repeat the maker. "Dell Dell U2415" is the failure. */
+    Harness.equal(Hardware.monitorName("DEL", "DELL U2415"), "Dell U2415",
+                  "the code at the front is replaced by the name");
+    Harness.equal(Hardware.monitorName("DEL", "Dell U2415"), "Dell U2415",
+                  "and the name at the front is left where it is");
+    Harness.equal(Hardware.monitorName("DEL", "U2415"), "Dell U2415",
+                  "while a model that says nothing about its maker gets one");
+};
