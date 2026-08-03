@@ -1334,6 +1334,19 @@ class MenuPresenter {
         this._brightnessGroup.setVisible(
             this._backlightSliders.some(slider => slider.actor.visible) ||
             this._monitorList.items.length > 0);
+
+        /*
+         * And the column that group is in, which is only otherwise decided by
+         * a whole update.
+         *
+         * A monitor answering the probe while the menu is open shows the group
+         * here, but where the profile and the processor are both hidden - no
+         * daemon, and the processor switched off - the group it just appeared
+         * in belongs to a column that is not on screen, and nothing would put
+         * it there until the next poll. Cheap, and settles to the same answer
+         * when the update that follows asks again.
+         */
+        this._syncColumns();
     }
 
     /*
