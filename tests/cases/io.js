@@ -114,6 +114,49 @@ cases["a listing is in the order a person would put it in"] = function () {
     });
 };
 
+/* An enumerator that answers a few names and then does what a real one does
+ * when the directory has gone: it raises. */
+function brokenEnumerator(names) {
+    let at = 0;
+    return {
+        closed: false,
+        next_file: function () {
+            if (at < names.length)
+                return { get_name: () => names[at++] };
+            throw new Error("No such file or directory");
+        },
+        close: function () {
+            this.closed = true;
+        },
+    };
+}
+
+cases["a listing that fails half way is what it read, not a throw"] = function () {
+    /*
+     * A card being unbound while its hwmon entries are listed is a directory
+     * that goes away under the enumerator, and this was the one call in the
+     * file that let that out: the throw went up through the sensor sweep into
+     * the poll timer's callback, which then returned nothing, which GLib takes
+     * as SOURCE_REMOVE. One unlucky moment stopped the poll for the session.
+     */
+    let enumerator = brokenEnumerator(["hwmon0", "hwmon1"]);
+    Harness.deepEqual(IO._drain(enumerator), ["hwmon0", "hwmon1"],
+                      "what it managed before it stopped");
+    Harness.equal(enumerator.closed, true, "and the handle is let go of anyway");
+};
+
+cases["a listing lets go of the handle even when closing is what fails"] = function () {
+    let names = ["a", "b"];
+    let at = 0;
+    let asked = false;
+    let enumerator = {
+        next_file: () => (at < names.length ? { get_name: () => names[at++] } : null),
+        close: () => { asked = true; throw new Error("cannot close"); },
+    };
+    Harness.deepEqual(IO._drain(enumerator), ["a", "b"], "every name");
+    Harness.equal(asked, true, "and closing was asked for");
+};
+
 cases["a number is a finite number or it is nothing"] = function () {
     Harness.equal(IO.toNumber("42"), 42, "a whole one");
     Harness.equal(IO.toNumber("-40000"), -40000, "a negative one");

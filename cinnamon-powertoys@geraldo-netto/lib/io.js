@@ -156,18 +156,48 @@ function naturalCompare(a, b) {
     return 0;
 }
 
-function listDir(path) {
+/*
+ * Everything an open enumerator has to say, and the handle closed whatever it
+ * said.
+ *
+ * Opening was inside a try and reading was not, which left this the one call in
+ * the file that could throw: next_file answers with an error of its own when
+ * the directory goes away under it - a card being unbound while its hwmon
+ * entries are listed is exactly that - and the throw went up through
+ * SensorSet.discover into the poll timer's own callback, which then returned
+ * nothing at all. GLib reads that as SOURCE_REMOVE, so one directory
+ * disappearing at the wrong moment stopped the poll for the rest of the
+ * session and the panel kept whatever it last held.
+ *
+ * What was read before it stopped is kept, because half a sweep is a sweep and
+ * the next one is seconds away. The handle is closed on the way out either
+ * way; it was only closed on the path that did not need it most.
+ */
+function _drain(enumerator) {
     let names = [];
+    try {
+        let info;
+        while ((info = enumerator.next_file(null)) !== null)
+            names.push(info.get_name());
+    } catch (e) {
+        /* the directory went away, or the read failed; keep what came back */
+    } finally {
+        try {
+            enumerator.close(null);
+        } catch (e) {
+            /* already closed, or closing is what failed */
+        }
+    }
+    return names;
+}
+
+function listDir(path) {
     let enumerator;
     try {
         enumerator = Gio.File.new_for_path(resolve(path))
             .enumerate_children("standard::name", Gio.FileQueryInfoFlags.NONE, null);
     } catch (e) {
-        return names;
+        return [];
     }
-    let info;
-    while ((info = enumerator.next_file(null)) !== null)
-        names.push(info.get_name());
-    enumerator.close(null);
-    return names.sort(naturalCompare);
+    return _drain(enumerator).sort(naturalCompare);
 }
