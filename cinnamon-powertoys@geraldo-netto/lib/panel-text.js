@@ -131,10 +131,10 @@ function labelText(data, options, source, profile) {
         parts.push(Reading.panelPowerText(data));
     if (options.showProfile && profileNeedsSpelling(data, source, profile))
         parts.push(Format.profileLabel(profile));
-    /* Four figures about four different things, joined by a space, read as
-     * one string: "97% 12 W 4.30 GHz Balanced". The dot is what says where
-     * each of them ends, and it is the one the menu's own summary line
-     * uses for the same job. */
+    /* Three figures about three different things, joined by a space, read
+     * as one string: "97% 12 W Balanced". The dot is what says where each
+     * of them ends, and it is the one the menu's own summary line uses for
+     * the same job. */
     return parts.join(" · ");
 }
 
