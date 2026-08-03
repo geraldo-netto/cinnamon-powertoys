@@ -523,6 +523,49 @@ cases["the panel wheel, which has no monitor in mind, moves all of them"] = func
     Harness.equal(each.control.percentage, 70, "and the value it reports follows");
 };
 
+cases["the wheel passes over a monitor that has never answered"] = function () {
+    /*
+     * No answer means no percentage, and stepBy from no percentage starts at
+     * 50 - a number from nowhere, written to hardware that has already
+     * declined to talk. The menu has always drawn this line: a monitor that
+     * has never answered gets no slider, and there is nothing to drag.
+     */
+    let answering = "1";
+    let run = runner(function (argv) {
+        if (argv.indexOf("detect") >= 0)
+            return [DETECT_TWO, 0];
+        if (argv.indexOf("getvcp") >= 0)
+            return argv[argv.indexOf("--display") + 1] === answering
+                ? ["VCP 10 C 40 100\n", 0] : ["VCP 10 ERR\n", 0];
+        return ["", 0];
+    });
+    let control = new Ddc.DdcBacklight(null, run);
+    control.start();
+    Harness.equal(control.monitors[0].known, true, "one answered");
+    Harness.equal(control.monitors[1].known, false, "and one never has");
+
+    run.calls.length = 0;
+    control.stepBy(2);
+    Harness.deepEqual(run.calls, ["ddcutil --display 1 setvcp 10 50"],
+                      "only the one that has something to step from");
+
+    run.calls.length = 0;
+    control.setPercentage(30);
+    Harness.deepEqual(run.calls, ["ddcutil --display 1 setvcp 10 30"],
+                      "and an absolute value is no different: it is still a write");
+};
+
+cases["a group of monitors that have all never answered still answers its caller"] = function () {
+    /* The count is what tells the group it has finished, so a group with
+     * nothing to write to has to say so rather than leave a caller waiting. */
+    let answered = 0;
+    let each = started(DETECT_TWO, 0, "VCP 10 ERR\n");
+    each.run.calls.length = 0;
+    each.control.setPercentage(70, () => answered++);
+    Harness.deepEqual(each.run.calls, [], "nothing was sent");
+    Harness.equal(answered, 1, "and the caller was told, once");
+};
+
 cases["a value outside the scale is brought back into it"] = function () {
     let each = started(DETECT_TWO, 0);
     each.run.calls.length = 0;

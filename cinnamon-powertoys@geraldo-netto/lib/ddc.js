@@ -699,10 +699,20 @@ var DdcBacklight = class DdcBacklight {
      * is the only thing that knows when the group has finished - and each
      * monitor answers exactly once whether its write went out, was replaced by
      * a later one or was dropped with the monitor. See DdcMonitor.setPercentage.
+     *
+     * Every monitor that has ever answered, which is not the same as every
+     * monitor in the list. One that has never answered a read has no
+     * percentage, so stepBy starts it from 50 - a number from nowhere, sent to
+     * hardware that has already declined to talk, refused, and logged a line
+     * for it once per flick of the wheel. The menu draws the same line and has
+     * from the start: a monitor that has never answered is not offered a
+     * slider. Writing to a monitor to wake it is the slider's business, and a
+     * monitor with no slider was never dragged.
      */
     _moveEach(ask, onDone) {
         let done = onDone || function () {};
-        let pending = this.monitors.length;
+        let targets = this.monitors.filter(monitor => monitor.known);
+        let pending = targets.length;
         if (pending === 0) {
             done();
             return;
@@ -719,7 +729,7 @@ var DdcBacklight = class DdcBacklight {
             done();
         };
 
-        for (let monitor of this.monitors)
+        for (let monitor of targets)
             ask(monitor, settle);
     }
 
