@@ -8,6 +8,7 @@
  */
 
 const Harness = imports.harness;
+const Fuzz = imports.fuzz;
 const UPowerGlib = imports.gi.UPowerGlib;
 
 const PowerSupply = Harness.requireXlet("./lib/power-supply.js");

@@ -7,6 +7,7 @@
  */
 
 const Harness = imports.harness;
+const Fuzz = imports.fuzz;
 
 const Pending = Harness.requireXlet("./lib/pending-profile.js");
 
@@ -140,4 +141,116 @@ cases["a new request starts its own clock"] = function () {
     profile.settle("balanced");
     Harness.equal(profile.value, "power-saver",
                   "the readings the one before it spent are not charged to this one");
+};
+
+cases["whatever order the answers arrive in, the state stays honest"] = function () {
+    /*
+     * This class exists because three flags and a rule about each were spread
+     * over five places, and two of them were wrong: an error arriving for an
+     * older request cleared a newer one, and nothing at all cleared a request
+     * the machine simply never adopted.
+     *
+     * Both faults were orderings. So the property is about orderings: whatever
+     * sequence of asks, answers and readings arrives, what is drawn is either
+     * a profile somebody asked for or the truth - never a profile nobody asked
+     * for, and never a request that outlives the count it is allowed.
+     */
+    let names = ["power-saver", "balanced", "performance", "quiet"];
+
+    Fuzz.forAll({ what: "the pending profile", runs: 500 }, random => {
+        let steps = [];
+        let count = random.between(1, 12);
+        for (let i = 0; i < count; i++) {
+            steps.push({
+                what: random.pick(["ask", "written", "failed", "settle"]),
+                name: random.pick(names),
+            });
+        }
+        return steps;
+    }, steps => {
+        let lapses = [];
+        let pending = new Pending.PendingProfile((asked, actual) =>
+            lapses.push([asked, actual]));
+        let asked = [];
+
+        for (let step of steps) {
+            if (step.what === "ask") {
+                if (Fuzz.answers(() => pending.ask(step.name)))
+                    asked.push(step.name);
+            } else if (step.what === "written") {
+                Fuzz.answers(() => pending.written(step.name));
+            } else if (step.what === "failed") {
+                Fuzz.answers(() => pending.failed(step.name));
+            } else {
+                Fuzz.answers(() => pending.settle(step.name));
+            }
+
+            let value = pending.value;
+            if (value !== null && asked.indexOf(value) < 0)
+                throw new Error("drawing " + value + ", which nobody asked for");
+        }
+
+        for (let [lapsed] of lapses) {
+            if (asked.indexOf(lapsed) < 0)
+                throw new Error("lapsed " + lapsed + ", which nobody asked for");
+        }
+    });
+};
+
+cases["a request the machine never adopts is given up on, and only then"] = function () {
+    /*
+     * The count is what stops a profile being drawn for the rest of the
+     * session by firmware that takes a platform profile and quietly reverts
+     * to its own thermal policy. It starts only once the write came back
+     * accepted, because until then nothing has happened yet and a password
+     * dialog can be on screen for as long as it likes.
+     */
+    let lapses = [];
+    let pending = new Pending.PendingProfile((asked, actual) => lapses.push([asked, actual]));
+
+    pending.ask("performance");
+    for (let i = 0; i < 20; i++)
+        pending.settle("balanced");
+    Harness.equal(pending.value, "performance",
+                  "not written yet, so nothing has happened to give up on");
+    Harness.deepEqual(lapses, [], "and nothing was said");
+
+    pending.written("performance");
+    pending.settle("balanced");
+    Harness.equal(pending.value, "performance", "one reading is not long enough");
+    pending.settle("balanced");
+    Harness.equal(pending.value, "performance", "nor two");
+    pending.settle("balanced");
+    Harness.equal(pending.value, null, "the third gives up");
+    Harness.deepEqual(lapses, [["performance", "balanced"]],
+                      "saying what was asked for and what the machine is actually on");
+};
+
+cases["the machine catching up clears the request at once"] = function () {
+    let pending = new Pending.PendingProfile(() => {});
+    pending.ask("performance");
+    pending.written("performance");
+    pending.settle("performance");
+    Harness.equal(pending.value, null, "arrived, so there is nothing pending");
+};
+
+cases["an answer for a request that has been replaced is ignored"] = function () {
+    /*
+     * A second profile asked for while the first is in flight, and then the
+     * first one's answer arrives. It must not touch the newer request - which
+     * is the fault this class was written for.
+     */
+    let pending = new Pending.PendingProfile(() => {});
+    pending.ask("performance");
+    pending.ask("power-saver");
+
+    pending.failed("performance");
+    Harness.equal(pending.value, "power-saver", "the older failure did not clear the newer ask");
+
+    pending.written("performance");
+    pending.settle("balanced");
+    pending.settle("balanced");
+    pending.settle("balanced");
+    Harness.equal(pending.value, "power-saver",
+                  "nor did the older write start the newer one's clock");
 };
