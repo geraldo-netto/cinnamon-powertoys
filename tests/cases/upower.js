@@ -16,6 +16,7 @@ const Harness = imports.harness;
 const UPowerGlib = imports.gi.UPowerGlib;
 
 const Format = Harness.requireXlet("./lib/format.js");
+const Log = Harness.requireXlet("./lib/log.js");
 const Sensors = Harness.requireXlet("./lib/sensors.js");
 const UPower = Harness.requireXlet("./lib/upower.js");
 
@@ -184,4 +185,546 @@ cases["their kind is one the menu knows and keeps"] = function () {
                   "which survives the menu's default filter, or a laptop would never see it");
     Harness.equal(Format.measureName("temperature"), readings.temperatures[0].shortLabel,
                   "and the word is the one lib/sensors.js uses for the same thing");
+};
+
+/* ---------------------------------------------------------------- */
+/* the monitor, against a stubbed bus                                */
+
+/*
+ * The bus is a parameter now, so what follows runs on a machine with no
+ * UPower and no system bus at all - which is what CI is. What ran before was
+ * live.js, which skips itself where there is no daemon, so the enumerating,
+ * the counting and every guard around them had never been exercised anywhere
+ * that mattered.
+ *
+ * The two are not the same test and both are wanted: live.js says the
+ * interface XML still matches a real UPower, and these say what this module
+ * makes of what UPower says.
+ */
+
+const DISPLAY = "/org/freedesktop/UPower/devices/DisplayDevice";
+const BAT0 = "/org/freedesktop/UPower/devices/battery_BAT0";
+const MOUSE = "/org/freedesktop/UPower/devices/mouse_dev";
+
+/* A device as a proxy hands it over: UPower's own property names, which are
+ * not the ones the descriptions carry. */
+function proxyFor(overrides) {
+    let stub = Object.assign({
+        Type: Kind.BATTERY,
+        State: State.DISCHARGING,
+        Vendor: "Sony",
+        Model: "BAT0",
+        PowerSupply: true,
+        IsPresent: true,
+        Percentage: 62,
+        EnergyRate: 11.2,
+        Temperature: 31.5,
+    }, overrides || {});
+
+    stub.handlers = [];
+    stub.disconnected = [];
+    stub.connect = function (name, handler) {
+        stub.handlers.push(handler);
+        return stub.handlers.length;
+    };
+    stub.disconnect = function (id) {
+        stub.disconnected.push(id);
+    };
+    return stub;
+}
+
+/* The manager, with whatever EnumerateDevices is to answer. */
+function managerFor(paths, options) {
+    let settings = options || {};
+    let stub = {
+        signals: {},
+        propertyHandlers: [],
+        disconnected: [],
+        OnBattery: settings.onBattery === true,
+        connectSignal: function (name, handler) {
+            stub.signals[name] = handler;
+            return Object.keys(stub.signals).length;
+        },
+        disconnectSignal: function (id) {
+            stub.disconnected.push(id);
+        },
+        connect: function (name, handler) {
+            stub.propertyHandlers.push(handler);
+            return 9;
+        },
+        disconnect: function (id) {
+            stub.disconnected.push(id);
+        },
+        EnumerateDevicesRemote: function (onDone) {
+            if (settings.enumerateError)
+                onDone(null, new Error("EnumerateDevices timed out"));
+            else
+                onDone([paths || []], null);
+        },
+    };
+    return stub;
+}
+
+/*
+ * A system bus carrying that manager and those devices, keyed by path. A path
+ * nobody answers for reports its failure to the callback, which is what a
+ * proxy for a device that went away between the enumeration and the ask does.
+ *
+ * Answers are handed over straight away unless the case says to hold them,
+ * which is what keeps these cases ordinary functions: asynchronous in shape,
+ * immediate in fact.
+ */
+function busFor(manager, devices, options) {
+    let settings = options || {};
+    let waiting = [];
+    let stub = {
+        asked: [],
+        waiting: waiting,
+        manager: function (onDone) {
+            if (settings.noBus)
+                throw new Error("no system bus here");
+            /* Neither a proxy nor a reason, which is what a wrapper that was
+             * handed a name nobody owns can answer with. */
+            if (settings.silentManager) {
+                onDone(null, null);
+                return;
+            }
+            let answer = () => onDone(settings.managerError ? null : manager,
+                                      settings.managerError || null);
+            if (settings.holdManager)
+                waiting.push(answer);
+            else
+                answer();
+        },
+        device: function (path, onDone) {
+            stub.asked.push(path);
+            let proxy = (devices || {})[path];
+            let answer = () => onDone(proxy || null,
+                                      proxy || settings.silentDevices
+                                          ? null : new Error("no device at " + path));
+            if (settings.holdDevices)
+                waiting.push(answer);
+            else
+                answer();
+        },
+    };
+    stub.answer = function () {
+        return waiting.shift()();
+    };
+    return stub;
+}
+
+/* A monitor, with what it was told counted. */
+function monitorOn(bus) {
+    let counts = { changed: 0, ready: 0 };
+    let monitor = new UPower.UPowerMonitor(() => counts.changed++, () => counts.ready++, bus);
+    monitor.counts = counts;
+    return monitor;
+}
+
+function logging(body) {
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    try {
+        body(lines);
+    } finally {
+        Log.setSink(null);
+    }
+}
+
+cases["a manager that answers with an error is no UPower"] = function () {
+    /*
+     * UPower not installed, or not started. The applet still has a menu to
+     * draw, so what it needs is to be told that the answer is in - and told
+     * once, or the menu is built twice on a machine that has nothing to put
+     * in it.
+     */
+    logging(function (lines) {
+        let monitor = monitorOn(busFor(null, {}, { managerError: new Error("no such name") }));
+
+        Harness.equal(monitor.available, false, "nothing to be available");
+        Harness.equal(monitor.counts.ready, 1, "the caller is told the answer is in, once");
+        Harness.equal(monitor.counts.changed, 0, "and there is nothing to say changed");
+        Harness.equal(lines.length, 1, "one line said about it");
+        Harness.ok(lines[0].indexOf("no such name") >= 0,
+                   "carrying what the bus said: " + lines[0]);
+        monitor.destroy();
+    });
+};
+
+cases["a bus that cannot be reached at all is logged, not thrown"] = function () {
+    /*
+     * Gio.DBus.system is a getter that connects, and it throws where there is
+     * nothing to connect to. This is the applet's constructor: a throw here is
+     * an empty panel rather than a menu with no battery in it.
+     */
+    logging(function (lines) {
+        let monitor = monitorOn(busFor(null, {}, { noBus: true }));
+
+        Harness.equal(monitor.available, false, "no UPower here");
+        Harness.equal(lines.length, 1, "and one line about why: " + lines.join(""));
+        Harness.ok(lines[0].indexOf("cannot reach UPower") >= 0, "naming what was not reached");
+        monitor.destroy();
+    });
+};
+
+cases["a manager answering after the applet has gone is dropped"] = function () {
+    /*
+     * The bus answers in its own time, and the applet can be removed from the
+     * panel in between. Everything after this point connects signals and
+     * enumerates, which is a monitor built on top of an object nobody holds
+     * any more.
+     */
+    let bus = busFor(managerFor([BAT0]), { [BAT0]: proxyFor() }, { holdManager: true });
+    let monitor = monitorOn(bus);
+
+    monitor.destroy();
+    bus.answer();
+
+    Harness.equal(monitor.available, false, "still nothing available");
+    Harness.equal(monitor.counts.ready, 0, "and nobody was told anything");
+    Harness.deepEqual(bus.asked, [], "no device was ever asked for");
+};
+
+cases["an enumeration that fails still says the answer is in"] = function () {
+    /*
+     * UPower answered, so there is a manager and the applet can ask it things
+     * - but the device list never arrived, so there is nothing to draw. Not
+     * saying so is a menu that waits for an enumeration that has already
+     * failed.
+     */
+    logging(function (lines) {
+        let monitor = monitorOn(busFor(managerFor([], { enumerateError: true }), {}));
+
+        Harness.equal(monitor.available, true, "the manager is there");
+        Harness.deepEqual(monitor.snapshot(), [], "with no devices under it");
+        Harness.equal(monitor.counts.ready, 1, "and the caller is told, once");
+        Harness.ok(lines.join("").indexOf("EnumerateDevices failed") >= 0,
+                   "with a line about it: " + lines.join(""));
+        monitor.destroy();
+    });
+};
+
+cases["a machine with no devices at all is ready and empty"] = function () {
+    /* A desktop: UPower is running and has nothing to report. Both callbacks
+     * still fire, because "nothing" is an answer the menu has to draw. */
+    let monitor = monitorOn(busFor(managerFor([]), {}));
+
+    Harness.equal(monitor.available, true, "UPower is there");
+    Harness.deepEqual(monitor.snapshot(), [], "with nothing on it");
+    Harness.equal(monitor.counts.ready, 1, "ready, once");
+    Harness.equal(monitor.counts.changed, 1, "and told to draw what there is");
+    monitor.destroy();
+};
+
+cases["every device is proxied, and ready waits for the last of them"] = function () {
+    /*
+     * The count is the only thing that knows when the enumeration is over.
+     * Saying ready on the first answer is a menu drawn from a device list that
+     * is still filling in, which on a laptop with a mouse is a battery row
+     * that appears a moment after the menu does.
+     */
+    let bus = busFor(managerFor([BAT0, MOUSE]), {
+        [BAT0]: proxyFor(),
+        [MOUSE]: proxyFor({ Type: Kind.MOUSE, PowerSupply: false, Model: "MX", Percentage: 40 }),
+    }, { holdDevices: true });
+    let monitor = monitorOn(bus);
+
+    Harness.deepEqual(bus.asked, [DISPLAY, BAT0, MOUSE],
+                      "the composite battery and both devices were asked for");
+    Harness.equal(monitor.counts.ready, 0, "nothing has answered yet");
+
+    bus.answer();
+    bus.answer();
+    Harness.equal(monitor.counts.ready, 0, "the first device is not the last one");
+
+    bus.answer();
+    Harness.equal(monitor.counts.ready, 1, "and now the answer is in");
+    Harness.equal(monitor.counts.changed, 1, "with one redraw for the lot");
+    Harness.deepEqual(monitor.snapshot().map(entry => entry.path), [BAT0, MOUSE],
+                      "both of them, the system battery first");
+    monitor.destroy();
+};
+
+cases["a device that cannot be proxied is passed over, not waited for"] = function () {
+    /*
+     * A device unplugged between the enumeration and the ask. Its answer is an
+     * error, and the count has to come down for it anyway - a device that is
+     * counted and never answers is an applet that never says it is ready.
+     */
+    let monitor = monitorOn(busFor(managerFor([BAT0, MOUSE]), { [BAT0]: proxyFor() }));
+
+    Harness.deepEqual(monitor.snapshot().map(entry => entry.path), [BAT0],
+                      "the one that answered");
+    Harness.equal(monitor.counts.ready, 1, "and the answer is in, rather than still pending");
+};
+
+cases["a device arriving after the applet has gone is not adopted"] = function () {
+    let bus = busFor(managerFor([BAT0]), { [BAT0]: proxyFor() }, { holdDevices: true });
+    let monitor = monitorOn(bus);
+
+    monitor.destroy();
+    while (bus.waiting.length)
+        bus.answer();
+
+    Harness.deepEqual(monitor.snapshot(), [], "nothing was taken on");
+    Harness.equal(monitor.counts.ready, 0, "and nobody was told");
+};
+
+cases["a device announced twice is proxied once"] = function () {
+    /*
+     * UPower emits DeviceAdded for a device it already told us about - a dock
+     * reconnecting, or an enumeration racing a signal. A second proxy for the
+     * same path is a second property handler, and every change after it is
+     * two redraws.
+     */
+    let manager = managerFor([BAT0]);
+    let bus = busFor(manager, { [BAT0]: proxyFor() });
+    let monitor = monitorOn(bus);
+
+    let asked = bus.asked.length;
+    manager.signals["DeviceAdded"](manager, null, [BAT0]);
+
+    Harness.equal(bus.asked.length, asked, "the bus was not asked a second time");
+    Harness.equal(monitor.snapshot().length, 1, "and there is still one of it");
+    monitor.destroy();
+};
+
+cases["a device coming or going is a change the menu hears about"] = function () {
+    let manager = managerFor([BAT0]);
+    let bus = busFor(manager, { [BAT0]: proxyFor(), [MOUSE]: proxyFor({ Type: Kind.MOUSE, Model: "MX" }) });
+    let monitor = monitorOn(bus);
+    let changes = monitor.counts.changed;
+
+    manager.signals["DeviceAdded"](manager, null, [MOUSE]);
+    Harness.equal(monitor.snapshot().length, 2, "the mouse is on the list");
+    Harness.equal(monitor.counts.changed, changes + 1, "and the menu was told");
+
+    manager.signals["DeviceRemoved"](manager, null, [MOUSE]);
+    Harness.equal(monitor.snapshot().length, 1, "and off it again");
+    Harness.equal(monitor.counts.changed, changes + 2, "and told again");
+
+    /* A property moving on a device the applet holds is a change too, and it
+     * is the one that happens every few seconds. */
+    let proxy = bus.asked.indexOf(BAT0) >= 0 ? monitor._devices.get(BAT0) : null;
+    proxy.handlers[0]();
+    Harness.equal(monitor.counts.changed, changes + 3, "a percentage moving is a redraw");
+    monitor.destroy();
+};
+
+cases["the composite battery is what the panel speaks for"] = function () {
+    /*
+     * UPower builds one battery out of however many are fitted, and that is
+     * the one figure a panel can show. It is not on every machine and not
+     * always there before the first poll, which is what the fallback is for.
+     */
+    let display = proxyFor({ Model: "DisplayDevice", Percentage: 55 });
+    let monitor = monitorOn(busFor(managerFor([BAT0]), {
+        [DISPLAY]: display,
+        [BAT0]: proxyFor({ Percentage: 62 }),
+    }));
+
+    let reading = monitor.read();
+    Harness.equal(reading.primary.path, DISPLAY, "the composite one, where there is one");
+    Harness.equal(reading.primary.percentage, 55, "and its figure, not the first battery's");
+    monitor.destroy();
+};
+
+cases["a composite battery that is not one is not used"] = function () {
+    /*
+     * UPower exports the DisplayDevice on every machine, and on a desktop it
+     * is a device of kind UNKNOWN that is not present. Reading a percentage
+     * off it would put a battery on a machine that has none.
+     */
+    let notABattery = monitorOn(busFor(managerFor([BAT0]), {
+        [DISPLAY]: proxyFor({ Type: Kind.UNKNOWN }),
+        [BAT0]: proxyFor({ Percentage: 62 }),
+    }));
+    Harness.equal(notABattery.displayDevice(), null, "not a battery, so not the one");
+    Harness.equal(notABattery.read().primary.path, BAT0, "the first fitted battery instead");
+    notABattery.destroy();
+
+    let notFitted = monitorOn(busFor(managerFor([BAT0]), {
+        [DISPLAY]: proxyFor({ IsPresent: false }),
+        [BAT0]: proxyFor({ Percentage: 62 }),
+    }));
+    Harness.equal(notFitted.displayDevice(), null, "a battery, and not in the machine");
+    Harness.equal(notFitted.read().primary.path, BAT0, "so the fitted one speaks");
+    notFitted.destroy();
+};
+
+cases["a machine with nothing that carries a charge has nothing to speak for it"] = function () {
+    /*
+     * A desktop with a mouse. The mouse has a battery and a row of its own,
+     * and it is not what the panel reports: the panel is about the machine.
+     */
+    let monitor = monitorOn(busFor(managerFor([MOUSE]), {
+        [MOUSE]: proxyFor({ Type: Kind.MOUSE, PowerSupply: false, Model: "MX" }),
+    }));
+
+    let reading = monitor.read();
+    Harness.equal(reading.primary, null, "nothing speaks for the machine");
+    Harness.equal(reading.devices.length, 1, "though the mouse still gets its row");
+    monitor.destroy();
+};
+
+cases["a UPS speaks for the machine where there is no battery"] = function () {
+    /* A desktop on a UPS is a machine that can be running on stored power,
+     * which is the question `primary` exists to answer. */
+    let ups = "/org/freedesktop/UPower/devices/ups_x";
+    let monitor = monitorOn(busFor(managerFor([ups]), {
+        [ups]: proxyFor({ Type: Kind.UPS, Model: "Back-UPS", Percentage: 91 }),
+    }));
+
+    Harness.equal(monitor.read().primary.path, ups, "the UPS");
+    monitor.destroy();
+};
+
+cases["whether the machine is on battery is the manager's own answer"] = function () {
+    let running = monitorOn(busFor(managerFor([], { onBattery: true }), {}));
+    Harness.equal(running.read().onBattery, true, "unplugged");
+    running.destroy();
+
+    let plugged = monitorOn(busFor(managerFor([]), {}));
+    Harness.equal(plugged.read().onBattery, false, "and plugged in");
+    plugged.destroy();
+
+    /* A monitor with no manager at all answers the same way as one that is
+     * plugged in, rather than throwing on the way to the panel. */
+    Harness.equal(plugged.onBattery, false, "and a destroyed monitor says the same");
+};
+
+cases["a destroyed monitor lets go of every handler it connected"] = function () {
+    /*
+     * Two bus signals, one property handler on the manager and one on every
+     * device. Left connected they fire into an object nobody holds, for as
+     * long as the session lasts.
+     */
+    let manager = managerFor([BAT0]);
+    let batteryProxy = proxyFor();
+    let monitor = monitorOn(busFor(manager, { [BAT0]: batteryProxy }));
+
+    monitor.destroy();
+
+    Harness.equal(manager.disconnected.length, 3, "both signals and the property handler");
+    Harness.equal(batteryProxy.disconnected.length, 1, "and the device's own");
+    Harness.equal(monitor.available, false, "and it claims nothing afterwards");
+    Harness.deepEqual(monitor.snapshot(), [], "with no devices left to describe");
+};
+
+cases["a proxy that is neither an answer nor a reason is no proxy"] = function () {
+    /*
+     * The guards read "an error or no proxy", and both halves are needed: a
+     * wrapper answers with an error where the name is not owned, and with
+     * nothing at all where it was handed nothing to build from. Taking the
+     * second as a working proxy means connecting a signal to null - in the
+     * applet's constructor for the manager, and in the middle of an
+     * enumeration for a device.
+     */
+    logging(function () {
+        let manager = monitorOn(busFor(null, {}, { silentManager: true }));
+        Harness.equal(manager.available, false, "no manager, so no UPower");
+        Harness.equal(manager.counts.ready, 1, "and the caller is told the answer is in");
+        manager.destroy();
+
+        let devices = monitorOn(busFor(managerFor([BAT0, MOUSE]), { [BAT0]: proxyFor() },
+                                       { silentDevices: true }));
+        Harness.deepEqual(devices.snapshot().map(entry => entry.path), [BAT0],
+                          "the device that was really there");
+        Harness.equal(devices.counts.ready, 1, "and the count came down for the one that was not");
+        devices.destroy();
+    });
+};
+
+cases["a composite battery arriving after the applet has gone is not kept"] = function () {
+    /* The same guard as every other answer that can arrive late, on the one
+     * proxy that is asked for outside the enumeration. */
+    let bus = busFor(managerFor([]), { [DISPLAY]: proxyFor() }, { holdDevices: true });
+    let monitor = monitorOn(bus);
+
+    monitor.destroy();
+    while (bus.waiting.length)
+        bus.answer();
+
+    Harness.equal(monitor.displayDevice(), null, "nothing was taken on");
+};
+
+cases["a device that says nothing about itself still describes"] = function () {
+    /*
+     * UPower answers with the properties it has, and a device that has just
+     * appeared - or a proxy built against a daemon that restarted under it -
+     * carries none of them. Every field the menu draws has to come out of that
+     * as something a formatter can hold: a kind, a state, a name, and a set of
+     * flags that are false rather than undefined.
+     */
+    let bare = "/org/freedesktop/UPower/devices/bare";
+    let monitor = monitorOn(busFor(managerFor([bare]), { [bare]: { connect: () => 1, disconnect: () => {} } }));
+
+    let described = monitor._describe(monitor._devices.get(bare), bare);
+    Harness.equal(described.kind, Kind.UNKNOWN, "a kind the menu knows the name of");
+    Harness.equal(described.state, State.UNKNOWN, "and a state");
+    Harness.equal(described.batteryLevel, UPowerGlib.DeviceLevel.NONE, "and a level");
+    Harness.equal(described.vendor, "", "no maker, said as nothing rather than as undefined");
+    Harness.equal(described.model, "", "no model either");
+    Harness.equal(described.icon, "", "and no icon name");
+    Harness.equal(described.powerSupply, false, "it does not power the machine");
+    Harness.equal(described.online, false, "nothing is plugged into it");
+    Harness.equal(described.present, false, "and it is not fitted");
+    Harness.equal(described.percentage, null, "with no charge to report");
+    monitor.destroy();
+};
+
+cases["the charger is the one device kept on the other list"] = function () {
+    /*
+     * Whether the cable is in is a different question from what is carrying a
+     * charge, so line power devices are reported through lineDevices() and
+     * left out of the rows. Reading the two the same way round is a menu that
+     * says a laptop has a battery called Mains.
+     */
+    let mains = "/org/freedesktop/UPower/devices/line_power_AC";
+    let monitor = monitorOn(busFor(managerFor([mains, BAT0]), {
+        [mains]: proxyFor({ Type: Kind.LINE_POWER, Model: "AC", Online: true, IsPresent: true }),
+        [BAT0]: proxyFor(),
+    }));
+
+    let reading = monitor.read();
+    Harness.deepEqual(reading.lines.map(entry => entry.path), [mains], "the charger, on its own list");
+    Harness.deepEqual(reading.devices.map(entry => entry.path), [BAT0], "and not on the other one");
+    Harness.equal(reading.lineOnline, true, "the cable is in");
+    monitor.destroy();
+};
+
+cases["a battery that does not power the machine does not speak for it"] = function () {
+    /*
+     * A headset reports itself as a battery, and it is not what the panel is
+     * about: powerSupply is what separates the machine's own cells from
+     * whatever is paired with it. Without it a laptop on mains shows the
+     * headset's charge as its own.
+     */
+    let headset = "/org/freedesktop/UPower/devices/headset_x";
+    let monitor = monitorOn(busFor(managerFor([headset]), {
+        [headset]: proxyFor({ Type: Kind.BATTERY, PowerSupply: false, Model: "BW01", Percentage: 30 }),
+    }));
+
+    Harness.equal(monitor.read().primary, null, "nothing of the machine's own");
+    Harness.equal(monitor.read().devices.length, 1, "though it still has a row");
+    monitor.destroy();
+};
+
+cases["two batteries of the same kind are ordered by path"] = function () {
+    /*
+     * A laptop with two cells reports them as two devices of one kind, and
+     * the order they are drawn in is the only thing that keeps BAT0 above
+     * BAT1 between one poll and the next. UPower enumerates in whatever order
+     * it likes.
+     */
+    let second = "/org/freedesktop/UPower/devices/battery_BAT1";
+    let monitor = monitorOn(busFor(managerFor([second, BAT0]), {
+        [second]: proxyFor({ Model: "BAT1" }),
+        [BAT0]: proxyFor(),
+    }));
+
+    Harness.deepEqual(monitor.snapshot().map(entry => entry.path), [BAT0, second],
+                      "BAT0 first, whichever order they arrived in");
+    monitor.destroy();
 };
