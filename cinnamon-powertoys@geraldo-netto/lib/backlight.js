@@ -80,6 +80,14 @@ var BacklightControl = class BacklightControl {
      * key, the stock applet, the daemon dimming on idle. onReady fires once,
      * when it is known whether there is a backlight here at all. `connect` is
      * how the proxy is reached; see connectProxy above.
+     *
+     * onReady is handed the control it is about, because it can be called
+     * before the caller has one to look at: connectProxy answers from its own
+     * catch when the bus cannot even be reached, and that is inside this
+     * constructor, so `new BacklightControl(...)` has not returned and nothing
+     * the caller wrote down is assigned yet. Asking the argument rather than
+     * the field is the difference between "there is no backlight here" and a
+     * TypeError in whoever is building these.
      */
     constructor(kind, onChanged, onReady, connect) {
         this.kind = kind;
@@ -95,7 +103,7 @@ var BacklightControl = class BacklightControl {
 
         let xml = INTERFACES[kind];
         if (!xml) {
-            this._onReady();
+            this._onReady(this);
             return;
         }
 
@@ -103,13 +111,13 @@ var BacklightControl = class BacklightControl {
             if (this.destroyed)
                 return;
             if (error || !proxy) {
-                this._onReady();
+                this._onReady(this);
                 return;
             }
             this._proxy = proxy;
             this._signalId = proxy.connectSignal("Changed",
                                                  () => this.refresh(() => this._onChanged()));
-            this.refresh(() => this._onReady());
+            this.refresh(() => this._onReady(this));
         });
     }
 

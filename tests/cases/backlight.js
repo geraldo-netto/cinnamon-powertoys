@@ -110,6 +110,31 @@ cases["a kind this module does not know is ready at once"] = function () {
     Harness.equal(odd.readyCount(), 1, "and the caller is not left waiting on one");
 };
 
+cases["the control hands itself to whoever is waiting for the answer"] = function () {
+    /*
+     * Every one of the three ways this can be ready is reached from inside the
+     * constructor, so `new BacklightControl(...)` has not returned and nothing
+     * the caller assigned it to exists yet. The applet's own onReady asks
+     * whether this machine has a kernel backlight, which decides whether it
+     * goes anywhere near the I2C bus - and it used to ask the field it was
+     * about to write, which on a bus that cannot be reached at all is a
+     * TypeError in the applet's constructor and no applet on the panel.
+     */
+    let answered = [];
+    let ready = kind => new Backlight.BacklightControl(
+        kind, () => {}, control => answered.push(control),
+        (xml, onDone) => onDone(null, new Error("no session bus here")));
+
+    let screen = ready(Backlight.SCREEN);
+    let odd = ready("fingerprint-reader");
+
+    Harness.equal(answered.length, 2, "both were answered");
+    Harness.equal(answered[0], screen, "the connection that failed handed over itself");
+    Harness.equal(answered[1], odd, "and so did the kind with no interface");
+    Harness.equal(answered[0].available, false,
+                  "which is the whole of what the caller needed to ask it");
+};
+
 cases["a value is clamped and rounded before it is sent"] = function () {
     let stub = proxy({ GetPercentage: 40, SetPercentage: 45 });
     let screen = control(Backlight.SCREEN, stub);

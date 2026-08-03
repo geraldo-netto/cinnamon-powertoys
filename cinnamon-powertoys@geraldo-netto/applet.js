@@ -1575,14 +1575,25 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._chargeControl = null;
         this._rediscoverChargeControl();
 
-        this._backlights = {
-            screen: this._backends.backlight(Backlight.SCREEN,
-                                             () => this._onBacklightChanged(),
-                                             () => this._onScreenBacklightKnown()),
-            keyboard: this._backends.backlight(Backlight.KEYBOARD,
-                                               () => this._onBacklightChanged(),
-                                               () => this._onBacklightChanged()),
-        };
+        /*
+         * The bag exists before anything is in it, and the screen goes in
+         * last.
+         *
+         * A control can answer from inside its own constructor: lib/backlight.js
+         * reports a bus it cannot even reach from its own catch, and calls
+         * onReady straight from there. The screen's onReady is
+         * _onScreenBacklightKnown, which decides whether to go looking for a
+         * monitor and so reaches for this._backlights.monitor - and with the
+         * whole bag written as one literal, neither the field nor the monitor
+         * existed at that moment. A session bus that throws when it is reached
+         * took the applet off the panel altogether with a TypeError in this
+         * constructor, on the machines least able to say why.
+         *
+         * The screen control itself is not in the bag when its own answer
+         * arrives either, which is why onReady is handed the control it is
+         * about rather than being expected to find it.
+         */
+        this._backlights = {};
         /*
          * Monitors on a cable have no kernel backlight and have to be talked
          * to over DDC/CI. The control exists from the start so the menu can
@@ -1591,6 +1602,14 @@ class PowerToysApplet extends Applet.TextIconApplet {
          */
         this._backlights.monitor = this._backends.monitorBacklight(
             () => this._onBacklightChanged());
+        this._backlights.keyboard = this._backends.backlight(
+            Backlight.KEYBOARD,
+            () => this._onBacklightChanged(),
+            () => this._onBacklightChanged());
+        this._backlights.screen = this._backends.backlight(
+            Backlight.SCREEN,
+            () => this._onBacklightChanged(),
+            control => this._onScreenBacklightKnown(control));
 
         /* Bluetooth devices UPower does not bridge - which on some builds is
          * all of them - reported by BlueZ itself. */
@@ -1729,7 +1748,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * poking at the I2C bus; if it has not, a monitor on a cable is the only
      * screen there is, and DDC/CI is the only way to reach it.
      */
-    _onScreenBacklightKnown() {
+    _onScreenBacklightKnown(control) {
         /*
          * The answer is kept, rather than the control being asked again later.
          *
@@ -1749,8 +1768,13 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * has been asked and has replied. Which control the wheel moves is a
          * different question about the moment, and _brightnessControl still
          * asks `available` for it.
+         *
+         * Asked of the control that is answering rather than of the field
+         * holding it: this can be called from inside that control's own
+         * constructor, before there is a field. See where the backlights are
+         * built.
          */
-        this._hasKernelBacklight = this._backlights.screen.available;
+        this._hasKernelBacklight = control.available;
         this._considerMonitorBacklight();
         this._onBacklightChanged();
     }
