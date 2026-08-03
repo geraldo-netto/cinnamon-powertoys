@@ -166,14 +166,44 @@ function reportedDevices(devices) {
         });
 }
 
+/*
+ * The two proxies this monitor builds, gathered so that a caller can hand it
+ * something else.
+ *
+ * Every other backend here takes its way out as a parameter - ddc.js a `run`,
+ * bluez.js a `call`, privileged.js a `spawn`, profiles.js a bus - which is why
+ * each of them has cases that run anywhere. This one built its proxies itself,
+ * so the only thing that could exercise the enumerating, the counting and the
+ * guards around them was a machine with UPower actually running, and CI has
+ * neither UPower nor a system bus.
+ *
+ * Both are asynchronous, and deliberately: a proxy wrapper called without a
+ * callback is the synchronous form, which is a connection and a GetAll round
+ * trip taken on the thread that draws the desktop.
+ */
+function systemBus() {
+    return {
+        manager: function (onDone) {
+            new ManagerProxy(Gio.DBus.system, BUS_NAME, MANAGER_PATH,
+                             (proxy, error) => onDone(proxy, error));
+        },
+        device: function (path, onDone) {
+            new DeviceProxy(Gio.DBus.system, BUS_NAME, path,
+                            (proxy, error) => onDone(proxy, error));
+        },
+    };
+}
+
 var UPowerMonitor = class UPowerMonitor {
     /*
      * onChanged is called whenever the device set or any device property
-     * changes; onReady once the initial enumeration is complete.
+     * changes; onReady once the initial enumeration is complete. `bus` is how
+     * the proxies are reached; see systemBus above.
      */
-    constructor(onChanged, onReady) {
+    constructor(onChanged, onReady, bus) {
         this._onChanged = onChanged || function () {};
         this._onReady = onReady || function () {};
+        this._bus = bus || systemBus();
         this._devices = new Map();
         this._deviceSignals = new Map();
         this._manager = null;
@@ -184,8 +214,7 @@ var UPowerMonitor = class UPowerMonitor {
         this.destroyed = false;
 
         try {
-            new ManagerProxy(Gio.DBus.system, BUS_NAME, MANAGER_PATH,
-                             (proxy, error) => this._onManagerReady(proxy, error));
+            this._bus.manager((proxy, error) => this._onManagerReady(proxy, error));
         } catch (e) {
             Log.error("cannot reach UPower: " + e);
         }
@@ -212,7 +241,7 @@ var UPowerMonitor = class UPowerMonitor {
         }));
         this._propSignalId = proxy.connect("g-properties-changed", () => this._onChanged());
 
-        new DeviceProxy(Gio.DBus.system, BUS_NAME, DISPLAY_DEVICE_PATH, (displayProxy, displayError) => {
+        this._bus.device(DISPLAY_DEVICE_PATH, (displayProxy, displayError) => {
             if (!this.destroyed && !displayError)
                 this._display = displayProxy;
         });
@@ -248,7 +277,7 @@ var UPowerMonitor = class UPowerMonitor {
                 done();
             return;
         }
-        new DeviceProxy(Gio.DBus.system, BUS_NAME, path, (proxy, error) => {
+        this._bus.device(path, (proxy, error) => {
             if (this.destroyed) {
                 if (done)
                     done();
