@@ -58,9 +58,26 @@ jobs:
 
       # The template has to match the strings that are actually in the source,
       # or a translator is working from a list that has moved on without them.
-      # This can only be a diff because `make pot` strips the creation stamp -
-      # see the Makefile - so a template regenerated over unchanged sources is
-      # byte for byte the one in the tree.
+      # This can be a diff at all because `make pot` strips the creation stamp -
+      # see the Makefile - so a template regenerated over unchanged sources
+      # does not differ merely for having been generated later.
+      #
+      # It is a diff of the strings and not of the file, because a .pot also
+      # records where each string was found, and `#: applet.js:975` is a fact
+      # about the current line numbering rather than about the string. Any
+      # commit that inserts a line above a translatable one rewrites those
+      # references and moves the entries, which the file diff read as the
+      # template being out of date - so this step failed on refactors that
+      # changed no string at all, and the way to a green run was to regenerate
+      # a file whose strings were already right. A check that fires on
+      # unrelated work is a check people learn to route around.
+      #
+      # So both sides go through `msgcat --no-location --sort-output` first,
+      # which drops the line references and puts the entries in a fixed order.
+      # What survives is the msgids, their plurals and flags, and the extracted
+      # `#.` comments that tell a translator what a string is for - which is
+      # the whole of what this step exists to hold. A string added, removed or
+      # reworded still fails it; a line number moving no longer does.
       #
       # The extractor is one standalone Python script, and it ships in the
       # `cinnamon` package - the whole desktop, which is not a thing to install
@@ -96,6 +113,19 @@ jobs:
           echo "$MAKEPOT_SHA256  makepot.py" | sha256sum -c -
           sudo install -m 0755 makepot.py /usr/local/bin/cinnamon-xlet-makepot
           rm -f makepot.py
+
+          pot=cinnamon-powertoys@geraldo-netto/po/cinnamon-powertoys@geraldo-netto.pot
+          test -f "$pot" || { echo "no template at $pot"; exit 1; }
+
+          # Kept aside before `make pot` writes over it, so the comparison is
+          # against what the tree ships and not against the regenerated file.
+          # Outside the checkout, so nothing here leaves a file behind in it.
+          cp "$pot" "$RUNNER_TEMP/committed.pot"
           make pot
-          git diff --exit-code -- cinnamon-powertoys@geraldo-netto/po \
+          msgcat --no-location --sort-output "$RUNNER_TEMP/committed.pot" \
+            > "$RUNNER_TEMP/committed.strings"
+          msgcat --no-location --sort-output "$pot" \
+            > "$RUNNER_TEMP/current.strings"
+
+          diff -u "$RUNNER_TEMP/committed.strings" "$RUNNER_TEMP/current.strings" \
             || { echo "run 'make pot' and commit the result"; exit 1; }
