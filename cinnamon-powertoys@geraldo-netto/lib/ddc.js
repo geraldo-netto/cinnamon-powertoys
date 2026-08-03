@@ -208,7 +208,11 @@ function parseBrightness(output) {
     let maximum = Number(match[2]);
     if (!Number.isFinite(current) || !Number.isFinite(maximum) || maximum <= 0)
         return null;
-    return Math.round(current / maximum * 100);
+    /* A monitor that reports a current above its own maximum - which is a
+     * monitor whose firmware counts the two in different units, and there are
+     * some - would otherwise put a slider past its end and a figure that is
+     * not a percentage of anything on screen. */
+    return Math.min(100, Math.round(current / maximum * 100));
 }
 
 /*
