@@ -255,6 +255,25 @@ class PanelPresenter {
         }
     }
 
+    /*
+     * The icon cache, dropped.
+     *
+     * _updateIcon does nothing while the key it would set is the key already
+     * set, which is what keeps a poll from costing a texture lookup - so
+     * anything that changes what a key means has to say so here. A panel
+     * resize and an orientation change rebuild the icon actor underneath it,
+     * and an icon theme change moves every answer Format gives about which
+     * names exist.
+     *
+     * It went out with the panel text in PT-161b while its three callers
+     * stayed, so each of them threw before the redraw on the line beneath it -
+     * and a theme change left the panel holding an icon from a theme that is
+     * no longer installed, which is what PT-69 was closed for.
+     */
+    invalidateIcon() {
+        this._iconKey = null;
+    }
+
     update(data, options) {
         let profile = Reading.shownProfile(data, options);
         let source = PanelText.iconSource(data, options.iconSource, profile);

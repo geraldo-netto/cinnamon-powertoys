@@ -6,42 +6,21 @@ comfort · **low** polish, tidying, convenience.
 
 Effort: **XS** minutes · **S** under an hour · **M** an hour or a few · **L** a day or more.
 
-Rows whose id ends in a letter are the parts of the row above them; the parent
-row keeps the effort for the whole and is done when its parts are. Parts were
-only split out where each one can be written, reviewed and committed on its
-own — items that are genuinely a single change were left whole.
+## Two answers arriving in the wrong order
 
-Nothing open.
+| id | severity | effort | description |
+|----|----------|--------|-------------|
+| PT-171 | medium | S | [`UPowerMonitor._addDevice`](cinnamon-powertoys@geraldo-netto/lib/upower.js#L294) guards on `this._devices.has(path)`, and that map is only written when the proxy answers — so the guard is blind for the whole round trip, and two things go wrong inside it. A path announced twice in that window (the enumeration racing a `DeviceAdded`, a dock reconnecting) builds two proxies: the second overwrites the map entry, the first keeps its `g-properties-changed` handler, and from then on every property change is two redraws for the life of the session, with `destroy()` unable to reach the orphan because the map no longer names it. And a `DeviceRemoved` inside the same window finds nothing to remove, so the add lands afterwards and the device stays in the list — a headset switched off during enumeration keeps its menu row until the applet is reloaded. The case in [tests/cases/upower.js](tests/cases/upower.js) called "a device announced twice is proxied once" cannot reach either: its `busFor` answers `device()` synchronously unless `holdDevices` is set, so the map is already written by the time the second announcement arrives. Marking the path as in flight before the call closes both, and the same fixture already has `holdDevices` for the cases that would then be worth writing. |
+| PT-172 | medium | XS | [`_onScreenBacklightKnown`](cinnamon-powertoys@geraldo-netto/applet.js#L1713) reads `this._backlights.screen`, and it can be called before `this._backlights` exists. It is handed to `BacklightControl` as `onReady` from inside [the object literal being assigned to that field](cinnamon-powertoys@geraldo-netto/applet.js#L1559), which is safe only while the answer is asynchronous — and it is not always: [`connectProxy`](cinnamon-powertoys@geraldo-netto/lib/backlight.js#L68) answers `onDone(null, error)` from its own `catch`, and [the constructor](cinnamon-powertoys@geraldo-netto/lib/backlight.js#L102) calls `this._onReady()` straight from that, so a session bus that throws when it is reached — the case [lib/bluez.js](cinnamon-powertoys@geraldo-netto/lib/bluez.js#L186) already wraps its own reach for — turns into a TypeError in the applet's constructor and nothing on the panel at all. Assigning `this._backlights` before the controls are built, or deferring the `onReady`, costs a line. |
 
-## Closed
+## The helper's own words
 
-The fifteenth pass read every tracked source again — the applet, the fourteen
-libraries, the helper, the policy, the udev rule, the schema, the install
-script and the workflow — asking what the two machines this is written for do
-differently: the laptop with a daemon, and the one with only firmware. Its
-eleven rows are closed in the run of commits opening at `922ec1a`, one commit
-each. Most of what it found was on the second machine, which is the one nobody
-develops on: profiles stepped in an order the firmware never offered, so the
-wheel ran balanced, performance, lowest-of-all while the buttons two inches
-away drew them the right way round; a platform profile that appeared after
-login and was never looked for again; a charge limit discovered once in a
-constructor, which settled the shape of the menu for the session.
+| id | severity | effort | description |
+|----|----------|--------|-------------|
+| PT-173 | low | XS | [`set_charge_threshold`](cinnamon-powertoys@geraldo-netto/powertoys-helper#L167) reads the start threshold and compares it as a number without checking that it is one: `current_start=$(cat "$start" …)` falls back to `0` only when the read fails, so a node that answers with an empty string or anything non-numeric reaches `[ "$current_start" -ge "$value" ]`, which ends the script under `set -eu` with the shell's own "integer expression expected". [`write_node`](cinnamon-powertoys@geraldo-netto/powertoys-helper#L72) exists precisely so that every way this script can fail is a line this script wrote — the applet reports the last line of stderr as the reason — and this is the one arithmetic that escapes it. The same `''|*[!0-9]*` case the argument itself is checked with, applied to what was read. |
 
-Two were the same mistake in two places. A killed process was asked what it
-exited with in lib/privileged.js, which lib/ddc.js had already been fixed for;
-and a guard whose comment said it was about the machine was asked of a value
-that is about the last D-Bus call, so a settings daemon restarting could put a
-laptop on the I2C bus.
+## Comments that no longer describe the code
 
-The largest row was the one that had been true since the eleventh pass: 37% of
-the JavaScript sat in the file neither the coverage gate nor the mutation gate
-can see, and PT-153 was sitting in it. `lib/sensor-rows.js` and
-`lib/panel-text.js` are what came out, with forty cases that could not have
-been written the day before, and applet.js is 3117 lines down to 2875.
-
-The leak sweep it also carried came up empty: every signal is disconnected
-where it was connected, every timer is removed on the way out, and the four
-caches that outlive a poll — the alert set, the PCI names, the icon answers,
-the device map — are each pruned or bounded. The one thing it found that holds
-a resource held a file descriptor rather than memory, and only on the path
-where a directory listing failed half way.
+| id | severity | effort | description |
+|----|----------|--------|-------------|
+| PT-174 | low | XS | [`labelText`](cinnamon-powertoys@geraldo-netto/lib/panel-text.js#L126) spends a paragraph explaining that the frequency was taken out of the panel text, and then illustrates the separator with `"97% 12 W 4.30 GHz Balanced"` — a string this function can no longer produce. The example is the part of a comment that gets read; leave it naming the three parts that are still there. |
