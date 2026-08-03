@@ -6,12 +6,6 @@ comfort · **low** polish, tidying, convenience.
 
 Effort: **XS** minutes · **S** under an hour · **M** an hour or a few · **L** a day or more.
 
-## Two answers arriving in the wrong order
-
-| id | severity | effort | description |
-|----|----------|--------|-------------|
-| PT-171 | medium | S | [`UPowerMonitor._addDevice`](cinnamon-powertoys@geraldo-netto/lib/upower.js#L294) guards on `this._devices.has(path)`, and that map is only written when the proxy answers — so the guard is blind for the whole round trip, and two things go wrong inside it. A path announced twice in that window (the enumeration racing a `DeviceAdded`, a dock reconnecting) builds two proxies: the second overwrites the map entry, the first keeps its `g-properties-changed` handler, and from then on every property change is two redraws for the life of the session, with `destroy()` unable to reach the orphan because the map no longer names it. And a `DeviceRemoved` inside the same window finds nothing to remove, so the add lands afterwards and the device stays in the list — a headset switched off during enumeration keeps its menu row until the applet is reloaded. The case in [tests/cases/upower.js](tests/cases/upower.js) called "a device announced twice is proxied once" cannot reach either: its `busFor` answers `device()` synchronously unless `holdDevices` is set, so the map is already written by the time the second announcement arrives. Marking the path as in flight before the call closes both, and the same fixture already has `holdDevices` for the cases that would then be worth writing. |
-
 ## The helper's own words
 
 | id | severity | effort | description |

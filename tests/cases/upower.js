@@ -491,6 +491,57 @@ cases["a device announced twice is proxied once"] = function () {
     monitor.destroy();
 };
 
+cases["a device announced twice before either answer arrives is proxied once"] = function () {
+    /*
+     * The same announcement, inside the round trip rather than after it. The
+     * map that says which paths are known is only written when a proxy
+     * arrives, so for as long as the bus is thinking every announcement read
+     * as a new device - and the second proxy took the map entry while the
+     * first kept its property handler, which is a redraw per change for ever
+     * and nothing left naming the handler to disconnect it.
+     */
+    let manager = managerFor([]);
+    let bus = busFor(manager, { [BAT0]: proxyFor() }, { holdDevices: true });
+    let monitor = monitorOn(bus);
+
+    manager.signals["DeviceAdded"](manager, null, [BAT0]);
+    manager.signals["DeviceAdded"](manager, null, [BAT0]);
+    Harness.deepEqual(bus.asked, [DISPLAY, BAT0], "the bus was asked for it once");
+
+    while (bus.waiting.length)
+        bus.answer();
+
+    Harness.equal(monitor.snapshot().length, 1, "and there is one of it");
+    monitor.destroy();
+};
+
+cases["a device that goes away while its proxy is on the way is not taken on"] = function () {
+    /*
+     * A headset switched off between the ask and the answer. _removeDevice had
+     * nothing to remove yet, so the answer arrived afterwards and put the
+     * device in the list - where it stayed, because nothing announces the
+     * removal twice, and the row was in the menu until the applet was
+     * reloaded.
+     */
+    let manager = managerFor([]);
+    let bus = busFor(manager, { [BAT0]: proxyFor() }, { holdDevices: true });
+    let monitor = monitorOn(bus);
+
+    manager.signals["DeviceAdded"](manager, null, [BAT0]);
+    manager.signals["DeviceRemoved"](manager, null, [BAT0]);
+    while (bus.waiting.length)
+        bus.answer();
+
+    Harness.deepEqual(monitor.snapshot(), [], "the answer was not adopted");
+
+    /* And the path is free again, so a device that really comes back does. */
+    manager.signals["DeviceAdded"](manager, null, [BAT0]);
+    while (bus.waiting.length)
+        bus.answer();
+    Harness.equal(monitor.snapshot().length, 1, "the one that came back is here");
+    monitor.destroy();
+};
+
 cases["a device coming or going is a change the menu hears about"] = function () {
     let manager = managerFor([BAT0]);
     let bus = busFor(manager, { [BAT0]: proxyFor(), [MOUSE]: proxyFor({ Type: Kind.MOUSE, Model: "MX" }) });

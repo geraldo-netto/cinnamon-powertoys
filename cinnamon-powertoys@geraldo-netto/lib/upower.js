@@ -206,6 +206,9 @@ var UPowerMonitor = class UPowerMonitor {
         this._bus = bus || systemBus();
         this._devices = new Map();
         this._deviceSignals = new Map();
+        /* Paths whose proxy has been asked for and has not arrived; see
+         * _addDevice, which is where both of the reasons are. */
+        this._adding = new Set();
         this._manager = null;
         this._display = null;
         this._busSignalIds = [];
@@ -291,21 +294,44 @@ var UPowerMonitor = class UPowerMonitor {
         });
     }
 
+    /*
+     * One proxy per path, counting the one that is on its way.
+     *
+     * The guard used to be the map alone, and the map is only written when the
+     * answer comes back - so for the whole round trip a path read as unknown
+     * however many times it was announced, and two things went wrong in that
+     * window.
+     *
+     * A path announced twice inside it - the enumeration racing a DeviceAdded,
+     * a dock reconnecting - built two proxies. The second took the map entry
+     * and the first kept its g-properties-changed handler, so every property
+     * change was two redraws for the rest of the session, and destroy() could
+     * not reach the orphan because the map no longer named it.
+     *
+     * A DeviceRemoved inside it found nothing to remove, and the answer landed
+     * afterwards: a headset switched off while it was being proxied kept its
+     * menu row until the applet was reloaded. So a removal disowns the ask,
+     * and an answer nobody is waiting for any more is dropped rather than
+     * adopted.
+     */
     _addDevice(path, done) {
-        if (this._devices.has(path)) {
+        let settle = () => {
             if (done)
                 done();
+        };
+
+        if (this._devices.has(path) || this._adding.has(path)) {
+            settle();
             return;
         }
+
+        this._adding.add(path);
         this._bus.device(path, (proxy, error) => {
-            if (this.destroyed) {
-                if (done)
-                    done();
-                return;
-            }
-            if (error || !proxy) {
-                if (done)
-                    done();
+            /* False where the device went away while this was in flight, which
+             * is _removeDevice having taken the path back out. */
+            let wanted = this._adding.delete(path);
+            if (this.destroyed || !wanted || error || !proxy) {
+                settle();
                 return;
             }
             let signalId = proxy.connect("g-properties-changed", () => this._onChanged());
@@ -320,8 +346,10 @@ var UPowerMonitor = class UPowerMonitor {
 
     /* Devices come and go all the time (bluetooth, docks, USB), so the
      * property handler has to go with them or it accumulates for the life of
-     * the session. */
+     * the session - and one that is still being proxied has to be taken off
+     * the list of asks, or its answer arrives and puts it back. */
     _removeDevice(path) {
+        this._adding.delete(path);
         let proxy = this._devices.get(path);
         let signalId = this._deviceSignals.get(path);
         if (proxy && signalId) {
@@ -481,6 +509,10 @@ var UPowerMonitor = class UPowerMonitor {
 
         for (let path of Array.from(this._devices.keys()))
             this._removeDevice(path);
+        /* Whatever is still on its way is not wanted; the destroyed flag turns
+         * each of those answers away, and this leaves nothing behind saying it
+         * was expected. */
+        this._adding.clear();
 
         this._manager = null;
         this._display = null;
