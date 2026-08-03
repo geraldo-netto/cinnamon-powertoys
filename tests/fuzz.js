@@ -41,9 +41,20 @@ var Random = class Random {
         return this._state;
     }
 
-    /* 0 to bound-1. */
+    /*
+     * 0 to bound-1, from the top of the word rather than the bottom.
+     *
+     * The low bits of a linear congruential generator are not random: bit one
+     * alternates, and the bottom k bits repeat every 2^k. Taking the remainder
+     * reads exactly those, so `below(4)` returned 0, 1, 2, 3, 0, 1, 2, 3 - a
+     * generator that walks in step through everything it is asked for, and a
+     * property that had far fewer shapes thrown at it than its run count said.
+     *
+     * Scaling the whole word into the range reads the high bits instead, which
+     * are the ones this family is any good at.
+     */
     below(bound) {
-        return bound <= 0 ? 0 : this.next() % bound;
+        return bound <= 0 ? 0 : Math.floor(this.next() / 4294967296 * bound);
     }
 
     between(low, high) {

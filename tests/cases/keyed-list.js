@@ -13,6 +13,7 @@
  */
 
 const Harness = imports.harness;
+const Fuzz = imports.fuzz;
 
 const KeyedList = Harness.requireXlet("./lib/keyed-list.js");
 
@@ -156,6 +157,45 @@ cases["a key that is not a string is still told apart"] = function () {
     let a = list._signature([{ key: 60 }, { key: 70 }]);
     let b = list._signature([{ key: 6070 }]);
     Harness.ok(a !== b, "60 and 70 is not 6070");
+};
+
+cases["no two different sets of keys sign alike, whatever is in them"] = function () {
+    /*
+     * The claim the pairs above make five times, made once and properly.
+     *
+     * Those pairs are the collisions somebody thought of, and the signature has
+     * to hold against the ones nobody did - the keys are device paths, sensor
+     * ids and profile names, and a set that really changed reading as unchanged
+     * leaves rows describing hardware that is no longer there.
+     *
+     * Every signature produced is kept, and any repeat has to be a repeat of
+     * the same set. The alphabet is what a signature could trip over: the
+     * separator it joins on, the digits its length prefix is written in, the
+     * empty string, and the word a length that is not a number comes out as.
+     *
+     * That last one is not idle. Dropping the arithmetic in front of the key -
+     * `length + ":"` for `length - ":"` - leaves "NaN" in front of every key
+     * instead of its length, and the enumerated pairs above all survive it.
+     */
+    let list = listOver(section());
+    let alphabet = ["", "a", "b", "c", ":", "1", "2", "0", "10", "NaN", "aNaNb", "1:a"];
+    let seen = {};
+
+    Fuzz.forAll({ what: "the signature", runs: 3000 }, random => {
+        let keys = [];
+        let count = random.below(4);
+        for (let i = 0; i < count; i++)
+            keys.push(random.pick(alphabet));
+        return keys;
+    }, keys => {
+        let signature = list._signature(keys.map(key => ({ key: key })));
+        let written = JSON.stringify(keys);
+        if (seen[signature] === undefined)
+            seen[signature] = written;
+        else if (seen[signature] !== written)
+            throw new Error("signs as " + JSON.stringify(signature) +
+                            ", and so does " + seen[signature]);
+    });
 };
 
 cases["the rows are what it claims to hold"] = function () {
