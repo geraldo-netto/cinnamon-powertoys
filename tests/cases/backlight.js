@@ -12,6 +12,8 @@
  * one value, and that array is exactly where two of these bugs would live.
  */
 
+const Gio = imports.gi.Gio;
+
 const Harness = imports.harness;
 
 const Backlight = Harness.requireXlet("./lib/backlight.js");
@@ -32,7 +34,13 @@ function proxy(answers, options) {
             let onDone = args.pop();
             calls.push([name].concat(args));
             let answer = answers[name];
-            if (answer === null || answer === undefined)
+            /* A call that answers with neither a reply nor a reason, which is
+             * what a method whose reply carries nothing looks like from
+             * here - and what a daemon that has been restarted under the
+             * proxy can answer with. */
+            if (settings.silent && settings.silent.indexOf(name) >= 0)
+                onDone(null, null);
+            else if (answer === null || answer === undefined)
                 onDone(null, new Error(name + " is not available"));
             else
                 onDone([answer], null);
@@ -252,4 +260,118 @@ cases["a destroyed control stops part way through a flick"] = function () {
     screen.stepBy(5);
     Harness.deepEqual(stub.calls.filter(call => call[0] === "StepUp"), [["StepUp"]],
                       "the notch that was already out, and none of the four behind it");
+};
+
+/* ---------------------------------------------------------------- */
+/* answers that are neither a reply nor a reason                    */
+
+cases["a connect that hands over nothing at all is no backlight"] = function () {
+    /*
+     * The guard reads "an error or no proxy", and both halves of that are
+     * needed: makeProxyWrapper answers with an error, and a connect that
+     * simply hands over nothing - which is what the stubbed one does when
+     * there is nothing to hand over - answers with neither. Taking the second
+     * as a working proxy means connecting a signal to null, in a constructor.
+     */
+    let backlight = new Backlight.BacklightControl(
+        Backlight.SCREEN, null, null, (xml, onDone) => onDone(null, null));
+
+    Harness.equal(backlight.available, false, "no proxy is no backlight");
+    Harness.equal(backlight.percentage, null, "and nothing to report");
+};
+
+cases["a read that answers with nothing is no backlight either"] = function () {
+    /*
+     * The interface is exported on machines that have no panel backlight
+     * behind it, so the first read is what really decides whether there is
+     * one. It is guarded on "an error or no result", and a reply carrying
+     * nothing is the second: reading a percentage out of it is reading index
+     * nought of nothing.
+     */
+    let screen = control(Backlight.SCREEN, proxy({ GetPercentage: 42 }, { silent: ["GetPercentage"] }));
+    Harness.equal(screen.available, false, "nothing answered, so nothing is claimed");
+    Harness.equal(screen.percentage, null, "and no percentage was read out of it");
+    Harness.equal(screen.readyCount(), 1, "the caller is still told the answer is in");
+};
+
+cases["a write that answers with nothing leaves the value alone"] = function () {
+    /*
+     * The daemon answers with what it actually set, which is not always what
+     * was asked for, so the reply is where the percentage comes from. A reply
+     * that carries nothing is not a new value - and reading one out of it is
+     * a percentage of undefined on a slider.
+     */
+    let stub = proxy({ GetPercentage: 40, SetPercentage: 55, StepUp: 45, StepDown: 35 },
+                     { silent: ["SetPercentage", "StepUp", "StepDown"] });
+    let screen = control(Backlight.SCREEN, stub);
+    Harness.equal(screen.percentage, 40, "where it started");
+
+    screen.setPercentage(70);
+    Harness.equal(screen.percentage, 40, "the write went out and said nothing back");
+
+    screen.stepBy(1);
+    Harness.equal(screen.percentage, 40, "and a notch that answers with nothing moves nothing");
+
+    screen.step(false);
+    Harness.equal(screen.percentage, 40, "the same the other way, which is its own call");
+
+    Harness.deepEqual(stub.calls.map(call => call[0]),
+                      ["GetPercentage", "SetPercentage", "StepUp", "StepDown"],
+                      "and every one of them was really made");
+
+    /* The keyboard's toggle is a fourth call with the same guard on its
+     * reply, and the only one of them the screen does not have. */
+    let keyboard = control(Backlight.KEYBOARD,
+                           proxy({ GetPercentage: 40, Toggle: 0 }, { silent: ["Toggle"] }));
+    keyboard.toggle();
+    Harness.equal(keyboard.percentage, 40, "a toggle that answers with nothing moves nothing");
+};
+
+/* ---------------------------------------------------------------- */
+/* the reach for the bus itself                                     */
+
+cases["an interface nobody can parse is no backlight, not a throw"] = function () {
+    /*
+     * Every case above hands in a proxy of its own, so the one way this module
+     * really reaches the bus was exercised by none of them. Building a proxy
+     * wrapper parses the interface, and that parse throws where the XML is not
+     * an interface - which would come up through the applet's constructor,
+     * since that is where a backlight is first asked for.
+     *
+     * A failure to build is reported the way a failure to connect is, because
+     * to everything above they mean the same thing: no backlight here.
+     */
+    let answers = [];
+    Backlight.connectProxy("<node><interface", (proxy, error) => answers.push([proxy, error]));
+
+    Harness.equal(answers.length, 1, "answered rather than thrown");
+    Harness.equal(answers[0][0], null, "with no proxy");
+    Harness.ok(answers[0][1], "and something to say about why: " + answers[0][1]);
+};
+
+cases["the interfaces this module declares are ones a proxy can be built for"] = function () {
+    /*
+     * The other half, against a real session bus: both of the XML strings this
+     * module carries, put through the parser the applet puts them through. A
+     * mistyped signature or an unclosed tag is a backlight that quietly never
+     * appears, and nothing else here would have said so.
+     *
+     * csd-power does not have to be running - and on the machine this was
+     * written on it is not. A proxy for a name nobody owns is still a proxy;
+     * what it has no owner for is only found out when something is called on
+     * it, which is what the cases above cover.
+     */
+    try {
+        Gio.bus_get_sync(Gio.BusType.SESSION, null);
+    } catch (error) {
+        Harness.skip("no session bus here");
+    }
+
+    for (let kind of [Backlight.SCREEN, Backlight.KEYBOARD]) {
+        let built = Harness.settle(done => Backlight.connectProxy(
+            Backlight.INTERFACES[kind], (proxy, error) => done({ proxy: proxy, error: error })),
+            "a proxy for the " + kind);
+        Harness.ok(!built.error, "the " + kind + " interface parsed: " + built.error);
+        Harness.ok(built.proxy, "and a proxy for it was built");
+    }
 };
