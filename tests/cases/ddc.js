@@ -11,6 +11,8 @@
  * that check a name run against the fixture instead of against this machine.
  */
 
+const GLib = imports.gi.GLib;
+
 const Harness = imports.harness;
 
 const Ddc = Harness.requireXlet("./lib/ddc.js");
@@ -955,4 +957,269 @@ cases["one notch is still one notch"] = function () {
     each.control.monitors[0].step(true);
     Harness.equal(each.run.calls[0], "ddcutil --display 1 setvcp 10 45",
                   "which is what the slider's own wheel sends");
+};
+
+cases["the group's own wheel moves every monitor, both ways"] = function () {
+    /* The menu's single row for "all monitors" has a wheel on it too, and it
+     * is a different function from the one a monitor's own row calls. */
+    let each = started(DETECT_TWO, 0);
+    each.run.calls.length = 0;
+
+    each.control.step(true);
+    Harness.deepEqual(each.run.calls,
+                      ["ddcutil --display 1 setvcp 10 45",
+                       "ddcutil --display 2 setvcp 10 45"],
+                      "one notch up, on both");
+
+    each.run.calls.length = 0;
+    each.control.step(false);
+    Harness.deepEqual(each.run.calls,
+                      ["ddcutil --display 1 setvcp 10 40",
+                       "ddcutil --display 2 setvcp 10 40"],
+                      "and one notch back down");
+};
+
+cases["a group with nothing in it refreshes to unavailable"] = function () {
+    /*
+     * Nothing answered the detect, so there is no monitor to ask and no count
+     * to wait for. The caller still gets its callback: a refresh that never
+     * answers is a menu row that stays in flight for the rest of the session.
+     */
+    let each = started(DETECT_NONE, 0);
+    Harness.equal(each.control.monitors.length, 0, "no monitors were adopted");
+
+    let answered = 0;
+    each.control.available = true;
+    each.run.calls.length = 0;
+    each.control.refresh(() => answered++);
+
+    Harness.equal(answered, 1, "the caller is answered");
+    Harness.equal(each.control.available, false, "and the group says so");
+    Harness.deepEqual(each.run.calls, [], "without spawning anything");
+
+    each.control.refresh();
+    Harness.equal(answered, 1, "and a refresh nobody is waiting on is allowed too");
+};
+
+cases["a group destroyed while a write is out answers and touches nothing"] = function () {
+    /*
+     * The menu is closed, or the setting switched off, between a slider being
+     * dragged and the monitor answering. The write still comes back and the
+     * count still reaches nought, and syncing there would put a percentage
+     * back on a control that has been taken down - and read monitors that
+     * destroy() has already emptied out of the list.
+     */
+    let run = held();
+    let control = new Ddc.DdcBacklight(null, run);
+    control.start();
+    run.answer(DETECT_ONE, 0);
+    run.answer("VCP 10 C 40 100\n", 0);
+
+    let answered = 0;
+    control.setPercentage(70, () => answered++);
+    Harness.equal(run.waiting.length, 1, "the write is out");
+
+    control.destroy();
+    run.answer("", 0);
+
+    Harness.equal(answered, 1, "the caller is still answered");
+    Harness.equal(control.available, false, "and the group is still down");
+    Harness.equal(control.percentage, 40,
+                  "with nothing read back off a list that destroy has emptied");
+};
+
+/* ---------------------------------------------------------------- */
+/* naming, where there is nothing to name a display by               */
+
+cases["a display that says nothing about itself is named by its number"] = function () {
+    /*
+     * ddcutil reports what it could read, and a monitor behind a KVM or a
+     * cheap adapter can come back with a bus and nothing else. The menu still
+     * needs a row title, and the number is what --display takes, so it is the
+     * one name that is always both true and useful.
+     */
+    let anonymous = [
+        "Display 1",
+        "   I2C bus:          /dev/i2c-4",
+        "",
+        "Display 2",
+        "   I2C bus:          /dev/i2c-5",
+        "",
+    ].join("\n");
+
+    named(function () {
+        let displays = Ddc.nameDisplays(Ddc.parseDisplays(anonymous));
+        Harness.equal(displays[0].name, "Display 1", "no maker, no model, no socket");
+        Harness.equal(displays[1].name, "Display 2", "and the other one is not the same row");
+    });
+};
+
+cases["two of the same monitor with no socket to name are told apart by number"] = function () {
+    /*
+     * The DRM connector is what normally tells twins apart, and it is the one
+     * field ddcutil cannot report where the driver does not expose it. Two
+     * rows both called "Dell U2415" are two rows nobody can tell apart, and
+     * dragging one of them is a guess.
+     */
+    let twins = [
+        "Display 1",
+        "   I2C bus:          /dev/i2c-4",
+        "   Monitor:          DEL:DELL U2415:7MT0184N0LTL",
+        "",
+        "Display 2",
+        "   I2C bus:          /dev/i2c-5",
+        "   Monitor:          DEL:DELL U2415:7MT0184N0AAA",
+        "",
+    ].join("\n");
+
+    named(function () {
+        let displays = Ddc.nameDisplays(Ddc.parseDisplays(twins));
+        Harness.equal(displays[0].name, "Dell U2415 (1)", "the number stands in for the socket");
+        Harness.equal(displays[1].name, "Dell U2415 (2)", "and the second is the second");
+    });
+
+    Harness.equal(Ddc._connectorName(null), null, "no socket is no name for one");
+    Harness.equal(Ddc._connectorName("card2-HDMI-A-2"), "HDMI-A-2", "and a socket is the socket");
+};
+
+/* ---------------------------------------------------------------- */
+/* the command runner itself                                        */
+
+/*
+ * The runner's own timer is eight seconds, which is right for a monitor and
+ * far too long to wait for in a test. Only that one is shortened - the
+ * harness's own guard timer is armed through the same function, and hurrying
+ * that would make every settle here give up instantly.
+ */
+function hurried(ms, body) {
+    let real = GLib.timeout_add;
+    GLib.timeout_add = function (priority, delay, callback) {
+        return real(priority, delay === Ddc.CALL_TIMEOUT_MS ? ms : delay, callback);
+    };
+    try {
+        return body();
+    } finally {
+        GLib.timeout_add = real;
+    }
+}
+
+cases["the module's own runner runs a command and reports what it said"] = function () {
+    /*
+     * Every case above hands in a runner of its own, so the one a running
+     * applet uses - the only one there is in production - was exercised by
+     * none of them. What it decides is what every ddcutil call comes back as:
+     * the output the parsers read, and the status that says whether talking to
+     * the monitor worked at all.
+     */
+    let said = Harness.settle(done => Ddc.runCommand(["echo", "VCP 10 C 40 100"],
+        (output, status) => done({ output: output, status: status })),
+        "a command that says something");
+    Harness.equal(said.output, "VCP 10 C 40 100\n", "its output, as the parsers get it");
+    Harness.equal(said.status, 0, "and the status that says it worked");
+
+    let failed = Harness.settle(done => Ddc.runCommand(["sh", "-c", "exit 3"],
+        (output, status) => done({ output: output, status: status })),
+        "a command that fails");
+    Harness.equal(failed.output, "", "nothing to read");
+    Harness.ok(failed.status !== 0, "and a status that is not success: " + failed.status);
+
+    /* ddcutil is chatty on stderr about buses it could not open, and none of
+     * it is anything a parser here should ever see. */
+    let noisy = Harness.settle(done => Ddc.runCommand(
+        ["sh", "-c", "echo talking to the wrong bus >&2; echo VCP 10 C 40 100"],
+        (output, status) => done({ output: output, status: status })),
+        "a command that complains as it works");
+    Harness.equal(noisy.output, "VCP 10 C 40 100\n", "only what it printed to stdout");
+    Harness.equal(noisy.status, 0, "and it still worked");
+};
+
+cases["a command that cannot be run at all is an answer, not a crash"] = function () {
+    /*
+     * ddcutil not installed, which is the ordinary case on most machines. Gio
+     * throws where the process cannot be started, and a throw here would come
+     * up through a probe the user never asked for.
+     */
+    let outcome = Harness.settle(done => Ddc.runCommand(["/definitely/not/ddcutil"],
+        (output, status) => done({ output: output, status: status })),
+        "a program that is not there");
+    Harness.equal(outcome.output, "", "nothing to parse");
+    Harness.equal(outcome.status, -1, "and a failure of its own");
+};
+
+cases["output that no text can hold is an answer too"] = function () {
+    /*
+     * communicate_utf8_finish throws where the output is not valid UTF-8, and
+     * ddcutil prints back what a monitor's EDID contains - which on a bad
+     * cable is whatever arrived. A throw there is a call that never answers,
+     * so the probe's count never reaches nought and every slider stays in
+     * flight for the rest of the session.
+     */
+    let outcome = Harness.settle(done => Ddc.runCommand(
+        ["sh", "-c", "printf 'Monitor: \\377\\376'"],
+        (output, status) => done({ output: output, status: status })),
+        "a command printing bytes that are not text");
+    Harness.equal(outcome.output, "", "nothing to parse");
+    Harness.equal(outcome.status, -1, "and a failure of its own");
+};
+
+cases["a monitor that never answers is given up on, once"] = function () {
+    /*
+     * ddcutil hangs where a monitor accepts the connection and then says
+     * nothing, which is what a display asleep on a KVM does. Without the timer
+     * that is a process left behind for the session and a probe that never
+     * finishes.
+     *
+     * The process is killed and the caller answered, and then the killed
+     * process's own callback arrives - so the guard that stops a caller being
+     * answered twice is the other half of this.
+     */
+    logging(function (lines) {
+        let answers = [];
+        let outcome = hurried(10, () => Harness.settle(done => Ddc.runCommand(
+            ["sleep", "30"], function (output, status) {
+                answers.push(status);
+                done({ output: output, status: status });
+            }), "a command that never answers"));
+
+        Harness.equal(outcome.status, -1, "given up on");
+        Harness.equal(outcome.output, "", "with nothing to parse");
+        Harness.equal(answers.length, 1, "and answered exactly once");
+        Harness.ok(lines.join("\n").indexOf("did not answer in time") >= 0,
+                   "and said so: " + lines.join("\n"));
+    });
+};
+
+cases["a timer that is not needed is not left armed"] = function () {
+    /*
+     * Eight seconds of timer per call, against ten monitors probed every
+     * refresh, is a source left on the main loop for every ddcutil the applet
+     * has ever run. The command answered; the timer has nothing left to do.
+     */
+    let armed = [];
+    let removed = [];
+    let realAdd = GLib.timeout_add;
+    let realRemove = GLib.source_remove;
+
+    GLib.timeout_add = function (priority, delay, callback) {
+        let id = realAdd(priority, delay, callback);
+        if (delay === Ddc.CALL_TIMEOUT_MS)
+            armed.push(id);
+        return id;
+    };
+    GLib.source_remove = function (id) {
+        if (armed.indexOf(id) >= 0)
+            removed.push(id);
+        return realRemove(id);
+    };
+
+    try {
+        Harness.settle(done => Ddc.runCommand(["echo", "done"],
+            (output, status) => done(status)), "a command that answers");
+    } finally {
+        GLib.timeout_add = realAdd;
+        GLib.source_remove = realRemove;
+    }
+
+    Harness.equal(armed.length, 1, "one timer was armed for the call");
+    Harness.deepEqual(removed, armed, "and it was taken back off when the answer came");
 };
