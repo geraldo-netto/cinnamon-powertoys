@@ -232,6 +232,17 @@ var DdcMonitor = class DdcMonitor {
         this._held = null;
     }
 
+    /*
+     * Whether ddcutil is talking to this monitor right now, either way round.
+     *
+     * The flag has always existed to keep this monitor's own calls off each
+     * other's toes; what reads it from outside is the group, which has to
+     * know whether a probe would land on top of one. See DdcBacklight.busy.
+     */
+    get busy() {
+        return this._busy;
+    }
+
     /* Kept across a re-detection: the display number ddcutil hands out is a
      * position in its own list and moves when something else is unplugged,
      * and the name can change when a monitor is switched for another on the
@@ -493,6 +504,32 @@ var DdcBacklight = class DdcBacklight {
     }
 
     /*
+     * Whether anything of this machine's is on the I2C bus at this moment.
+     *
+     * There are two conversations here and they were guarded separately: a
+     * probe against another probe (_detecting), and one monitor against its own
+     * next read or write (_busy, per monitor). Nothing guarded a probe against
+     * the reads, and the applet lines those two up as a matter of course -
+     * opening the menu refreshes every backlight, which sends a getvcp to every
+     * monitor, and then starts the watch, whose first probe goes out at once. A
+     * drag does the same once a second: a setvcp in flight, a tick, a detect.
+     *
+     * A detect walks every bus, so it collides with whatever is on one of them,
+     * and two ddcutil talking to one monitor is how ddcutil comes back with
+     * nothing - PT-135 and PT-145c met a third time. It heals silently, because
+     * a monitor that has answered before keeps its last value through a read
+     * that fails, which is exactly what makes it worth closing rather than
+     * watching for.
+     *
+     * So the two guards become one question, asked of the whole machine.
+     */
+    get busy() {
+        if (this._detecting)
+            return true;
+        return this.monitors.some(monitor => monitor.busy);
+    }
+
+    /*
      * Look again, because the screens have changed.
      *
      * Detection used to happen once and never again, so a monitor plugged in,
@@ -510,9 +547,10 @@ var DdcBacklight = class DdcBacklight {
      * also where the reason a hotplug event is not enough on its own is.
      */
     redetect() {
-        /* Asked for inside a probe, this is dropped and not queued; see
-         * _detect for why the flag covers the reads as well as the detect. */
-        if (this.destroyed || this._detecting)
+        /* Dropped and not queued whenever ddcutil is already talking to this
+         * machine - a probe of its own, or a single monitor being read or
+         * written. See busy below, and _detect for the probe's half of it. */
+        if (this.destroyed || this.busy)
             return;
         if (!this._started) {
             this.start();

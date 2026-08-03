@@ -399,6 +399,56 @@ cases["a re-detection asked for inside a probe is dropped, not queued"] = functi
     Harness.equal(run.waiting[0].argv, "ddcutil --brief detect", "and the next one goes out");
 };
 
+cases["a re-detection is dropped while a single monitor is being read"] = function () {
+    /*
+     * A detect walks every bus, so it collides with a conversation already on
+     * one of them. The applet lines the two up as a matter of course: opening
+     * the menu refreshes every backlight - a getvcp per monitor - and then
+     * starts the watch, whose first probe goes out at once.
+     */
+    let run = held();
+    let control = new Ddc.DdcBacklight(null, run);
+    control.start();
+    run.answer(DETECT_TWO, 0);
+    run.answer("VCP 10 C 40 100\n", 0);
+    run.answer("VCP 10 C 40 100\n", 0);
+    Harness.equal(control.busy, false, "the probe is over and both monitors are idle");
+
+    /* What opening the menu does before the watch starts. */
+    control.refresh();
+    Harness.equal(control.busy, true, "two reads are out");
+    control.redetect();
+    Harness.equal(run.waiting.length, 2, "so no detect goes out on top of them");
+
+    run.answer("VCP 10 C 40 100\n", 0);
+    control.redetect();
+    Harness.equal(run.waiting.length, 1, "one monitor still reading is still busy");
+
+    run.answer("VCP 10 C 40 100\n", 0);
+    Harness.equal(control.busy, false, "the bus is free");
+    control.redetect();
+    Harness.equal(run.waiting[0].argv, "ddcutil --brief detect", "and now the probe goes out");
+};
+
+cases["a re-detection is dropped while a monitor is being written to"] = function () {
+    /* The other half, which is a drag: a setvcp in flight, a tick, a detect. */
+    let run = held();
+    let control = new Ddc.DdcBacklight(null, run);
+    control.start();
+    run.answer(DETECT_TWO, 0);
+    run.answer("VCP 10 C 40 100\n", 0);
+    run.answer("VCP 10 C 40 100\n", 0);
+
+    control.monitors[0].setPercentage(70);
+    Harness.equal(control.busy, true, "the write is on the bus");
+    control.redetect();
+    Harness.equal(run.waiting.length, 1, "the detect is dropped rather than sent behind it");
+
+    run.answer("", 0);
+    control.redetect();
+    Harness.equal(run.waiting[0].argv, "ddcutil --brief detect", "and goes out once it is done");
+};
+
 cases["a probe that finds nothing to read is over when the detect answers"] = function () {
     /* The two ways out that start no reads: a detect that failed, and a detect
      * that found no display worth a slider. Neither may leave the flag up, or
