@@ -242,13 +242,22 @@ for (let i = 0; i < args.length; i++) {
 if (files.length === 0)
     files = sourceFiles();
 
-/* The copy everything is done to. Made once, and one file in it is rewritten
- * per mutant. */
+/*
+ * The copy everything is done to: the applet, and the suite that runs against
+ * it. Made once, and one file in it is rewritten per mutant.
+ *
+ * The tests are copied as well as the sources so that a run in progress is not
+ * reading a case file somebody is in the middle of writing. A mutation run
+ * takes minutes, which is long enough for that to happen, and a survivor
+ * reported against a half written case is worse than no answer.
+ */
 let work = GLib.dir_make_tmp("powertoys-mutate-XXXXXX");
 let copy = work + "/" + UUID;
-if (run(["cp", "-r", ROOT + "/" + UUID, copy], null) !== 0) {
-    printerr("could not copy the applet to " + work);
-    System.exit(2);
+for (let part of [UUID, "tests", "tools"]) {
+    if (run(["cp", "-r", ROOT + "/" + part, work + "/" + part], null) !== 0) {
+        printerr("could not copy " + part + " to " + work);
+        System.exit(2);
+    }
 }
 
 let environment = environmentWith(copy);
@@ -264,7 +273,7 @@ let environment = environmentWith(copy);
  * A mutant that hangs the suite is a mutant the suite noticed, so the timeout
  * counts as a kill: it is a failure like any other, and a slower one.
  */
-let suite = ["timeout", "--kill-after=2", "10", "cjs", ROOT + "/tests/run.js"];
+let suite = ["timeout", "--kill-after=2", "10", "cjs", work + "/tests/run.js"];
 
 /* A suite that is not green against the copy says nothing about a mutant. */
 if (run(suite, environment) !== 0) {
