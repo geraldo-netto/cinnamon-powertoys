@@ -32,7 +32,7 @@ msgstr ""
 msgid "Keyboard"
 msgstr ""
 
-#: applet.js:1025 applet.js:2636
+#: applet.js:1025 applet.js:2605
 msgid "Power profile"
 msgstr ""
 
@@ -48,7 +48,7 @@ msgstr ""
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1080 lib/panel-text.js:108 lib/reading.js:132
+#: applet.js:1080 lib/panel-text.js:159 lib/reading.js:132
 msgid "Governor"
 msgstr ""
 
@@ -102,8 +102,8 @@ msgid "No sensor matches"
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:1696 applet.js:2562 applet.js:2636 applet.js:2692 applet.js:2701
-#: lib/panel-text.js:144
+#: applet.js:1696 applet.js:2531 applet.js:2605 applet.js:2661 applet.js:2670
+#: lib/panel-text.js:195
 msgid "Power Toys"
 msgstr ""
 
@@ -115,15 +115,15 @@ msgid ""
 "shortcuts."
 msgstr ""
 
-#: applet.js:2545 applet.js:2663
+#: applet.js:2514 applet.js:2632
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2563
+#: applet.js:2532
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:2702
+#: applet.js:2671
 msgid "The change could not be applied."
 msgstr ""
 
@@ -431,7 +431,7 @@ msgstr ""
 msgid "Power saving"
 msgstr ""
 
-#: lib/format.js:419 lib/panel-text.js:110
+#: lib/format.js:419 lib/panel-text.js:161
 msgid "Temperature"
 msgstr ""
 
@@ -443,20 +443,20 @@ msgstr ""
 msgid "Power"
 msgstr ""
 
-#: lib/panel-text.js:101
+#: lib/panel-text.js:152
 msgid "Running on AC power"
 msgstr ""
 
-#: lib/panel-text.js:106
+#: lib/panel-text.js:157
 msgid "Profile"
 msgstr ""
 
 #. settings-schema.json->panel-show-power->description
-#: lib/panel-text.js:113
+#: lib/panel-text.js:164
 msgid "Power draw"
 msgstr ""
 
-#: lib/panel-text.js:139
+#: lib/panel-text.js:190
 #, javascript-format
 msgid "and %d more"
 msgstr ""

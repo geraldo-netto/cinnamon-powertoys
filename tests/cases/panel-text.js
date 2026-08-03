@@ -57,6 +57,78 @@ function options(parts) {
 var cases = {};
 
 /* ------------------------------------------------------------------ */
+/* what may be in the panel text at all                                 */
+
+cases["the list says which of the three the panel carries"] = function () {
+    /* Three switches are eight arrangements and the ones anybody wants are
+     * these three, which is why the list replaced them. */
+    let all = { battery: true, power: true, profile: true };
+    Harness.deepEqual(PanelText.panelParts("battery", all),
+                      { battery: true, power: false, profile: false }, "the charge");
+    Harness.deepEqual(PanelText.panelParts("battery-power", all),
+                      { battery: true, power: true, profile: false }, "and the draw with it");
+    Harness.deepEqual(PanelText.panelParts("none", all),
+                      { battery: false, power: false, profile: false }, "or nothing at all");
+};
+
+cases["the switches are only read where the list defers to them"] = function () {
+    let switches = { battery: false, power: true, profile: true };
+    Harness.deepEqual(PanelText.panelParts("custom", switches), switches, "as they stand");
+    Harness.deepEqual(PanelText.panelParts("battery", switches),
+                      { battery: true, power: false, profile: false },
+                      "and ignored otherwise");
+};
+
+cases["a setting that says nothing recognisable still draws something"] = function () {
+    /*
+     * A key that did not bind leaves its property undefined, and a schema that
+     * has moved on can leave a value this applet has never heard of. Either
+     * way the panel is on screen and has to say something; the default entry
+     * is the charge.
+     */
+    let expected = { battery: true, power: false, profile: false };
+    Harness.deepEqual(PanelText.panelParts(undefined, {}), expected, "nothing bound");
+    Harness.deepEqual(PanelText.panelParts("something-else", {}), expected, "nothing known");
+    Harness.deepEqual(PanelText.panelParts("custom", undefined),
+                      { battery: false, power: false, profile: false },
+                      "and switches that are not there are not on");
+};
+
+cases["an upgrade keeps the panel somebody already had"] = function () {
+    /*
+     * Read once per install, on the way past the three switches to the list
+     * that replaced them - and never again, which is why it is worth being
+     * able to ask it at all.
+     */
+    Harness.equal(PanelText.migratedPanelText({ battery: true, power: false, profile: false }),
+                  "battery", "the default arrangement");
+    Harness.equal(PanelText.migratedPanelText({ battery: true, power: true, profile: false }),
+                  "battery-power", "the charge and the draw");
+    Harness.equal(PanelText.migratedPanelText({ battery: false, power: false, profile: false }),
+                  "none", "a panel that said nothing goes on saying nothing");
+    Harness.equal(PanelText.migratedPanelText({ battery: false, power: false, profile: true }),
+                  "custom", "and anything else keeps the switches doing what they did");
+};
+
+cases["what the switches meant is what the entry chosen for them means"] = function () {
+    /*
+     * The two halves against each other, over all eight arrangements: whatever
+     * entry the migration picks has to draw the same panel the switches drew,
+     * or an upgrade silently changes what somebody is looking at.
+     */
+    for (let battery of [false, true]) {
+        for (let power of [false, true]) {
+            for (let profile of [false, true]) {
+                let switches = { battery: battery, power: power, profile: profile };
+                let chosen = PanelText.migratedPanelText(switches);
+                Harness.deepEqual(PanelText.panelParts(chosen, switches), switches,
+                                  JSON.stringify(switches) + " became " + chosen);
+            }
+        }
+    }
+};
+
+/* ------------------------------------------------------------------ */
 /* which of the three things the icon is drawn from                     */
 
 cases["the icon follows the battery, then the profile, then nothing"] = function () {

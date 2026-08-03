@@ -2396,42 +2396,21 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._alerts.check(data, this._alertLimits());
     }
 
-    /*
-     * What the panel text is, from one list rather than three switches.
-     *
-     * Three independent switches are eight arrangements to consider, and the
-     * ones anybody wants are the charge, the charge and the draw, or nothing
-     * at all. Those are the list; the switches are still there under "Choose
-     * below" for the arrangement that is not on it.
-     */
-    _panelText() {
-        switch (this.panelText) {
-            case "none":
-                return { battery: false, power: false, profile: false };
-            case "battery-power":
-                return { battery: true, power: true, profile: false };
-            case "custom":
-                return { battery: this.panelShowBattery, power: this.panelShowPower,
-                         profile: this.panelShowProfile };
-            default:
-                return { battery: true, power: false, profile: false };
-        }
+    /* What the three switches say, which is only read where the list is on
+     * "Choose below" - and once, on the way past them; see below. */
+    _panelSwitches() {
+        return { battery: this.panelShowBattery, power: this.panelShowPower,
+                 profile: this.panelShowProfile };
     }
 
     /*
      * The switches, read once into the list that replaced them.
      *
-     * A machine that has run this applet before has three switches set the way
-     * somebody wanted them, and a new setting arrives at its default - so
-     * without this, an upgrade would quietly take the power draw out of
-     * somebody's panel. Where the switches say what one of the list's entries
-     * says, that entry is chosen; where they say something else, the list is
-     * put on "Choose below" and the switches keep doing exactly what they did.
-     *
-     * A fresh install has nothing to read: `introduced` is still false, the
-     * switches are still at their defaults, and the default entry already
-     * means what they mean. Run this before the greeting, which is what sets
-     * that flag.
+     * Which entry means what they meant is lib/panel-text.js; what is here is
+     * the once: a fresh install has nothing to read, because `introduced` is
+     * still false, the switches are still at their defaults and the default
+     * entry already means what they mean. Run this before the greeting, which
+     * is what sets that flag.
      */
     _migratePanelText() {
         if (this.panelTextMigrated)
@@ -2440,23 +2419,13 @@ class PowerToysApplet extends Applet.TextIconApplet {
         if (!this.introduced)
             return;
 
-        let battery = this.panelShowBattery;
-        let power = this.panelShowPower;
-        let profile = this.panelShowProfile;
-        let wanted = "custom";
-        if (battery && !power && !profile)
-            wanted = "battery";
-        else if (battery && power && !profile)
-            wanted = "battery-power";
-        else if (!battery && !power && !profile)
-            wanted = "none";
-
+        let wanted = PanelText.migratedPanelText(this._panelSwitches());
         if (wanted !== this.panelText)
             this.settings.setValue("panel-text", wanted);
     }
 
     _panelOptions() {
-        let text = this._panelText();
+        let text = PanelText.panelParts(this.panelText, this._panelSwitches());
         return {
             showBattery: text.battery,
             showPower: text.power,

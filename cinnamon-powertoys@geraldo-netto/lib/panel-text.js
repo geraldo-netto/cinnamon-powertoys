@@ -26,6 +26,57 @@ const _ = Translate._;
  * as a tooltip is read in one glance. */
 var TOOLTIP_PERIPHERALS = 3;
 
+/*
+ * What may be in the panel text, from one list rather than three switches.
+ *
+ * Three independent switches are eight arrangements to consider, and the ones
+ * anybody wants are the charge, the charge and the draw, or nothing at all.
+ * Those are the list; the switches are still there under "Choose below" for
+ * the arrangement that is not on it, and `switches` is what they say.
+ */
+function panelParts(choice, switches) {
+    let chosen = switches || {};
+    switch (choice) {
+        case "none":
+            return { battery: false, power: false, profile: false };
+        case "battery-power":
+            return { battery: true, power: true, profile: false };
+        case "custom":
+            return { battery: !!chosen.battery, power: !!chosen.power,
+                     profile: !!chosen.profile };
+        default:
+            return { battery: true, power: false, profile: false };
+    }
+}
+
+/*
+ * The list entry that means what the three switches meant.
+ *
+ * A machine that has run this applet before has them set the way somebody
+ * wanted them, and a setting that did not exist then arrives at its default -
+ * so without this an upgrade would quietly take the power draw out of
+ * somebody's panel. Where the switches say what one of the entries says, that
+ * entry is the answer; where they say something else, the answer is "custom"
+ * and the switches go on doing exactly what they did.
+ *
+ * It is read once per install and can never be run again to see whether it was
+ * right, which is the whole reason it is worth having out here.
+ */
+function migratedPanelText(switches) {
+    let chosen = switches || {};
+    let battery = !!chosen.battery;
+    let power = !!chosen.power;
+    let profile = !!chosen.profile;
+
+    if (battery && !power && !profile)
+        return "battery";
+    if (battery && power && !profile)
+        return "battery-power";
+    if (!battery && !power && !profile)
+        return "none";
+    return "custom";
+}
+
 /* "auto" settled: the battery if there is one, otherwise the profile if
  * there is one. The label needs to know as well as the icon does. */
 function iconSource(data, wanted, profile) {
