@@ -786,3 +786,34 @@ cases["a reading taken after a rediscovery is the new machine's"] = function () 
         Harness.ok(answer.temperatures.length > 0, "which is some");
     });
 };
+
+cases["a sweep is only run again where the hardware has moved"] = function () {
+    /*
+     * The menu asks for this every time it opens. A full sweep reads every
+     * label, name and type file under three directory trees, so doing it on
+     * every open would be a hundred reads to answer a question whose answer is
+     * almost always "the same machine as last time".
+     *
+     * What it costs instead is three directory listings, and what those catch
+     * is a card waking up, a sensor being unplugged or a driver being loaded -
+     * anything that adds or removes a node. A change inside a directory that
+     * was already there is missed until the next real one, which is the trade
+     * this is written to make.
+     */
+    on("machine", function () {
+        let set = new Sensors.SensorSet();
+        Harness.ok(set.temperatureSensors.length > 0, "a machine with sensors on it");
+
+        Harness.equal(set.refresh(), false, "nothing has moved, so nothing is swept");
+        Harness.ok(set.temperatureSensors.length > 0, "and the lists are still the ones it had");
+
+        /* Every one of the three trees gone at once, which is what a fixture
+         * with none of them stands in for. */
+        IO.setRoot(Harness.fixture("inverted-boost"));
+        Harness.equal(set.refresh(), true, "the hardware moved, so it swept again");
+        Harness.equal(set.temperatureSensors.length, 0, "and found what is there now");
+        Harness.equal(set.energyMeters.length, 0, "meters and all");
+
+        Harness.equal(set.refresh(), false, "and the new shape is the one it now knows");
+    });
+};
