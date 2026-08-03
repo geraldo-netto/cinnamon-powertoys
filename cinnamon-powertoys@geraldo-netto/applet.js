@@ -42,6 +42,7 @@ const PendingProfile = require("./lib/pending-profile.js");
 const PowerSupply = require("./lib/power-supply.js");
 const Privileged = require("./lib/privileged.js");
 const Sensors = require("./lib/sensors.js");
+const SensorRows = require("./lib/sensor-rows.js");
 const Translate = require("./lib/gettext.js");
 const UPower = require("./lib/upower.js");
 const Profiles = require("./lib/profiles.js");
@@ -1568,162 +1569,6 @@ class MenuPresenter {
             this._cpuGroup.setVisible(false);
     }
 
-    /*
-     * A menu key unique across the three lists. Ids are unique within one of
-     * them but not between them: a battery that reports both a temperature
-     * and a draw carries the same UPower path in each, and what tells the two
-     * readings apart is what they measure.
-     */
-    _entryKey(reading) {
-        return reading.measure + ":" + reading.id;
-    }
-
-    /*
-     * A reading as a row.
-     *
-     * The label is the short one - "Edge", not "amdgpu edge (03:00.0)" -
-     * because the heading above the row already says which chip it came off.
-     * The long name is kept as a fallback for anything that arrived without a
-     * group, and for a machine whose libraries predate the short one.
-     */
-    _rowLabel(reading) {
-        return reading.shortLabel || reading.label;
-    }
-
-    /* A temperature is worth flagging as it closes on the chip's own limit. */
-    _temperatureEntry(sensor, options) {
-        return {
-            key: this._entryKey(sensor),
-            kind: sensor.kind,
-            group: sensor.group,
-            groupLabel: sensor.groupLabel,
-            measure: sensor.measure,
-            label: this._rowLabel(sensor),
-            value: Format.temperature(sensor.celsius, options.tempUnit, 1),
-            warning: sensor.critical !== null && sensor.celsius >= sensor.critical - 5,
-        };
-    }
-
-    _fanEntry(fan) {
-        return { key: this._entryKey(fan), kind: fan.kind, measure: fan.measure,
-                 group: fan.group, groupLabel: fan.groupLabel,
-                 label: this._rowLabel(fan), value: Format.rpm(fan.rpm), warning: false };
-    }
-
-    _powerEntry(meter) {
-        return { key: this._entryKey(meter), kind: meter.kind, measure: meter.measure,
-                 group: meter.group, groupLabel: meter.groupLabel,
-                 label: this._rowLabel(meter), value: Format.watts(meter.watts),
-                 warning: false };
-    }
-
-    /*
-     * One kind of reading turned into menu entries: drop what cannot be read,
-     * drop the uninteresting kinds unless the menu was asked for all of them.
-     */
-    _sensorEntries(readings, showAll, isReadable, toEntry) {
-        let usable = readings.filter(isReadable);
-        if (!showAll)
-            usable = usable.filter(reading => Sensors.isPrimaryKind(reading.kind));
-        return usable.map(toEntry);
-    }
-
-    /*
-     * A heading wherever the chip changes.
-     *
-     * With every sensor shown this list is nineteen rows on the machine it was
-     * written on, and nineteen undifferentiated rows is a wall. Headed groups
-     * of two to seven are a list.
-     *
-     * The heading used to be the kind - "Processor", "Graphics" - which was a
-     * wall of its own on a machine with two graphics cards: one heading over
-     * seven rows, of which two belonged to a different card and said so only
-     * in a PCI address at the end of each row. It is the chip itself now, by
-     * name, so the address is gone from the rows and the two cards are two
-     * blocks.
-     */
-    _withHeadings(entries, leadIn) {
-        let out = [];
-        let group = null;
-        let placed = !leadIn || leadIn.rows.length === 0;
-
-        for (let entry of entries) {
-            if (entry.group !== group) {
-                group = entry.group;
-                out.push({ key: "heading:" + group, heading: true,
-                           label: entry.groupLabel || Sensors.kindLabel(entry.kind) });
-                if (!placed && group === leadIn.group) {
-                    for (let row of leadIn.rows)
-                        out.push(row);
-                    placed = true;
-                }
-            }
-            out.push(entry);
-        }
-
-        /* The chip the lead-in belongs to reported nothing readable, so it has
-         * no group of its own here. It still has a name and the rows still say
-         * something, so they get a heading of their own at the front. */
-        if (!placed) {
-            out = [{ key: "heading:" + leadIn.group, heading: true, label: leadIn.groupLabel }]
-                .concat(leadIn.rows, out);
-        }
-        return out;
-    }
-
-    /*
-     * What the processor says about itself, filed with the readings off the
-     * same chip.
-     *
-     * The frequency and the scaling driver were rows in the Processor group,
-     * where they sat above the governor and the boost switch as though they
-     * were settings. They are not: they are what the chip is doing and what is
-     * doing it, which is the same kind of thing as its temperature. So they go
-     * under the chip's own name, ahead of its temperatures, and the Processor
-     * group is left holding only what can be changed.
-     *
-     * They attach to whichever sensor group came off the processor. Where the
-     * machine reports no processor temperature at all there is no such group,
-     * and the name from /proc/cpuinfo heads one for them.
-     */
-    _cpuReadingRows(data) {
-        if (!data.cpu.available)
-            return null;
-
-        let host = data.temperatures.find(sensor => sensor.kind === "cpu" && sensor.group);
-        let rows = [];
-
-        let frequency = Format.frequency(data.cpu.averageFrequency);
-        if (data.cpu.maxFrequency)
-            frequency += " / " + Format.frequency(data.cpu.maxFrequency);
-        if (frequency)
-            rows.push({ key: "cpu:frequency", label: _("Frequency"),
-                        value: frequency, warning: false });
-
-        let driver = Format.driverLabel(data.cpu.driver, data.cpu.amdPstateStatus);
-        if (data.cpu.driver)
-            rows.push({ key: "cpu:driver", label: _("Scaling driver"),
-                        value: driver, warning: false });
-
-        /*
-         * The governor and the energy preference were stated here too, while
-         * the daemon owned them. What that put on screen was "Performance"
-         * three times in one menu - the filled segment, then twice more under
-         * the chip - and the two extra rows read as settings nobody could find
-         * the control for, because the control is the profile, two columns to
-         * the left, and nothing said so. A reading of a setting is not like a
-         * temperature: it invites changing, and these rows could only decline.
-         * The tooltip still names the governor in force, beside the profile
-         * that wrote it.
-         */
-
-        return {
-            group: host ? host.group : "cpu:processor",
-            groupLabel: host ? host.groupLabel : (data.cpu.model || Sensors.kindLabel("cpu")),
-            rows: rows,
-        };
-    }
-
     _updateSensors(data, options) {
         this._sensorGroup.setVisible(options.showSensors);
         if (!options.showSensors)
@@ -1733,25 +1578,10 @@ class MenuPresenter {
         if (data.hintMatched === false)
             this._hintRow.setLabel(_("No sensor matches") + " \u201c" + options.sensorHint + "\u201d");
 
-        let all = options.showAllSensors;
-        let entries = [].concat(
-            this._sensorEntries(data.temperatures, all, sensor => sensor.celsius !== null,
-                                sensor => this._temperatureEntry(sensor, options)),
-            this._sensorEntries(data.fans, all, fan => fan.rpm !== null && fan.rpm > 0,
-                                fan => this._fanEntry(fan)),
-            this._sensorEntries(data.powers, all, () => true,
-                                meter => this._powerEntry(meter)));
-
-        let leadIn = this._cpuReadingRows(data);
-
-        if (entries.length === 0 && (!leadIn || leadIn.rows.length === 0)) {
-            this._sensorList.sync([{ key: "empty", label: _("No sensors found"),
-                                     value: "", warning: false }]);
-            return;
-        }
-
-        entries.sort(Sensors.bySensorOrder);
-        this._sensorList.sync(this._withHeadings(entries, leadIn));
+        /* Which readings get a row, what each is called and where the headings
+         * fall is lib/sensor-rows.js; what is left here is handing the answer
+         * to the list. */
+        this._sensorList.sync(SensorRows.rows(data, options));
     }
 
     /* Under the devices heading, so it is beside the battery it applies to

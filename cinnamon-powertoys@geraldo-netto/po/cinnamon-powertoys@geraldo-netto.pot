@@ -16,132 +16,120 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: applet.js:368
+#: applet.js:397
 msgid "Running on AC power"
 msgstr ""
 
-#: applet.js:373
+#: applet.js:402
 msgid "Profile"
 msgstr ""
 
-#: applet.js:375 applet.js:1166 lib/reading.js:132
+#: applet.js:404 applet.js:1209 lib/reading.js:132
 msgid "Governor"
 msgstr ""
 
-#: applet.js:377 lib/format.js:391
+#: applet.js:406 lib/format.js:419
 msgid "Temperature"
 msgstr ""
 
 #. settings-schema.json->panel-show-power->description
-#: applet.js:380
+#: applet.js:409
 msgid "Power draw"
 msgstr ""
 
-#: applet.js:406
+#: applet.js:435
 #, javascript-format
 msgid "and %d more"
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:411 applet.js:1911 applet.js:2556 applet.js:2630 applet.js:2677
-#: applet.js:2686
+#: applet.js:440 applet.js:1825 applet.js:2691 applet.js:2765 applet.js:2821
+#: applet.js:2830
 msgid "Power Toys"
 msgstr ""
 
-#: applet.js:1060
+#: applet.js:1103
 msgid "System power settings"
 msgstr ""
 
-#: applet.js:1082
+#: applet.js:1125
 msgid "Brightness"
 msgstr ""
 
-#: applet.js:1087
+#: applet.js:1130
 msgid "Screen"
 msgstr ""
 
-#: applet.js:1103 lib/format.js:89
+#: applet.js:1146 lib/format.js:108
 msgid "Keyboard"
 msgstr ""
 
-#: applet.js:1111 applet.js:2630
+#: applet.js:1154 applet.js:2765
 msgid "Power profile"
 msgstr ""
 
-#: applet.js:1117
+#: applet.js:1160
 msgid "Performance limited"
 msgstr ""
 
-#: applet.js:1143 lib/sensors.js:36
+#: applet.js:1186 lib/sensors.js:37
 msgid "Processor"
 msgstr ""
 
-#: applet.js:1148
+#: applet.js:1191
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1169 lib/reading.js:134
+#: applet.js:1212 lib/reading.js:134
 msgid "Energy preference"
 msgstr ""
 
-#: applet.js:1184
+#: applet.js:1227
 msgid "Devices"
 msgstr ""
 
-#: applet.js:1205
+#: applet.js:1248
 msgid "Nothing with a battery is connected"
 msgstr ""
 
-#: applet.js:1214 lib/reading.js:138
+#: applet.js:1266 lib/reading.js:138
 msgid "Charge limit"
 msgstr ""
 
-#: applet.js:1224
+#: applet.js:1276
 msgid "The batteries are set to different limits; choosing one sets both"
 msgstr ""
 
-#: applet.js:1231
+#: applet.js:1282
 msgid "Sensors"
 msgstr ""
 
-#: applet.js:1325
+#: applet.js:1389
 #, javascript-format
 msgid "Only the first %d monitors have a slider"
 msgstr ""
 
-#: applet.js:1424
+#: applet.js:1489
 msgid "On AC power"
 msgstr ""
 
-#: applet.js:1444
+#: applet.js:1509
 msgid "an application"
 msgstr ""
 
-#: applet.js:1463
+#: applet.js:1528
 msgid "Connected"
 msgstr ""
 
-#: applet.js:1463
+#: applet.js:1528
 msgid "Disconnected"
 msgstr ""
 
-#: applet.js:1636
-msgid "Frequency"
-msgstr ""
-
-#: applet.js:1641
-msgid "Scaling driver"
-msgstr ""
-
-#: applet.js:1670
+#: applet.js:1579
 msgid "No sensor matches"
 msgstr ""
 
-#: applet.js:1684
-msgid "No sensors found"
-msgstr ""
-
-#: applet.js:1912
+#: applet.js:1826
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "
@@ -149,15 +137,15 @@ msgid ""
 "shortcuts."
 msgstr ""
 
-#: applet.js:2539
+#: applet.js:2674 applet.js:2792
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2557
+#: applet.js:2692
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:2687
+#: applet.js:2831
 msgid "The change could not be applied."
 msgstr ""
 
@@ -173,7 +161,7 @@ msgstr ""
 msgid "High temperature"
 msgstr ""
 
-#: lib/ddc.js:180
+#: lib/ddc.js:184
 msgid "Display"
 msgstr ""
 
@@ -193,283 +181,283 @@ msgstr ""
 msgid "cycles"
 msgstr ""
 
-#: lib/format.js:84
+#: lib/format.js:103
 msgid "AC adapter"
 msgstr ""
 
-#: lib/format.js:85 lib/sensors.js:41
+#: lib/format.js:104 lib/sensors.js:42
 msgid "Battery"
 msgstr ""
 
-#: lib/format.js:86
+#: lib/format.js:105
 msgid "UPS"
 msgstr ""
 
-#: lib/format.js:87
+#: lib/format.js:106
 msgid "Monitor"
 msgstr ""
 
-#: lib/format.js:88
+#: lib/format.js:107
 msgid "Mouse"
 msgstr ""
 
-#: lib/format.js:90
+#: lib/format.js:109
 msgid "PDA"
 msgstr ""
 
-#: lib/format.js:91
+#: lib/format.js:110
 msgid "Phone"
 msgstr ""
 
-#: lib/format.js:92
+#: lib/format.js:111
 msgid "Media player"
 msgstr ""
 
-#: lib/format.js:93
+#: lib/format.js:112
 msgid "Tablet"
 msgstr ""
 
-#: lib/format.js:94
+#: lib/format.js:113
 msgid "Computer"
 msgstr ""
 
-#: lib/format.js:95
+#: lib/format.js:114
 msgid "Game controller"
 msgstr ""
 
-#: lib/format.js:96
+#: lib/format.js:115
 msgid "Pen"
 msgstr ""
 
-#: lib/format.js:97
+#: lib/format.js:116
 msgid "Touchpad"
 msgstr ""
 
-#: lib/format.js:98
+#: lib/format.js:117
 msgid "Modem"
 msgstr ""
 
-#: lib/format.js:99
+#: lib/format.js:118
 msgid "Network device"
 msgstr ""
 
-#: lib/format.js:100
+#: lib/format.js:119
 msgid "Headset"
 msgstr ""
 
-#: lib/format.js:101
+#: lib/format.js:120
 msgid "Speakers"
 msgstr ""
 
-#: lib/format.js:102
+#: lib/format.js:121
 msgid "Headphones"
 msgstr ""
 
-#: lib/format.js:103
+#: lib/format.js:122
 msgid "Video device"
 msgstr ""
 
-#: lib/format.js:104
+#: lib/format.js:123
 msgid "Audio device"
 msgstr ""
 
-#: lib/format.js:105
+#: lib/format.js:124
 msgid "Remote control"
 msgstr ""
 
-#: lib/format.js:106
+#: lib/format.js:125
 msgid "Printer"
 msgstr ""
 
-#: lib/format.js:107
+#: lib/format.js:126
 msgid "Scanner"
 msgstr ""
 
-#: lib/format.js:108
+#: lib/format.js:127
 msgid "Camera"
 msgstr ""
 
-#: lib/format.js:109
+#: lib/format.js:128
 msgid "Wearable"
 msgstr ""
 
-#: lib/format.js:110
+#: lib/format.js:129
 msgid "Toy"
 msgstr ""
 
-#: lib/format.js:111
+#: lib/format.js:130
 msgid "Bluetooth device"
 msgstr ""
 
-#: lib/format.js:116
+#: lib/format.js:135
 msgid "Device"
 msgstr ""
 
-#: lib/format.js:123
+#: lib/format.js:142
 msgid "Charging"
 msgstr ""
 
-#: lib/format.js:124
+#: lib/format.js:143
 msgid "Discharging"
 msgstr ""
 
-#: lib/format.js:125
+#: lib/format.js:144
 msgid "Empty"
 msgstr ""
 
-#: lib/format.js:126
+#: lib/format.js:145
 msgid "Fully charged"
 msgstr ""
 
-#: lib/format.js:127
+#: lib/format.js:146
 msgid "Pending charge"
 msgstr ""
 
-#: lib/format.js:128
+#: lib/format.js:147
 msgid "Pending discharge"
 msgstr ""
 
-#: lib/format.js:129 lib/format.js:141
+#: lib/format.js:148 lib/format.js:160
 msgid "Unknown"
 msgstr ""
 
-#: lib/format.js:136
+#: lib/format.js:155
 msgid "Full"
 msgstr ""
 
-#: lib/format.js:137
+#: lib/format.js:156
 msgid "High"
 msgstr ""
 
-#: lib/format.js:138
+#: lib/format.js:157
 msgid "Normal"
 msgstr ""
 
-#: lib/format.js:139
+#: lib/format.js:158
 msgid "Low"
 msgstr ""
 
-#: lib/format.js:140
+#: lib/format.js:159
 msgid "Critical"
 msgstr ""
 
-#: lib/format.js:236
+#: lib/format.js:264
 msgid "Power saver"
 msgstr ""
 
-#: lib/format.js:237
+#: lib/format.js:265
 msgid "Balanced"
 msgstr ""
 
-#: lib/format.js:238
+#: lib/format.js:266
 msgid "Balanced performance"
 msgstr ""
 
-#: lib/format.js:239 lib/format.js:349 lib/format.js:367
+#: lib/format.js:267 lib/format.js:377 lib/format.js:395
 msgid "Performance"
 msgstr ""
 
-#: lib/format.js:240
+#: lib/format.js:268
 msgid "Quiet"
 msgstr ""
 
-#: lib/format.js:241
+#: lib/format.js:269
 msgid "Low power"
 msgstr ""
 
-#: lib/format.js:242
+#: lib/format.js:270
 msgid "Cool"
 msgstr ""
 
-#: lib/format.js:303 lib/format.js:304
+#: lib/format.js:331 lib/format.js:332
 msgid "AMD"
 msgstr ""
 
-#: lib/format.js:305
+#: lib/format.js:333
 msgid "ACPI"
 msgstr ""
 
-#: lib/format.js:306
+#: lib/format.js:334
 msgid "Intel"
 msgstr ""
 
-#: lib/format.js:307
+#: lib/format.js:335
 msgid "Intel, kernel managed"
 msgstr ""
 
-#: lib/format.js:308
+#: lib/format.js:336
 msgid "ACPI hardware managed"
 msgstr ""
 
-#: lib/format.js:309
+#: lib/format.js:337
 msgid "Intel SpeedStep"
 msgstr ""
 
-#: lib/format.js:310
+#: lib/format.js:338
 msgid "AMD PowerNow"
 msgstr ""
 
-#: lib/format.js:311
+#: lib/format.js:339
 msgid "Processor Clocking Control"
 msgstr ""
 
-#: lib/format.js:320
+#: lib/format.js:348
 msgid "hardware managed"
 msgstr ""
 
-#: lib/format.js:321
+#: lib/format.js:349
 msgid "guided"
 msgstr ""
 
-#: lib/format.js:322
+#: lib/format.js:350
 msgid "kernel managed"
 msgstr ""
 
-#: lib/format.js:336
+#: lib/format.js:364
 msgid "unknown"
 msgstr ""
 
-#: lib/format.js:350
+#: lib/format.js:378
 msgid "Power save"
 msgstr ""
 
-#: lib/format.js:351
+#: lib/format.js:379
 msgid "On demand"
 msgstr ""
 
-#: lib/format.js:352
+#: lib/format.js:380
 msgid "Conservative"
 msgstr ""
 
-#: lib/format.js:353
+#: lib/format.js:381
 msgid "Scheduler guided"
 msgstr ""
 
-#: lib/format.js:354
+#: lib/format.js:382
 msgid "Userspace"
 msgstr ""
 
-#: lib/format.js:366
+#: lib/format.js:394
 msgid "Default"
 msgstr ""
 
-#: lib/format.js:368
+#: lib/format.js:396
 msgid "Balance performance"
 msgstr ""
 
-#: lib/format.js:369
+#: lib/format.js:397
 msgid "Balance power"
 msgstr ""
 
-#: lib/format.js:370
+#: lib/format.js:398
 msgid "Power saving"
 msgstr ""
 
-#: lib/format.js:392
+#: lib/format.js:420
 msgid "Fan"
 msgstr ""
 
-#: lib/format.js:393 lib/sensors.js:203
+#: lib/format.js:421 lib/sensors.js:204
 msgid "Power"
 msgstr ""
 
@@ -493,71 +481,83 @@ msgstr ""
 msgid "Turbo boost off"
 msgstr ""
 
-#: lib/sensors.js:38
+#: lib/sensor-rows.js:161
+msgid "Frequency"
+msgstr ""
+
+#: lib/sensor-rows.js:166
+msgid "Scaling driver"
+msgstr ""
+
+#: lib/sensor-rows.js:209
+msgid "No sensors found"
+msgstr ""
+
+#: lib/sensors.js:39
 msgid "Graphics"
 msgstr ""
 
-#: lib/sensors.js:40 lib/sensors.js:501
+#: lib/sensors.js:41 lib/sensors.js:502
 msgid "Package"
 msgstr ""
 
-#: lib/sensors.js:43
+#: lib/sensors.js:44
 msgid "Mainboard"
 msgstr ""
 
-#: lib/sensors.js:45
+#: lib/sensors.js:46
 msgid "Storage"
 msgstr ""
 
-#: lib/sensors.js:47
+#: lib/sensors.js:48
 msgid "Network"
 msgstr ""
 
-#: lib/sensors.js:49
+#: lib/sensors.js:50
 msgid "Other"
 msgstr ""
 
-#: lib/sensors.js:194 lib/sensors.js:195
+#: lib/sensors.js:195 lib/sensors.js:196
 msgid "Core die"
 msgstr ""
 
-#: lib/sensors.js:196
+#: lib/sensors.js:197
 msgid "Measured die"
 msgstr ""
 
-#: lib/sensors.js:197
+#: lib/sensors.js:198
 msgid "Cooling control"
 msgstr ""
 
-#: lib/sensors.js:198
+#: lib/sensors.js:199
 msgid "Die edge"
 msgstr ""
 
-#: lib/sensors.js:199
+#: lib/sensors.js:200
 msgid "Hotspot"
 msgstr ""
 
-#: lib/sensors.js:200 lib/sensors.js:494
+#: lib/sensors.js:201 lib/sensors.js:495
 msgid "Memory"
 msgstr ""
 
-#: lib/sensors.js:201
+#: lib/sensors.js:202
 msgid "Core voltage"
 msgstr ""
 
-#: lib/sensors.js:202
+#: lib/sensors.js:203
 msgid "SoC voltage"
 msgstr ""
 
-#: lib/sensors.js:492
+#: lib/sensors.js:493
 msgid "Cores"
 msgstr ""
 
-#: lib/sensors.js:493
+#: lib/sensors.js:494
 msgid "Uncore"
 msgstr ""
 
-#: lib/sensors.js:495
+#: lib/sensors.js:496
 msgid "Whole board"
 msgstr ""
 
