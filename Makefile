@@ -31,8 +31,15 @@ RAPL_RULE   := 99-cinnamon-powertoys-rapl.rules
 RAPL_DIR    := $(DESTDIR)/etc/udev/rules.d
 RAPL_GROUP  ?= adm
 
+# Where a coverage run puts the copies it measures and the lcov it produces,
+# and the figure every function has to reach. Per function rather than per
+# file: a file of small well covered functions carries an untouched one without
+# its total moving much, which is the one thing a percentage should not hide.
+COVERAGE_DIR := .coverage
+COVERAGE_MIN ?= 80
+
 .PHONY: install uninstall install-policy uninstall-policy install-rapl \
-	uninstall-rapl check pot restart help
+	uninstall-rapl check coverage pot restart help
 
 help:
 	@echo "make install          - install the applet for the current user"
@@ -45,6 +52,8 @@ help:
 	@echo "make uninstall-rapl   - (root) make those counters root only again"
 	@echo "make check            - run the tests and check the JavaScript, helper,"
 	@echo "                        JSON and policy"
+	@echo "make coverage         - run the tests again under the interpreter's own"
+	@echo "                        coverage and report it per function"
 	@echo "make pot              - regenerate the translation template"
 	@echo "make restart          - restart Cinnamon"
 
@@ -122,6 +131,28 @@ check:
 	@grep -q '"$(HELPER_PATH)"' $(UUID)/applet.js \
 		&& grep -q '>$(HELPER_PATH)<' polkit/$(POLICY) \
 		&& echo "paths ok     $(HELPER_PATH)"
+
+# Coverage, per function, from the interpreter rather than from a guess.
+#
+# cjs measures what it compiles from a file, and a library here is compiled out
+# of a string by new Function - which is how Cinnamon loads an xlet, and which
+# leaves nothing to attribute a line to. So the run writes each library out
+# again, one file per library, and loads those instead; the body is the same
+# text the ordinary run evaluates, wrapped so that line one stays line one.
+#
+# Separate from check because it runs the whole suite a second time and needs
+# the interpreter's coverage machinery, which the parse check and the tests do
+# not. The gate is COVERAGE_MIN, per function.
+coverage:
+	@command -v cjs >/dev/null 2>&1 || { echo "cjs not found, install the cjs package"; exit 1; }
+	@rm -rf $(COVERAGE_DIR)
+	@mkdir -p $(COVERAGE_DIR)/modules
+	@POWERTOYS_COVERAGE_DIR=$(abspath $(COVERAGE_DIR))/modules \
+		cjs --coverage-prefix=$(abspath $(COVERAGE_DIR))/modules \
+		    --coverage-output=$(abspath $(COVERAGE_DIR)) \
+		    tests/run.js > $(COVERAGE_DIR)/run.log 2>&1 || \
+		{ cat $(COVERAGE_DIR)/run.log; exit 1; }
+	@cjs tools/coverage-report.js $(COVERAGE_DIR) --min $(COVERAGE_MIN)
 
 # The template, as a function of the sources and of nothing else.
 #

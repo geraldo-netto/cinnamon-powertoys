@@ -31,6 +31,18 @@ imports.searchPath.unshift(TESTS);
 const Harness = imports.harness;
 Harness.setRoot(ROOT);
 
+/*
+ * A coverage run says where to put the copies it measures, and they have to be
+ * on the import path before the first library is loaded. See the harness, and
+ * tools/coverage-report.js for what is done with the result.
+ */
+let coverage = GLib.getenv("POWERTOYS_COVERAGE_DIR");
+if (coverage) {
+    GLib.mkdir_with_parents(coverage, 0o755);
+    imports.searchPath.unshift(coverage);
+    Harness.setCoverageDir(coverage);
+}
+
 function caseFiles() {
     let names = [];
     let directory = Gio.File.new_for_path(TESTS + "/cases");
@@ -99,6 +111,8 @@ if (skipped.length > 0) {
     for (let reason of skipped)
         print("  skipped: " + reason);
 }
+
+Harness.writeCoverageManifest();
 
 print("tests ok     " + passed + " passed" +
       (skipped.length > 0 ? ", " + skipped.length + " skipped" : "") +

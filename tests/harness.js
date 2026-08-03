@@ -12,6 +12,7 @@
  */
 
 const Gio = imports.gi.Gio;
+const GLib = imports.gi.GLib;
 
 /* The loader emulation the parse check uses as well, so the two cannot come
  * to disagree about what Cinnamon does. The runner puts tools/ on the path. */
@@ -53,9 +54,82 @@ function requireXlet(path) {
     let exports = {};
     let module = { exports: exports };
     let meta = { uuid: UUID, path: xletDir() };
-    _cache[path] = Loader.compile(Loader.moduleBody(Loader.read(path)))
+    _cache[path] = _compile(path)
         .call(exports, requireXlet, exports, module, meta, xletDir(), path);
     return _cache[path];
+}
+
+/* ---------------------------------------------------------------- */
+/* coverage                                                          */
+
+/*
+ * Where a coverage run puts the copies it measures, or null in an ordinary
+ * run. The runner reads it out of the environment and says so here.
+ *
+ * cjs measures what it compiles from a file, and a library here is compiled
+ * out of a string by new Function - which is how Cinnamon does it, and which
+ * leaves the interpreter with no filename to attribute a line to. So a
+ * coverage run writes each library out again, one file per library, and loads
+ * that instead.
+ */
+let _coverageDir = null;
+let _coverageNames = {};
+
+function setCoverageDir(path) {
+    _coverageDir = path || null;
+}
+
+function coverageDir() {
+    return _coverageDir;
+}
+
+/*
+ * The module name a library is measured under. Directory separators and dots
+ * are not identifiers, and `imports.x` needs one.
+ */
+function _coverageName(path) {
+    return "cov_" + path.slice(xletDir().length + 1).replace(/[^A-Za-z0-9]/g, "_");
+}
+
+/*
+ * The body Cinnamon evaluates, in a file, wrapped in the function it is
+ * evaluated as.
+ *
+ * The wrapper opens on the same line the body does, so every line after the
+ * first is where it is in the original and a coverage record can be read
+ * against the real source without an offset. What is inside the wrapper is
+ * exactly Loader.moduleBody - the same text new Function is handed in an
+ * ordinary run - so the two runs measure and exercise the same program.
+ */
+function _coverageBody(source) {
+    return "var __xlet = function (" + Loader.PARAMETERS.join(", ") + ") {" +
+           Loader.moduleBody(source) + "};";
+}
+
+function _compile(path) {
+    let source = Loader.read(path);
+    if (!_coverageDir)
+        return Loader.compile(Loader.moduleBody(source));
+
+    let name = _coverageName(path);
+    _coverageNames[name] = path;
+    GLib.file_set_contents(_coverageDir + "/" + name + ".js", _coverageBody(source));
+    return imports[name].__xlet;
+}
+
+/*
+ * Which real file each measured copy stands for.
+ *
+ * Written out rather than worked out again by the report: the name is what a
+ * path comes to once everything that is not a letter or a digit has become an
+ * underscore, and lib/power-supply.js and lib/power_supply.js would come to
+ * the same one. Only the side that did the mangling knows.
+ */
+function writeCoverageManifest() {
+    if (!_coverageDir)
+        return;
+    GLib.file_set_contents(_coverageDir + "/sources.json",
+                           JSON.stringify(_coverageNames, null, 2));
 }
 
 /* ---------------------------------------------------------------- */

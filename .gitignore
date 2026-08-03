@@ -8,6 +8,8 @@
 build/
 dist/
 out/
+# `make coverage` writes the copies it measures and the lcov here
+.coverage/
 *.zip
 *.tar
 *.tar.gz

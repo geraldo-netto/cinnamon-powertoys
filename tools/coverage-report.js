@@ -1,0 +1,358 @@
+#!/usr/bin/env cjs
+/*
+ * Per function coverage, from what cjs measured of a test run.
+ *
+ * cjs writes lcov: which lines exist, how many times each was run, and where
+ * every function starts. What it does not say is where a function ends, so
+ * "this function is 80% covered" cannot be read straight out of it - and a
+ * whole-file percentage is the one number that hides exactly what matters,
+ * because a file of small well covered functions carries an untouched one
+ * without the total moving much.
+ *
+ * So this works out each function's extent from the source itself, attributes
+ * every executable line to the innermost function containing it, and reports
+ * one figure per function. The gate is per function too: the run fails naming
+ * the functions under the minimum, not the files.
+ *
+ * Usage: coverage-report.js <coverage-dir> [--min N] [--quiet]
+ *
+ * The directory is the one the run wrote its lcov and its sources.json to.
+ */
+
+const GLib = imports.gi.GLib;
+const System = imports.system;
+
+function scriptDir() {
+    let invoked = System.programInvocationName;
+    if (invoked[0] !== "/")
+        invoked = GLib.get_current_dir() + "/" + invoked;
+    return GLib.path_get_dirname(invoked);
+}
+
+imports.searchPath.unshift(scriptDir());
+const Loader = imports.loader;
+
+/* ---------------------------------------------------------------- */
+/* the source                                                        */
+
+/*
+ * Where every block in a file opens and closes, by line.
+ *
+ * A brace inside a string, a comment or a regular expression is not a brace,
+ * and this file is full of all three - "text-align: left;", the doc blocks
+ * every function here carries, /^\s+([^:]+):\s+(.*?)\s*$/. So the source is
+ * walked once with just enough of a tokeniser to know which is which, rather
+ * than counted with a regex that would be wrong about the first case it met.
+ *
+ * Whether a slash opens a regular expression or divides is decided the way
+ * every small scanner decides it: by what came before it. After a value - a
+ * name, a number, a closing bracket - it divides; after an operator, a comma,
+ * an opening bracket or the start of the file, it opens a pattern.
+ */
+function blocks(source) {
+    let opens = [];
+    let closes = {};
+    let line = 1;
+    let previous = "";
+
+    for (let i = 0; i < source.length; i++) {
+        let c = source[i];
+        let next = source[i + 1];
+
+        if (c === "\n") {
+            line++;
+            continue;
+        }
+
+        if (c === "/" && next === "/") {
+            while (i < source.length && source[i] !== "\n")
+                i++;
+            i--;
+            continue;
+        }
+
+        if (c === "/" && next === "*") {
+            i += 2;
+            while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
+                if (source[i] === "\n")
+                    line++;
+                i++;
+            }
+            i++;
+            continue;
+        }
+
+        if (c === '"' || c === "'" || c === "`") {
+            let quote = c;
+            i++;
+            while (i < source.length && source[i] !== quote) {
+                /* A backslash before a newline is how the interface XML in
+                 * lib/upower.js and lib/profiles.js is written across lines.
+                 * The newline is still a newline: skipping it without counting
+                 * it moved every line number in those files. */
+                if (source[i] === "\\") {
+                    if (source[i + 1] === "\n")
+                        line++;
+                    i++;
+                } else if (source[i] === "\n") {
+                    line++;
+                }
+                i++;
+            }
+            continue;
+        }
+
+        if (c === "/" && _opensPattern(previous)) {
+            i++;
+            let inClass = false;
+            while (i < source.length && (inClass || source[i] !== "/")) {
+                if (source[i] === "\\")
+                    i++;
+                else if (source[i] === "[")
+                    inClass = true;
+                else if (source[i] === "]")
+                    inClass = false;
+                else if (source[i] === "\n")
+                    break;
+                i++;
+            }
+            continue;
+        }
+
+        if (c === "{") {
+            opens.push({ line: line });
+        } else if (c === "}") {
+            let open = opens.pop();
+            if (open)
+                closes[open.line] = (closes[open.line] || []).concat([line]);
+        }
+
+        if (!/\s/.test(c))
+            previous = c;
+    }
+
+    return closes;
+}
+
+/* The characters a value can end with. Anything else before a slash and the
+ * slash is opening a pattern. */
+function _opensPattern(previous) {
+    return previous === "" || !/[A-Za-z0-9_$)\]]/.test(previous);
+}
+
+/*
+ * What a function covers, given where it starts.
+ *
+ * The brace that opens the body is the first one at or after the declaration,
+ * and its match is where the function ends. An arrow function with no body
+ * braces - `entry => entry.key` - has no brace of its own, and would otherwise
+ * swallow the next block that happens to follow it, so a brace that is not on
+ * the declaration's own line or the one after it is taken as somebody else's
+ * and the function is left standing for its own line alone.
+ */
+function extent(closes, lines, start) {
+    for (let line = start; line <= Math.min(start + 1, lines); line++) {
+        if (closes[line])
+            return { start: start, end: closes[line][0] };
+    }
+    return { start: start, end: start };
+}
+
+/* ---------------------------------------------------------------- */
+/* the measurement                                                   */
+
+/* One record per measured file: its functions, and how often each line ran. */
+function parseLcov(text) {
+    let files = [];
+    let current = null;
+
+    for (let line of text.split("\n")) {
+        let colon = line.indexOf(":");
+        let tag = colon < 0 ? line : line.slice(0, colon);
+        let rest = colon < 0 ? "" : line.slice(colon + 1);
+
+        if (tag === "SF") {
+            current = { path: rest, functions: [], hits: {}, branches: {} };
+            files.push(current);
+        } else if (!current) {
+            continue;
+        } else if (tag === "FN") {
+            let [at, ...name] = rest.split(",");
+            current.functions.push({ line: Number(at), name: name.join(",") });
+        } else if (tag === "DA") {
+            let [at, count] = rest.split(",");
+            current.hits[Number(at)] = Number(count);
+        } else if (tag === "BRDA") {
+            let [at, , , taken] = rest.split(",");
+            let key = Number(at);
+            current.branches[key] = current.branches[key] || [];
+            current.branches[key].push(taken === "-" ? 0 : Number(taken));
+        }
+    }
+
+    return files;
+}
+
+/*
+ * Every executable line, given to the innermost function that contains it.
+ *
+ * Innermost, because a callback is its own function: the lines inside a
+ * monitor's reply belong to the reply and not to the call that sent it, and
+ * counting them for both would say a function is covered because something
+ * inside it was.
+ */
+function attribute(functions, hits) {
+    let ordered = functions.slice().sort((a, b) => (a.end - a.start) - (b.end - b.start));
+    let owner = {};
+
+    for (let at in hits) {
+        let line = Number(at);
+        for (let entry of ordered) {
+            if (line >= entry.start && line <= entry.end) {
+                owner[line] = entry;
+                break;
+            }
+        }
+    }
+
+    for (let entry of functions) {
+        entry.lines = 0;
+        entry.covered = 0;
+    }
+
+    for (let at in owner) {
+        let entry = owner[at];
+        entry.lines++;
+        if (hits[at] > 0)
+            entry.covered++;
+    }
+
+    return functions;
+}
+
+function percentage(covered, total) {
+    return total === 0 ? 100 : Math.round(covered / total * 1000) / 10;
+}
+
+/* ---------------------------------------------------------------- */
+
+let args = ARGV.slice();
+let minimum = 80;
+let quiet = false;
+let directory = null;
+
+for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--min")
+        minimum = Number(args[++i]);
+    else if (args[i] === "--quiet")
+        quiet = true;
+    else
+        directory = args[i];
+}
+
+if (!directory) {
+    printerr("usage: coverage-report.js <coverage-dir> [--min N] [--quiet]");
+    System.exit(2);
+}
+
+/* The manifest is written by the run, beside the copies it measured; cjs
+ * writes its lcov one level up, at the output directory it was given. */
+function readManifest() {
+    for (let path of [directory + "/modules/sources.json", directory + "/sources.json"]) {
+        try {
+            return JSON.parse(Loader.read(path));
+        } catch (error) {
+            /* the other one, then */
+        }
+    }
+    throw new Error("no sources.json; was the run made with POWERTOYS_COVERAGE_DIR set");
+}
+
+let lcov;
+let sources;
+try {
+    lcov = parseLcov(Loader.read(directory + "/coverage.lcov"));
+    sources = readManifest();
+} catch (error) {
+    printerr("no coverage in " + directory + ": " + error.message);
+    System.exit(2);
+}
+
+/* The measured copies are named after the module they stood in for; the
+ * manifest says which source that was. */
+let byName = {};
+for (let name in sources)
+    byName[name] = sources[name];
+
+let below = [];
+let reports = [];
+
+for (let file of lcov) {
+    let name = GLib.path_get_basename(file.path).replace(/\.js$/, "");
+    let source = byName[name];
+    if (!source)
+        continue;
+
+    let text = Loader.read(source);
+    let lines = text.split("\n").length;
+    let closes = blocks(text);
+
+    /* The module body itself is not a function anybody wrote; its "coverage"
+     * is whether the file was loaded, which the loading case already says. */
+    let functions = file.functions
+        .filter(entry => entry.name !== "top-level" && entry.name !== "__xlet")
+        .map(entry => Object.assign(extent(closes, lines, entry.line), { name: entry.name }));
+
+    attribute(functions, file.hits);
+
+    let totals = { lines: 0, covered: 0 };
+    for (let at in file.hits) {
+        totals.lines++;
+        if (file.hits[at] > 0)
+            totals.covered++;
+    }
+
+    let short = source.slice(source.lastIndexOf("/", source.lastIndexOf("/") - 1) + 1);
+    reports.push({ source: short, functions: functions, totals: totals });
+
+    for (let entry of functions) {
+        if (percentage(entry.covered, entry.lines) < minimum)
+            below.push({ source: short, entry: entry });
+    }
+}
+
+reports.sort((a, b) => (a.source < b.source ? -1 : 1));
+
+if (!quiet) {
+    for (let report of reports) {
+        print(report.source + "  " +
+              percentage(report.totals.covered, report.totals.lines) + "% of " +
+              report.totals.lines + " lines, " + report.functions.length + " functions");
+        for (let entry of report.functions.slice().sort((a, b) => a.start - b.start)) {
+            let share = percentage(entry.covered, entry.lines);
+            print("    " + (share < minimum ? "under " : "      ") +
+                  String(share).padStart(5) + "%  " +
+                  String(entry.start).padStart(4) + "  " + entry.name +
+                  " (" + entry.covered + "/" + entry.lines + ")");
+        }
+    }
+    print("");
+}
+
+let functions = reports.reduce((total, report) => total + report.functions.length, 0);
+let lines = reports.reduce((total, report) => total + report.totals.lines, 0);
+let covered = reports.reduce((total, report) => total + report.totals.covered, 0);
+
+if (below.length > 0) {
+    printerr("coverage FAIL " + below.length + " of " + functions +
+             " functions under " + minimum + "%");
+    for (let miss of below) {
+        printerr("  " + miss.source + ":" + miss.entry.start + " " + miss.entry.name +
+                 " " + percentage(miss.entry.covered, miss.entry.lines) + "%" +
+                 " (" + miss.entry.covered + "/" + miss.entry.lines + ")");
+    }
+    System.exit(1);
+}
+
+print("coverage ok  " + functions + " functions, every one at " + minimum +
+      "% or better; " + percentage(covered, lines) + "% of " + lines + " lines overall");
