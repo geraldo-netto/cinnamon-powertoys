@@ -2850,8 +2850,17 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * somebody for is not something a library should do.
      */
     _runHelper(args, onDone) {
-        if (!this.enablePrivilegedControls)
+        /* Answered rather than dropped, in the same words _runHelperQuietly
+         * uses for the same condition. lib/backlight.js and lib/ddc.js pay for
+         * the same guarantee on the other side of the applet: a caller that
+         * waits on a call which never answers waits for ever, and "nobody
+         * waits on this one today" is a fact about today's callers rather than
+         * about this method. */
+        if (!this.enablePrivilegedControls) {
+            if (onDone)
+                onDone({ applied: false, error: _("Privileged controls are turned off") });
             return;
+        }
 
         /* So the menu shows the change as in flight straight away rather
          * than when the helper answers. */
