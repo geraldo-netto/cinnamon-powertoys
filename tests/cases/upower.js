@@ -531,6 +531,40 @@ cases["the composite battery is what the panel speaks for"] = function () {
     monitor.destroy();
 };
 
+cases["a reading describes each device once, whatever it is asked for"] = function () {
+    /*
+     * A description is nineteen properties, and every property on a proxy is a
+     * cached variant looked up and unpacked. read() took the walk twice - once
+     * for the devices, once for the chargers - so a laptop paid for its
+     * charger twice per poll and for the walk itself twice on top. The
+     * composite battery is a proxy of its own and is the one description that
+     * is not part of the walk.
+     */
+    let charger = "/org/freedesktop/UPower/devices/line_power_AC";
+    let monitor = monitorOn(busFor(managerFor([BAT0, MOUSE, charger]), {
+        [DISPLAY]: proxyFor({ Model: "DisplayDevice" }),
+        [BAT0]: proxyFor(),
+        [MOUSE]: proxyFor({ Type: Kind.MOUSE, PowerSupply: false, Model: "MX" }),
+        [charger]: proxyFor({ Type: Kind.LINE_POWER, PowerSupply: true, Online: true }),
+    }));
+
+    let described = [];
+    let real = monitor._describe.bind(monitor);
+    monitor._describe = function (proxy, path) {
+        described.push(path);
+        return real(proxy, path);
+    };
+
+    let reading = monitor.read();
+    Harness.deepEqual(described.sort(), [BAT0, DISPLAY, charger, MOUSE].sort(),
+                      "one description each, and no path twice");
+    Harness.deepEqual(reading.lines.map(entry => entry.path), [charger],
+                      "and the charger is still on its own list");
+    Harness.deepEqual(reading.devices.map(entry => entry.path), [BAT0, MOUSE],
+                      "with the charge carrying devices on theirs");
+    monitor.destroy();
+};
+
 cases["the composite battery moving is news, like every other proxy's"] = function () {
     /*
      * It was the one proxy in the file built without a property handler. A

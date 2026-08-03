@@ -366,25 +366,38 @@ var UPowerMonitor = class UPowerMonitor {
     }
 
     /*
+     * Everything this monitor holds, described once.
+     *
+     * A description is nineteen properties, and a property on a proxy is a
+     * cached variant looked up and unpacked - so the walk is the cost here,
+     * not the loop around it. A poll used to take it twice over: snapshot()
+     * described every device and then lineDevices() walked the same map again
+     * and described the chargers a second time. Same shape as the double
+     * unpack lib/profiles.js closed with its own snapshot().
+     */
+    _describeAll() {
+        let devices = [];
+        for (let [path, proxy] of this._devices)
+            devices.push(this._describe(proxy, path));
+        return devices;
+    }
+
+    _lineDevices(devices) {
+        return devices.filter(device => device.kind === UPDeviceKind.LINE_POWER);
+    }
+
+    /*
      * Every device that carries a charge, batteries first, then peripherals.
      * Which those are, and what order they come in, is reportedDevices - a
      * function of the descriptions, and so something that can be held to
      * without a bus.
      */
     snapshot() {
-        let devices = [];
-        for (let [path, proxy] of this._devices)
-            devices.push(this._describe(proxy, path));
-        return reportedDevices(devices);
+        return reportedDevices(this._describeAll());
     }
 
     lineDevices() {
-        let devices = [];
-        for (let [path, proxy] of this._devices) {
-            if (proxy.Type === UPDeviceKind.LINE_POWER)
-                devices.push(this._describe(proxy, path));
-        }
-        return devices;
+        return this._lineDevices(this._describeAll());
     }
 
     /* The composite battery UPower builds for the panel, when there is one. */
@@ -413,10 +426,12 @@ var UPowerMonitor = class UPowerMonitor {
         return null;
     }
 
-    /* Everything the applet takes from UPower, as of now. */
+    /* Everything the applet takes from UPower, as of now, from one walk of
+     * what it holds - see _describeAll for why that is worth saying. */
     read() {
-        let devices = this.snapshot();
-        let lines = this.lineDevices();
+        let described = this._describeAll();
+        let devices = reportedDevices(described);
+        let lines = this._lineDevices(described);
         let readings = sensorReadings(devices);
         return {
             available: this.available,
