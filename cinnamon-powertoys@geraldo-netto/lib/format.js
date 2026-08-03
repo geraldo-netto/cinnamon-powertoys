@@ -18,14 +18,33 @@ function capitalize(text) {
     return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+/*
+ * Whether there is a number here worth writing down.
+ *
+ * Null is what every reading in this applet uses for "nothing to say", and
+ * each of the formatters below already turned that into an empty string. What
+ * none of them turned into anything was a number that is not a number:
+ * toFixed answers "NaN" and "Infinity" quite happily, so a reading that
+ * arrived as one drew "NaN W" in the panel and "Infinity °C" in a menu.
+ *
+ * Neither should reach here - lib/io.js and lib/upower.js each drop a value
+ * that is not finite - which is exactly why it is worth catching in the one
+ * place that would otherwise print it. A row that says nothing is a row
+ * somebody reads past; a row that says NaN is a bug report about the applet
+ * being broken, and it would be right.
+ */
+function _figure(value) {
+    return typeof value === "number" && Number.isFinite(value);
+}
+
 function percent(value, decimals) {
-    if (value === null || value === undefined)
+    if (!_figure(value))
         return "";
     return value.toFixed(decimals === undefined ? 0 : decimals) + "%";
 }
 
 function temperature(celsius, unit, decimals) {
-    if (celsius === null || celsius === undefined)
+    if (!_figure(celsius))
         return "";
     let digits = decimals === undefined ? 1 : decimals;
     if (unit === "fahrenheit")
@@ -34,7 +53,7 @@ function temperature(celsius, unit, decimals) {
 }
 
 function watts(value) {
-    if (value === null || value === undefined)
+    if (!_figure(value))
         return "";
     if (Math.abs(value) < 1)
         return (value * 1000).toFixed(0) + " mW";
@@ -42,7 +61,7 @@ function watts(value) {
 }
 
 function frequency(mhz) {
-    if (mhz === null || mhz === undefined)
+    if (!_figure(mhz))
         return "";
     if (mhz >= 1000)
         return (mhz / 1000).toFixed(2) + " GHz";
@@ -50,26 +69,26 @@ function frequency(mhz) {
 }
 
 function volts(value) {
-    if (value === null || value === undefined || value === 0)
+    if (!_figure(value) || value === 0)
         return "";
     return value.toFixed(2) + " V";
 }
 
 function rpm(value) {
-    if (value === null || value === undefined)
+    if (!_figure(value))
         return "";
     return value.toFixed(0) + " RPM";
 }
 
 function energy(wattHours) {
-    if (wattHours === null || wattHours === undefined)
+    if (!_figure(wattHours))
         return "";
     return wattHours.toFixed(1) + " Wh";
 }
 
 /* Seconds to a compact "2h 05m" / "45m" form. */
 function duration(seconds) {
-    if (!seconds || seconds <= 0)
+    if (!_figure(seconds) || seconds <= 0)
         return "";
     let minutes = Math.round(seconds / 60);
     let hours = Math.floor(minutes / 60);
@@ -223,10 +242,19 @@ function deviceIconName(kind, whenUnknown) {
     return whenUnknown === undefined ? null : whenUnknown;
 }
 
+/*
+ * What a device is called: what it says it is, or what it is.
+ *
+ * The two halves are taken as text rather than joined as they come. Both are
+ * strings by the time a device is described - lib/upower.js and lib/bluez.js
+ * each default them - and a device carrying only one of them still went
+ * through here as `vendor + " " + undefined`, which draws the word undefined
+ * in the menu. One missing half is the ordinary case, not a broken one.
+ */
 function deviceTitle(device) {
-    let name = "";
-    if (device.vendor || device.model)
-        name = (device.vendor + " " + device.model).trim();
+    let vendor = typeof device.vendor === "string" ? device.vendor : "";
+    let model = typeof device.model === "string" ? device.model : "";
+    let name = (vendor + " " + model).trim();
     if (!name)
         name = deviceKindName(device.kind);
     return name;

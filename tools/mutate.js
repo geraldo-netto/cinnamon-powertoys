@@ -124,11 +124,19 @@ function _numberSites(code) {
     return sites;
 }
 
-/* `return` with nothing after it, so a function that answers stops answering.
- * Everything here that hands a value back is read by somebody. */
+/*
+ * `return` with nothing after it, so a function that answers stops answering.
+ * Everything here that hands a value back is read by somebody.
+ *
+ * Not where the answer is already null or undefined. Replacing `return null`
+ * with `return null` is a mutant nothing can kill, and an unkillable mutant is
+ * worse than no mutant: it sits in the survivors asking to be chased, and
+ * whoever chases it will find that the only way to make it die is to assert
+ * something untrue.
+ */
 function _returnSites(code) {
     let sites = [];
-    let pattern = /\breturn\s+(?=[^;\n])/g;
+    let pattern = /\breturn\s+(?!null\s*;|undefined\s*;)(?=[^;\n])/g;
     let match;
 
     while ((match = pattern.exec(code)) !== null)

@@ -189,11 +189,27 @@ function answers(body) {
     return result;
 }
 
-/* A string, and not the word undefined dressed up as one. */
-function isText(value, what) {
+/* A string. Nothing here may hand a widget anything else: St draws what it is
+ * given, and what it does with a number or a null is its own business. */
+function isString(value, what) {
     if (typeof value !== "string")
         throw new Error((what || "the answer") + " is not a string: " + show(value));
-    if (/undefined|NaN|\[object/.test(value))
+    if (value.indexOf("[object") >= 0)
+        throw new Error((what || "the answer") + " has an object printed into it: " + show(value));
+}
+
+/*
+ * A string, and not a value's insides dressed up as one.
+ *
+ * For the functions that turn a number into text, where "NaN" or "undefined"
+ * in the answer can only have come from this side. A function that passes a
+ * label through - capitalize, the profile names - is held to isString instead,
+ * since the label itself is allowed to contain any word at all, and one of the
+ * strings this fuzzer throws about is literally "NaN".
+ */
+function isText(value, what) {
+    isString(value, what);
+    if (/undefined|NaN/.test(value))
         throw new Error((what || "the answer") + " has a value's insides in it: " + show(value));
 }
 
