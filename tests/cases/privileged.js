@@ -228,6 +228,34 @@ cases["the module's own spawn runs a command and reports what it said"] = functi
                "and its complaint, which is where a reason comes from: " + spoken.stderr);
 };
 
+cases["a helper that was killed never exited, and is not asked what it exited with"] = function () {
+    /*
+     * pkexec taken down by a signal rather than finishing: the session going
+     * away with the password dialog still on screen, the polkit agent dying,
+     * the OOM killer. g_subprocess_get_exit_status on a process that was
+     * signalled is an assertion failure in the log and a number that stands
+     * for nothing, which lib/ddc.js met from the other end - there the applet
+     * kills the process itself, so it happens on every monitor that stops
+     * answering.
+     *
+     * What it has to come back as is a failure, because that is what it is,
+     * and it must not come back as 126 or 127 either - those two are pkexec
+     * saying the user dismissed the dialog, which is the one outcome the
+     * applet says nothing about.
+     */
+    let outcome = Harness.settle(done => Privileged._spawn(
+        ["sh", "-c", "kill -TERM $$"], (status, stderr) =>
+            done({ status: status, stderr: stderr })), "a process that was killed");
+    Harness.equal(outcome.status, -1, "a failure of its own, not an exit status");
+
+    let helper = new Privileged.PrivilegedHelper(["/helper"], () => true, () => {},
+                                                 (argv, onDone) => Privileged._spawn(
+                                                     ["sh", "-c", "kill -TERM $$"], onDone));
+    let reported = Harness.settle(done => helper.run(["boost", "1"], done), "the outcome");
+    Harness.equal(reported.applied, false, "nothing was applied");
+    Harness.ok(!reported.cancelled, "and the user did not dismiss anything, so they are told");
+};
+
 cases["a command that cannot be run at all is a failure, not a crash"] = function () {
     /*
      * pkexec missing, or the helper deleted between the check and the spawn.

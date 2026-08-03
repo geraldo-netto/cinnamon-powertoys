@@ -37,7 +37,14 @@ function _spawn(argv, onDone) {
     process.communicate_utf8_async(null, null, (source, result) => {
         try {
             let [, , stderr] = source.communicate_utf8_finish(result);
-            onDone(source.get_exit_status(), stderr || "");
+            /* A process that was killed never exited, and asking one for an
+             * exit status is a GLib CRITICAL rather than a number - the same
+             * assertion lib/ddc.js guards its own read with. Nothing here
+             * kills pkexec, so this is the session going down with a password
+             * dialog on screen, the polkit agent dying, or the OOM killer;
+             * each of them is a change that did not happen, which is what -1
+             * already means to _outcome. */
+            onDone(source.get_if_exited() ? source.get_exit_status() : -1, stderr || "");
         } catch (error) {
             onDone(-1, String(error));
         }
