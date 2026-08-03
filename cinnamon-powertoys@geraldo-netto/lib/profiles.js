@@ -38,6 +38,27 @@ function _interfaceXml(name) {
 /* Order is meaningful: it is the order used when cycling profiles. */
 var PROFILE_ORDER = ["power-saver", "balanced", "performance"];
 
+/*
+ * The profile names a proxy really offers.
+ *
+ * What makes something a daemon this applet can use is not that it publishes a
+ * Profiles property but that there are names in it to put on the menu. The two
+ * were asked separately - the search accepted any non-empty array, the menu
+ * read the names out of it - so a daemon whose entries carry no name, which is
+ * what a version that renamed the key would look like, was connected to and
+ * then drew a profile control with nothing in it. There is a fallback for a
+ * daemon this applet cannot use, and that is the case it exists for.
+ */
+function _profileNames(proxy) {
+    let entries = proxy ? proxy.Profiles : null;
+    if (!entries)
+        return [];
+    return entries.map(entry => {
+        let value = entry.Profile;
+        return (value && typeof value.unpack === "function") ? value.unpack() : value;
+    }).filter(name => typeof name === "string" && name !== "");
+}
+
 function _unpackVariantDict(entry) {
     let result = {};
     for (let key in entry) {
@@ -179,7 +200,7 @@ var PowerProfilesClient = class PowerProfilesClient {
                  * on it. Neither is a daemon this applet can use, and neither
                  * is a reason to stop looking at the other name.
                  */
-                if (error || !proxy || !proxy.Profiles || proxy.Profiles.length === 0) {
+                if (error || !proxy || _profileNames(proxy).length === 0) {
                     next();
                     return;
                 }
@@ -258,17 +279,15 @@ var PowerProfilesClient = class PowerProfilesClient {
      * dictionaries, which is the cost snapshot() exists to keep down.
      */
     get profiles() {
-        let entries = this._proxy ? this._proxy.Profiles : null;
-        if (!entries)
-            return [];
-        return entries.map(entry => {
-            let value = entry.Profile;
-            return (value && typeof value.unpack === "function") ? value.unpack() : value;
-        }).filter(name => typeof name === "string");
+        return _profileNames(this._proxy);
     }
 
+    /* A name or nothing, the way `degraded` is a reason or an empty string: a
+     * proxy built before the daemon has published its properties carries none
+     * of them, and undefined is not a profile name - it is a value's insides,
+     * and it reaches the menu. */
     get active() {
-        return this._proxy ? this._proxy.ActiveProfile : null;
+        return (this._proxy && this._proxy.ActiveProfile) || null;
     }
 
     /* Non-empty when the firmware is throttling, e.g. "lap-detected". */
