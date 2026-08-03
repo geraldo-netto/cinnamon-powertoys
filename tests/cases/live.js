@@ -134,3 +134,68 @@ cases["a power profiles daemon answers the questions the applet asks it"] = func
         client.destroy();
     }
 };
+
+cases["the write this applet makes reaches a real daemon"] = function () {
+    /*
+     * The one call in lib/profiles.js that is not made through a proxy: a
+     * Properties.Set on the system bus, which is how every profile the user
+     * picks is applied. Everything either side of it is covered against a
+     * stubbed bus in profiles.js, and this is the part a stub cannot say
+     * anything about - whether the variant is packed the way the daemon reads
+     * it, and whether a refusal comes back as an error rather than as silence.
+     *
+     * What it writes is the profile that is already in force, so the machine
+     * running these is left exactly as it was found. The daemon does not treat
+     * that as a special case, so the call is the same call, and the answer to
+     * it is the answer the menu reads.
+     */
+    needSystemBus();
+
+    let client = null;
+    Harness.settle(function (done) {
+        let answered = false;
+        let settle = () => {
+            if (answered)
+                return;
+            answered = true;
+            done();
+        };
+        client = new Profiles.PowerProfilesClient(settle);
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+            settle();
+            return GLib.SOURCE_REMOVE;
+        });
+    }, "the power profiles daemon");
+
+    try {
+        if (!client.available)
+            Harness.skip("no power profiles daemon on this bus");
+
+        let active = client.active;
+        let failure = Harness.settle(done => Profiles.systemBus().setProperty(
+            client.busName, client.busPath, "ActiveProfile", active, done),
+            "a write of the profile already in force");
+        Harness.equal(failure, null, "the daemon took it, and said so by saying nothing");
+        Harness.equal(client.active, active, "and the machine is where it was found");
+    } finally {
+        client.destroy();
+    }
+};
+
+cases["a write to a daemon that is not there comes back as a refusal"] = function () {
+    /*
+     * The other half, and the one that does not need a daemon: a name nobody
+     * owns. The applet shows what the error says, so an error that never
+     * arrives is a profile the user picked, never got, and was never told
+     * about.
+     */
+    needSystemBus();
+
+    let failure = Harness.settle(done => Profiles.systemBus().setProperty(
+        "org.freedesktop.UPower.PowerProfiles.NotHere", "/nothing/here",
+        "ActiveProfile", "balanced", done), "a write to a name nobody owns");
+
+    Harness.ok(failure, "an error, rather than a write that quietly went nowhere");
+    Harness.ok(String(failure.message || failure).length > 0,
+               "with something the menu can show: " + failure);
+};

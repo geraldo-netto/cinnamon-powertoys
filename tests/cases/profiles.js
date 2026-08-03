@@ -41,6 +41,7 @@ function daemon(overrides) {
         PerformanceDegraded: settings.degraded === undefined ? "" : settings.degraded,
         PerformanceInhibited: settings.inhibited === undefined ? "" : settings.inhibited,
         ActiveProfileHolds: settings.holds || [],
+        Version: settings.version === undefined ? "0.23" : settings.version,
         connect: function (name, handler) {
             stub.handlers.push([name, handler]);
             return stub.handlers.length;
@@ -311,6 +312,22 @@ cases["a daemon appearing is connected to, and one vanishing is let go"] = funct
     Harness.equal(client.available, false, "let go on the way out");
     Harness.equal(client.busName, null, "with no name left behind");
     Harness.equal(changes, 2, "and told again");
+};
+
+cases["the daemon's version is the daemon's, and there is none without one"] = function () {
+    /*
+     * The two bus names are the version the applet has to know about, and this
+     * is the version the daemon says it is. It is read straight off the proxy,
+     * so the only thing that can go wrong with it is being read off no proxy
+     * at all - which is every machine with no daemon, and is a throw rather
+     * than an answer if the guard goes.
+     */
+    let client = new Profiles.PowerProfilesClient(null, bus({ [UPOWER]: daemon({ version: "0.20" }) }));
+    Harness.equal(client.version, "0.20", "what the daemon says it is");
+
+    let none = new Profiles.PowerProfilesClient(null, bus({}));
+    Harness.equal(none.available, false, "no daemon here");
+    Harness.equal(none.version, null, "and so no version, rather than a throw");
 };
 
 cases["a destroyed client unwatches both names"] = function () {
