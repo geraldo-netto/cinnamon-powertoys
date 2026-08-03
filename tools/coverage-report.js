@@ -31,127 +31,20 @@ function scriptDir() {
 
 imports.searchPath.unshift(scriptDir());
 const Loader = imports.loader;
-
-/* ---------------------------------------------------------------- */
-/* the source                                                        */
-
-/*
- * Where every block in a file opens and closes, by line.
- *
- * A brace inside a string, a comment or a regular expression is not a brace,
- * and this file is full of all three - "text-align: left;", the doc blocks
- * every function here carries, /^\s+([^:]+):\s+(.*?)\s*$/. So the source is
- * walked once with just enough of a tokeniser to know which is which, rather
- * than counted with a regex that would be wrong about the first case it met.
- *
- * Whether a slash opens a regular expression or divides is decided the way
- * every small scanner decides it: by what came before it. After a value - a
- * name, a number, a closing bracket - it divides; after an operator, a comma,
- * an opening bracket or the start of the file, it opens a pattern.
- */
-function blocks(source) {
-    let opens = [];
-    let closes = {};
-    let line = 1;
-    let previous = "";
-
-    for (let i = 0; i < source.length; i++) {
-        let c = source[i];
-        let next = source[i + 1];
-
-        if (c === "\n") {
-            line++;
-            continue;
-        }
-
-        if (c === "/" && next === "/") {
-            while (i < source.length && source[i] !== "\n")
-                i++;
-            i--;
-            continue;
-        }
-
-        if (c === "/" && next === "*") {
-            i += 2;
-            while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
-                if (source[i] === "\n")
-                    line++;
-                i++;
-            }
-            i++;
-            continue;
-        }
-
-        if (c === '"' || c === "'" || c === "`") {
-            let quote = c;
-            i++;
-            while (i < source.length && source[i] !== quote) {
-                /* A backslash before a newline is how the interface XML in
-                 * lib/upower.js and lib/profiles.js is written across lines.
-                 * The newline is still a newline: skipping it without counting
-                 * it moved every line number in those files. */
-                if (source[i] === "\\") {
-                    if (source[i + 1] === "\n")
-                        line++;
-                    i++;
-                } else if (source[i] === "\n") {
-                    line++;
-                }
-                i++;
-            }
-            continue;
-        }
-
-        if (c === "/" && _opensPattern(previous)) {
-            i++;
-            let inClass = false;
-            while (i < source.length && (inClass || source[i] !== "/")) {
-                if (source[i] === "\\")
-                    i++;
-                else if (source[i] === "[")
-                    inClass = true;
-                else if (source[i] === "]")
-                    inClass = false;
-                else if (source[i] === "\n")
-                    break;
-                i++;
-            }
-            continue;
-        }
-
-        if (c === "{") {
-            opens.push({ line: line });
-        } else if (c === "}") {
-            let open = opens.pop();
-            if (open)
-                closes[open.line] = (closes[open.line] || []).concat([line]);
-        }
-
-        if (!/\s/.test(c))
-            previous = c;
-    }
-
-    return closes;
-}
-
-/* The characters a value can end with. Anything else before a slash and the
- * slash is opening a pattern. */
-function _opensPattern(previous) {
-    return previous === "" || !/[A-Za-z0-9_$)\]]/.test(previous);
-}
+const Scan = imports.scan;
 
 /*
  * What a function covers, given where it starts.
  *
  * The brace that opens the body is the first one at or after the declaration,
  * and its match is where the function ends. An arrow function with no body
- * braces - `entry => entry.key` - has no brace of its own, and would otherwise
- * swallow the next block that happens to follow it, so a brace that is not on
- * the declaration's own line or the one after it is taken as somebody else's
- * and the function is left standing for its own line alone.
+ * braces - `entry => entry.key` - has no brace of its own and would otherwise
+ * swallow whichever block follows it, so a brace further off than the line
+ * after the declaration is taken as somebody else's and the function is left
+ * standing for its own line alone.
  */
-function extent(closes, lines, start) {
-    for (let line = start; line <= Math.min(start + 1, lines); line++) {
+function extent(closes, start) {
+    for (let line = start; line <= start + 1; line++) {
         if (closes[line])
             return { start: start, end: closes[line][0] };
     }
@@ -293,15 +186,13 @@ for (let file of lcov) {
     if (!source)
         continue;
 
-    let text = Loader.read(source);
-    let lines = text.split("\n").length;
-    let closes = blocks(text);
+    let closes = Scan.blocks(Loader.read(source));
 
     /* The module body itself is not a function anybody wrote; its "coverage"
      * is whether the file was loaded, which the loading case already says. */
     let functions = file.functions
         .filter(entry => entry.name !== "top-level" && entry.name !== "__xlet")
-        .map(entry => Object.assign(extent(closes, lines, entry.line), { name: entry.name }));
+        .map(entry => Object.assign(extent(closes, entry.line), { name: entry.name }));
 
     attribute(functions, file.hits);
 

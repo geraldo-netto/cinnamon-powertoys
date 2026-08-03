@@ -27,8 +27,16 @@ function setRoot(path) {
     ROOT = path;
 }
 
+/*
+ * Which copy of the applet the cases run against.
+ *
+ * The repository's own, unless something points this elsewhere - which is what
+ * the mutation runner does: it works on a copy in a temporary directory, so a
+ * run that is interrupted half way through cannot leave a deliberately broken
+ * source in the working tree.
+ */
 function xletDir() {
-    return ROOT + "/" + UUID;
+    return GLib.getenv("POWERTOYS_XLET_DIR") || (ROOT + "/" + UUID);
 }
 
 function testsDir() {

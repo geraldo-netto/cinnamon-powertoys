@@ -38,8 +38,14 @@ RAPL_GROUP  ?= adm
 COVERAGE_DIR := .coverage
 COVERAGE_MIN ?= 80
 
+# How many of the deliberate mistakes the suite has to catch, and how many to
+# try. MUTANTS_ARGS takes file names to work on one library at a time, and
+# --sample N for a quick answer on a big one.
+MUTANTS_MIN ?= 80
+MUTANTS_ARGS ?=
+
 .PHONY: install uninstall install-policy uninstall-policy install-rapl \
-	uninstall-rapl check coverage pot restart help
+	uninstall-rapl check coverage mutants pot restart help
 
 help:
 	@echo "make install          - install the applet for the current user"
@@ -153,6 +159,24 @@ coverage:
 		    tests/run.js > $(COVERAGE_DIR)/run.log 2>&1 || \
 		{ cat $(COVERAGE_DIR)/run.log; exit 1; }
 	@cjs tools/coverage-report.js $(COVERAGE_DIR) --min $(COVERAGE_MIN)
+
+# Break the code on purpose and see whether the suite notices.
+#
+# Coverage says a line ran; this says that running it proved something. Each
+# mutant is one small plausible mistake - a comparison that lets its boundary
+# through, an and that should have been an or, a guard dropped - run against
+# the whole suite and then put back. It works on a copy in a temporary
+# directory, so an interrupted run cannot leave a broken source behind.
+#
+# Minutes rather than seconds: one full suite run per mutant. Not part of
+# check for that reason.
+#
+#   make mutants                                  - all of it
+#   make mutants MUTANTS_ARGS="lib/ddc.js"        - one library
+#   make mutants MUTANTS_ARGS="--sample 20"       - a seeded slice of each
+mutants:
+	@command -v cjs >/dev/null 2>&1 || { echo "cjs not found, install the cjs package"; exit 1; }
+	@cjs tools/mutate.js $(MUTANTS_ARGS) --min $(MUTANTS_MIN)
 
 # The template, as a function of the sources and of nothing else.
 #
