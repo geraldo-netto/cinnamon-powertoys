@@ -210,6 +210,7 @@ var UPowerMonitor = class UPowerMonitor {
         this._display = null;
         this._busSignalIds = [];
         this._propSignalId = 0;
+        this._displaySignalId = 0;
         this.available = false;
         this.destroyed = false;
 
@@ -241,9 +242,22 @@ var UPowerMonitor = class UPowerMonitor {
         }));
         this._propSignalId = proxy.connect("g-properties-changed", () => this._onChanged());
 
+        /*
+         * The composite battery, which is the one the panel speaks for.
+         *
+         * It was the one proxy here built without a property handler. The
+         * value was never stale - a proxy keeps its own cache in step with the
+         * bus - but nobody was told it had moved, so the charge in the panel
+         * waited for the poll or for one of the real batteries to change on
+         * its own account. That happens to be most of the time, which is why
+         * it went unnoticed; it is not the same thing as being told.
+         */
         this._bus.device(DISPLAY_DEVICE_PATH, (displayProxy, displayError) => {
-            if (!this.destroyed && !displayError)
-                this._display = displayProxy;
+            if (this.destroyed || displayError || !displayProxy)
+                return;
+            this._display = displayProxy;
+            this._displaySignalId = displayProxy.connect("g-properties-changed",
+                                                         () => this._onChanged());
         });
 
         proxy.EnumerateDevicesRemote((result, enumError) => {
@@ -438,8 +452,17 @@ var UPowerMonitor = class UPowerMonitor {
                 }
             }
         }
+        if (this._display && this._displaySignalId) {
+            try {
+                this._display.disconnect(this._displaySignalId);
+            } catch (e) {
+                /* already gone */
+            }
+        }
+
         this._busSignalIds = [];
         this._propSignalId = 0;
+        this._displaySignalId = 0;
 
         for (let path of Array.from(this._devices.keys()))
             this._removeDevice(path);

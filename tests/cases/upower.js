@@ -531,6 +531,27 @@ cases["the composite battery is what the panel speaks for"] = function () {
     monitor.destroy();
 };
 
+cases["the composite battery moving is news, like every other proxy's"] = function () {
+    /*
+     * It was the one proxy in the file built without a property handler. A
+     * proxy keeps its own cache in step with the bus, so the figure was never
+     * stale - but nothing told the applet it had moved, and the panel is drawn
+     * from what the applet was told. It waited for the poll, or for one of the
+     * real batteries to change on its own account, which is most of the time
+     * and is not the same thing.
+     */
+    let display = proxyFor({ Model: "DisplayDevice", Percentage: 55 });
+    let monitor = monitorOn(busFor(managerFor([]), { [DISPLAY]: display }));
+    let changes = monitor.counts.changed;
+
+    Harness.equal(display.handlers.length, 1, "the composite battery is listened to");
+    display.handlers[0]();
+    Harness.equal(monitor.counts.changed, changes + 1, "and a charge moving is a redraw");
+
+    monitor.destroy();
+    Harness.equal(display.disconnected.length, 1, "and the handler goes with the applet");
+};
+
 cases["a composite battery that is not one is not used"] = function () {
     /*
      * UPower exports the DisplayDevice on every machine, and on a desktop it
