@@ -1,0 +1,274 @@
+/*
+ * The charge limit and the ACPI platform profile.
+ *
+ * Both are read out of two or three files and written through a runner, and
+ * what is worth pinning about each is the counting: how many batteries agreed,
+ * how many choices the firmware offers. The existing cases in sensors.js run
+ * these against captured trees; what is here is the boundaries those trees do
+ * not happen to sit on - one battery, one choice, none at all - which is where
+ * a count read one off draws a control that is missing, dead, or claiming a
+ * disagreement between batteries that both said the same thing.
+ */
+
+const Harness = imports.harness;
+const Fuzz = imports.fuzz;
+
+const PowerSupply = Harness.requireXlet("./lib/power-supply.js");
+const IO = Harness.requireXlet("./lib/io.js");
+
+/* A control over batteries that answer whatever this case says, without a
+ * file system in the way. */
+function control(limits) {
+    let batteries = limits.map((limit, index) => ({ name: "BAT" + index,
+                                                    path: "/battery/" + index }));
+    let commands = [];
+    let real = IO.readNumber;
+    IO.readNumber = function (path) {
+        let index = Number(path.slice("/battery/".length));
+        return Number.isFinite(index) && index < limits.length ? limits[index] : real(path);
+    };
+    let charge = new PowerSupply.ChargeControl(batteries, (args, onDone) => {
+        commands.push(args.join(" "));
+        if (onDone)
+            onDone({ applied: true });
+    });
+    charge.commands = commands;
+    charge.release = () => { IO.readNumber = real; };
+    return charge;
+}
+
+var cases = {};
+
+cases["one battery is a limit, and is not two batteries disagreeing"] = function () {
+    let charge = control([80]);
+    try {
+        let reading = charge.reading();
+        Harness.deepEqual(reading.limits, [80], "the one battery");
+        Harness.equal(reading.limit, 80, "and its limit is the limit");
+        Harness.equal(reading.divided, false,
+                      "one battery cannot disagree with anything");
+        Harness.equal(charge.limit, 80, "the shorthand says the same");
+    } finally {
+        charge.release();
+    }
+};
+
+cases["two batteries at the same limit are one limit"] = function () {
+    let charge = control([80, 80]);
+    try {
+        let reading = charge.reading();
+        Harness.equal(reading.limit, 80, "both agreed");
+        Harness.equal(reading.divided, false, "so there is nothing to explain");
+    } finally {
+        charge.release();
+    }
+};
+
+cases["two batteries set apart have no one limit, and say which case it is"] = function () {
+    /*
+     * The menu draws a note for this and only this. A group of limits with
+     * none of them marked reads as a control that has stopped working, so the
+     * difference between "no limit" and "two limits" has to reach the caller.
+     */
+    let charge = control([80, 60]);
+    try {
+        let reading = charge.reading();
+        Harness.equal(reading.limit, null, "no single figure to dot");
+        Harness.equal(reading.divided, true, "and the reason is that they differ");
+    } finally {
+        charge.release();
+    }
+};
+
+cases["a battery that will not answer is not a battery that disagrees"] = function () {
+    /*
+     * A node that is busy or gone reads as null, and null is not a limit. What
+     * must not happen is the note appearing: nothing here says the batteries
+     * were set apart, only that one of them did not answer.
+     */
+    let charge = control([80, null]);
+    try {
+        let reading = charge.reading();
+        Harness.deepEqual(reading.limits, [80, null], "one answered, one did not");
+        Harness.equal(reading.limit, null, "so there is no limit to show");
+        Harness.equal(reading.divided, false,
+                      "and no claim that somebody set them differently");
+    } finally {
+        charge.release();
+    }
+
+    let silent = control([null]);
+    try {
+        let reading = silent.reading();
+        Harness.equal(reading.limit, null, "the only battery said nothing");
+        Harness.equal(reading.divided, false, "which is not a disagreement either");
+    } finally {
+        silent.release();
+    }
+};
+
+cases["no batteries at all is no limit"] = function () {
+    /* discoverChargeControl answers null rather than build one of these, but
+     * the class is handed its list and must not read a limit out of an empty
+     * one - an undefined drawn into the menu is a dot on nothing. */
+    let charge = new PowerSupply.ChargeControl([], () => {});
+    let reading = charge.reading();
+    Harness.deepEqual(reading.limits, [], "no batteries");
+    Harness.equal(reading.limit, null, "no limit");
+    Harness.equal(reading.divided, false, "and nothing to explain");
+};
+
+cases["the write goes to every battery, in the helper's own word"] = function () {
+    let charge = control([80, 60]);
+    try {
+        charge.setLimit(70);
+        Harness.deepEqual(charge.commands, ["charge-threshold 70"],
+                          "one command, which the helper applies to all of them");
+    } finally {
+        charge.release();
+    }
+};
+
+cases["whatever the batteries say, a reading is a limit or nothing"] = function () {
+    /*
+     * The property the menu leans on: `limit` is a number every battery
+     * agreed on, or null. Anything else - one battery's figure standing for
+     * both, or an undefined - is a control that says the machine is set to
+     * something it is not.
+     */
+    Fuzz.forAll({ what: "the charge reading", runs: 400 }, random => {
+        let limits = [];
+        let count = random.below(4);
+        for (let i = 0; i < count; i++)
+            limits.push(random.chance(3) ? null : random.between(20, 100));
+        return limits;
+    }, limits => {
+        let charge = control(limits);
+        try {
+            let reading = Fuzz.answers(() => charge.reading());
+            if (reading.limit !== null) {
+                if (typeof reading.limit !== "number")
+                    throw new Error("a limit of " + String(reading.limit));
+                if (!limits.every(value => value === reading.limit))
+                    throw new Error("reported " + reading.limit + " for " +
+                                    JSON.stringify(limits));
+            } else if (limits.length > 0 && limits.every(value => value === limits[0]) &&
+                       limits[0] !== null) {
+                throw new Error("no limit for " + JSON.stringify(limits));
+            }
+            if (reading.divided && !(limits.filter(value => value !== null).length > 1))
+                throw new Error("claimed a disagreement between " + JSON.stringify(limits));
+        } finally {
+            charge.release();
+        }
+    });
+};
+
+/* ---------------------------------------------------------------- */
+/* the firmware's own profile                                        */
+
+/* A client over a firmware that answers whatever this case says. */
+function firmware(active, choices) {
+    let real = { readString: IO.readString, readWords: IO.readWords, exists: IO.exists };
+    IO.exists = path => path.indexOf("platform_profile") >= 0 ? active !== null : real.exists(path);
+    IO.readString = path => path.indexOf("platform_profile") >= 0 && path.indexOf("choices") < 0
+        ? active : real.readString(path);
+    IO.readWords = path => path.indexOf("platform_profile_choices") >= 0
+        ? choices : real.readWords(path);
+
+    let commands = [];
+    let client = new PowerSupply.PlatformProfileClient((args, onDone) => {
+        commands.push(args.join(" "));
+        if (onDone)
+            onDone({ applied: true });
+    });
+    client.commands = commands;
+    client.release = function () {
+        IO.readString = real.readString;
+        IO.readWords = real.readWords;
+        IO.exists = real.exists;
+    };
+    return client;
+}
+
+cases["a firmware offering one profile is a firmware with a profile"] = function () {
+    /*
+     * The count is what decides whether this backend exists at all, and a
+     * machine whose firmware offers a single profile does have one - the menu
+     * shows it as a reading rather than a choice, which is a decision made
+     * further up. Counting from two here would take the whole profile group
+     * off the menu and fall back to a daemon that is not running.
+     */
+    let client = firmware("quiet", ["quiet"]);
+    try {
+        Harness.equal(client.available, true, "one choice is a choice");
+        Harness.deepEqual(client.profiles, ["quiet"], "and it is offered");
+        Harness.equal(client.active, "quiet", "with the active one named");
+
+        let snapshot = client.snapshot();
+        Harness.equal(snapshot.available, true, "and a whole reading says the same");
+        Harness.deepEqual(snapshot.profiles, ["quiet"], "with the same list");
+    } finally {
+        client.release();
+    }
+};
+
+cases["a firmware that offers nothing is not a backend"] = function () {
+    /* The node exists and its choices are empty, which is what some firmware
+     * does while it is still starting up. Nothing to offer is not a backend
+     * the applet can use. */
+    let client = firmware("balanced", []);
+    try {
+        Harness.equal(client.available, false, "no choices, no control");
+        Harness.equal(client.snapshot().available, false, "and the reading agrees");
+    } finally {
+        client.release();
+    }
+};
+
+cases["a machine with no platform profile node answers null rather than throwing"] = function () {
+    let client = firmware(null, []);
+    try {
+        Harness.equal(client.available, false, "nothing there");
+        Harness.equal(client.active, null, "no active profile");
+        Harness.deepEqual(client.profiles, [], "no list");
+        Harness.equal(client.snapshot().active, null, "and a reading says the same");
+    } finally {
+        client.release();
+    }
+};
+
+cases["writing a profile answers that it was taken on"] = function () {
+    /*
+     * The two profile backends wear one face, and part of that face is
+     * answering whether the call was taken - the applet's own _setProfile
+     * reads it to decide whether there is anything to announce.
+     */
+    let client = firmware("balanced", ["quiet", "balanced", "performance"]);
+    try {
+        let taken = client.setProfile("performance", () => {});
+        Harness.equal(taken, true, "taken on");
+        Harness.deepEqual(client.commands, ["platform-profile performance"],
+                          "and sent in the helper's own words");
+    } finally {
+        client.release();
+    }
+};
+
+cases["the firmware backend says which backend it is"] = function () {
+    /*
+     * The menu compares this against the daemon's name to decide whether the
+     * governor is anybody's to set: power-profiles-daemon writes cpufreq and
+     * this one does not, so under this backend the governor stays a control.
+     */
+    let client = firmware("balanced", ["balanced"]);
+    try {
+        Harness.equal(client.busName, PowerSupply.PLATFORM_BACKEND, "its own name");
+        Harness.equal(client.snapshot().busName, PowerSupply.PLATFORM_BACKEND,
+                      "and the reading carries it");
+        Harness.equal(client.degraded, "", "the firmware says nothing about throttling");
+        Harness.deepEqual(client.holds, [], "nor about applications holding a profile");
+    } finally {
+        client.release();
+    }
+};
