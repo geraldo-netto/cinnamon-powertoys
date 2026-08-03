@@ -167,6 +167,18 @@ set_charge_threshold() {
         start="$battery/charge_control_start_threshold"
         if [ -f "$start" ]; then
             current_start=$(cat "$start" 2>/dev/null || echo 0)
+            # A node can answer with something that is not a number - nothing
+            # at all, a word, a driver that publishes the file before it has a
+            # value for it - and comparing that arithmetically puts the shell's
+            # own complaint on stderr ("[: Illegal number:") before the test is
+            # taken as false. The applet reads the last line of stderr as the
+            # reason a change failed, and every line on there is supposed to be
+            # one this script wrote; see write_node. Unreadable and
+            # unintelligible mean the same thing here, which is that there is
+            # no start value standing in the way.
+            case "$current_start" in
+                ''|*[!0-9]*) current_start=0 ;;
+            esac
             # the kernel rejects a start value that is not below the end value
             if [ "$current_start" -ge "$value" ]; then
                 new_start=$((value - 5))
