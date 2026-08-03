@@ -2429,13 +2429,38 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     /*
-     * Which of the two backends answers, decided once here rather than at
-     * every place that cares.
+     * What the machine has, as against what it is doing.
+     *
+     * The three of these are discovery: which sensors exist, which batteries
+     * take a charge limit, and which backend owns the profiles. None of them
+     * changes on the cadence a reading does, and each was found once and then
+     * kept - so they are asked together, on the slow timer and when the menu
+     * opens, which are the two moments the applet already looks at the machine
+     * again rather than at its values.
+     */
+    _rediscover() {
+        this._sensors.refresh();
+        this._rediscoverChargeControl();
+        this._chooseProfileBackend();
+    }
+
+    /*
+     * Which of the two backends answers, decided here rather than at every
+     * place that cares.
      *
      * power-profiles-daemon where it is running, the firmware's own profile
      * where it is not. When there is neither, the daemon client is still the
      * one asked: it answers unavailable, null and an empty list, which is
      * exactly how a machine with no profiles should read.
+     *
+     * This was wired to one of the two backends' news only - the constructor,
+     * and the daemon appearing or vanishing. On a machine with no daemon that
+     * callback never fires again, which is exactly the machine the firmware
+     * fallback exists for: a vendor module loaded after login, or an applet
+     * that came up before the driver settled, left platform_profile there and
+     * unread until the applet was reloaded. It is asked with the rest of the
+     * discovery now, and costs one exists and two reads while there is no
+     * daemon and nothing at all while there is.
      */
     _chooseProfileBackend() {
         if (this._profiles.available)
@@ -2488,10 +2513,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._sinceRediscover += interval;
             if (this._sinceRediscover >= REDISCOVER_SECONDS) {
                 this._sinceRediscover = 0;
-                this._sensors.refresh();
-                /* A battery can arrive the same way a sensor does, and the
-                 * limit that can be written to it is discovered once. */
-                this._rediscoverChargeControl();
+                this._rediscover();
             }
             this._update();
             return GLib.SOURCE_CONTINUE;
@@ -2509,9 +2531,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
         /* Cheap, and only sweeps again if something moved. The poll does this
          * too, on a much slower cadence; here it is because someone opening
          * the menu wants what is true now. */
-        this._sensors.refresh();
+        this._rediscover();
         this._sinceRediscover = 0;
-        this._rediscoverChargeControl();
         this._cpu.refresh();
         /*
          * UPower is deliberately not asked to re-poll. Its properties arrive
