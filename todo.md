@@ -11,13 +11,19 @@ row keeps the effort for the whole and is done when its parts are. Parts were
 only split out where each one can be written, reviewed and committed on its
 own — items that are genuinely a single change were left whole.
 
-## External monitors
-
-| id | severity | effort | description |
-|----|----------|--------|-------------|
-| PT-145 | medium | S | Look for monitors again while the applet is being looked at: **one probe a second, and only while the menu is open or the panel tooltip is up**. Today [`redetect`](cinnamon-powertoys@geraldo-netto/lib/ddc.js#L509) is reached from one place only, [`_onMonitorsChanged`](cinnamon-powertoys@geraldo-netto/applet.js#L1983), which the desktop emits when a connector is plugged or unplugged. That misses the monitor that was asleep when the applet started, the adapter that answers late, and every switch-on that produces no hotplug event — each of which is a slider that never appears for the rest of the session, on exactly the machines where these sliders are the only brightness control there is. The cost is why it is bounded to those two moments rather than put on the poll: a probe spawns ddcutil, talks to every display on the I2C bus and wakes a sleeping monitor. Somebody with the menu open or the pointer resting on the icon is looking at the applet and can be spent on; nobody else is, and the timer should not exist while nobody is. Both triggers hold it up together — the tooltip goes away as the menu opens under the pointer, and stopping the probe there only to start it again is a probe wasted — so what runs it is a set of reasons and not a flag. |
+Nothing open.
 
 ## Closed
+
+PT-145 was opened on its own rather than as part of a pass, and asked when it is
+worth going to look for a monitor the desktop never announced. Its four rows are
+closed between `c46b413` and `d290024`. The answer it settled on is that the
+applet being looked at is what pays for the probe: the menu open or the pointer
+on the icon holds a one second timer up, and the timer does not exist otherwise.
+The row that had to land first was the one nobody would have opened on its own —
+a probe was calling itself finished when the detect answered, with the reads it
+had just started still out, which only becomes a collision once something asks
+every second.
 
 The thirteenth pass asked which guards test for an answer the live system never
 gives, and what happens to the thing that arrives while its backend is busy
