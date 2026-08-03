@@ -446,6 +446,8 @@ var DdcBacklight = class DdcBacklight {
         this._run = run || runCommand;
         this._started = false;
         this._detecting = false;
+        /* Which probe is the current one; see _detect. */
+        this._probe = null;
     }
 
     /*
@@ -507,6 +509,8 @@ var DdcBacklight = class DdcBacklight {
      * says so exactly once.
      */
     redetect() {
+        /* Asked for inside a probe, this is dropped and not queued; see
+         * _detect for why the flag covers the reads as well as the detect. */
         if (this.destroyed || this._detecting)
             return;
         if (!this._started) {
@@ -542,16 +546,55 @@ var DdcBacklight = class DdcBacklight {
         return monitors;
     }
 
+    /*
+     * A probe is the detect and the reads it starts, and it is not over until
+     * the reads are back.
+     *
+     * _detecting used to come down the moment the detect answered, with the
+     * getvcp calls that same answer had just sent still out. That was harmless
+     * while the only thing asking was a monitor being plugged in, which the
+     * desktop says exactly once; a caller that asks every second means the next
+     * ask sends a detect across every bus while the last probe is still reading
+     * one of them, and two ddcutil talking to one monitor is how ddcutil comes
+     * back with nothing - the same collision PT-135 met from the other end.
+     *
+     * So the flag covers the whole probe, and redetect drops what lands inside
+     * one rather than queueing it: whoever asked will ask again a second later,
+     * and a queue of probes against hardware that answers in tenths of a second
+     * never empties.
+     *
+     * Which probe is finishing has to be checked, because stop() disowns one
+     * rather than waiting for it: switching the setting off and straight back
+     * on leaves the old probe to answer whenever it answers, and it must not
+     * lower the flag belonging to the probe that has started since.
+     */
     _detect() {
+        let probe = {};
+        this._probe = probe;
         this._detecting = true;
+        let settled = () => {
+            if (this._probe === probe)
+                this._detecting = false;
+        };
+
         this._run(["ddcutil", "--brief", "detect"], (output, status) => {
-            this._detecting = false;
-            /* Stopped while this was in flight: the setting was switched off
-             * after the probe went out, and what it found is no longer wanted. */
-            if (this.destroyed || !this._started)
+            /*
+             * Stopped while this was in flight: the setting was switched off
+             * after the probe went out, and what it found is no longer wanted.
+             *
+             * Switched off and on again is the same answer for a different
+             * reason - _started is true once more, so it takes the token to
+             * tell this probe from the one that replaced it, and what an
+             * abandoned probe found is a list from before the control was
+             * emptied, arriving on top of a fresh one.
+             */
+            if (this.destroyed || !this._started || this._probe !== probe) {
+                settled();
                 return;
+            }
             if (status !== 0) {
                 /* No ddcutil, no permission, or no display answered. */
+                settled();
                 this._onChanged();
                 return;
             }
@@ -564,11 +607,15 @@ var DdcBacklight = class DdcBacklight {
 
             this.monitors = this._adopt(found.slice(0, MAX_DISPLAYS));
             if (this.monitors.length === 0) {
+                settled();
                 this._sync();
                 this._onChanged();
                 return;
             }
-            this.refresh(() => this._onChanged());
+            this.refresh(() => {
+                settled();
+                this._onChanged();
+            });
         });
     }
 

@@ -355,6 +355,97 @@ cases["a re-detection before the first one starts it instead"] = function () {
     Harness.equal(each.run.calls[0], "ddcutil --brief detect", "as the first probe");
 };
 
+/* A runner that holds every call until the case lets it answer, so a probe can
+ * be looked at half way through: the detect back, its reads still out. */
+function held() {
+    let waiting = [];
+    let run = function (argv, onDone) {
+        waiting.push({ argv: argv.join(" "), onDone: onDone });
+    };
+    run.waiting = waiting;
+    run.answer = function (output, status) {
+        let next = waiting.shift();
+        next.onDone(output === undefined ? "" : output, status === undefined ? 0 : status);
+        return next.argv;
+    };
+    return run;
+}
+
+cases["a re-detection asked for inside a probe is dropped, not queued"] = function () {
+    /*
+     * The reads a detect starts are part of the probe. Lowering the flag when
+     * the detect answered left them out, so a caller asking every second sent
+     * the next detect across every bus while the last probe was still reading
+     * one of them - and two ddcutil talking to one monitor is how ddcutil
+     * comes back with nothing.
+     */
+    let run = held();
+    let control = new Ddc.DdcBacklight(null, run);
+
+    control.start();
+    run.answer(DETECT_TWO, 0);
+    Harness.equal(run.waiting.length, 2, "the detect is back and its two reads are out");
+
+    control.redetect();
+    Harness.equal(run.waiting.length, 2, "so a re-detection now sends nothing");
+
+    run.answer("VCP 10 C 40 100\n", 0);
+    control.redetect();
+    Harness.equal(run.waiting.length, 1, "and one read still out is still a probe in flight");
+
+    run.answer("VCP 10 C 40 100\n", 0);
+    Harness.equal(run.waiting.length, 0, "the probe is over");
+    control.redetect();
+    Harness.equal(run.waiting[0].argv, "ddcutil --brief detect", "and the next one goes out");
+};
+
+cases["a probe that finds nothing to read is over when the detect answers"] = function () {
+    /* The two ways out that start no reads: a detect that failed, and a detect
+     * that found no display worth a slider. Neither may leave the flag up, or
+     * nothing looks again for the rest of the session. */
+    let run = held();
+    let control = new Ddc.DdcBacklight(null, run);
+    control.start();
+    run.answer("", -1);
+    control.redetect();
+    Harness.equal(run.waiting.length, 1, "a failed detect does not lock the next one out");
+
+    run.answer(DETECT_NONE, 0);
+    control.redetect();
+    Harness.equal(run.waiting.length, 1, "nor does one that found nothing to talk to");
+};
+
+cases["a probe disowned by stop does not end the one started after it"] = function () {
+    /*
+     * stop() lets a probe in flight go rather than waiting for it, so the
+     * setting switched off and straight back on has two probes out at once.
+     * The old one answers into a control that has moved on: what it found is
+     * a list from before the control was emptied, and it must neither be
+     * adopted on top of the fresh probe nor say that probe has finished.
+     */
+    let run = held();
+    let control = new Ddc.DdcBacklight(null, run);
+
+    control.start();
+    control.stop();
+    control.start();
+    Harness.equal(run.waiting.length, 2, "the disowned detect, and the new one");
+
+    /* The first, answering after the setting said no and yes again. */
+    run.answer(DETECT_TWO, 0);
+    Harness.deepEqual(control.monitors, [], "what it found belongs to the control it left");
+    Harness.equal(run.waiting.length, 1, "and it started no reads");
+
+    control.redetect();
+    Harness.equal(run.waiting.length, 1,
+                  "the new probe is still out, so nothing else goes near the bus");
+
+    run.answer(DETECT_ONE, 0);
+    Harness.equal(run.waiting.length, 1, "the new probe reads the monitor it found");
+    run.answer("VCP 10 C 40 100\n", 0);
+    Harness.equal(control.monitors.length, 1, "and that is the list that stands");
+};
+
 cases["starting twice probes once"] = function () {
     let each = started(DETECT_TWO, 0);
     let after = each.run.calls.length;
