@@ -16,120 +16,98 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: applet.js:397
-msgid "Running on AC power"
-msgstr ""
-
-#: applet.js:402
-msgid "Profile"
-msgstr ""
-
-#: applet.js:404 applet.js:1209 lib/reading.js:132
-msgid "Governor"
-msgstr ""
-
-#: applet.js:406 lib/format.js:419
-msgid "Temperature"
-msgstr ""
-
-#. settings-schema.json->panel-show-power->description
-#: applet.js:409
-msgid "Power draw"
-msgstr ""
-
-#: applet.js:435
-#, javascript-format
-msgid "and %d more"
-msgstr ""
-
-#. metadata.json->name
-#: applet.js:440 applet.js:1825 applet.js:2691 applet.js:2765 applet.js:2821
-#: applet.js:2830
-msgid "Power Toys"
-msgstr ""
-
-#: applet.js:1103
+#: applet.js:974
 msgid "System power settings"
 msgstr ""
 
-#: applet.js:1125
+#: applet.js:996
 msgid "Brightness"
 msgstr ""
 
-#: applet.js:1130
+#: applet.js:1001
 msgid "Screen"
 msgstr ""
 
-#: applet.js:1146 lib/format.js:108
+#: applet.js:1017 lib/format.js:108
 msgid "Keyboard"
 msgstr ""
 
-#: applet.js:1154 applet.js:2765
+#: applet.js:1025 applet.js:2636
 msgid "Power profile"
 msgstr ""
 
-#: applet.js:1160
+#: applet.js:1031
 msgid "Performance limited"
 msgstr ""
 
-#: applet.js:1186 lib/sensors.js:37
+#: applet.js:1057 lib/sensors.js:37
 msgid "Processor"
 msgstr ""
 
-#: applet.js:1191
+#: applet.js:1062
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1212 lib/reading.js:134
+#: applet.js:1080 lib/panel-text.js:108 lib/reading.js:132
+msgid "Governor"
+msgstr ""
+
+#: applet.js:1083 lib/reading.js:134
 msgid "Energy preference"
 msgstr ""
 
-#: applet.js:1227
+#: applet.js:1098
 msgid "Devices"
 msgstr ""
 
-#: applet.js:1248
+#: applet.js:1119
 msgid "Nothing with a battery is connected"
 msgstr ""
 
-#: applet.js:1266 lib/reading.js:138
+#: applet.js:1137 lib/reading.js:138
 msgid "Charge limit"
 msgstr ""
 
-#: applet.js:1276
+#: applet.js:1147
 msgid "The batteries are set to different limits; choosing one sets both"
 msgstr ""
 
-#: applet.js:1282
+#: applet.js:1153
 msgid "Sensors"
 msgstr ""
 
-#: applet.js:1389
+#: applet.js:1260
 #, javascript-format
 msgid "Only the first %d monitors have a slider"
 msgstr ""
 
-#: applet.js:1489
+#: applet.js:1360
 msgid "On AC power"
 msgstr ""
 
-#: applet.js:1509
+#: applet.js:1380
 msgid "an application"
 msgstr ""
 
-#: applet.js:1528
+#: applet.js:1399
 msgid "Connected"
 msgstr ""
 
-#: applet.js:1528
+#: applet.js:1399
 msgid "Disconnected"
 msgstr ""
 
-#: applet.js:1579
+#: applet.js:1450
 msgid "No sensor matches"
 msgstr ""
 
-#: applet.js:1826
+#. metadata.json->name
+#: applet.js:1696 applet.js:2562 applet.js:2636 applet.js:2692 applet.js:2701
+#: lib/panel-text.js:144
+msgid "Power Toys"
+msgstr ""
+
+#: applet.js:1697
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "
@@ -137,15 +115,15 @@ msgid ""
 "shortcuts."
 msgstr ""
 
-#: applet.js:2674 applet.js:2792
+#: applet.js:2545 applet.js:2663
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2692
+#: applet.js:2563
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:2831
+#: applet.js:2702
 msgid "The change could not be applied."
 msgstr ""
 
@@ -453,12 +431,34 @@ msgstr ""
 msgid "Power saving"
 msgstr ""
 
+#: lib/format.js:419 lib/panel-text.js:110
+msgid "Temperature"
+msgstr ""
+
 #: lib/format.js:420
 msgid "Fan"
 msgstr ""
 
 #: lib/format.js:421 lib/sensors.js:204
 msgid "Power"
+msgstr ""
+
+#: lib/panel-text.js:101
+msgid "Running on AC power"
+msgstr ""
+
+#: lib/panel-text.js:106
+msgid "Profile"
+msgstr ""
+
+#. settings-schema.json->panel-show-power->description
+#: lib/panel-text.js:113
+msgid "Power draw"
+msgstr ""
+
+#: lib/panel-text.js:139
+#, javascript-format
+msgid "and %d more"
 msgstr ""
 
 #: lib/reading.js:41
