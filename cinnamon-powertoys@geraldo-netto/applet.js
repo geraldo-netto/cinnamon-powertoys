@@ -2352,7 +2352,11 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * the last reading in the poll still being taken regardless.
      *
      * Opening the menu re-reads before anything is drawn, so what is on screen
-     * is never the value from the last time the menu happened to be open.
+     * is never the value from the last time the menu happened to be open. That
+     * is what _adoptChargeLimit is for: the reading the menu is first painted
+     * from was assembled with the menu shut, which means it carries no limit at
+     * all, and without the re-read the group would draw with nothing marked and
+     * fill in a moment later.
      */
     _readChargeLimit() {
         if (!this._chargeControl || !this.enablePrivilegedControls)
@@ -2483,9 +2487,30 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * millisecond is long enough to see: the columns appear, then find
          * their size.
          */
-        if (this._latest)
+        if (this._latest) {
+            this._adoptChargeLimit(this._latest);
             this._menuPresenter.update(this._latest, this._menuOptions());
+        }
         this._update();
+    }
+
+    /*
+     * The charge limit, into a reading that was taken without one.
+     *
+     * _readChargeLimit only answers while the menu is open, which is the whole
+     * of why it is cheap - and the reading the menu is first painted from was
+     * assembled while it was shut, so it says there is no limit set. Drawn from
+     * that, the group appears with none of its values marked and the dot lands
+     * a moment later when the fresh reading arrives, which reads as a control
+     * that was broken and then was not.
+     *
+     * Two file reads, taken here because this is the first moment they can
+     * answer: the menu is open by the time open-state-changed is emitted.
+     */
+    _adoptChargeLimit(data) {
+        let charge = this._readChargeLimit();
+        data.chargeLimit = charge.limit;
+        data.chargeLimitDivided = charge.divided;
     }
 
     /*
