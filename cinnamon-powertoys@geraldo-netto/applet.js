@@ -1810,6 +1810,11 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * empty means nobody is looking at the applet; see _watchMonitors. */
         this._probeReasons = new Set();
         this._probeTimerId = 0;
+        /* Whether this machine has a backlight of its own, as the settings
+         * daemon answered it. False until it has; see _onScreenBacklightKnown,
+         * which is also where the difference between this and the control's own
+         * `available` is set out. */
+        this._hasKernelBacklight = false;
         /* A profile asked for and not yet arrived, which the panel and the
          * menu draw until it does - or until it is clear it will not. */
         this._pending = new PendingProfile.PendingProfile((asked, actual) => {
@@ -2004,6 +2009,27 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * screen there is, and DDC/CI is the only way to reach it.
      */
     _onScreenBacklightKnown() {
+        /*
+         * The answer is kept, rather than the control being asked again later.
+         *
+         * `available` on a BacklightControl is about the last call it made:
+         * refresh() lowers it whenever a GetPercentage comes back with an
+         * error, and the menu re-asks every backlight each time it opens, so
+         * cinnamon-settings-daemon being restarted is enough to make a laptop
+         * with a perfectly good backlight say it has none. Read as "does this
+         * machine have a backlight of its own" - which is what decides whether
+         * to go anywhere near the I2C bus - that answer is wrong, and it is
+         * wrong in the expensive direction: redetect() starts a control that
+         * was never started, so the applet would begin spawning ddcutil across
+         * the buses of a machine that was deliberately kept off them, and grow
+         * sliders for whatever answered.
+         *
+         * This is the one moment the question is honestly answered: the daemon
+         * has been asked and has replied. Which control the wheel moves is a
+         * different question about the moment, and _brightnessControl still
+         * asks `available` for it.
+         */
+        this._hasKernelBacklight = this._backlights.screen.available;
         this._considerMonitorBacklight();
         this._onBacklightChanged();
     }
@@ -2029,7 +2055,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _considerMonitorBacklight() {
         if (!this.monitorBrightness)
             this._backlights.monitor.stop();
-        else if (!this._backlights.screen.available)
+        else if (!this._hasKernelBacklight)
             this._backlights.monitor.start();
         /* Both of the answers above can move under a reason that is already
          * held - the daemon answering late, the setting switched with the menu
@@ -2124,9 +2150,14 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * daemon can drive has a kernel backlight and is not this applet's to find.
      * Neither is about the moment - they are about the machine - which is why
      * this decides whether the timer exists rather than what each tick does.
+     *
+     * The second half used to be asked of the screen control's `available`,
+     * which is about the moment and about nothing else: it is lowered by any
+     * failed GetPercentage. The daemon's answer is remembered instead, at the
+     * moment it answers; see _onScreenBacklightKnown.
      */
     _canProbeMonitors() {
-        return !!this.monitorBrightness && !this._backlights.screen.available;
+        return !!this.monitorBrightness && !this._hasKernelBacklight;
     }
 
     _stopProbingMonitors() {

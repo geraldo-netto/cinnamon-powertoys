@@ -34,12 +34,6 @@ memory.
 | id | severity | effort | description |
 |----|----------|--------|-------------|
 
-## Guards asked of the wrong thing
-
-| id | severity | effort | description |
-|----|----------|--------|-------------|
-| PT-156 | low | S | [`_canProbeMonitors`](cinnamon-powertoys@geraldo-netto/applet.js#L2118) says of itself that neither of its two questions is about the moment — "they are about the machine" — and the second one is entirely about the moment. `screen.available` is lowered by [`BacklightControl.refresh`](cinnamon-powertoys@geraldo-netto/lib/backlight.js#L129) on any failed `GetPercentage`, and the menu re-asks every backlight each time it opens, so cinnamon-settings-daemon being restarted is enough to make a laptop with a perfectly good kernel backlight answer true here. What follows is not a wasted tick: [`_probeMonitors`](cinnamon-powertoys@geraldo-netto/applet.js#L2137) calls [`redetect`](cinnamon-powertoys@geraldo-netto/lib/ddc.js#L557), which *starts* a control that was never started, so the applet begins spawning ddcutil across the I2C buses of a machine that was deliberately kept off them — and if a monitor answers, it grows sliders the menu had no business offering. Either ask the daemon rather than the last answer from it, or keep the machine's half of the question where `start()` and `stop()` are already decided, in [`_considerMonitorBacklight`](cinnamon-powertoys@geraldo-netto/applet.js#L2019), and let this one ask only about the moment it is honestly about. |
-
 ## The file no gate can see
 
 | id | severity | effort | description |
