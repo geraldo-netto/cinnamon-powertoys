@@ -696,16 +696,24 @@ var SensorSet = class SensorSet {
     }
 
     _fan(sensor, readNumber) {
+        let rpm = readNumber(sensor.path);
+        if (rpm !== null && rpm > 0)
+            sensor.hasRun = true;
         return {
             id: sensor.id,
             measure: sensor.measure,
             chip: sensor.chip,
+            rawLabel: sensor.rawLabel,
             kind: sensor.kind,
             label: Format.sensorLabel(sensor),
             group: sensor.group,
             groupLabel: sensor.groupLabel,
             shortLabel: sensor.short,
-            rpm: readNumber(sensor.path),
+            /* A label is the driver's declaration that this input is wired.
+             * An unlabelled input earns the same status after it has produced
+             * a non-zero reading, and keeps it when the fan later stops. */
+            inUse: !!sensor.rawLabel || !!sensor.hasRun,
+            rpm: rpm,
         };
     }
 

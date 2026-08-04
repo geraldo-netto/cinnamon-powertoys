@@ -86,6 +86,16 @@ cases["a reading that cannot be read is not a row"] = function () {
     Harness.equal(entries[0].key, "empty", "so the list says so");
 };
 
+cases["a known fan remains visible while stopped"] = function () {
+    let entries = SensorRows.rows(reading({
+        fans: [fan({ rpm: 0, inUse: true, rawLabel: "CPU Fan" })],
+    }), options({ showAllSensors: true }));
+
+    Harness.deepEqual(labels(entries), ["== nct6798", "Fan 1"],
+                      "zero RPM is a real reading for a known input");
+    Harness.equal(entries[1].value, "0 RPM", "the stopped value is shown");
+};
+
 cases["only the interesting kinds, unless every one was asked for"] = function () {
     /*
      * Reading a disk temperature wakes the drive, so the menu hides those by

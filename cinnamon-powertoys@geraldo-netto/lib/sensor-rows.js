@@ -198,7 +198,7 @@ function rows(data, options) {
     let entries = [].concat(
         entriesOf(data.temperatures, all, sensor => sensor.celsius !== null,
                   sensor => temperatureEntry(sensor, options)),
-        entriesOf(data.fans, all, fan => fan.rpm !== null && fan.rpm > 0,
+        entriesOf(data.fans, all, fan => fan.rpm !== null && (fan.rpm > 0 || fan.inUse),
                   fan => fanEntry(fan)),
         entriesOf(data.powers, all, () => true,
                   meter => powerEntry(meter)));

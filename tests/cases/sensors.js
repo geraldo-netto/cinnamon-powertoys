@@ -262,6 +262,19 @@ cases["a reading carries what it measures"] = function () {
     });
 };
 
+cases["an unlabelled fan stays known after it has run"] = function () {
+    on("machine", function () {
+        let set = new Sensors.SensorSet();
+        let sensor = set.fanSensors[0];
+        sensor.rawLabel = null;
+
+        Harness.equal(set._fan(sensor, () => 1200).inUse, true, "known while turning");
+        let stopped = set._fan(sensor, () => 0);
+        Harness.equal(stopped.inUse, true, "still known after stopping");
+        Harness.equal(stopped.rpm, 0, "zero is preserved as the reading");
+    });
+};
+
 /* ---------------------------------------------------------------- */
 /* energy counters                                                   */
 
