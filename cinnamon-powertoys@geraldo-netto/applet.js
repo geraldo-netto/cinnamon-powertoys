@@ -602,6 +602,7 @@ class SegmentedControl extends PopupMenu.PopupBaseMenuItem {
         this._onActivate = onActivate;
         this._values = [];
         this._active = null;
+        this._editable = true;
         this._buttons = new Map();
 
         this._box = new St.BoxLayout({ style_class: "powertoys-segmented" });
@@ -645,7 +646,8 @@ class SegmentedControl extends PopupMenu.PopupBaseMenuItem {
         alloc.natural_size = natural;
     }
 
-    sync(values, active) {
+    sync(values, active, editable) {
+        this._editable = editable !== false;
         if (values.join("\u0000") !== this._values.join("\u0000")) {
             this._values = values.slice();
             for (let child of this._box.get_children())
@@ -662,7 +664,15 @@ class SegmentedControl extends PopupMenu.PopupBaseMenuItem {
         }
 
         this._active = active;
+        /* PopupBaseMenuItem only applies setSensitive() to activatable rows;
+         * this row deliberately is not one, because its child buttons act.
+         * Apply the same state to the row and to those actual controls. */
+        this.actor.reactive = this._editable;
+        this.actor.can_focus = this._editable;
+        this.actor.change_style_pseudo_class("insensitive", !this._editable);
         for (let [value, button] of this._buttons) {
+            button.reactive = this._editable;
+            button.can_focus = this._editable;
             if (value === active)
                 button.add_style_class_name("powertoys-segment-active");
             else
@@ -682,7 +692,7 @@ class SegmentedControl extends PopupMenu.PopupBaseMenuItem {
             step = 1;
         else if (symbol === Clutter.KEY_Left)
             step = -1;
-        if (step === 0 || this._values.length === 0)
+        if (step === 0 || this._values.length === 0 || !this._editable)
             return false;
         if (this.actor.get_direction() === St.TextDirection.RTL)
             step = -step;
@@ -1390,8 +1400,9 @@ class MenuPresenter {
          * panel label answer the same question, which is why all three ask it
          * of one function rather than each spelling it out. */
         let active = Reading.shownProfile(data, options);
+        let editable = Reading.profileCanChange(data, options.privileged);
         this._profileGroup.setVisible(show);
-        this._profileControl.sync(show ? data.profile.list : [], active);
+        this._profileControl.sync(show ? data.profile.list : [], active, editable);
 
         let notes = [];
         if (data.profile.degraded)
@@ -2514,6 +2525,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * was one. Asking again for the profile already in flight is not one.
      */
     _setProfile(name) {
+        if (!this._profileState())
+            return false;
         if (!this._pending.ask(name))
             return false;
 
@@ -2607,14 +2620,16 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     /*
-     * The profile block collected on the last poll, whether it comes from
-     * power-profiles-daemon or from the ACPI platform profile. Everything that
-     * changes a profile goes through this, so no caller has to know which
-     * backend is in use.
+     * A profile block the applet is currently allowed to change. The daemon
+     * is unprivileged; the ACPI fallback follows the privileged-control
+     * setting, so wheel, middle click and hotkey stop at the same gate as the
+     * menu segment.
      */
     _profileState() {
         let state = this._latest ? this._latest.profile : null;
         if (!state || !state.available || state.list.length === 0)
+            return null;
+        if (!Reading.profileCanChange(this._latest, this.enablePrivilegedControls))
             return null;
         return state;
     }

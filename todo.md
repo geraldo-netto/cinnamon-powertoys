@@ -12,7 +12,6 @@ artifacts, tests and test-only tooling were excluded as requested.
 
 ## High
 
-- [ ] **S** — `cinnamon-powertoys@geraldo-netto/applet.js:L1385-L1395,L2584-L2587`: 🔴 bug: the ACPI platform-profile segment remains interactive when privileged controls are disabled, but every click is then refused by its runner. Make the segment read-only/hidden for that backend or stop gating platform-profile writes with the CPU-control setting, and align the setting text with the chosen behavior.
 
 ## Medium
 

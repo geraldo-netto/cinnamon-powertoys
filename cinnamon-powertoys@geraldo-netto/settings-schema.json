@@ -124,8 +124,8 @@
     "enable-privileged-controls": {
         "type": "switch",
         "default": true,
-        "description": "Allow changing CPU governor, energy preference, boost and charge limit",
-        "tooltip": "These settings are owned by the kernel and are applied through pkexec, so an administrator password is requested."
+        "description": "Allow changing privileged power settings",
+        "tooltip": "CPU governor, energy preference, boost, ACPI platform profile and charge limit are owned by the kernel and applied through pkexec, so an administrator password is requested."
     },
     "scroll-action": {
         "type": "combobox",

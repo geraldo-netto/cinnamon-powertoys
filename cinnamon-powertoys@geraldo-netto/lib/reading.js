@@ -110,6 +110,13 @@ function profileOwnsGovernor(data) {
            data.profile.backend !== PowerSupply.PLATFORM_BACKEND;
 }
 
+/* Daemon profiles are ordinary session D-Bus writes. The ACPI fallback is a
+ * root-owned sysfs node and follows the user's privileged-control setting. */
+function profileCanChange(data, privileged) {
+    return data.profile.available &&
+           (data.profile.backend !== PowerSupply.PLATFORM_BACKEND || !!privileged);
+}
+
 /*
  * What a privileged change did, in the words the menu uses for it.
  *

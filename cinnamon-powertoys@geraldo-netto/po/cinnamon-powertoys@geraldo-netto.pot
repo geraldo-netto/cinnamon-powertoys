@@ -16,94 +16,94 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: applet.js:994
+#: applet.js:1004
 msgid "System power settings"
 msgstr ""
 
-#: applet.js:1016
+#: applet.js:1026
 msgid "Brightness"
 msgstr ""
 
-#: applet.js:1021
+#: applet.js:1031
 msgid "Screen"
 msgstr ""
 
-#: applet.js:1037 lib/format.js:108
+#: applet.js:1047 lib/format.js:108
 msgid "Keyboard"
 msgstr ""
 
-#: applet.js:1045 applet.js:2656
+#: applet.js:1055 applet.js:2671
 msgid "Power profile"
 msgstr ""
 
-#: applet.js:1051
+#: applet.js:1061
 msgid "Performance limited"
 msgstr ""
 
-#: applet.js:1077 lib/sensors.js:37
+#: applet.js:1087 lib/sensors.js:37
 msgid "Processor"
 msgstr ""
 
-#: applet.js:1082
+#: applet.js:1092
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1100 lib/panel-text.js:174 lib/reading.js:132
+#: applet.js:1110 lib/panel-text.js:174 lib/reading.js:139
 msgid "Governor"
 msgstr ""
 
-#: applet.js:1103 lib/reading.js:134
+#: applet.js:1113 lib/reading.js:141
 msgid "Energy preference"
 msgstr ""
 
-#: applet.js:1118
+#: applet.js:1128
 msgid "Devices"
 msgstr ""
 
-#: applet.js:1139
+#: applet.js:1149
 msgid "Nothing with a battery is connected"
 msgstr ""
 
-#: applet.js:1157 lib/reading.js:138
+#: applet.js:1167 lib/reading.js:145
 msgid "Charge limit"
 msgstr ""
 
-#: applet.js:1167
+#: applet.js:1177
 msgid "The batteries are set to different limits; choosing one sets both"
 msgstr ""
 
-#: applet.js:1173
+#: applet.js:1183
 msgid "Sensors"
 msgstr ""
 
-#: applet.js:1280
+#: applet.js:1290
 #, javascript-format
 msgid "Only the first %d monitors have a slider"
 msgstr ""
 
-#: applet.js:1400
+#: applet.js:1411
 msgid "an application"
 msgstr ""
 
-#: applet.js:1419
+#: applet.js:1430
 msgid "Connected"
 msgstr ""
 
-#: applet.js:1419
+#: applet.js:1430
 msgid "Disconnected"
 msgstr ""
 
-#: applet.js:1470
+#: applet.js:1481
 msgid "No sensor matches"
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:1735 applet.js:2604 applet.js:2656 applet.js:2714 applet.js:2723
+#: applet.js:1746 applet.js:2617 applet.js:2671 applet.js:2729 applet.js:2738
 #: lib/panel-text.js:210
 msgid "Power Toys"
 msgstr ""
 
-#: applet.js:1736
+#: applet.js:1747
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "
@@ -111,15 +111,15 @@ msgid ""
 "shortcuts."
 msgstr ""
 
-#: applet.js:2586 applet.js:2683
+#: applet.js:2599 applet.js:2698
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2605
+#: applet.js:2618
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:2724
+#: applet.js:2739
 msgid "The change could not be applied."
 msgstr ""
 
@@ -485,11 +485,11 @@ msgstr ""
 msgid "GPU"
 msgstr ""
 
-#: lib/reading.js:136
+#: lib/reading.js:143
 msgid "Turbo boost on"
 msgstr ""
 
-#: lib/reading.js:136
+#: lib/reading.js:143
 msgid "Turbo boost off"
 msgstr ""
 
@@ -730,13 +730,14 @@ msgid "Controls"
 msgstr ""
 
 #. settings-schema.json->enable-privileged-controls->description
-msgid "Allow changing CPU governor, energy preference, boost and charge limit"
+msgid "Allow changing privileged power settings"
 msgstr ""
 
 #. settings-schema.json->enable-privileged-controls->tooltip
 msgid ""
-"These settings are owned by the kernel and are applied through pkexec, so an"
-" administrator password is requested."
+"CPU governor, energy preference, boost, ACPI platform profile and charge "
+"limit are owned by the kernel and applied through pkexec, so an "
+"administrator password is requested."
 msgstr ""
 
 #. settings-schema.json->scroll-action->description

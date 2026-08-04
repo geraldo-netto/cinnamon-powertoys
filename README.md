@@ -96,9 +96,9 @@ for speed and it sits in *Processor*, and where a setting has only one value to
 offer — `amd_pstate` narrows the energy preferences to exactly one — it is
 shown as a value rather than as a choice of one.
 
-Governor, energy preference, boost and the battery charge limit are kernel
-owned, so they are applied through a small validating helper launched with
-`pkexec`.
+Governor, energy preference, boost, the ACPI platform profile and the battery
+charge limit are kernel owned, so they are applied through a small validating
+helper launched with `pkexec`.
 
 **Temperature and power.** Every hwmon and thermal zone sensor plus fan speeds,
 hwmon power meters (for example the amdgpu GPU package power), RAPL package
@@ -208,12 +208,13 @@ written for.
 ## Permissions
 
 Reading is entirely unprivileged. Changing the CPU governor, energy preference,
-turbo boost or charge limit writes to root owned files in `/sys`, so those
-actions call `powertoys-helper` through `pkexec` and an administrator password
-is requested. The helper accepts five fixed commands and validates every value
-against the list the kernel advertises, so it cannot be used to write arbitrary
-data. Turn the whole group off with *Allow changing CPU governor…* in the
-applet settings if you would rather not be asked.
+turbo boost, ACPI platform profile or charge limit writes to root owned files
+in `/sys`, so those actions call `powertoys-helper` through `pkexec` and an
+administrator password is requested. The helper accepts five fixed commands
+and validates every value against the list the kernel advertises, so it cannot
+be used to write arbitrary data. Turn the whole group off with *Allow changing
+privileged power settings* in the applet settings if you would rather not be
+asked; the firmware profile stays visible there as a read-only status.
 
 The menu closes as one of those changes is made, and only those. An applet menu
 holds a modal grab for as long as it is open, and the password dialog belongs to

@@ -101,3 +101,12 @@ cases["a setting that needs more than a repaint says so"] = function () {
                    key + " would only redraw, which is not enough for it");
     }
 };
+
+cases["the privileged setting names every gated control"] = function () {
+    let schema = JSON.parse(readFile(Harness.xletDir() + "/settings-schema.json"));
+    let setting = schema["enable-privileged-controls"];
+    Harness.ok(setting.description.indexOf("privileged power settings") >= 0,
+               "the switch is not described as CPU-only");
+    Harness.ok(setting.tooltip.indexOf("ACPI platform profile") >= 0,
+               "the firmware profile is named among the gated writes");
+};

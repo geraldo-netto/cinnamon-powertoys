@@ -98,6 +98,18 @@ cases["a machine with no profiles does not own the governor either"] = function 
                   "and nothing claims to be");
 };
 
+cases["only firmware profiles follow the privileged setting"] = function () {
+    Harness.equal(Reading.profileCanChange(profile(), false), true,
+                  "the session daemon remains writable");
+    let firmware = profile({ backend: PowerSupply.PLATFORM_BACKEND });
+    Harness.equal(Reading.profileCanChange(firmware, true), true,
+                  "ACPI is writable when privileged controls are allowed");
+    Harness.equal(Reading.profileCanChange(firmware, false), false,
+                  "and read-only when they are disabled");
+    Harness.equal(Reading.profileCanChange(profile({ available: false }), true), false,
+                  "an unavailable backend is not writable");
+};
+
 cases["a privileged change is described in the helper's own vocabulary"] = function () {
     /* The argument vectors are what the helper takes; this is the one place
      * that turns them back into something worth reading. */
