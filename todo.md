@@ -16,7 +16,6 @@ artifacts, tests and test-only tooling were excluded as requested.
 - [ ] **S** — `cinnamon-powertoys@geraldo-netto/powertoys-helper:L84-L99,L162-L199`: 🔴 bug: multi-policy and multi-battery writes exit successfully when only one target accepted the value, leaving the machine split while the applet announces success. Count eligible targets, report partial failure, and identify every node that refused the write.
 - [ ] **S** — `cinnamon-powertoys@geraldo-netto/applet.js:L1370-L1382`, `cinnamon-powertoys@geraldo-netto/lib/panel-text.js:L141-L153`: 🔴 bug: a missing primary device is presented as AC power even when UPower is unavailable, and the collected `OnBattery` value is ignored. Show battery/AC only when UPower establishes it and use an unavailable/unknown state otherwise.
 - [ ] **S** — `cinnamon-powertoys@geraldo-netto/applet.js:L1385-L1395,L2584-L2587`: 🔴 bug: the ACPI platform-profile segment remains interactive when privileged controls are disabled, but every click is then refused by its runner. Make the segment read-only/hidden for that backend or stop gating platform-profile writes with the CPU-control setting, and align the setting text with the chosen behavior.
-- [ ] **XS** — `cinnamon-powertoys@geraldo-netto/lib/profiles.js:L83-L98`: 🔴 bug: when the active profile is absent from a changed profile list, a positive step initializes at index 0 and then advances to index 1, skipping the first profile despite the documented fallback. Return the first profile directly when `from` is unknown.
 
 ## Medium
 

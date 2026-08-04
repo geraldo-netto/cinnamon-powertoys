@@ -87,7 +87,7 @@ function nextProfile(list, from, step, wrap) {
 
     let at = ordered.indexOf(from);
     if (at < 0)
-        at = 0;
+        return ordered[0];
 
     let target = at + step;
     if (wrap)

@@ -533,8 +533,10 @@ cases["a machine with no profiles has nothing to step to"] = function () {
 cases["a profile that is not on the list starts from the beginning"] = function () {
     /* The daemon can change what it offers while a change is pending, and a
      * step from a name that is no longer there has to land somewhere. */
-    Harness.equal(Profiles.nextProfile(THINKPAD, "vendor-turbo", 1, false), "balanced",
-                  "as though it were at the bottom");
-    Harness.equal(Profiles.nextProfile(THINKPAD, null, 1, false), "balanced",
+    Harness.equal(Profiles.nextProfile(THINKPAD, "vendor-turbo", 1, false), "low-power",
+                  "the first entry is not skipped");
+    Harness.equal(Profiles.nextProfile(THINKPAD, null, 1, false), "low-power",
                   "and so does a machine that has not said yet");
+    Harness.equal(Profiles.nextProfile(THINKPAD, "vendor-turbo", -1, true), "low-power",
+                  "the fallback is independent of step direction and wrapping");
 };
