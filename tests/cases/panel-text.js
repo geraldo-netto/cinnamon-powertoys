@@ -16,6 +16,7 @@ const PanelText = Harness.requireXlet("./lib/panel-text.js");
 
 const Kind = UPowerGlib.DeviceKind;
 const State = UPowerGlib.DeviceState;
+const Level = UPowerGlib.DeviceLevel;
 
 /* A reading, with only the parts the panel looks at. */
 function reading(parts) {
@@ -37,6 +38,7 @@ function battery(parts) {
     return Object.assign({
         path: "/battery_BAT0", kind: Kind.BATTERY, state: State.DISCHARGING,
         vendor: "", model: "BAT0", powerSupply: true, percentage: 61,
+        batteryLevel: Level.NONE,
         timeToEmpty: 7200, timeToFull: 0,
     }, parts || {});
 }
@@ -45,6 +47,7 @@ function peripheral(parts) {
     return Object.assign({
         path: "/mouse", kind: Kind.MOUSE, state: State.UNKNOWN, vendor: "", model: "MX",
         powerSupply: false, percentage: 40, timeToEmpty: 0, timeToFull: 0,
+        batteryLevel: Level.NONE,
     }, parts || {});
 }
 
@@ -187,6 +190,18 @@ cases["a battery with no percentage is not a percentage"] = function () {
      * "Low"; the panel has no room to and says nothing. */
     let data = reading({ primary: battery({ percentage: null }) });
     Harness.equal(PanelText.labelText(data, options(), "battery", null), "", "nothing to print");
+};
+
+cases["a coarse battery level is written everywhere"] = function () {
+    let coarse = battery({ percentage: 0, batteryLevel: Level.LOW });
+    let data = reading({ primary: coarse, devices: [coarse] });
+    Harness.equal(PanelText.labelText(data, options(), "battery", null), "Low", "panel label");
+    Harness.ok(PanelText.tooltipText(data, options()).indexOf("Battery Low") >= 0,
+               "tooltip: " + PanelText.tooltipText(data, options()));
+
+    let mouse = peripheral({ percentage: 0, batteryLevel: Level.CRITICAL });
+    let accessories = PanelText.tooltipText(reading({ devices: [mouse] }), options());
+    Harness.ok(accessories.indexOf("MX: Critical") >= 0, "peripheral: " + accessories);
 };
 
 cases["a profile drawn as a gauge is not also spelled out"] = function () {

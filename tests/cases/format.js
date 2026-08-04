@@ -260,6 +260,12 @@ cases["a device that cannot measure itself is described in words"] = function ()
     Harness.equal(Format.reportsPrecisePercentage(
         { batteryLevel: UPowerGlib.DeviceLevel.LOW, percentage: 42 }), false,
         "a coarse level, whatever number came with it");
+    Harness.deepEqual(Format.batteryReading(
+        { batteryLevel: UPowerGlib.DeviceLevel.LOW, percentage: 0 }),
+        { percentage: null, level: UPowerGlib.DeviceLevel.LOW,
+          text: "Low", precise: false }, "the coarse level replaces the placeholder figure");
+    Harness.equal(Format.batteryReading({ percentage: 42 }).text, "42%",
+                  "and an ordinary percentage remains a percentage");
 };
 
 cases["the sensor name is the one composed at discovery"] = function () {

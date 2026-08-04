@@ -1380,7 +1380,7 @@ class MenuPresenter {
     _updateSummary(data, options) {
         if (data.primary) {
             this._summary.setLabel(Format.deviceKindName(data.primary.kind) + " " +
-                                   Format.percent(data.primary.percentage));
+                                   Format.batteryReading(data.primary).text);
             let detail = Format.deviceStateName(data.primary.state);
             let remaining = Device.remainingText(data.primary);
             if (remaining)

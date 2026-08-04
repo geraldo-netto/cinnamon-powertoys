@@ -14,6 +14,8 @@
  * report says.
  */
 
+const UPowerGlib = imports.gi.UPowerGlib;
+
 const Device = require("./lib/device.js");
 const Format = require("./lib/format.js");
 const Reading = require("./lib/reading.js");
@@ -125,8 +127,11 @@ function profileNeedsSpelling(data, source, profile) {
  */
 function labelText(data, options, source, profile) {
     let parts = [];
-    if (options.showBattery && data.primary && data.primary.percentage !== null)
-        parts.push(Format.percent(data.primary.percentage));
+    if (options.showBattery && data.primary) {
+        let charge = Format.batteryReading(data.primary).text;
+        if (charge)
+            parts.push(charge);
+    }
     if (options.showPower && data.systemWatts !== null)
         parts.push(Reading.panelPowerText(data));
     if (options.showProfile && profileNeedsSpelling(data, source, profile))
@@ -159,7 +164,7 @@ function tooltipText(data, options) {
 
     if (data.primary) {
         lines.push(Format.deviceKindName(data.primary.kind) + " " +
-                   Format.percent(data.primary.percentage) + " - " +
+                   Format.batteryReading(data.primary).text + " - " +
                    Format.deviceStateName(data.primary.state));
         let remaining = Device.remainingText(data.primary);
         if (remaining)
@@ -193,14 +198,25 @@ function tooltipText(data, options) {
      * the menu lists every one of them under Devices.
      */
     let peripherals = data.devices
-        .filter(device => !device.powerSupply && device.percentage !== null)
+        .filter(device => !device.powerSupply && Format.batteryReading(device).text)
         .slice()
-        .sort((first, second) => first.percentage - second.percentage);
+        .sort((first, second) => {
+            let a = Format.batteryReading(first);
+            let b = Format.batteryReading(second);
+            let rank = reading => {
+                if (reading.level === UPowerGlib.DeviceLevel.CRITICAL) return -2;
+                if (reading.level === UPowerGlib.DeviceLevel.LOW) return -1;
+                if (reading.precise) return reading.percentage;
+                return 101 + reading.level;
+            };
+            return rank(a) - rank(b);
+        });
 
     if (peripherals.length > 0 && lines.length > 0)
         lines.push("");
     for (let device of peripherals.slice(0, TOOLTIP_PERIPHERALS))
-        lines.push(Format.deviceTitle(device) + ": " + Format.percent(device.percentage));
+        lines.push(Format.deviceTitle(device) + ": " +
+                   Format.batteryReading(device).text);
     if (peripherals.length > TOOLTIP_PERIPHERALS) {
         lines.push(_("and %d more")
             .replace("%d", String(peripherals.length - TOOLTIP_PERIPHERALS)));

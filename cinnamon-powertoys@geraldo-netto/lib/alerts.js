@@ -85,7 +85,8 @@ var AlertPolicy = class AlertPolicy {
     }
 
     _checkDevice(device, limits) {
-        if (device.percentage === null)
+        let charge = Format.batteryReading(device);
+        if (!charge.text)
             return;
 
         let system = device.powerSupply;
@@ -98,21 +99,21 @@ var AlertPolicy = class AlertPolicy {
             return;
         }
 
-        if (system && device.percentage <= limits.criticalLevel) {
+        if (system && Device.chargeIsCritical(device, limits.criticalLevel)) {
             if (level !== "critical") {
                 this._alerted.set(device.path, "critical");
                 this._notify(true, _("Battery critically low"),
                              Format.deviceTitle(device) + " - " +
-                             Format.percent(device.percentage));
+                             charge.text);
             }
-        } else if (device.percentage <= threshold) {
+        } else if (Device.chargeIsLow(device, threshold)) {
             if (level === "") {
                 this._alerted.set(device.path, "low");
                 this._notify(false, _("Battery low"),
                              Format.deviceTitle(device) + " - " +
-                             Format.percent(device.percentage));
+                             charge.text);
             }
-        } else if (device.percentage > threshold + HYSTERESIS) {
+        } else if (Device.chargeRecovered(device, threshold, HYSTERESIS)) {
             this._alerted.delete(device.path);
         }
     }

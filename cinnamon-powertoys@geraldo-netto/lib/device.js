@@ -42,6 +42,33 @@ function lowThreshold(device, systemLevel, peripheralLevel) {
     return device.powerSupply ? systemLevel : peripheralLevel;
 }
 
+/* Coarse LOW/CRITICAL readings are policy states, not percentages. */
+function chargeIsLow(device, threshold) {
+    let reading = Format.batteryReading(device);
+    if (!reading.precise) {
+        return reading.level === UPowerGlib.DeviceLevel.LOW ||
+               reading.level === UPowerGlib.DeviceLevel.CRITICAL;
+    }
+    return reading.percentage <= threshold;
+}
+
+function chargeIsCritical(device, threshold) {
+    let reading = Format.batteryReading(device);
+    if (!reading.precise)
+        return reading.level === UPowerGlib.DeviceLevel.CRITICAL;
+    return reading.percentage <= threshold;
+}
+
+function chargeRecovered(device, threshold, hysteresis) {
+    let reading = Format.batteryReading(device);
+    if (!reading.precise) {
+        return reading.level === UPowerGlib.DeviceLevel.NORMAL ||
+               reading.level === UPowerGlib.DeviceLevel.HIGH ||
+               reading.level === UPowerGlib.DeviceLevel.FULL;
+    }
+    return reading.percentage > threshold + hysteresis;
+}
+
 /* How long it has left, or how long until it is full. */
 function remainingText(device) {
     if (device.state === UPDeviceState.DISCHARGING && device.timeToEmpty)
@@ -100,11 +127,8 @@ function describe(device, tempUnit) {
  */
 function title(device) {
     let text = Format.deviceTitle(device);
-    if (Format.reportsPrecisePercentage(device))
-        return text + "  " + Format.percent(device.percentage);
-    if (device.batteryLevel !== UPowerGlib.DeviceLevel.NONE)
-        return text + "  " + Format.batteryLevelName(device.batteryLevel);
-    return text;
+    let charge = Format.batteryReading(device).text;
+    return charge ? text + "  " + charge : text;
 }
 
 /*
@@ -135,9 +159,8 @@ function viewModel(device, options) {
         title: title(device),
         icon: iconName(device),
         details: describe(device, options.tempUnit),
-        warning: device.percentage !== null &&
-                 isDraining(device) &&
-                 device.percentage <= lowThreshold(device, options.lowLevel,
-                                                   options.peripheralLevel),
+        warning: isDraining(device) &&
+                 chargeIsLow(device, lowThreshold(device, options.lowLevel,
+                                                  options.peripheralLevel)),
     };
 }

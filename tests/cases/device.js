@@ -167,6 +167,10 @@ cases["the warning follows the limit that applies to the device"] = function () 
     Harness.equal(Device.viewModel(mouse({ percentage: 18 }), OPTIONS).warning, false,
                   "18 is fine for a mouse, whose limit is 15");
     Harness.equal(Device.viewModel(mouse({ percentage: 15 }), OPTIONS).warning, true, "15 of 15");
+    Harness.equal(Device.viewModel(battery({ percentage: 0, batteryLevel: Level.LOW }), OPTIONS).warning,
+                  true, "a coarse low battery is low without inventing a percentage");
+    Harness.equal(Device.viewModel(battery({ percentage: 0, batteryLevel: Level.NORMAL }), OPTIONS).warning,
+                  false, "a coarse normal battery ignores the placeholder zero");
 };
 
 cases["a device that is charging is never warned about"] = function () {

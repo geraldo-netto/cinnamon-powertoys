@@ -161,8 +161,30 @@ function batteryLevelName(level) {
     }
 }
 
+/*
+ * The charge a device actually reported.
+ *
+ * UPower leaves Percentage at zero when a device only knows one of its
+ * coarse BatteryLevel values. BatteryLevel takes precedence by contract, so
+ * every caller gets the same mutually exclusive answer here instead of
+ * deciding for itself whether that zero is a measurement.
+ */
+function batteryReading(device) {
+    device = device || {};
+    let level = device.batteryLevel === undefined ? UPDeviceLevel.NONE
+                                                  : device.batteryLevel;
+    if (level !== UPDeviceLevel.NONE) {
+        return { percentage: null, level: level,
+                 text: batteryLevelName(level), precise: false };
+    }
+
+    let percentage = _figure(device.percentage) ? device.percentage : null;
+    return { percentage: percentage, level: UPDeviceLevel.NONE,
+             text: percent(percentage), precise: percentage !== null };
+}
+
 function reportsPrecisePercentage(device) {
-    return device.batteryLevel === UPDeviceLevel.NONE && device.percentage !== null;
+    return batteryReading(device).precise;
 }
 
 /*

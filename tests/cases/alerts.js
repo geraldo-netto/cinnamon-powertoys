@@ -18,6 +18,7 @@ const UPowerGlib = imports.gi.UPowerGlib;
 const Alerts = Harness.requireXlet("./lib/alerts.js");
 
 const State = UPowerGlib.DeviceState;
+const Level = UPowerGlib.DeviceLevel;
 
 /* Everything switched on, with the applet's own defaults for the levels. */
 function limits(overrides) {
@@ -41,6 +42,7 @@ function battery(percentage, overrides) {
         powerSupply: true,
         vendor: "", model: "BAT0",
         percentage: percentage,
+        batteryLevel: Level.NONE,
     }, overrides || {});
 }
 
@@ -52,6 +54,7 @@ function mouse(percentage, overrides) {
         powerSupply: false,
         vendor: "", model: "MX Anywhere",
         percentage: percentage,
+        batteryLevel: Level.NONE,
     }, overrides || {});
 }
 
@@ -157,6 +160,22 @@ cases["a device that reports no level is not guessed at"] = function () {
     let each = policy();
     each.alerts.check(reading([mouse(null), battery(null)]), limits());
     Harness.equal(each.said.length, 0, "nothing was measured, so nothing is claimed");
+};
+
+cases["coarse battery levels have non-numeric alert semantics"] = function () {
+    let each = policy();
+    each.alerts.check(reading([battery(0, { batteryLevel: Level.LOW })]), limits());
+    Harness.equal(each.said.length, 1, "low is reported regardless of the placeholder figure");
+    Harness.ok(each.said[0].body.indexOf("Low") >= 0, "the level is named: " + each.said[0].body);
+    Harness.equal(each.said[0].body.indexOf("0%"), -1, "no fake percentage is shown");
+
+    each.alerts.check(reading([battery(0, { batteryLevel: Level.CRITICAL })]), limits());
+    Harness.equal(each.said.length, 2, "critical is a distinct urgent transition");
+    Harness.equal(each.said[1].urgent, true, "critical interrupts");
+
+    each.alerts.check(reading([battery(0, { batteryLevel: Level.NORMAL })]), limits());
+    each.alerts.check(reading([battery(0, { batteryLevel: Level.LOW })]), limits());
+    Harness.equal(each.said.length, 3, "a normal coarse state recovers the alert");
 };
 
 cases["a switched off alert says nothing and remembers nothing"] = function () {
