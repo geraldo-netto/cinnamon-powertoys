@@ -112,6 +112,28 @@ const MONITOR_PROBE_SECONDS = 1;
  */
 const SCROLL_SETTLE_MS = 250;
 
+/* A positive amount means the same thing as scrolling up everywhere. */
+function scrollAmount(event) {
+    let direction = event.get_scroll_direction();
+    if (direction === Clutter.ScrollDirection.UP)
+        return 1;
+    if (direction === Clutter.ScrollDirection.DOWN)
+        return -1;
+    if (direction !== Clutter.ScrollDirection.SMOOTH)
+        return 0;
+    try {
+        let delta = event.get_scroll_delta();
+        let vertical = delta && delta.length > 1 ? delta[1] : 0;
+        return typeof vertical === "number" && Number.isFinite(vertical) ? -vertical : 0;
+    } catch (e) {
+        return 0;
+    }
+}
+
+function settledScrollSteps(amount) {
+    return amount < 0 ? -Math.round(-amount) : Math.round(amount);
+}
+
 /* Charge limits offered in the menu, in percent. */
 const CHARGE_LIMITS = [60, 70, 80, 90, 95, 100];
 
@@ -791,6 +813,8 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
         this._control = control;
         this._name = label;
         this._seeking = false;
+        this._pendingScroll = 0;
+        this._scrollTimerId = 0;
         this.actor.hide();
 
         this._icon = new St.Icon({ icon_name: iconName, icon_type: St.IconType.SYMBOLIC,
@@ -839,6 +863,11 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
         this.connect("drag-begin", () => { this._seeking = true; });
         this.connect("drag-end", () => { this._seeking = false; });
         this.connect("value-changed", (item, value) => this._onDragged(value));
+        this.actor.connect("destroy", () => {
+            if (this._scrollTimerId)
+                Mainloop.source_remove(this._scrollTimerId);
+            this._scrollTimerId = 0;
+        });
     }
 
     _onDragged(value) {
@@ -874,11 +903,22 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
     /* The daemon owns the notch size, and it is the one the brightness keys
      * use, so the wheel and the keyboard agree. */
     _onScrollEvent(actor, event) {
-        let direction = event.get_scroll_direction();
-        if (direction === Clutter.ScrollDirection.UP)
-            this._control.step(true, () => this.sync());
-        else if (direction === Clutter.ScrollDirection.DOWN)
-            this._control.step(false, () => this.sync());
+        let amount = scrollAmount(event);
+        if (amount === 0)
+            return Clutter.EVENT_PROPAGATE;
+
+        this._pendingScroll += amount;
+        if (this._scrollTimerId)
+            Mainloop.source_remove(this._scrollTimerId);
+        this._scrollTimerId = Mainloop.timeout_add(SCROLL_SETTLE_MS, () => {
+            this._scrollTimerId = 0;
+            let steps = settledScrollSteps(this._pendingScroll);
+            this._pendingScroll = 0;
+            if (steps !== 0)
+                this._control.stepBy(steps, () => this.sync());
+            return GLib.SOURCE_REMOVE;
+        });
+        return Clutter.EVENT_STOP;
     }
 }
 
@@ -2829,9 +2869,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * power saver - and it reaches the daemon as one write instead of three.
      */
     _onScroll(actor, event) {
-        let direction = event.get_scroll_direction();
-        let up = direction === Clutter.ScrollDirection.UP;
-        if (!up && direction !== Clutter.ScrollDirection.DOWN)
+        let amount = scrollAmount(event);
+        if (amount === 0)
             return Clutter.EVENT_PROPAGATE;
 
         /*
@@ -2842,7 +2881,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         if (this.scrollAction === "brightness") {
             if (!this._brightnessControl())
                 return Clutter.EVENT_PROPAGATE;
-            this._gatherScroll(up ? 1 : -1, notches => this._stepBrightness(notches));
+            this._gatherScroll(amount, notches => this._stepBrightness(notches));
             return Clutter.EVENT_STOP;
         }
 
@@ -2851,7 +2890,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         /* Announced, because the panel is not necessarily showing the profile
          * and otherwise nothing would say it had changed. */
-        this._gatherScroll(up ? 1 : -1, notches => this._stepProfile(notches, false, true));
+        this._gatherScroll(amount, notches => this._stepProfile(notches, false, true));
         return Clutter.EVENT_STOP;
     }
 
@@ -2878,7 +2917,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._cancelPendingScroll();
         this._scrollTimerId = Mainloop.timeout_add(SCROLL_SETTLE_MS, () => {
             this._scrollTimerId = 0;
-            let gathered = this._pendingScroll;
+            let gathered = settledScrollSteps(this._pendingScroll);
             this._pendingScroll = 0;
             if (gathered !== 0)
                 apply(gathered);
