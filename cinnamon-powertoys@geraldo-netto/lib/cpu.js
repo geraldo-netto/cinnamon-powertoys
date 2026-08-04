@@ -3,7 +3,7 @@
  *
  * cpufreq exposes one policy directory per core group. The settings that are
  * uniform across them - driver, governor, energy preference, boost - are read
- * from the first policy; the frequencies are read from all of them.
+ * from the first policy; current and maximum frequencies use all of them.
  *
  * All of those nodes are owned by root, so writing one is not something this
  * module can do on its own. It takes a runner - in the applet, the pkexec
@@ -68,8 +68,13 @@ var CpuControl = class CpuControl {
          * poll with the values that actually move: nothing short of new
          * hardware alters it, and a poll is IO on the thread that draws.
          */
-        this._maxFrequency = this.reference
-            ? IO.readNumber(this.reference + "/cpuinfo_max_freq") : null;
+        this._maxFrequency = null;
+        for (let policy of this.policies) {
+            let maximum = IO.readNumber(policy + "/cpuinfo_max_freq");
+            if (maximum !== null && maximum > 0 &&
+                    (this._maxFrequency === null || maximum > this._maxFrequency))
+                this._maxFrequency = maximum;
+        }
 
         this.boostPath = null;
         this.boostInverted = false;

@@ -120,6 +120,19 @@ cases["the frequency is the average across every policy"] = function () {
     });
 };
 
+cases["the ceiling is the highest valid policy maximum"] = function () {
+    scratch({
+        "/sys/devices/system/cpu/cpufreq/policy0/cpuinfo_max_freq": "2800000\n",
+        "/sys/devices/system/cpu/cpufreq/policy1/cpuinfo_max_freq": "5100000\n",
+        "/sys/devices/system/cpu/cpufreq/policy2/cpuinfo_max_freq": "not-a-number\n",
+        "/sys/devices/system/cpu/cpufreq/policy3/cpuinfo_max_freq": "0\n",
+    }, function () {
+        let cpu = new Cpu.CpuControl(() => {});
+        Harness.near(cpu.maxFrequency(), 5100, 0.001,
+                     "a heterogeneous processor's fastest policy");
+    });
+};
+
 cases["a policy that will not answer is left out of the average"] = function () {
     /* Rather than counted as nought, which would pull the figure down and
      * report a processor that is idling when one core group is simply not

@@ -20,5 +20,4 @@ artifacts, tests and test-only tooling were excluded as requested.
 
 ## Medium
 
-- [ ] **S** — `cinnamon-powertoys@geraldo-netto/lib/cpu.js:L65-L72`: 🟡 risk: the displayed maximum frequency comes only from the first cpufreq policy, which is not the processor-wide ceiling on heterogeneous systems. Read every policy and use the highest valid `cpuinfo_max_freq`.
 - [ ] **S** — `cinnamon-powertoys@geraldo-netto/lib/bluez.js:L167-L183,L283-L299`: 🟡 risk: the BlueZ client watches object/property signals but not ownership of `org.bluez`, so an abrupt daemon stop can leave disconnected batteries displayed indefinitely. Watch the bus name, clear devices on vanish, and refresh the object tree on reappearance.
