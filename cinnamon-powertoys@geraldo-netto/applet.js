@@ -8,6 +8,7 @@
  */
 
 const Applet = imports.ui.applet;
+const Atk = imports.gi.Atk;
 const Clutter = imports.gi.Clutter;
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
@@ -664,9 +665,12 @@ class SegmentedControl extends PopupMenu.PopupBaseMenuItem {
                 child.destroy();
             this._buttons = new Map();
             for (let value of values) {
-                let button = new St.Button({ label: this._labelFunction(value),
+                let label = this._labelFunction(value);
+                let button = new St.Button({ label: label,
                                              style_class: "powertoys-segment",
                                              can_focus: true });
+                button.set_accessible_role(Atk.Role.RADIO_BUTTON);
+                button.set_accessible_name(label);
                 button.connect("clicked", () => {
                     if (this._editable && value !== this._active)
                         this._onActivate(value);
@@ -693,10 +697,13 @@ class SegmentedControl extends PopupMenu.PopupBaseMenuItem {
         for (let [value, button] of this._buttons) {
             button.reactive = this._editable;
             button.can_focus = this._editable;
-            if (value === active)
+            if (value === active) {
                 button.add_style_class_name("powertoys-segment-active");
-            else
+                button.add_accessible_state(Atk.StateType.CHECKED);
+            } else {
                 button.remove_style_class_name("powertoys-segment-active");
+                button.remove_accessible_state(Atk.StateType.CHECKED);
+            }
         }
     }
 
@@ -822,6 +829,11 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
         this._row = row;
         this.addActor(row, { span: -1, expand: true });
 
+        this.actor.set_accessible_role(Atk.Role.SLIDER);
+        this.actor.set_accessible_name(_("Brightness") + ": " + label);
+        this._accessible = this.actor.get_accessible();
+        this._accessible.set_description("0–100% · " + BACKLIGHT_STEP + "%");
+
         this.tooltip = new Tooltips.Tooltip(this.actor, label);
 
         this.connect("drag-begin", () => { this._seeking = true; });
@@ -855,6 +867,8 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
         this._reading.set_text(percentage === null ? "" : percentage + "%");
         this.tooltip.set_text(percentage === null ? this._name
                                                   : this._name + ": " + percentage + "%");
+        if (percentage !== null)
+            this._accessible.accessible_value = percentage;
     }
 
     /* The daemon owns the notch size, and it is the one the brightness keys
