@@ -183,8 +183,8 @@ const SETTINGS = [
     { key: "toggle-menu-hotkey", property: "toggleMenuHotkey", onChange: "hotkeys" },
 
     { key: "notify-low-battery", property: "notifyLowBattery" },
-    { key: "low-battery-threshold", property: "lowBatteryThreshold" },
-    { key: "critical-battery-threshold", property: "criticalBatteryThreshold" },
+    { key: "low-battery-threshold", property: "lowBatteryThreshold", onChange: "alertLevels" },
+    { key: "critical-battery-threshold", property: "criticalBatteryThreshold", onChange: "alertLevels" },
     { key: "notify-peripheral-battery", property: "notifyPeripheralBattery" },
     { key: "peripheral-battery-threshold", property: "peripheralBatteryThreshold" },
     { key: "notify-high-temp", property: "notifyHighTemp" },
@@ -1573,6 +1573,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._panel = new PanelPresenter(this, metadata.path + "/icons",
                                          shown => this._watchMonitors("tooltip", shown));
         this._hotkeyIds = [];
+        this._normalizingAlertLevels = false;
 
         this._bindSettings();
 
@@ -1665,6 +1666,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         /* Before the greeting: it is the greeting that marks the install as
          * one that has run before, which is what this reads. */
         this._migratePanelText();
+        this._normalizeAlertLevels();
         this._update();
         this._introduce();
     }
@@ -1696,6 +1698,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
                 this._update();
             },
             hotkeys: () => this._registerHotkeys(),
+            alertLevels: () => this._onAlertLevelsChanged(),
         };
 
         for (let setting of SETTINGS) {
@@ -1705,6 +1708,25 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         this._reportUnboundSettings();
         this._tempUnitInUse = this.tempUnit;
+    }
+
+    _normalizeAlertLevels() {
+        let effective = Alerts.criticalBelow(this.criticalBatteryThreshold,
+                                             this.lowBatteryThreshold);
+        if (effective !== this.criticalBatteryThreshold)
+            this.settings.setValue("critical-battery-threshold", effective);
+    }
+
+    _onAlertLevelsChanged() {
+        if (this._normalizingAlertLevels)
+            return;
+        this._normalizingAlertLevels = true;
+        try {
+            this._normalizeAlertLevels();
+        } finally {
+            this._normalizingAlertLevels = false;
+        }
+        this._update();
     }
 
     /*
@@ -2496,10 +2518,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             peripheralBattery: this.notifyPeripheralBattery,
             lowLevel: this.lowBatteryThreshold,
             peripheralLevel: this.peripheralBatteryThreshold,
-            /* The two are independent spinbuttons with overlapping ranges, and
-             * one order of them makes the other unreachable; see criticalBelow. */
-            criticalLevel: Alerts.criticalBelow(this.criticalBatteryThreshold,
-                                                this.lowBatteryThreshold),
+            criticalLevel: this.criticalBatteryThreshold,
             highTemp: this.notifyHighTemp,
             highTempCelsius: this.highTempCelsius,
             tempUnit: this.tempUnit,
