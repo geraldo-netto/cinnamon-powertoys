@@ -312,6 +312,23 @@ function busFor(manager, devices, options) {
     stub.answer = function () {
         return waiting.shift()();
     };
+    if (settings.watch) {
+        stub.unwatched = [];
+        stub.watch = function (onAppeared, onVanished) {
+            stub.onAppeared = onAppeared;
+            stub.onVanished = onVanished;
+            return 27;
+        };
+        stub.unwatch = function (id) {
+            stub.unwatched.push(id);
+        };
+        stub.appear = function () {
+            stub.onAppeared();
+        };
+        stub.vanish = function () {
+            stub.onVanished();
+        };
+    }
     return stub;
 }
 
@@ -351,6 +368,36 @@ cases["a manager that answers with an error is no UPower"] = function () {
                    "carrying what the bus said: " + lines[0]);
         monitor.destroy();
     });
+};
+
+cases["UPower ownership drives availability and reconnection"] = function () {
+    let manager = managerFor([BAT0], { onBattery: true });
+    let bus = busFor(manager, { [BAT0]: proxyFor() }, { watch: true });
+    let monitor = monitorOn(bus);
+
+    Harness.equal(monitor.available, false, "the name has not appeared");
+    bus.vanish();
+    Harness.equal(monitor.counts.ready, 1, "initial absence is a settled answer");
+
+    bus.appear();
+    Harness.equal(monitor.available, true, "an owner makes UPower available");
+    Harness.equal(monitor.snapshot().length, 1, "and its devices are enumerated");
+    Harness.equal(monitor.onBattery, true, "the live manager answers the source");
+
+    let changes = monitor.counts.changed;
+    bus.vanish();
+    Harness.equal(monitor.available, false, "losing the owner lowers availability");
+    Harness.deepEqual(monitor.snapshot(), [], "and clears the stale devices");
+    Harness.equal(monitor.counts.changed, changes + 1, "the caller redraws the outage");
+
+    let asks = bus.asked.length;
+    bus.appear();
+    Harness.equal(monitor.available, true, "a replacement owner reconnects");
+    Harness.ok(bus.asked.length > asks, "and re-enumerates instead of trusting old proxies");
+    Harness.equal(monitor.snapshot().length, 1, "the device returns from the new enumeration");
+
+    monitor.destroy();
+    Harness.deepEqual(bus.unwatched, [27], "the owner watch goes with the monitor");
 };
 
 cases["a bus that cannot be reached at all is logged, not thrown"] = function () {

@@ -183,6 +183,14 @@ function reportedDevices(devices) {
  */
 function systemBus() {
     return {
+        watch: function (onAppeared, onVanished) {
+            return Gio.bus_watch_name(Gio.BusType.SYSTEM, BUS_NAME,
+                                      Gio.BusNameWatcherFlags.AUTO_START,
+                                      onAppeared, onVanished);
+        },
+        unwatch: function (id) {
+            Gio.bus_unwatch_name(id);
+        },
         manager: function (onDone) {
             new ManagerProxy(Gio.DBus.system, BUS_NAME, MANAGER_PATH,
                              (proxy, error) => onDone(proxy, error));
@@ -214,22 +222,57 @@ var UPowerMonitor = class UPowerMonitor {
         this._busSignalIds = [];
         this._propSignalId = 0;
         this._displaySignalId = 0;
+        this._watchId = 0;
+        this._generation = 0;
+        this._connecting = false;
+        this._readySent = false;
         this.available = false;
         this.destroyed = false;
 
-        try {
-            this._bus.manager((proxy, error) => this._onManagerReady(proxy, error));
-        } catch (e) {
-            Log.error("cannot reach UPower: " + e);
+        if (this._bus.watch) {
+            try {
+                this._watchId = this._bus.watch(() => this._connect(),
+                                                () => this._onNameVanished());
+            } catch (e) {
+                Log.error("cannot watch UPower: " + e);
+                this._settleReady();
+            }
+        } else {
+            this._connect();
         }
     }
 
-    _onManagerReady(proxy, error) {
-        if (this.destroyed)
+    _settleReady() {
+        if (this.destroyed || this._readySent)
             return;
+        this._readySent = true;
+        this._onReady();
+    }
+
+    _connect() {
+        if (this.destroyed || this._manager || this._connecting)
+            return;
+        this._connecting = true;
+        let generation = ++this._generation;
+        try {
+            this._bus.manager((proxy, error) =>
+                this._onManagerReady(proxy, error, generation));
+        } catch (e) {
+            if (generation !== this._generation)
+                return;
+            this._connecting = false;
+            Log.error("cannot reach UPower: " + e);
+            this._settleReady();
+        }
+    }
+
+    _onManagerReady(proxy, error, generation) {
+        if (this.destroyed || generation !== this._generation)
+            return;
+        this._connecting = false;
         if (error || !proxy) {
             Log.error("UPower manager unavailable: " + (error ? error.message : "no proxy"));
-            this._onReady();
+            this._settleReady();
             return;
         }
 
@@ -237,13 +280,19 @@ var UPowerMonitor = class UPowerMonitor {
         this.available = true;
 
         this._busSignalIds.push(proxy.connectSignal("DeviceAdded", (p, sender, [path]) => {
-            this._addDevice(path);
+            if (generation === this._generation)
+                this._addDevice(path, null, generation);
         }));
         this._busSignalIds.push(proxy.connectSignal("DeviceRemoved", (p, sender, [path]) => {
+            if (generation !== this._generation)
+                return;
             this._removeDevice(path);
             this._onChanged();
         }));
-        this._propSignalId = proxy.connect("g-properties-changed", () => this._onChanged());
+        this._propSignalId = proxy.connect("g-properties-changed", () => {
+            if (generation === this._generation)
+                this._onChanged();
+        });
 
         /*
          * The composite battery, which is the one the panel speaks for.
@@ -256,25 +305,29 @@ var UPowerMonitor = class UPowerMonitor {
          * it went unnoticed; it is not the same thing as being told.
          */
         this._bus.device(DISPLAY_DEVICE_PATH, (displayProxy, displayError) => {
-            if (this.destroyed || displayError || !displayProxy)
+            if (this.destroyed || generation !== this._generation ||
+                displayError || !displayProxy)
                 return;
             this._display = displayProxy;
-            this._displaySignalId = displayProxy.connect("g-properties-changed",
-                                                         () => this._onChanged());
+            this._displaySignalId = displayProxy.connect("g-properties-changed", () => {
+                if (generation === this._generation)
+                    this._onChanged();
+            });
         });
 
         proxy.EnumerateDevicesRemote((result, enumError) => {
-            if (this.destroyed)
+            if (this.destroyed || generation !== this._generation)
                 return;
             if (enumError) {
                 Log.error("EnumerateDevices failed: " + enumError.message);
-                this._onReady();
+                this._settleReady();
+                this._onChanged();
                 return;
             }
             let paths = result[0] || [];
             let pending = paths.length;
             if (pending === 0) {
-                this._onReady();
+                this._settleReady();
                 this._onChanged();
                 return;
             }
@@ -286,12 +339,23 @@ var UPowerMonitor = class UPowerMonitor {
                      * being answered, and the last answer arriving is not a
                      * reason to call back into a menu that has been taken
                      * down. Every other guard in here says the same. */
-                    if (this.destroyed)
+                    if (this.destroyed || generation !== this._generation)
                         return;
-                    this._onReady();
+                    this._settleReady();
                     this._onChanged();
-                });
+                }, generation);
         });
+    }
+
+    _onNameVanished() {
+        if (this.destroyed)
+            return;
+        let changed = this.available || this._manager !== null ||
+                      this._devices.size > 0 || this._display !== null;
+        this._disconnectManager();
+        this._settleReady();
+        if (changed)
+            this._onChanged();
     }
 
     /*
@@ -314,7 +378,8 @@ var UPowerMonitor = class UPowerMonitor {
      * and an answer nobody is waiting for any more is dropped rather than
      * adopted.
      */
-    _addDevice(path, done) {
+    _addDevice(path, done, generation) {
+        generation = generation === undefined ? this._generation : generation;
         let settle = () => {
             if (done)
                 done();
@@ -327,6 +392,10 @@ var UPowerMonitor = class UPowerMonitor {
 
         this._adding.add(path);
         this._bus.device(path, (proxy, error) => {
+            if (generation !== this._generation) {
+                settle();
+                return;
+            }
             /* False where the device went away while this was in flight, which
              * is _removeDevice having taken the path back out. */
             let wanted = this._adding.delete(path);
@@ -473,11 +542,9 @@ var UPowerMonitor = class UPowerMonitor {
         };
     }
 
-    destroy() {
-        this.destroyed = true;
-        /* Every other backend here lowers this on the way out, and a reading
-         * taken from a torn down monitor would otherwise say UPower is
-         * available and hand back no devices at all. */
+    _disconnectManager() {
+        ++this._generation;
+        this._connecting = false;
         this.available = false;
         if (this._manager) {
             for (let id of this._busSignalIds) {
@@ -516,5 +583,21 @@ var UPowerMonitor = class UPowerMonitor {
 
         this._manager = null;
         this._display = null;
+    }
+
+    destroy() {
+        this.destroyed = true;
+        if (this._watchId && this._bus.unwatch) {
+            try {
+                this._bus.unwatch(this._watchId);
+            } catch (e) {
+                /* already unwatched */
+            }
+        }
+        this._watchId = 0;
+        /* Every other backend here lowers this on the way out, and a reading
+         * taken from a torn down monitor would otherwise say UPower is
+         * available and hand back no devices at all. */
+        this._disconnectManager();
     }
 };
