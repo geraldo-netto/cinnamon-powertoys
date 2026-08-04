@@ -16,94 +16,94 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: applet.js:1004
-msgid "System power settings"
-msgstr ""
-
-#: applet.js:1026
+#: applet.js:857 applet.js:1100
 msgid "Brightness"
 msgstr ""
 
-#: applet.js:1031
+#: applet.js:1078
+msgid "System power settings"
+msgstr ""
+
+#: applet.js:1105
 msgid "Screen"
 msgstr ""
 
-#: applet.js:1047 lib/format.js:108
+#: applet.js:1121 lib/format.js:108
 msgid "Keyboard"
 msgstr ""
 
-#: applet.js:1055 applet.js:2671
+#: applet.js:1129 applet.js:2776
 msgid "Power profile"
 msgstr ""
 
-#: applet.js:1061
+#: applet.js:1135
 msgid "Performance limited"
 msgstr ""
 
-#: applet.js:1087 lib/sensors.js:37
+#: applet.js:1161 lib/sensors.js:37
 msgid "Processor"
 msgstr ""
 
-#: applet.js:1092
+#: applet.js:1166
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1110 lib/panel-text.js:174 lib/reading.js:139
+#: applet.js:1184 lib/panel-text.js:179 lib/reading.js:139
 msgid "Governor"
 msgstr ""
 
-#: applet.js:1113 lib/reading.js:141
+#: applet.js:1187 lib/reading.js:141
 msgid "Energy preference"
 msgstr ""
 
-#: applet.js:1128
+#: applet.js:1202
 msgid "Devices"
 msgstr ""
 
-#: applet.js:1149
+#: applet.js:1223
 msgid "Nothing with a battery is connected"
 msgstr ""
 
-#: applet.js:1167 lib/reading.js:145
+#: applet.js:1241 lib/reading.js:145
 msgid "Charge limit"
 msgstr ""
 
-#: applet.js:1177
+#: applet.js:1251
 msgid "The batteries are set to different limits; choosing one sets both"
 msgstr ""
 
-#: applet.js:1183
+#: applet.js:1257
 msgid "Sensors"
 msgstr ""
 
-#: applet.js:1290
+#: applet.js:1364
 #, javascript-format
 msgid "Only the first %d monitors have a slider"
 msgstr ""
 
-#: applet.js:1411
+#: applet.js:1485
 msgid "an application"
 msgstr ""
 
-#: applet.js:1430
+#: applet.js:1504
 msgid "Connected"
 msgstr ""
 
-#: applet.js:1430
+#: applet.js:1504
 msgid "Disconnected"
 msgstr ""
 
-#: applet.js:1481
+#: applet.js:1555
 msgid "No sensor matches"
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:1746 applet.js:2617 applet.js:2671 applet.js:2729 applet.js:2738
-#: lib/panel-text.js:210
+#: applet.js:1840 applet.js:2722 applet.js:2776 applet.js:2834 applet.js:2843
+#: applet.js:2998 lib/panel-text.js:226
 msgid "Power Toys"
 msgstr ""
 
-#: applet.js:1747
+#: applet.js:1841
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "
@@ -111,27 +111,31 @@ msgid ""
 "shortcuts."
 msgstr ""
 
-#: applet.js:2599 applet.js:2698
+#: applet.js:2704 applet.js:2803
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2618
+#: applet.js:2723
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:2739
+#: applet.js:2844
 msgid "The change could not be applied."
 msgstr ""
 
-#: lib/alerts.js:104
+#: applet.js:2999
+msgid "Shortcut is already in use"
+msgstr ""
+
+#: lib/alerts.js:105
 msgid "Battery critically low"
 msgstr ""
 
-#: lib/alerts.js:111
+#: lib/alerts.js:112
 msgid "Battery low"
 msgstr ""
 
-#: lib/alerts.js:128
+#: lib/alerts.js:129
 msgid "High temperature"
 msgstr ""
 
@@ -139,19 +143,19 @@ msgstr ""
 msgid "Display"
 msgstr ""
 
-#: lib/device.js:48
+#: lib/device.js:75
 msgid "remaining"
 msgstr ""
 
-#: lib/device.js:50
+#: lib/device.js:77
 msgid "until full"
 msgstr ""
 
-#: lib/device.js:86
+#: lib/device.js:113
 msgid "health"
 msgstr ""
 
-#: lib/device.js:88
+#: lib/device.js:115
 msgid "cycles"
 msgstr ""
 
@@ -315,160 +319,160 @@ msgstr ""
 msgid "Critical"
 msgstr ""
 
-#: lib/format.js:264
+#: lib/format.js:286
 msgid "Power saver"
 msgstr ""
 
-#: lib/format.js:265
+#: lib/format.js:287
 msgid "Balanced"
 msgstr ""
 
-#: lib/format.js:266
+#: lib/format.js:288
 msgid "Balanced performance"
 msgstr ""
 
-#: lib/format.js:267 lib/format.js:377 lib/format.js:395
+#: lib/format.js:289 lib/format.js:399 lib/format.js:417
 msgid "Performance"
 msgstr ""
 
-#: lib/format.js:268
+#: lib/format.js:290
 msgid "Quiet"
 msgstr ""
 
-#: lib/format.js:269
+#: lib/format.js:291
 msgid "Low power"
 msgstr ""
 
-#: lib/format.js:270
+#: lib/format.js:292
 msgid "Cool"
 msgstr ""
 
-#: lib/format.js:331 lib/format.js:332
+#: lib/format.js:353 lib/format.js:354
 msgid "AMD"
 msgstr ""
 
-#: lib/format.js:333
+#: lib/format.js:355
 msgid "ACPI"
 msgstr ""
 
-#: lib/format.js:334
+#: lib/format.js:356
 msgid "Intel"
 msgstr ""
 
-#: lib/format.js:335
+#: lib/format.js:357
 msgid "Intel, kernel managed"
 msgstr ""
 
-#: lib/format.js:336
+#: lib/format.js:358
 msgid "ACPI hardware managed"
 msgstr ""
 
-#: lib/format.js:337
+#: lib/format.js:359
 msgid "Intel SpeedStep"
 msgstr ""
 
-#: lib/format.js:338
+#: lib/format.js:360
 msgid "AMD PowerNow"
 msgstr ""
 
-#: lib/format.js:339
+#: lib/format.js:361
 msgid "Processor Clocking Control"
 msgstr ""
 
-#: lib/format.js:348
+#: lib/format.js:370
 msgid "hardware managed"
 msgstr ""
 
-#: lib/format.js:349
+#: lib/format.js:371
 msgid "guided"
 msgstr ""
 
-#: lib/format.js:350
+#: lib/format.js:372
 msgid "kernel managed"
 msgstr ""
 
-#: lib/format.js:364
+#: lib/format.js:386
 msgid "unknown"
 msgstr ""
 
-#: lib/format.js:378
+#: lib/format.js:400
 msgid "Power save"
 msgstr ""
 
-#: lib/format.js:379
+#: lib/format.js:401
 msgid "On demand"
 msgstr ""
 
-#: lib/format.js:380
+#: lib/format.js:402
 msgid "Conservative"
 msgstr ""
 
-#: lib/format.js:381
+#: lib/format.js:403
 msgid "Scheduler guided"
 msgstr ""
 
-#: lib/format.js:382
+#: lib/format.js:404
 msgid "Userspace"
 msgstr ""
 
-#: lib/format.js:394
+#: lib/format.js:416
 msgid "Default"
 msgstr ""
 
-#: lib/format.js:396
+#: lib/format.js:418
 msgid "Balance performance"
 msgstr ""
 
-#: lib/format.js:397
+#: lib/format.js:419
 msgid "Balance power"
 msgstr ""
 
-#: lib/format.js:398
+#: lib/format.js:420
 msgid "Power saving"
 msgstr ""
 
-#: lib/format.js:419 lib/panel-text.js:176
+#: lib/format.js:441 lib/panel-text.js:181
 msgid "Temperature"
 msgstr ""
 
-#: lib/format.js:420
+#: lib/format.js:442
 msgid "Fan"
 msgstr ""
 
-#: lib/format.js:421 lib/sensors.js:216
+#: lib/format.js:443 lib/sensors.js:216
 msgid "Power"
 msgstr ""
 
-#: lib/panel-text.js:147 lib/panel-text.js:153
+#: lib/panel-text.js:152 lib/panel-text.js:158
 msgid "Power status unavailable"
 msgstr ""
 
-#: lib/panel-text.js:148
+#: lib/panel-text.js:153
 msgid "On battery power"
 msgstr ""
 
-#: lib/panel-text.js:148
+#: lib/panel-text.js:153
 msgid "On AC power"
 msgstr ""
 
-#: lib/panel-text.js:154
+#: lib/panel-text.js:159
 msgid "Running on battery power"
 msgstr ""
 
-#: lib/panel-text.js:154
+#: lib/panel-text.js:159
 msgid "Running on AC power"
 msgstr ""
 
-#: lib/panel-text.js:172
+#: lib/panel-text.js:177
 msgid "Profile"
 msgstr ""
 
 #. settings-schema.json->panel-show-power->description
-#: lib/panel-text.js:179
+#: lib/panel-text.js:184
 msgid "Power draw"
 msgstr ""
 
-#: lib/panel-text.js:205
+#: lib/panel-text.js:221
 #, javascript-format
 msgid "and %d more"
 msgstr ""

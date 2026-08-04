@@ -2982,14 +2982,21 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._removeHotkeys();
         if (this.cycleProfileHotkey) {
             let name = UUID + "-cycle-profile-" + this.instanceId;
-            Main.keybindingManager.addHotKey(name, this.cycleProfileHotkey, () => this._cycleProfile());
-            this._hotkeyIds.push(name);
+            this._registerHotkey(name, this.cycleProfileHotkey, () => this._cycleProfile());
         }
         if (this.toggleMenuHotkey) {
             let name = UUID + "-toggle-menu-" + this.instanceId;
-            Main.keybindingManager.addHotKey(name, this.toggleMenuHotkey, () => this.menu.toggle());
-            this._hotkeyIds.push(name);
+            this._registerHotkey(name, this.toggleMenuHotkey, () => this.menu.toggle());
         }
+    }
+
+    _registerHotkey(name, accelerator, action) {
+        if (Main.keybindingManager.addHotKey(name, accelerator, action)) {
+            this._hotkeyIds.push(name);
+            return;
+        }
+        Main.notifyError(_("Power Toys"),
+                         _("Shortcut is already in use") + ": " + accelerator);
     }
 
     _removeHotkeys() {
