@@ -499,8 +499,8 @@ cases["each unit changes at the value it says it changes at"] = function () {
     Harness.equal(Format.duration(3600 + 9 * 60), "1h 09m", "single minutes keep their nought");
     Harness.equal(Format.duration(3600 + 10 * 60), "1h 10m", "and ten does not gain one");
 
-    Harness.equal(Format.duration(1), "0m",
-                  "a second left is still time left, and rounds to no minutes");
+    Harness.equal(Format.duration(1), "1m",
+                  "positive time never claims that no minutes remain");
     Harness.equal(Format.temperature(40, "celsius"), "40.0 °C",
                   "a temperature carries one decimal unless asked for another");
     Harness.equal(Format.temperature(40, "celsius", 0), "40 °C", "and this is asking");

@@ -90,7 +90,7 @@ function energy(wattHours) {
 function duration(seconds) {
     if (!_figure(seconds) || seconds <= 0)
         return "";
-    let minutes = Math.round(seconds / 60);
+    let minutes = Math.max(1, Math.round(seconds / 60));
     let hours = Math.floor(minutes / 60);
     minutes = minutes % 60;
     if (hours > 0)
