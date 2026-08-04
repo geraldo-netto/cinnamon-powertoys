@@ -51,7 +51,7 @@ var cases = {};
 cases["finds every hwmon and thermal sensor"] = function () {
     on("machine", function () {
         let found = Sensors.discoverSensors();
-        Harness.equal(found.temperatures.length, 7, "temperatures");
+        Harness.equal(found.temperatures.length, 8, "temperatures");
         Harness.equal(found.fans.length, 1, "fans");
         Harness.equal(found.powerMeters.length, 3, "power meters");
     });
@@ -154,7 +154,8 @@ cases["everything one chip says stays together, in kind order"] = function () {
         Harness.equal(seen.length, new Set(seen).size,
                       "no group is left and come back to: " + seen.join(","));
         Harness.equal(seen[0], "hwmon:hwmon0", "the processor first");
-        Harness.equal(seen[1], "hwmon:hwmon3", "then the graphics card");
+        Harness.equal(seen[1], "thermal:thermal_zone1", "then its distinct thermal zone");
+        Harness.equal(seen[2], "hwmon:hwmon3", "then the graphics card");
     });
 };
 
@@ -187,14 +188,29 @@ cases["a critical point is read from crit, then from emergency"] = function () {
     });
 };
 
-cases["a thermal zone is used only where hwmon has nothing"] = function () {
+cases["a thermal zone is not deduplicated by its display name"] = function () {
     on("machine", function () {
         let found = Sensors.discoverSensors();
         Harness.ok(byId(found.temperatures, "thermal:thermal_zone0"),
                    "acpitz is not a hwmon chip here, so it is kept");
-        Harness.equal(byId(found.temperatures, "thermal:thermal_zone1"), null,
-                      "k10temp is already covered by hwmon0, so the zone is dropped");
+        Harness.ok(byId(found.temperatures, "thermal:thermal_zone1"),
+                   "a same-named k10temp zone with no shared device identity is distinct");
     });
+};
+
+cases["class links compare as canonical device identities"] = function () {
+    let realLink = IO.readLink;
+    let realResolve = IO.resolve;
+    IO.readLink = () => "../../../devices/platform/coretemp.0";
+    IO.resolve = path => "/capture" + path;
+    try {
+        Harness.equal(Sensors.deviceIdentity("/sys/class/hwmon/hwmon0"),
+                      "/capture/sys/devices/platform/coretemp.0",
+                      "relative class links name their backing device");
+    } finally {
+        IO.readLink = realLink;
+        IO.resolve = realResolve;
+    }
 };
 
 cases["a thermal zone takes its limit from the critical trip point"] = function () {
@@ -567,8 +583,8 @@ cases["a reading only touches the sensors it was asked for"] = function () {
         let set = new Sensors.SensorSet();
         let all = set.read();
         let primary = set.read(sensor => Sensors.isPrimaryKind(sensor.kind));
-        Harness.equal(all.temperatures.length, 7, "everything");
-        Harness.equal(primary.temperatures.length, 4, "the cpu and gpu ones only");
+        Harness.equal(all.temperatures.length, 8, "everything");
+        Harness.equal(primary.temperatures.length, 5, "the cpu and gpu ones only");
         Harness.equal(primary.temperatures.every(t => t.kind === "cpu" || t.kind === "gpu"), true,
                       "and nothing else got read");
         Harness.equal(primary.fans.length, 1, "the card's fan is a gpu sensor");
@@ -610,7 +626,7 @@ cases["an asynchronous reading reads only what it was asked for"] = function () 
         let readings = Harness.settle(
             done => set.readAsync(sensor => Sensors.isPrimaryKind(sensor.kind), done),
             "readAsync");
-        Harness.equal(readings.temperatures.length, 4, "the cpu and gpu ones only");
+        Harness.equal(readings.temperatures.length, 5, "the cpu and gpu ones only");
         Harness.equal(readings.temperatures.every(t => t.kind === "cpu" || t.kind === "gpu"), true,
                       "and nothing else");
         Harness.equal(readings.fans.length, 1, "the card's fan");
@@ -634,7 +650,7 @@ cases["a machine whose nodes cannot be read answers with nulls"] = function () {
     IO.setRoot("/nonexistent");
     try {
         let readings = Harness.settle(done => set.readAsync(null, done), "readAsync");
-        Harness.equal(readings.temperatures.length, 7, "the sensors are still known");
+        Harness.equal(readings.temperatures.length, 8, "the sensors are still known");
         Harness.equal(readings.temperatures.every(t => t.celsius === null), true,
                       "with nothing to say, rather than never answering at all");
         Harness.equal(readings.fans.every(f => f.rpm === null), true, "and the same for fans");

@@ -153,6 +153,18 @@ function _hwmonIdentity(base) {
     return null;
 }
 
+/* The device behind a class entry, as one canonical path. hwmon and thermal
+ * expose different class symlinks for the same hardware, so their raw link
+ * text cannot be compared directly. No link means no evidence of a duplicate:
+ * a display name alone is not an identity. */
+function deviceIdentity(base) {
+    let target = IO.readLink(base + "/device");
+    if (!target)
+        return null;
+    let parent = GLib.path_get_dirname(IO.resolve(base + "/device"));
+    return GLib.canonicalize_filename(target, parent);
+}
+
 /*
  * What a sensor is called under a heading that already names the chip.
  *
@@ -366,7 +378,7 @@ const NODE_KINDS = [
  */
 function discoverSensors() {
     let found = { temperatures: [], fans: [], powerMeters: [] };
-    let chips = new Set();
+    let hwmonTemperatureDevices = new Set();
     let groups = [];
 
     for (let entry of IO.listDir(HWMON_DIR)) {
@@ -374,9 +386,9 @@ function discoverSensors() {
         let chip = IO.readString(base + "/name") || entry;
         let kind = classifyChip(chip);
         let identity = _hwmonIdentity(base);
+        let device = deviceIdentity(base);
         let pciAddress = Hardware.pciAddressIn(IO.readLink(base + "/device"));
         let group = "hwmon:" + entry;
-        chips.add(chip);
         groups.push({ key: group, chip: chip, kind: kind, identity: identity,
                       pciAddress: pciAddress });
 
@@ -419,6 +431,8 @@ function discoverSensors() {
                 sensor.siblings = ofThisChip[list].length;
             found[list] = found[list].concat(ofThisChip[list]);
         }
+        if (device && ofThisChip.temperatures.length > 0)
+            hwmonTemperatureDevices.add(device);
     }
 
     for (let entry of IO.listDir(THERMAL_DIR)) {
@@ -426,9 +440,9 @@ function discoverSensors() {
             continue;
         let base = THERMAL_DIR + "/" + entry;
         let type = IO.readString(base + "/type");
-        if (!type || chips.has(type))
+        let device = deviceIdentity(base);
+        if (!type || (device && hwmonTemperatureDevices.has(device)))
             continue;
-        chips.add(type);
         groups.push({ key: "thermal:" + entry, chip: type, kind: classifyChip(type),
                       identity: entry, pciAddress: null });
         found.temperatures.push({
