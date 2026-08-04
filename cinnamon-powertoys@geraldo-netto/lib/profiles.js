@@ -218,6 +218,7 @@ var PowerProfilesClient = class PowerProfilesClient {
                     if (this.busName === backend.name) {
                         this._disconnectProxy();
                         this._invalidate();
+                        this._connect();
                     }
                 }));
         }

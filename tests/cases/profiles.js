@@ -309,10 +309,23 @@ cases["a daemon appearing is connected to, and one vanishing is let go"] = funct
     Harness.equal(client.available, true, "connected on the way in");
     Harness.equal(changes, 1, "and the applet is told to look again");
 
+    delete daemons[UPOWER];
     system.watched.find(entry => entry.name === UPOWER).vanished();
     Harness.equal(client.available, false, "let go on the way out");
     Harness.equal(client.busName, null, "with no name left behind");
     Harness.equal(changes, 2, "and told again");
+};
+
+cases["a vanished backend falls through to an existing alternate"] = function () {
+    let daemons = { [HADESS]: daemon(), [UPOWER]: daemon({ active: "performance" }) };
+    let system = bus(daemons);
+    let client = new Profiles.PowerProfilesClient(null, system);
+    Harness.equal(client.busName, HADESS, "the preferred name is selected first");
+
+    delete daemons[HADESS];
+    system.watched.find(entry => entry.name === HADESS).vanished();
+    Harness.equal(client.busName, UPOWER, "the already-owned alternate is selected");
+    Harness.equal(client.active, "performance", "and supplies the live reading");
 };
 
 cases["the daemon's version is the daemon's, and there is none without one"] = function () {
