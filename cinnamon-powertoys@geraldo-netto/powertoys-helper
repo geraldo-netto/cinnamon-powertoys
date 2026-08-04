@@ -84,18 +84,23 @@ write_node() {
 write_policies() {
     node=$1
     value=$2
+    targets=0
     written=0
+    failed=
     for policy in "$CPUFREQ_DIR"/policy*; do
         if [ -f "$policy/$node" ]; then
+            targets=$((targets + 1))
             # the subshell keeps a failed redirect quiet
             if ( printf '%s\n' "$value" > "$policy/$node" ) 2>/dev/null; then
                 written=$((written + 1))
+            else
+                failed="${failed}${failed:+, }$policy/$node"
             fi
         fi
     done
-    if [ "$written" -eq 0 ]; then
-        die "no cpufreq policy accepted $node=$value"
-    fi
+    [ "$targets" -gt 0 ] || die "no cpufreq policy exposes $node"
+    [ "$written" -eq "$targets" ] ||
+        die "only $written of $targets policies accepted $node=$value; refused: $failed"
 }
 
 set_governor() {
@@ -159,10 +164,13 @@ set_charge_threshold() {
         die "charge threshold must be between 20 and 100"
     fi
 
+    targets=0
     written=0
+    failed=
     for battery in "$POWER_SUPPLY_DIR"/*; do
         end="$battery/charge_control_end_threshold"
         [ -f "$end" ] || continue
+        targets=$((targets + 1))
 
         start="$battery/charge_control_start_threshold"
         if [ -f "$start" ]; then
@@ -191,11 +199,13 @@ set_charge_threshold() {
 
         if ( printf '%s\n' "$value" > "$end" ) 2>/dev/null; then
             written=$((written + 1))
+        else
+            failed="${failed}${failed:+, }$end"
         fi
     done
-    if [ "$written" -eq 0 ]; then
-        die "no battery accepted a charge threshold"
-    fi
+    [ "$targets" -gt 0 ] || die "no battery exposes a charge threshold"
+    [ "$written" -eq "$targets" ] ||
+        die "only $written of $targets batteries accepted charge threshold $value; refused: $failed"
 }
 
 [ $# -ge 2 ] || usage
