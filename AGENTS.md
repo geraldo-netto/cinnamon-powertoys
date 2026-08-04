@@ -1,0 +1,6 @@
+# Project collaboration rules
+
+- When a requirement or intended output is ambiguous, ask the user before choosing.
+- Do not introduce unrequested formatting, metadata, or workflow conventions.
+- Keep `todo.md` findings in one Markdown table with the columns `id`, `category`, `status`, `effort`, `severity`, and `description`.
+- Use `open` as the default finding status. Use `rejected/won't fix` for a deliberate non-fix and `blocked` only when a dependency must be completed first.
