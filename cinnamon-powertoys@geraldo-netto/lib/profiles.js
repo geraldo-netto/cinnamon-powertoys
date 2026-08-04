@@ -172,11 +172,20 @@ function systemBus() {
         unwatch: function (id) {
             Gio.bus_unwatch_name(id);
         },
-        setProperty: function (name, path, property, value, onDone) {
+        cancellable: function () {
+            return new Gio.Cancellable();
+        },
+        setProperty: function (name, path, property, value, cancellable, onDone) {
+            /* Keep the direct helper useful to callers that do not need
+             * cancellation, including older integrations. */
+            if (typeof cancellable === "function") {
+                onDone = cancellable;
+                cancellable = null;
+            }
             let target = new GLib.Variant("(ssv)",
                                           [name, property, new GLib.Variant("s", value)]);
             Gio.DBus.system.call(name, path, "org.freedesktop.DBus.Properties", "Set", target,
-                                 null, Gio.DBusCallFlags.NONE, -1, null,
+                                 null, Gio.DBusCallFlags.NONE, -1, cancellable,
                                  (connection, result) => {
                                      try {
                                          connection.call_finish(result);
@@ -196,6 +205,7 @@ var PowerProfilesClient = class PowerProfilesClient {
         this._proxy = null;
         this._propSignalId = 0;
         this._watchIds = [];
+        this._setCalls = new Set();
         this.busName = null;
         this.busPath = null;
         this.destroyed = false;
@@ -386,7 +396,21 @@ var PowerProfilesClient = class PowerProfilesClient {
             return false;
         }
 
-        this._bus.setProperty(this.busName, this.busPath, "ActiveProfile", name, done);
+        let cancellable = this._bus.cancellable ? this._bus.cancellable() : null;
+        let call = { cancellable: cancellable };
+        this._setCalls.add(call);
+        try {
+            this._bus.setProperty(this.busName, this.busPath, "ActiveProfile", name,
+                                  cancellable, error => {
+                                      this._setCalls.delete(call);
+                                      if (!this.destroyed)
+                                          done(error);
+                                  });
+        } catch (error) {
+            this._setCalls.delete(call);
+            done(error);
+            return false;
+        }
         return true;
     }
 
@@ -398,6 +422,16 @@ var PowerProfilesClient = class PowerProfilesClient {
         /* A search may still be out on the bus; what it finds is no longer
          * wanted, the same way a probe in flight is disowned in lib/ddc.js. */
         this.destroyed = true;
+        for (let call of this._setCalls) {
+            if (call.cancellable) {
+                try {
+                    call.cancellable.cancel();
+                } catch (e) {
+                    /* already cancelled */
+                }
+            }
+        }
+        this._setCalls.clear();
         this._disconnectProxy();
         for (let id of this._watchIds) {
             try {

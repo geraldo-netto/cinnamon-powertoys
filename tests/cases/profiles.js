@@ -81,6 +81,7 @@ function bus(daemons) {
         writes: writes,
         unwatched: [],
         failWrite: null,
+        cancellables: [],
         proxy: function (backend, onDone) {
             if (!daemons[backend.name])
                 throw new Error("no owner for " + backend.name);
@@ -93,7 +94,12 @@ function bus(daemons) {
         unwatch: function (id) {
             stub.unwatched.push(id);
         },
-        setProperty: function (name, path, property, value, onDone) {
+        cancellable: function () {
+            let token = { cancelled: false, cancel: function () { token.cancelled = true; } };
+            stub.cancellables.push(token);
+            return token;
+        },
+        setProperty: function (name, path, property, value, cancellable, onDone) {
             writes.push([name, path, property, value]);
             onDone(stub.failWrite);
         },
@@ -293,6 +299,22 @@ cases["setting a profile with no daemon answers rather than throwing"] = functio
     Harness.equal(client.setProfile("performance", error => { outcome = error; }), false, "refused");
     Harness.ok(outcome && outcome.message, "with a reason");
     Harness.deepEqual(system.writes, [], "and nothing went out");
+};
+
+cases["an in-flight profile write is cancelled at teardown"] = function () {
+    let system = bus({ [HADESS]: daemon() });
+    let finish = null;
+    system.setProperty = function (name, path, property, value, cancellable, onDone) {
+        finish = onDone;
+    };
+    let client = new Profiles.PowerProfilesClient(null, system);
+    let completions = 0;
+    client.setProfile("performance", () => completions++);
+
+    client.destroy();
+    Harness.equal(system.cancellables[0].cancelled, true, "the D-Bus call is cancelled");
+    finish(new Error("cancelled"));
+    Harness.equal(completions, 0, "its late callback cannot reach the removed applet");
 };
 
 cases["a daemon appearing is connected to, and one vanishing is let go"] = function () {
