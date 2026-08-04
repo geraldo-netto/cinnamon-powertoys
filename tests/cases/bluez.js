@@ -41,6 +41,16 @@ function device(name, icon, connected, percentage) {
 
 var cases = {};
 
+function nameWatcher() {
+    let watcher = { appeared: null, vanished: null, unwatched: 0 };
+    watcher.watch = function (appeared, vanished) {
+        watcher.appeared = appeared;
+        watcher.vanished = vanished;
+        return () => watcher.unwatched++;
+    };
+    return watcher;
+}
+
 cases["a connected device with a battery is reported"] = function () {
     let found = Bluez.parseObjects(tree({
         [HEADSET]: device("BW01", "audio-headset", true, 90),
@@ -168,21 +178,51 @@ cases["the module's own call answers rather than throwing"] = function () {
 
 cases["bluetoothd going away empties the list and says so"] = function () {
     let objects = tree({ [HEADSET]: device("BW01", "audio-headset", true, 90) });
-    let running = true;
+    let reads = 0;
     let changes = 0;
+    let watcher = nameWatcher();
     let control = new Bluez.BluezBatteries(
         () => changes++,
-        (path, iface, method, onDone) => onDone(running ? objects : null));
+        (path, iface, method, onDone) => { reads++; onDone(objects); }, watcher.watch);
 
     Harness.equal(control.devices.length, 1, "one connected to begin with");
     Harness.equal(changes, 1, "which was news");
 
-    running = false;
-    control._refresh();
+    watcher.vanished();
     Harness.equal(control.available, false, "the daemon is not there");
     Harness.deepEqual(control.devices, [], "so nothing is connected");
     Harness.equal(changes, 2,
                   "and the menu is told, rather than keeping the rows until the next poll");
+
+    objects = tree({ [MOUSE]: device("MX", "input-mouse", true, 55) });
+    watcher.appeared();
+    Harness.equal(reads, 2, "reappearance reads a fresh object tree");
+    Harness.equal(control.devices[0].model, "MX", "the restarted daemon's device replaces it");
+    Harness.equal(control.available, true, "available again after the fresh answer");
+    control.destroy();
+    Harness.equal(watcher.unwatched, 1, "the ownership watch is released");
+};
+
+cases["a reply from before bluetoothd vanished cannot restore stale devices"] = function () {
+    let first = true;
+    let waiting = [];
+    let watcher = nameWatcher();
+    let objects = tree({ [HEADSET]: device("BW01", "audio-headset", true, 90) });
+    let control = new Bluez.BluezBatteries(null, (path, iface, method, onDone) => {
+        if (first) {
+            first = false;
+            onDone(objects);
+        } else {
+            waiting.push(onDone);
+        }
+    }, watcher.watch);
+
+    control._refresh();
+    Harness.equal(waiting.length, 1, "one old-daemon read is in flight");
+    watcher.vanished();
+    waiting.shift()(objects);
+    Harness.deepEqual(control.devices, [], "the stale reply is ignored after the owner changed");
+    Harness.equal(control.available, false, "and cannot make the vanished daemon available");
     control.destroy();
 };
 

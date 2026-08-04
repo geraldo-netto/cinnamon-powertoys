@@ -158,6 +158,23 @@ function parseObjects(objects) {
     return devices;
 }
 
+/* Watches ownership rather than any one BlueZ object. Object/property signals
+ * cannot report an abrupt daemon exit, because the process that would emit
+ * them has already gone. The returned function releases the watch. */
+function systemNameWatcher(onAppeared, onVanished) {
+    try {
+        let id = Gio.bus_watch_name(
+            Gio.BusType.SYSTEM, BUS_NAME, Gio.BusNameWatcherFlags.NONE,
+            () => onAppeared(), () => onVanished());
+        return function () {
+            Gio.bus_unwatch_name(id);
+        };
+    } catch (error) {
+        Log.error("cannot watch ownership of BlueZ: " + error);
+        return null;
+    }
+}
+
 /*
  * Watches BlueZ for connected devices that report a battery.
  *
@@ -165,22 +182,30 @@ function parseObjects(objects) {
  * BlueZ emits as devices come, go and change, so a poll costs nothing.
  */
 var BluezBatteries = class BluezBatteries {
-    constructor(onChanged, call) {
+    constructor(onChanged, call, watchName) {
         this.available = false;
         this.destroyed = false;
         this.devices = [];
 
         this._onChanged = onChanged || function () {};
         this._call = call || ((path, iface, method, onDone) => this._dbusCall(path, iface, method, onDone));
+        /* A custom call owns its own environment unless it supplies the
+         * matching name watcher too. Production supplies neither. */
+        this._watchName = watchName === undefined
+            ? (call ? null : systemNameWatcher) : watchName;
+        this._unwatchName = null;
         this._signalIds = [];
         this._refreshTimerId = 0;
         /* A read of the tree is in flight, and one was asked for while it
          * was; see _refresh. */
         this._reading = false;
         this._readAgain = false;
+        /* Invalidates an answer that crossed a daemon stop or restart. */
+        this._ownerEpoch = 0;
 
         this._refresh();
         this._watch();
+        this._watchOwner();
     }
 
     /*
@@ -239,16 +264,19 @@ var BluezBatteries = class BluezBatteries {
             return;
         }
         this._reading = true;
+        let epoch = this._ownerEpoch;
         this._call("/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects", objects => {
             this._reading = false;
             if (this.destroyed)
                 return;
-            this.available = !!objects;
-            this._settle(objects ? parseObjects(objects) : []);
-            if (this._readAgain) {
-                this._readAgain = false;
-                this._refresh();
+            if (epoch === this._ownerEpoch) {
+                this.available = !!objects;
+                this._settle(objects ? parseObjects(objects) : []);
             }
+            let again = this._readAgain;
+            this._readAgain = false;
+            if (again)
+                this._refresh();
         });
     }
 
@@ -285,6 +313,37 @@ var BluezBatteries = class BluezBatteries {
             this._subscribe("org.freedesktop.DBus.ObjectManager", signal, null);
         for (let iface of WATCHED_INTERFACES)
             this._subscribe("org.freedesktop.DBus.Properties", "PropertiesChanged", iface);
+    }
+
+    _watchOwner() {
+        if (!this._watchName)
+            return;
+        try {
+            this._unwatchName = this._watchName(
+                () => this._ownerAppeared(), () => this._ownerVanished());
+        } catch (error) {
+            Log.error("cannot watch ownership of BlueZ: " + error);
+        }
+    }
+
+    _ownerAppeared() {
+        if (this.destroyed)
+            return;
+        this._ownerEpoch++;
+        this._refresh();
+    }
+
+    _ownerVanished() {
+        if (this.destroyed)
+            return;
+        this._ownerEpoch++;
+        this.available = false;
+        this._readAgain = false;
+        if (this._refreshTimerId) {
+            GLib.source_remove(this._refreshTimerId);
+            this._refreshTimerId = 0;
+        }
+        this._settle([]);
     }
 
     _subscribe(iface, member, arg0) {
@@ -334,6 +393,14 @@ var BluezBatteries = class BluezBatteries {
         if (this._refreshTimerId) {
             GLib.source_remove(this._refreshTimerId);
             this._refreshTimerId = 0;
+        }
+        if (this._unwatchName) {
+            try {
+                this._unwatchName();
+            } catch (error) {
+                /* already gone */
+            }
+            this._unwatchName = null;
         }
         for (let id of this._signalIds) {
             try {
