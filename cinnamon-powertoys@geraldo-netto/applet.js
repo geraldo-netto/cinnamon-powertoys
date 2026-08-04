@@ -575,8 +575,13 @@ class ChoiceControl {
     }
 }
 
+/* Beyond this, one row competes with the three-column menu for screen width. */
+const PROFILE_ROW_MAX_WIDTH = 360;
+const PROFILE_ROW_MAX_CHOICES = 3;
+
 /*
- * The power profile as one row of buttons with the active one filled.
+ * The power profile as a compact row, or a vertical selector when it would
+ * make the menu too wide, with the active choice filled.
  *
  * As a list of three dotted rows it was three lines of the menu all reading
  * the same word - "Performance", "Performance", "Performance" - where only the
@@ -672,6 +677,13 @@ class SegmentedControl extends PopupMenu.PopupBaseMenuItem {
         }
 
         this._active = active;
+        let natural = 0;
+        for (let button of this._buttons.values())
+            natural += button.get_preferred_width(-1)[1];
+        let vertical = values.length > PROFILE_ROW_MAX_CHOICES ||
+                       natural > PROFILE_ROW_MAX_WIDTH;
+        this._box.vertical = vertical;
+        this._box.change_style_pseudo_class("vertical", vertical);
         /* PopupBaseMenuItem only applies setSensitive() to activatable rows;
          * this row deliberately is not one, because its child buttons act.
          * Apply the same state to the row and to those actual controls. */

@@ -222,6 +222,13 @@
     padding-bottom: 4px;
 }
 
+/* Firmware may publish six profiles, and some of their names are a full row
+ * on their own. The control switches to this layout before its natural width
+ * can push the whole menu beyond the screen. */
+.powertoys-segmented:vertical {
+    spacing: 2px;
+}
+
 .powertoys-segment {
     background-color: rgba(127, 127, 127, 0.14);
     border: 1px solid rgba(127, 127, 127, 0.10);
@@ -263,4 +270,3 @@
     font-weight: bold;
     opacity: 1.0;
 }
-
