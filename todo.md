@@ -5,3 +5,25 @@ other work · **medium** it makes changes slow or risky, or costs the user
 comfort · **low** polish, tidying, convenience.
 
 Effort: **XS** minutes · **S** under an hour · **M** an hour or a few · **L** a day or more.
+
+Review scope: runtime source, configuration, install/uninstall paths, policy,
+udev rules, styles, icons and documentation. Cache, build output, generated
+artifacts, tests and test-only tooling were excluded as requested.
+
+## High
+
+- [ ] **S** — `cinnamon-powertoys@geraldo-netto/lib/ddc.js:L203,L366`: 🔴 bug: reads convert the monitor's raw VCP range to percent, but writes send that percent as the raw 0–255 value, so a display whose maximum is not 100 lands at the wrong brightness. Retain the reported maximum and scale percentages back to its raw range before `setvcp`.
+- [ ] **XS** — `Makefile:L73`: 🔴 bug: the recursive uninstall target is unquoted; for example, `DESTDIR="/tmp/build dir"` makes the shell treat `/tmp/build` as a separate deletion target. Quote every path expansion used by destructive and install recipes.
+- [ ] **S** — `cinnamon-powertoys@geraldo-netto/lib/gettext.js:L16-L22`, `install.sh:L14-L28`: 🔴 bug: catalogs are always read from the user data locale directory even when `PREFIX` installs them under a custom or system locale directory, so packaged/custom-prefix translations are silently ignored. Derive the runtime locale root from the installed applet path or install catalogs into the one directory the domain actually binds.
+- [ ] **M** — `cinnamon-powertoys@geraldo-netto/lib/sensors.js:L369,L379,L424-L431`: 🔴 bug: thermal zones are deduplicated only by their `type`; multiple real zones with the same type are dropped, and even a same-named hwmon device with no temperature input suppresses the zone. Deduplicate by the backing device/sensor identity instead of the display name.
+- [ ] **S** — `cinnamon-powertoys@geraldo-netto/powertoys-helper:L84-L99,L162-L199`: 🔴 bug: multi-policy and multi-battery writes exit successfully when only one target accepted the value, leaving the machine split while the applet announces success. Count eligible targets, report partial failure, and identify every node that refused the write.
+- [ ] **S** — `cinnamon-powertoys@geraldo-netto/applet.js:L1370-L1382`, `cinnamon-powertoys@geraldo-netto/lib/panel-text.js:L141-L153`: 🔴 bug: a missing primary device is presented as AC power even when UPower is unavailable, and the collected `OnBattery` value is ignored. Show battery/AC only when UPower establishes it and use an unavailable/unknown state otherwise.
+- [ ] **S** — `cinnamon-powertoys@geraldo-netto/lib/sensor-rows.js:L196-L204`: 🔴 bug: a readable fan at 0 RPM is removed from the menu, so zero-RPM fans disappear at idle and reappear under load. Preserve zero for known/labeled fan sensors while still filtering genuinely unused inputs.
+- [ ] **S** — `cinnamon-powertoys@geraldo-netto/applet.js:L1385-L1395,L2584-L2587`: 🔴 bug: the ACPI platform-profile segment remains interactive when privileged controls are disabled, but every click is then refused by its runner. Make the segment read-only/hidden for that backend or stop gating platform-profile writes with the CPU-control setting, and align the setting text with the chosen behavior.
+- [ ] **XS** — `cinnamon-powertoys@geraldo-netto/lib/profiles.js:L83-L98`: 🔴 bug: when the active profile is absent from a changed profile list, a positive step initializes at index 0 and then advances to index 1, skipping the first profile despite the documented fallback. Return the first profile directly when `from` is unknown.
+
+## Medium
+
+- [ ] **XS** — `Makefile:L72-L75`: 🟡 risk: `make uninstall PREFIX=... DESTDIR=...` removes translations from the default user locale tree instead of the requested target, leaving staged catalogs behind and potentially deleting a separate user install's catalogs. Pass `$(DESTDIR)$(PREFIX)/locale` to `install-translations.sh uninstall`.
+- [ ] **S** — `cinnamon-powertoys@geraldo-netto/lib/cpu.js:L65-L72`: 🟡 risk: the displayed maximum frequency comes only from the first cpufreq policy, which is not the processor-wide ceiling on heterogeneous systems. Read every policy and use the highest valid `cpuinfo_max_freq`.
+- [ ] **S** — `cinnamon-powertoys@geraldo-netto/lib/bluez.js:L167-L183,L283-L299`: 🟡 risk: the BlueZ client watches object/property signals but not ownership of `org.bluez`, so an abrupt daemon stop can leave disconnected batteries displayed indefinitely. Watch the bus name, clear devices on vanish, and refresh the object tree on reappearance.

@@ -1,6 +1,6 @@
 UUID    := cinnamon-powertoys@geraldo-netto
 DESTDIR ?=
-PREFIX  ?= $(HOME)/.local/share
+PREFIX  ?= $(if $(XDG_DATA_HOME),$(XDG_DATA_HOME),$(HOME)/.local/share)
 TARGET  := $(DESTDIR)$(PREFIX)/cinnamon/applets/$(UUID)
 
 # The polkit action and the root owned helper it names. This path is written
