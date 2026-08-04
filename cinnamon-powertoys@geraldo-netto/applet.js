@@ -2470,13 +2470,12 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _migratePanelText() {
         if (this.panelTextMigrated)
             return;
+        if (this.introduced) {
+            let wanted = PanelText.migratedPanelText(this._panelSwitches());
+            if (wanted !== this.panelText)
+                this.settings.setValue("panel-text", wanted);
+        }
         this.settings.setValue("panel-text-migrated", true);
-        if (!this.introduced)
-            return;
-
-        let wanted = PanelText.migratedPanelText(this._panelSwitches());
-        if (wanted !== this.panelText)
-            this.settings.setValue("panel-text", wanted);
     }
 
     _panelOptions() {
