@@ -33,22 +33,25 @@ cases["the domain is the applet's own uuid"] = function () {
                   "the uuid the harness loaded it as");
 };
 
-cases["the catalogue directory is the one the install script writes to"] = function () {
+cases["an installed applet binds catalogues beside its data root"] = function () {
     /*
-     * These two are the same directory said in two languages, and nothing
-     * makes them agree. tools/install-translations.sh compiles into
-     * $XDG_DATA_HOME/locale, defaulting to ~/.local/share/locale;
-     * GLib.get_user_data_dir() is that same variable with that same default.
-     * If either side is edited alone, every string is silently untranslated on
-     * a machine where the translation is installed and correct - which is the
-     * kind of failure nobody reports, because nothing looks broken.
+     * A custom PREFIX is visible at runtime through the applet path. Walking
+     * back from Cinnamon's fixed applet suffix reaches the same data root the
+     * install script used, instead of silently falling back to the user's
+     * locale directory.
      */
-    Harness.equal(Translate.LOCALE_DIR, GLib.get_user_data_dir() + "/locale",
-                  "where the module binds its domain");
+    Harness.equal(Translate.localeDirectory(
+                      "/opt/powertoys/share/cinnamon/applets/" + Harness.UUID),
+                  "/opt/powertoys/share/locale", "a custom prefix");
+    Harness.equal(Translate.localeDirectory(
+                      "/usr/share/cinnamon/applets/" + Harness.UUID + "/"),
+                  "/usr/share/locale", "a system prefix with a trailing slash");
+    Harness.equal(Translate.localeDirectory("/a/source/checkout"),
+                  GLib.get_user_data_dir() + "/locale", "a development fallback");
 
     let script = Harness.readFile(Harness.testsDir() + "/../tools/install-translations.sh");
-    Harness.ok(script.indexOf('${XDG_DATA_HOME:-$HOME/.local/share}/locale') >= 0,
-               "the install script still compiles into the directory this binds to");
+    Harness.ok(script.indexOf('LOCALE_DIR=${2:-') >= 0,
+               "the install script accepts the locale root for the chosen prefix");
     Harness.ok(script.indexOf('$UUID.mo') >= 0,
                "and still names the catalogue after the uuid this binds as");
 };
