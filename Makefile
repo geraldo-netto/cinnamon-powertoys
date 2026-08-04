@@ -72,7 +72,7 @@ install:
 
 uninstall:
 	@rm -rf -- "$(TARGET)"
-	@tools/install-translations.sh uninstall
+	@tools/install-translations.sh uninstall "$(DESTDIR)$(PREFIX)/locale"
 	@echo "removed $(TARGET)"
 
 # Installs a root owned copy of the helper and the action that names it. The
