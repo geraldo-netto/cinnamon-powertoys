@@ -21,7 +21,8 @@ POT_URL      = $(shell python3 -c "import json;print(json.load(open('$(METADATA)
 POLICY      := io.github.geraldo-netto.cinnamon-powertoys.policy
 POLICY_DIR  := $(DESTDIR)/usr/share/polkit-1/actions
 HELPER_PATH := /usr/local/lib/cinnamon-powertoys/powertoys-helper
-HELPER_DEST := $(DESTDIR)$(HELPER_PATH)
+HELPER_DIR  := $(DESTDIR)/usr/local/lib/cinnamon-powertoys
+HELPER_DEST := $(HELPER_DIR)/powertoys-helper
 
 # The optional udev rule that makes the RAPL energy counters readable, and the
 # group it hands them to. adm is the default because a desktop user is already
@@ -67,10 +68,10 @@ help:
 # running applet, so a change is visible without restarting Cinnamon; having
 # this target do its own copy is how the two came to differ in the first place.
 install:
-	@PREFIX=$(PREFIX) DESTDIR=$(DESTDIR) ./install.sh
+	@PREFIX="$(PREFIX)" DESTDIR="$(DESTDIR)" ./install.sh
 
 uninstall:
-	@rm -rf $(TARGET)
+	@rm -rf -- "$(TARGET)"
 	@tools/install-translations.sh uninstall
 	@echo "removed $(TARGET)"
 
@@ -80,10 +81,10 @@ uninstall:
 install-policy:
 	@[ -n "$(DESTDIR)" ] || [ "$$(id -u)" = 0 ] || \
 		{ echo "needs root: sudo make install-policy"; exit 1; }
-	@install -d $(dir $(HELPER_DEST))
-	@install -m 0755 $(UUID)/powertoys-helper $(HELPER_DEST)
-	@install -d $(POLICY_DIR)
-	@install -m 0644 polkit/$(POLICY) $(POLICY_DIR)/$(POLICY)
+	@install -d "$(HELPER_DIR)"
+	@install -m 0755 "$(UUID)/powertoys-helper" "$(HELPER_DEST)"
+	@install -d "$(POLICY_DIR)"
+	@install -m 0644 "polkit/$(POLICY)" "$(POLICY_DIR)/$(POLICY)"
 	@echo "installed $(HELPER_DEST)"
 	@echo "installed $(POLICY_DIR)/$(POLICY)"
 	@echo "re-run this after upgrading the applet, so the root owned copy of"
@@ -92,9 +93,9 @@ install-policy:
 uninstall-policy:
 	@[ -n "$(DESTDIR)" ] || [ "$$(id -u)" = 0 ] || \
 		{ echo "needs root: sudo make uninstall-policy"; exit 1; }
-	@rm -f $(POLICY_DIR)/$(POLICY)
-	@rm -f $(HELPER_DEST)
-	@rmdir $(dir $(HELPER_DEST)) 2>/dev/null || true
+	@rm -f -- "$(POLICY_DIR)/$(POLICY)"
+	@rm -f -- "$(HELPER_DEST)"
+	@rmdir "$(HELPER_DIR)" 2>/dev/null || true
 	@echo "removed the action and the root owned helper"
 	@echo "the applet keeps working and asks for a password on every change"
 
@@ -107,9 +108,9 @@ install-rapl:
 		{ echo "needs root: sudo make install-rapl"; exit 1; }
 	@getent group $(RAPL_GROUP) >/dev/null || \
 		{ echo "no such group: $(RAPL_GROUP)"; exit 1; }
-	@install -d $(RAPL_DIR)
-	@sed 's/@GROUP@/$(RAPL_GROUP)/g' udev/$(RAPL_RULE) > $(RAPL_DIR)/$(RAPL_RULE)
-	@chmod 0644 $(RAPL_DIR)/$(RAPL_RULE)
+	@install -d "$(RAPL_DIR)"
+	@sed 's/@GROUP@/$(RAPL_GROUP)/g' "udev/$(RAPL_RULE)" > "$(RAPL_DIR)/$(RAPL_RULE)"
+	@chmod 0644 "$(RAPL_DIR)/$(RAPL_RULE)"
 	@[ -n "$(DESTDIR)" ] || udevadm control --reload
 	@[ -n "$(DESTDIR)" ] || udevadm trigger --subsystem-match=powercap
 	@echo "installed $(RAPL_DIR)/$(RAPL_RULE), reading given to group $(RAPL_GROUP)"
@@ -118,7 +119,7 @@ install-rapl:
 uninstall-rapl:
 	@[ -n "$(DESTDIR)" ] || [ "$$(id -u)" = 0 ] || \
 		{ echo "needs root: sudo make uninstall-rapl"; exit 1; }
-	@rm -f $(RAPL_DIR)/$(RAPL_RULE)
+	@rm -f -- "$(RAPL_DIR)/$(RAPL_RULE)"
 	@[ -n "$(DESTDIR)" ] || udevadm control --reload
 	@[ -n "$(DESTDIR)" ] || for f in /sys/class/powercap/*-rapl:*/energy_uj; do \
 		[ -e "$$f" ] || continue; chgrp root "$$f"; chmod 0400 "$$f"; done
