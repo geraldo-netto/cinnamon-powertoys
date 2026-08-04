@@ -1725,7 +1725,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _introduce() {
         if (this.introduced)
             return;
-        this.settings.setValue("introduced", true);
 
         /*
          * Inside a try because this is the last thing the constructor does
@@ -1736,11 +1735,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * "right-hand side of 'in' should be an object, got undefined" and
          * the applet never reached the panel - no icon, and nothing to go on
          * but a stack in the shell log naming a greeting. It has not happened
-         * again: called from the same session afterwards, neither Main.notify
-         * nor the setValue above it throws. So the cause is not known and is
-         * not claimed here. What is known is that an exception on this line
-         * costs somebody the whole applet, and that no first run message is
-         * worth that.
+         * again: called from the same session afterwards, Main.notify does
+         * not throw. So the cause is not known and is not claimed here. What
+         * is known is that an exception on this line costs somebody the whole
+         * applet, and that no first run message is worth that.
          */
         try {
             Main.notify(_("Power Toys"),
@@ -1748,6 +1746,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
                           "are in this menu. The wheel over the icon changes screen " +
                           "brightness, a middle click toggles the keyboard backlight. " +
                           "Right click to configure those, and to set shortcuts."));
+            this.settings.setValue("introduced", true);
         } catch (error) {
             Log.error("could not show the first-run notification: " + error);
         }
