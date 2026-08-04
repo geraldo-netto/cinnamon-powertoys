@@ -2311,7 +2311,12 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * or setting the hint to a disk would quietly stop working.
      */
     _sensorFilter() {
-        let all = this.showAllSensors;
+        /* "All" describes the visible list, not the background poll. Some of
+         * those nodes wake disks or query slow buses, so they are read only
+         * while that list can actually be seen. Primary and explicitly
+         * hinted sensors still feed the panel, alerts and power selection. */
+        let all = this.showSensors && this.showAllSensors &&
+                  this.menu && this.menu.isOpen;
         let hint = (this.cpuSensorHint || "").trim();
         return function (sensor) {
             if (all || Sensors.isPrimaryKind(sensor.kind))
