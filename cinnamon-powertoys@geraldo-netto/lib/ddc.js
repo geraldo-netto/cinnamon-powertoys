@@ -200,7 +200,7 @@ function nameDisplays(displays) {
  * "VCP 10 C 40 100" - feature, type, current, maximum. The maximum is not
  * always 100, so the percentage has to be worked out rather than assumed.
  */
-function parseBrightness(output) {
+function parseBrightnessReading(output) {
     let match = /^VCP\s+10\s+\S+\s+(\d+)\s+(\d+)/m.exec(output || "");
     if (!match)
         return null;
@@ -212,7 +212,15 @@ function parseBrightness(output) {
      * monitor whose firmware counts the two in different units, and there are
      * some - would otherwise put a slider past its end and a figure that is
      * not a percentage of anything on screen. */
-    return Math.min(100, Math.round(current / maximum * 100));
+    return {
+        percentage: Math.min(100, Math.round(current / maximum * 100)),
+        maximum: maximum,
+    };
+}
+
+function parseBrightness(output) {
+    let reading = parseBrightnessReading(output);
+    return reading ? reading.percentage : null;
 }
 
 /*
@@ -229,6 +237,7 @@ var DdcMonitor = class DdcMonitor {
         this.name = display.name;
         this.available = false;
         this.percentage = null;
+        this.maximum = null;
         this.destroyed = false;
         /* Whether this monitor has ever answered. See refresh(). */
         this.known = false;
@@ -291,11 +300,12 @@ var DdcMonitor = class DdcMonitor {
                 done();
                 return;
             }
-            let value = status === 0 ? parseBrightness(output) : null;
-            if (value !== null) {
+            let reading = status === 0 ? parseBrightnessReading(output) : null;
+            if (reading) {
                 this.known = true;
                 this.available = true;
-                this.percentage = value;
+                this.percentage = reading.percentage;
+                this.maximum = reading.maximum;
             } else if (!this.known) {
                 this.available = false;
                 this.percentage = null;
@@ -363,8 +373,13 @@ var DdcMonitor = class DdcMonitor {
         }
 
         this._busy = true;
+        /* setvcp speaks the monitor's raw scale, not percent. A direct write
+         * before the first successful read retains the historical 0-100
+         * fallback, while every monitor offered by the group has a maximum. */
+        let raw = this.maximum === null
+            ? wanted : Math.round(wanted / 100 * this.maximum);
         this._run(["ddcutil", "--display", this.number,
-                   "setvcp", BRIGHTNESS_FEATURE, String(wanted)], (output, status) => {
+                   "setvcp", BRIGHTNESS_FEATURE, String(raw)], (output, status) => {
             this._busy = false;
             if (this.destroyed) {
                 done();

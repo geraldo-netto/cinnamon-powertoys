@@ -186,6 +186,9 @@ cases["brightness is a fraction of whatever the monitor's maximum is"] = functio
     Harness.equal(Ddc.parseBrightness("VCP 10 ERR\n"), null, "an error");
     Harness.equal(Ddc.parseBrightness(""), null, "nothing");
     Harness.equal(Ddc.parseBrightness("VCP 10 C 40 0\n"), null, "a nonsense maximum");
+    Harness.deepEqual(Ddc.parseBrightnessReading("VCP 10 C 32 64\n"),
+                      { percentage: 50, maximum: 64 },
+                      "the raw range is retained for writes");
 };
 
 cases["nothing is spawned until it is asked for"] = function () {
@@ -514,6 +517,16 @@ cases["a monitor's slider moves that monitor and no other"] = function () {
                       "only the one that was dragged");
     Harness.equal(each.control.monitors[1].percentage, 70, "which follows the value");
     Harness.equal(each.control.monitors[0].percentage, 40, "and the other one does not");
+};
+
+cases["a percentage is written on the monitor's raw scale"] = function () {
+    let each = started(DETECT_TWO, 0, "VCP 10 C 32 64\n");
+    each.run.calls.length = 0;
+    each.control.monitors[0].setPercentage(75);
+    Harness.deepEqual(each.run.calls, ["ddcutil --display 1 setvcp 10 48"],
+                      "75 percent of a 64-step monitor");
+    Harness.equal(each.control.monitors[0].percentage, 75,
+                  "the public value remains a percentage");
 };
 
 cases["the panel wheel, which has no monitor in mind, moves all of them"] = function () {
