@@ -449,12 +449,17 @@ class SelectorItem extends PopupMenu.PopupMenuItem {
     _init(label, value, selected, onActivate) {
         super._init.call(this, label);
         this.value = value;
-        this.setShowDot(selected);
-        this.connect("activate", () => onActivate(value));
+        this._selected = selected;
+        this.setShowDot(this._selected);
+        this.connect("activate", () => {
+            if (!this._selected)
+                onActivate(value);
+        });
     }
 
     setSelected(selected) {
-        this.setShowDot(selected);
+        this._selected = selected;
+        this.setShowDot(this._selected);
     }
 }
 
@@ -657,7 +662,10 @@ class SegmentedControl extends PopupMenu.PopupBaseMenuItem {
                 let button = new St.Button({ label: this._labelFunction(value),
                                              style_class: "powertoys-segment",
                                              can_focus: true });
-                button.connect("clicked", () => this._onActivate(value));
+                button.connect("clicked", () => {
+                    if (this._editable && value !== this._active)
+                        this._onActivate(value);
+                });
                 this._box.add(button, { expand: true, x_fill: true });
                 this._buttons.set(value, button);
             }
@@ -2049,14 +2057,24 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _menuActions() {
         return {
             setProfile: name => this._setProfile(name),
-            setGovernor: value => this._cpu.setGovernor(value),
-            setEnergyPreference: value => this._cpu.setEnergyPreference(value),
-            setBoost: state => this._cpu.setBoost(state),
+            setGovernor: value => {
+                if (!this._latest || value !== this._latest.cpu.governor)
+                    this._cpu.setGovernor(value);
+            },
+            setEnergyPreference: value => {
+                if (!this._latest || value !== this._latest.cpu.energyPreference)
+                    this._cpu.setEnergyPreference(value);
+            },
+            setBoost: state => {
+                if (!this._latest || state !== this._latest.cpu.boostEnabled)
+                    this._cpu.setBoost(state);
+            },
             /* The control is looked for again while the applet runs, so the
              * one this closure reaches is whichever is there when the click
              * happens - and on a machine with none, there is none. */
             setChargeLimit: value => {
-                if (this._chargeControl)
+                if (this._chargeControl &&
+                    (!this._latest || value !== this._latest.chargeLimit))
                     this._chargeControl.setLimit(value);
             },
         };
@@ -2543,6 +2561,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
      */
     _setProfile(name) {
         if (!this._profileState())
+            return false;
+        let shown = Reading.shownProfile(this._latest,
+                                         { pendingProfile: this._pending.value });
+        if (name === shown)
             return false;
         if (!this._pending.ask(name))
             return false;
