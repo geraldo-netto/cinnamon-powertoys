@@ -48,7 +48,7 @@ msgstr ""
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1100 lib/panel-text.js:159 lib/reading.js:132
+#: applet.js:1100 lib/panel-text.js:174 lib/reading.js:132
 msgid "Governor"
 msgstr ""
 
@@ -81,10 +81,6 @@ msgstr ""
 msgid "Only the first %d monitors have a slider"
 msgstr ""
 
-#: applet.js:1380
-msgid "On AC power"
-msgstr ""
-
 #: applet.js:1400
 msgid "an application"
 msgstr ""
@@ -103,7 +99,7 @@ msgstr ""
 
 #. metadata.json->name
 #: applet.js:1735 applet.js:2604 applet.js:2656 applet.js:2714 applet.js:2723
-#: lib/panel-text.js:195
+#: lib/panel-text.js:210
 msgid "Power Toys"
 msgstr ""
 
@@ -431,7 +427,7 @@ msgstr ""
 msgid "Power saving"
 msgstr ""
 
-#: lib/format.js:419 lib/panel-text.js:161
+#: lib/format.js:419 lib/panel-text.js:176
 msgid "Temperature"
 msgstr ""
 
@@ -439,24 +435,40 @@ msgstr ""
 msgid "Fan"
 msgstr ""
 
-#: lib/format.js:421 lib/sensors.js:204
+#: lib/format.js:421 lib/sensors.js:216
 msgid "Power"
 msgstr ""
 
-#: lib/panel-text.js:152
+#: lib/panel-text.js:147 lib/panel-text.js:153
+msgid "Power status unavailable"
+msgstr ""
+
+#: lib/panel-text.js:148
+msgid "On battery power"
+msgstr ""
+
+#: lib/panel-text.js:148
+msgid "On AC power"
+msgstr ""
+
+#: lib/panel-text.js:154
+msgid "Running on battery power"
+msgstr ""
+
+#: lib/panel-text.js:154
 msgid "Running on AC power"
 msgstr ""
 
-#: lib/panel-text.js:157
+#: lib/panel-text.js:172
 msgid "Profile"
 msgstr ""
 
 #. settings-schema.json->panel-show-power->description
-#: lib/panel-text.js:164
+#: lib/panel-text.js:179
 msgid "Power draw"
 msgstr ""
 
-#: lib/panel-text.js:190
+#: lib/panel-text.js:205
 #, javascript-format
 msgid "and %d more"
 msgstr ""
@@ -497,7 +509,7 @@ msgstr ""
 msgid "Graphics"
 msgstr ""
 
-#: lib/sensors.js:41 lib/sensors.js:502
+#: lib/sensors.js:41 lib/sensors.js:516
 msgid "Package"
 msgstr ""
 
@@ -517,47 +529,47 @@ msgstr ""
 msgid "Other"
 msgstr ""
 
-#: lib/sensors.js:195 lib/sensors.js:196
+#: lib/sensors.js:207 lib/sensors.js:208
 msgid "Core die"
 msgstr ""
 
-#: lib/sensors.js:197
+#: lib/sensors.js:209
 msgid "Measured die"
 msgstr ""
 
-#: lib/sensors.js:198
+#: lib/sensors.js:210
 msgid "Cooling control"
 msgstr ""
 
-#: lib/sensors.js:199
+#: lib/sensors.js:211
 msgid "Die edge"
 msgstr ""
 
-#: lib/sensors.js:200
+#: lib/sensors.js:212
 msgid "Hotspot"
 msgstr ""
 
-#: lib/sensors.js:201 lib/sensors.js:495
+#: lib/sensors.js:213 lib/sensors.js:509
 msgid "Memory"
 msgstr ""
 
-#: lib/sensors.js:202
+#: lib/sensors.js:214
 msgid "Core voltage"
 msgstr ""
 
-#: lib/sensors.js:203
+#: lib/sensors.js:215
 msgid "SoC voltage"
 msgstr ""
 
-#: lib/sensors.js:493
+#: lib/sensors.js:507
 msgid "Cores"
 msgstr ""
 
-#: lib/sensors.js:494
+#: lib/sensors.js:508
 msgid "Uncore"
 msgstr ""
 
-#: lib/sensors.js:496
+#: lib/sensors.js:510
 msgid "Whole board"
 msgstr ""
 

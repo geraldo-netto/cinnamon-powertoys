@@ -1377,7 +1377,7 @@ class MenuPresenter {
                 detail += " · " + remaining;
             this._summary.setValue(detail);
         } else {
-            this._summary.setLabel(_("On AC power"));
+            this._summary.setLabel(PanelText.powerStatusLabel(data));
             this._summary.setValue("");
         }
     }

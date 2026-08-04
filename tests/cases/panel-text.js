@@ -23,6 +23,7 @@ function reading(parts) {
         upowerAvailable: true,
         devices: [],
         primary: null,
+        onBattery: false,
         lineOnline: false,
         cpu: { governor: null },
         cpuTemperature: null,
@@ -227,20 +228,24 @@ cases["a machine with no profile has no profile to say"] = function () {
 /* ------------------------------------------------------------------ */
 /* the tooltip                                                          */
 
-cases["a machine with nothing to report still names itself"] = function () {
-    /* A tooltip with no lines in it is an empty box under the pointer. */
-    Harness.equal(PanelText.tooltipText(reading({ upowerAvailable: true }), options()),
-                  "Power Toys", "the applet's own name");
+cases["UPower establishes the source without a primary device"] = function () {
+    Harness.equal(PanelText.tooltipText(reading({ onBattery: false }), options()),
+                  "Running on AC power", "the manager says it is plugged in");
+    Harness.equal(PanelText.tooltipText(reading({ onBattery: true }), options()),
+                  "Running on battery power", "and it can say battery without a display device");
+    Harness.equal(PanelText.powerStatusLabel(reading({ onBattery: true })),
+                  "On battery power", "the menu uses the same source");
 };
 
 cases["a machine with no battery says it is on the mains"] = function () {
     let plugged = PanelText.tooltipText(reading({ lineOnline: true }), options());
     Harness.equal(plugged.split("\n")[0], "Running on AC power", "the charger is in");
 
-    /* And so does one where UPower is not running at all, because a desktop
-     * with no UPower is a desktop on the mains. */
+    /* With no manager, there is no evidence for either source. */
     let noUPower = PanelText.tooltipText(reading({ upowerAvailable: false }), options());
-    Harness.equal(noUPower.split("\n")[0], "Running on AC power", "nothing else it could be");
+    Harness.equal(noUPower.split("\n")[0], "Power status unavailable", "not guessed as AC");
+    Harness.equal(PanelText.powerStatusLabel(reading({ upowerAvailable: false })),
+                  "Power status unavailable", "the menu agrees");
 };
 
 cases["the tooltip opens with the battery and how long it has"] = function () {
@@ -316,9 +321,9 @@ cases["an accessory with no charge is not a line"] = function () {
                   "nothing to add");
 };
 
-cases["accessories on their own need no blank line above them"] = function () {
-    /* The blank line separates them from the machine's own lines, and where
-     * there are none it would be the first line of the tooltip. */
+cases["accessories are separated from the established power source"] = function () {
+    /* The blank line separates them from the machine's own status. */
     let data = reading({ devices: [peripheral({ model: "MX", percentage: 40 })] });
-    Harness.equal(PanelText.tooltipText(data, options()), "MX: 40%", "one line, no gap");
+    Harness.equal(PanelText.tooltipText(data, options()),
+                  "Running on AC power\n\nMX: 40%", "separated from the established source");
 };

@@ -138,6 +138,22 @@ function labelText(data, options, source, profile) {
     return parts.join(" · ");
 }
 
+/* With no primary device there is no battery row to imply the source. The
+ * UPower manager's OnBattery property is authoritative even when it could not
+ * compose a display device; without that manager, neither AC nor battery is a
+ * safe assumption. */
+function powerStatusLabel(data) {
+    if (!data.upowerAvailable)
+        return _("Power status unavailable");
+    return data.onBattery ? _("On battery power") : _("On AC power");
+}
+
+function powerStatusTooltip(data) {
+    if (!data.upowerAvailable)
+        return _("Power status unavailable");
+    return data.onBattery ? _("Running on battery power") : _("Running on AC power");
+}
+
 function tooltipText(data, options) {
     let lines = [];
 
@@ -148,9 +164,8 @@ function tooltipText(data, options) {
         let remaining = Device.remainingText(data.primary);
         if (remaining)
             lines.push(remaining);
-    } else if (data.lineOnline || !data.upowerAvailable) {
-        lines.push(_("Running on AC power"));
-    }
+    } else
+        lines.push(powerStatusTooltip(data));
 
     let profile = Reading.shownProfile(data, options);
     if (profile)
