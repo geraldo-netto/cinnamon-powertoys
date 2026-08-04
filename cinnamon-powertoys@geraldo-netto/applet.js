@@ -1636,14 +1636,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
             else
                 Main.notify(title, body);
         });
-        /*
-         * The pointer resting on the icon is the other reason to look for
-         * monitors (PT-145b). It is worth being clear about what it buys and
-         * what it does not: the tooltip names no monitor, so a probe fired
-         * from here shows nothing in the tooltip itself - it means the sliders
-         * are already right when the menu is opened next, and it costs I2C
-         * traffic on every hover across the panel.
-         */
+        /* A hover gets one prefetch so a later menu is ready; only an open
+         * menu keeps probing. The tooltip itself names no monitor. */
         this._panel = new PanelPresenter(this, metadata.path + "/icons",
                                          shown => this._watchMonitors("tooltip", shown));
         this._hotkeyIds = [];
@@ -1955,10 +1949,19 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * when it was looked for.
      */
     _watchMonitors(reason, wanted) {
+        let alreadyWanted = this._probeReasons.has(reason);
         if (wanted)
             this._probeReasons.add(reason);
         else
             this._probeReasons.delete(reason);
+
+        /* The tooltip contains no monitor data. A single warm-up probe makes
+         * a subsequent menu open current without turning an accidental hover
+         * into recurring I2C traffic. The open menu is the only reason that
+         * owns the recurring timer. */
+        if (reason === "tooltip" && wanted && !alreadyWanted &&
+            !this._probeReasons.has("menu"))
+            this._probeMonitors();
         this._considerProbing();
     }
 
@@ -1980,7 +1983,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * _considerMonitorBacklight, which asks again on the way out.
      */
     _considerProbing() {
-        if (this._destroyed || this._probeReasons.size === 0 || !this._canProbeMonitors()) {
+        if (this._destroyed || !this._probeReasons.has("menu") ||
+            !this._canProbeMonitors()) {
             this._stopProbingMonitors();
             return;
         }
