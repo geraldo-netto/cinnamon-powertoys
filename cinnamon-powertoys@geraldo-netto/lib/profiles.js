@@ -217,23 +217,33 @@ var PowerProfilesClient = class PowerProfilesClient {
          * changed - see snapshot(). */
         this._snapshot = null;
 
-        this._connect();
-
         for (let backend of BACKENDS) {
-            this._watchIds.push(this._bus.watch(
-                backend.name,
-                /* Connecting says so itself when it finds something, and a
-                 * name appearing that turns out to offer no profiles has
-                 * changed nothing worth redrawing. */
-                () => this._connect(),
-                () => {
-                    if (this.busName === backend.name) {
-                        this._disconnectProxy();
-                        this._invalidate();
-                        this._connect();
-                    }
-                }));
+            try {
+                let id = this._bus.watch(
+                    backend.name,
+                    /* Connecting says so itself when it finds something, and a
+                     * name appearing that turns out to offer no profiles has
+                     * changed nothing worth redrawing. */
+                    () => this._connect(),
+                    () => {
+                        if (this.busName === backend.name) {
+                            this._disconnectProxy();
+                            this._invalidate();
+                            this._connect();
+                        }
+                    });
+                if (id)
+                    this._watchIds.push(id);
+            } catch (e) {
+                /* One unavailable watcher must not discard an earlier one or
+                 * prevent the current daemon from being used. The initial
+                 * search below still supplies a complete present-time state. */
+            }
         }
+
+        /* Install every viable edge listener before taking the initial state,
+         * so a daemon cannot change in the gap between discovery and watches. */
+        this._connect();
     }
 
     /*

@@ -180,6 +180,25 @@ cases["a name that answers with an error is passed over"] = function () {
     Harness.equal(client.busName, UPOWER, "and connected to the one that answered");
 };
 
+cases["one failed name watch keeps earlier resources owned"] = function () {
+    let system = bus({ [HADESS]: daemon() });
+    let watches = 0;
+    system.watch = function (name, onAppeared, onVanished) {
+        watches++;
+        if (watches === 2)
+            throw new Error("watch unavailable");
+        system.watched.push({ name: name, appeared: onAppeared, vanished: onVanished });
+        return 41;
+    };
+
+    let client = new Profiles.PowerProfilesClient(null, system);
+    Harness.equal(client.available, true, "the present daemon still supplies a profile backend");
+    Harness.deepEqual(system.watched.map(entry => entry.name), [HADESS],
+                      "the successful watch remains active");
+    client.destroy();
+    Harness.deepEqual(system.unwatched, [41], "the partial watch set is still released");
+};
+
 cases["a daemon that answers after the client is gone is not connected to"] = function () {
     let stub = daemon();
     let system = bus({ [HADESS]: stub });
