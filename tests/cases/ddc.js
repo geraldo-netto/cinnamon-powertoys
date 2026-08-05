@@ -189,6 +189,31 @@ cases["the shared DDC command boundary settles throws and duplicate replies"] = 
     Harness.equal(lines.length, 1, "the runner failure is logged once");
 };
 
+cases["destroying the DDC boundary settles work that has not started"] = function () {
+    let run = held();
+    let control = new Ddc.DdcBacklight(null, run);
+    let answers = [];
+    control._invoke(["ddcutil", "first"], (output, status) => answers.push(["first", status]));
+    control._invoke(["ddcutil", "second"], (output, status) => answers.push(["second", status]));
+    control._invoke(["ddcutil", "third"], () => { throw new Error("owner left"); });
+    Harness.equal(run.waiting.length, 1, "only the first command reaches the transport");
+
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    try {
+        control.destroy();
+    } finally {
+        Log.setSink(null);
+    }
+    Harness.deepEqual(answers, [["second", -1]], "queued work is rejected immediately");
+    Harness.equal(lines.length, 1, "one broken owner cannot strand the rest of the queue");
+    Harness.equal(control.busy, true, "the already-running command still owns the boundary");
+    run.answer("", 0);
+    Harness.deepEqual(answers, [["second", -1], ["first", 0]],
+                      "and active work retains its ordinary reply");
+    Harness.equal(control.busy, false, "every accepted command is accounted for");
+};
+
 cases["what detect says about each display is picked out of it"] = function () {
     let displays = Ddc.parseDisplays(DETECT_TWO);
     Harness.equal(displays.length, 2, "two monitors");
@@ -506,11 +531,11 @@ cases["re-detections inside a probe coalesce into one follow-up"] = function () 
 
     control.start();
     run.answer(DETECT_TWO, 0);
-    Harness.equal(run.waiting.length, 2, "the detect is back and its two reads are out");
+    Harness.equal(run.waiting.length, 1, "the detect is back and one serialized read is out");
 
     control.redetect();
     control.redetect();
-    Harness.equal(run.waiting.length, 2, "no re-detection overlaps the active probe");
+    Harness.equal(run.waiting.length, 1, "no re-detection overlaps the active probe");
 
     run.answer("VCP 10 C 40 100\n", 0);
     control.redetect();
@@ -540,7 +565,7 @@ cases["a re-detection waits for every monitor read"] = function () {
     control.refresh();
     Harness.equal(control.busy, true, "two reads are out");
     control.redetect();
-    Harness.equal(run.waiting.length, 2, "so no detect goes out on top of them");
+    Harness.equal(run.waiting.length, 1, "so only the first serialized read is on the bus");
 
     run.answer("VCP 10 C 40 100\n", 0);
     control.redetect();
@@ -568,6 +593,29 @@ cases["a re-detection waits for a monitor write"] = function () {
     run.answer("", 0);
     Harness.equal(run.waiting.length, 1, "the retained detect starts once the write ends");
     Harness.equal(run.waiting[0].argv, "ddcutil --brief detect", "the hotplug request survives");
+};
+
+cases["a user write during detection runs before probe reads"] = function () {
+    let run = held();
+    let control = new Ddc.DdcBacklight(null, run);
+    control.start();
+    run.answer(DETECT_TWO, 0);
+    run.answer("VCP 10 C 40 100\n", 0);
+    run.answer("VCP 10 C 40 100\n", 0);
+
+    control.redetect();
+    Harness.equal(run.waiting[0].argv, "ddcutil --brief detect", "the whole-bus probe is active");
+    control.monitors[0].setPercentage(70);
+    Harness.equal(run.waiting.length, 1, "the write waits instead of overlapping detection");
+
+    run.answer(DETECT_TWO, 0);
+    Harness.equal(run.waiting.length, 1, "only one command follows the probe");
+    Harness.equal(run.waiting[0].argv, "ddcutil --display 1 setvcp 10 70",
+                  "the explicit write is ahead of automatic reads");
+    run.answer("", 0);
+    Harness.ok(run.waiting[0].argv.indexOf("getvcp") >= 0,
+               "the remaining probe read follows the write");
+    run.answer("VCP 10 C 40 100\n", 0);
 };
 
 cases["a probe that finds nothing to read is over when the detect answers"] = function () {
@@ -625,7 +673,7 @@ cases["a restart waits for reads whose monitors stop removed"] = function () {
     control.refresh();
     control.stop();
     control.start();
-    Harness.equal(run.waiting.length, 2, "both old reads finish before another probe");
+    Harness.equal(run.waiting.length, 1, "one old read runs while the other remains queued");
     run.answer("VCP 10 C 40 100\n", 0);
     Harness.equal(run.waiting.length, 1, "one old read still owns its bus");
     run.answer("VCP 10 C 40 100\n", 0);

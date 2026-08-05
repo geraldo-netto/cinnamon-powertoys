@@ -355,7 +355,7 @@ var DdcMonitor = class DdcMonitor {
             done();
             this._writeHeld();
             this._notifyIdle();
-        });
+        }, "read");
     }
 
     /*
@@ -430,7 +430,7 @@ var DdcMonitor = class DdcMonitor {
             done();
             this._writeHeld();
             this._notifyIdle();
-        });
+        }, "write");
     }
 
     /* Whatever was asked for while the bus was busy, now that it is not.
@@ -526,7 +526,9 @@ var DdcBacklight = class DdcBacklight {
          * them. stop() removes those objects immediately, but their ddcutil
          * processes still own the buses until their callbacks arrive. */
         this._commandsInFlight = 0;
-        this._run = (argv, onDone) => this._invoke(argv, onDone);
+        this._activeCommand = null;
+        this._commandQueue = [];
+        this._run = (argv, onDone, kind) => this._invoke(argv, onDone, kind);
         this._started = false;
         this._startPending = false;
         this._detecting = false;
@@ -619,25 +621,57 @@ var DdcBacklight = class DdcBacklight {
      * monitor stop() has removed. The decrement happens after the consumer has
      * processed its answer, so a detect callback may start its reads without a
      * moment where the shared bus appears idle between them. */
-    _invoke(argv, onDone) {
+    _invoke(argv, onDone, kind) {
+        let job = { argv: argv, onDone: onDone, kind: kind || "read" };
         this._commandsInFlight++;
+        if (job.kind === "write") {
+            let before = this._commandQueue.findIndex(queued => queued.kind !== "write");
+            if (before < 0)
+                this._commandQueue.push(job);
+            else
+                this._commandQueue.splice(before, 0, job);
+        } else {
+            this._commandQueue.push(job);
+        }
+        this._drainCommands();
+    }
+
+    _drainCommands() {
+        if (this.destroyed || this._activeCommand || this._commandQueue.length === 0)
+            return;
+        let job = this._commandQueue.shift();
+        this._activeCommand = job;
         let answered = false;
         let finish = (output, status) => {
             if (answered)
                 return;
             answered = true;
             try {
-                onDone(output, status);
+                job.onDone(output, status);
             } finally {
+                this._activeCommand = null;
                 this._commandsInFlight--;
+                this._drainCommands();
                 this._drainWork();
             }
         };
         try {
-            this._runCommand(argv, finish);
+            this._runCommand(job.argv, finish);
         } catch (error) {
             Log.error("could not run ddcutil: " + error);
             finish("", -1);
+        }
+    }
+
+    _cancelQueuedCommands() {
+        let queued = this._commandQueue.splice(0);
+        for (let job of queued) {
+            this._commandsInFlight--;
+            try {
+                job.onDone("", -1);
+            } catch (error) {
+                Log.error("could not settle cancelled ddcutil work: " + error);
+            }
         }
     }
 
@@ -842,7 +876,7 @@ var DdcBacklight = class DdcBacklight {
                 settled();
                 this._onChanged();
             });
-        });
+        }, "probe");
     }
 
     /*
@@ -959,5 +993,6 @@ var DdcBacklight = class DdcBacklight {
         for (let monitor of this.monitors)
             monitor.destroy();
         this.monitors = [];
+        this._cancelQueuedCommands();
     }
 };
