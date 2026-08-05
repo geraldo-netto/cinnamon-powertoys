@@ -313,6 +313,100 @@ cases["asynchronous metadata batches obey their concurrency limit"] = function (
                       "the queued paths still all settle");
 };
 
+cases["an asynchronous batch deadline settles once and cancels its Gio work"] = function () {
+    let timeout = null;
+    let removed = [];
+    let cancellations = 0;
+    let reply = null;
+    let answers = 0;
+    let value = null;
+    let cancellable = { cancel: () => cancellations++ };
+    let options = {
+        cancellable: cancellable,
+        timeoutMs: 17,
+        addTimeout: (delay, callback) => {
+            Harness.equal(delay, 17, "the configured bound is used");
+            timeout = callback;
+            return 41;
+        },
+        removeTimeout: id => removed.push(id),
+    };
+    let factory = () => ({
+        load_contents_async: function (token, onDone) {
+            Harness.equal(token, cancellable, "the deadline token owns the Gio request");
+            reply = () => onDone(this, {});
+        },
+        load_contents_finish: () => [true, "too late"],
+    });
+
+    let operation = IO.readStringsAsync(["/slow", "/queued"], answer => {
+        answers++;
+        value = answer;
+    }, 1, factory, options);
+    Harness.equal(operation.active, true, "the unfinished batch is cancellable");
+    Harness.equal(typeof timeout, "function", "a deadline was armed");
+    timeout();
+
+    Harness.equal(operation.active, false, "the expired batch is closed");
+    Harness.equal(cancellations, 1, "its filesystem work is cancelled");
+    Harness.deepEqual(value, { "/slow": null, "/queued": null },
+                      "started and queued paths both receive their fallback");
+    Harness.deepEqual(removed, [], "an elapsed source removes itself");
+    reply();
+    operation.cancel();
+    Harness.equal(answers, 1, "neither a late reply nor repeated cancellation answers again");
+};
+
+cases["an asynchronous scope cancels all owned work and rejects later work"] = function () {
+    let scope = new IO.AsyncScope();
+    let cancelled = 0;
+    let removed = [];
+    let answers = [];
+    let options = () => ({
+        scope: scope,
+        cancellable: { cancel: () => cancelled++ },
+        addTimeout: () => 9,
+        removeTimeout: id => removed.push(id),
+    });
+    let stalled = () => ({ load_contents_async: () => {} });
+
+    IO.readStringsAsync(["/one"], value => answers.push(value), 1, stalled, options());
+    IO.readStringsAsync(["/two"], value => answers.push(value), 1, stalled, options());
+    scope.cancel();
+    scope.cancel();
+
+    Harness.equal(cancelled, 2, "every operation is cancelled exactly once");
+    Harness.deepEqual(removed, [9, 9], "their outstanding deadlines are removed");
+    Harness.deepEqual(answers, [{ "/one": null }, { "/two": null }],
+                      "each owner callback is settled");
+
+    let started = false;
+    IO.readStringsAsync(["/later"], value => answers.push(value), 1,
+        () => { started = true; return stalled(); }, options());
+    Harness.equal(started, false, "a cancelled owner starts no new filesystem work");
+    Harness.deepEqual(answers[2], { "/later": null }, "later work is rejected coherently");
+    Harness.equal(cancelled, 3, "the rejected operation's token is cancelled too");
+};
+
+cases["a completed asynchronous batch disarms its deadline"] = function () {
+    let removed = [];
+    let cancelled = 0;
+    let file = {
+        load_contents_async: function (token, onDone) { onDone(this, {}); },
+        load_contents_finish: () => [true, "ready\n"],
+    };
+    let value = Harness.settle(done => IO.readStringsAsync(["/ready"], done, 1,
+        () => file, {
+            cancellable: { cancel: () => cancelled++ },
+            addTimeout: () => 73,
+            removeTimeout: id => removed.push(id),
+        }), "completed bounded read");
+
+    Harness.deepEqual(value, { "/ready": "ready" }, "the ordinary result is retained");
+    Harness.deepEqual(removed, [73], "the unused deadline is removed");
+    Harness.equal(cancelled, 0, "successful work is not cancelled");
+};
+
 cases["readability metadata is queried without reading contents"] = function () {
     scratch(function (directory) {
         write(directory, "present", "x");
@@ -385,6 +479,32 @@ cases["asynchronous listings settle across every filesystem failure boundary"] =
     Harness.deepEqual(Harness.settle(done => IO.listDirAsync("/ignored", done,
         () => { throw new Error("no directory"); }), "file factory failure"), [],
                       "a directory factory failure settles too");
+};
+
+cases["an asynchronous listing deadline settles an unresponsive directory"] = function () {
+    let timeout = null;
+    let cancelled = 0;
+    let answers = 0;
+    let value = null;
+    let directory = {
+        enumerate_children_async: function (attributes, flags, priority, token, onDone) {
+            /* Deliberately never answer, like a wedged filesystem provider. */
+        },
+    };
+    let operation = IO.listDirAsync("/slow", answer => {
+        answers++;
+        value = answer;
+    }, () => directory, {
+        cancellable: { cancel: () => cancelled++ },
+        addTimeout: (delay, callback) => { timeout = callback; return 5; },
+        removeTimeout: () => {},
+    });
+
+    timeout();
+    operation.cancel();
+    Harness.deepEqual(value, [], "a stalled listing becomes the best partial listing");
+    Harness.equal(cancelled, 1, "the enumeration is cancelled");
+    Harness.equal(answers, 1, "the listing settles exactly once");
 };
 
 cases["asking for no nodes at all still answers"] = function () {

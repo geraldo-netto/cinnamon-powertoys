@@ -329,7 +329,7 @@ function pciDeviceNames(addresses) {
  * the main loop. pci.ids is the expensive member of that batch; loading it
  * asynchronously is what keeps a first sensor sweep from pausing the panel.
  */
-function machineNamesAsync(addresses, onDone) {
+function machineNamesAsync(addresses, onDone, ioOptions) {
     let names = {};
     let unique = [];
     for (let address of addresses) {
@@ -392,8 +392,8 @@ function machineNamesAsync(addresses, onDone) {
                 }
             }
             onDone({ cpuName: _cpuName, pciNames: names });
-        }, PCI_IDS_PATHS.length);
-    });
+        }, PCI_IDS_PATHS.length, null, ioOptions);
+    }, undefined, null, ioOptions);
 }
 
 /* ----------------------------------------------------------------- monitors */

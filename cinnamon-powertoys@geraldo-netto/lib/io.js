@@ -16,6 +16,141 @@ const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 
 let _root = "";
+var ASYNC_TIMEOUT_MS = 5000;
+
+/* A backend owns one scope and gives it to every asynchronous filesystem
+ * operation it starts. Destroying the backend can then cancel the complete
+ * tree of work, including operations started by discovery helpers. */
+var AsyncScope = class AsyncScope {
+    constructor() {
+        this._operations = new Set();
+        this._cancelled = false;
+    }
+
+    track(operation) {
+        if (!operation || !operation.active)
+            return operation;
+        if (this._cancelled)
+            operation.cancel();
+        else
+            this._operations.add(operation);
+        return operation;
+    }
+
+    release(operation) {
+        this._operations.delete(operation);
+    }
+
+    cancel() {
+        if (this._cancelled)
+            return;
+        this._cancelled = true;
+        let operations = Array.from(this._operations);
+        this._operations.clear();
+        for (let operation of operations)
+            operation.cancel();
+    }
+};
+
+/* Gio cancellation alone is not a completion guarantee: a broken provider
+ * may never dispatch its callback. The deadline therefore settles the public
+ * callback itself and treats any later Gio answer as stale. */
+function _asyncOperation(onCancel, options) {
+    let configuration = options || {};
+    let active = true;
+    let timer = 0;
+    let cancellable = configuration.cancellable || new Gio.Cancellable();
+    let scope = configuration.scope || null;
+    let removeTimeout = configuration.removeTimeout || (id => GLib.source_remove(id));
+    let addTimeout = configuration.addTimeout || ((delay, callback) =>
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback));
+    let timeout = Number.isFinite(configuration.timeoutMs)
+        ? Math.max(1, configuration.timeoutMs) : ASYNC_TIMEOUT_MS;
+
+    let operation = {
+        get active() {
+            return active;
+        },
+        cancellable: cancellable,
+        finish: () => {
+            if (!active)
+                return false;
+            active = false;
+            if (timer !== 0) {
+                removeTimeout(timer);
+                timer = 0;
+            }
+            if (scope)
+                scope.release(operation);
+            return true;
+        },
+        cancel: () => {
+            if (!operation.finish())
+                return;
+            try {
+                cancellable.cancel();
+            } catch (e) {
+                /* A replacement used by tests or an old Gio may reject it. */
+            }
+            onCancel();
+        },
+    };
+
+    if (scope)
+        scope.track(operation);
+    if (operation.active) {
+        timer = addTimeout(timeout, () => {
+            timer = 0;
+            operation.cancel();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+    return operation;
+}
+
+function _batchAsync(paths, onDone, concurrency, fallback, startOne, options) {
+    let values = {};
+    let unique = Array.from(new Set(paths));
+    let pending = new Set(unique);
+    let nextPath = 0;
+    let active = 0;
+    let limit = Math.max(1, concurrency || unique.length);
+    let operation = _asyncOperation(() => {
+        for (let path of pending)
+            values[path] = fallback;
+        pending.clear();
+        onDone(values);
+    }, options);
+
+    let finish = () => {
+        operation.finish();
+        onDone(values);
+    };
+    let start = () => {
+        while (operation.active && active < limit && nextPath < unique.length) {
+            let path = unique[nextPath++];
+            active++;
+            startOne(path, operation.cancellable, value => {
+                if (!operation.active || !pending.delete(path))
+                    return;
+                values[path] = value;
+                active--;
+                if (pending.size === 0)
+                    finish();
+                else
+                    start();
+            });
+        }
+    };
+
+    if (operation.active) {
+        if (pending.size === 0)
+            finish();
+        else
+            start();
+    }
+    return operation;
+}
 
 function setRoot(path) {
     _root = path || "";
@@ -74,41 +209,13 @@ function readNumber(path) {
  * is missing, root-only or busy is an ordinary state here and not a failure.
  * It is called exactly once, including for an empty list.
  */
-function readStringsAsync(paths, onDone, concurrency, fileFactory) {
-    let values = {};
-    let outstanding = paths.length;
-    let nextPath = 0;
-    let active = 0;
-    let limit = Math.max(1, concurrency || paths.length);
-
-    if (outstanding === 0) {
-        onDone(values);
-        return;
-    }
-
-    let start = () => {
-        while (active < limit && nextPath < paths.length) {
-            let path = paths[nextPath++];
-            active++;
-            load(path);
-        }
-    };
-
-    let load = path => {
-        let settle = contents => {
-            values[path] = contents;
-            active--;
-            outstanding--;
-            if (outstanding === 0)
-                onDone(values);
-            else
-                start();
-        };
-
+function readStringsAsync(paths, onDone, concurrency, fileFactory, options) {
+    return _batchAsync(paths, onDone, concurrency, null,
+        (path, cancellable, settle) => {
         try {
             let file = fileFactory ? fileFactory(resolve(path))
                                    : Gio.File.new_for_path(resolve(path));
-            file.load_contents_async(null, (file, result) => {
+            file.load_contents_async(cancellable, (file, result) => {
                 try {
                     let [ok, contents] = file.load_contents_finish(result);
                     settle(ok ? _decode(contents).trim() : null);
@@ -119,8 +226,7 @@ function readStringsAsync(paths, onDone, concurrency, fileFactory) {
         } catch (e) {
             settle(null);
         }
-    };
-    start();
+    }, options);
 }
 
 /*
@@ -151,45 +257,16 @@ function readLink(path) {
 /* Symlink targets in one bounded asynchronous batch. query_info_async keeps
  * resolving a sysfs class link off Cinnamon's main thread just as
  * readStringsAsync does for node contents. */
-function readLinksAsync(paths, onDone, concurrency, fileFactory) {
-    let values = {};
-    let unique = Array.from(new Set(paths));
-    let outstanding = unique.length;
-    let nextPath = 0;
-    let active = 0;
-    let limit = Math.max(1, concurrency || unique.length);
-
-    if (outstanding === 0) {
-        onDone(values);
-        return;
-    }
-
-    let start = () => {
-        while (active < limit && nextPath < unique.length) {
-            let path = unique[nextPath++];
-            active++;
-            load(path);
-        }
-    };
-
-    let load = path => {
-        let settle = target => {
-            values[path] = target || null;
-            active--;
-            outstanding--;
-            if (outstanding === 0)
-                onDone(values);
-            else
-                start();
-        };
-
+function readLinksAsync(paths, onDone, concurrency, fileFactory, options) {
+    return _batchAsync(paths, onDone, concurrency, null,
+        (path, cancellable, settle) => {
         try {
             let file = fileFactory ? fileFactory(resolve(path))
                                    : Gio.File.new_for_path(resolve(path));
             file.query_info_async(
                 "standard::is-symlink,standard::symlink-target",
                 Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS,
-                GLib.PRIORITY_DEFAULT, null, (file, result) => {
+                GLib.PRIORITY_DEFAULT, cancellable, (file, result) => {
                     try {
                         let info = file.query_info_finish(result);
                         settle(info.get_is_symlink() ? info.get_symlink_target() : null);
@@ -200,48 +277,20 @@ function readLinksAsync(paths, onDone, concurrency, fileFactory) {
         } catch (e) {
             settle(null);
         }
-    };
-    start();
+    }, options);
 }
 
 /* Existence for a bounded batch, without opening any of the nodes and without
  * making the shell thread wait on sysfs metadata. */
-function pathsExistAsync(paths, onDone, concurrency, fileFactory) {
-    let values = {};
-    let unique = Array.from(new Set(paths));
-    let outstanding = unique.length;
-    let nextPath = 0;
-    let active = 0;
-    let limit = Math.max(1, concurrency || unique.length);
-
-    if (outstanding === 0) {
-        onDone(values);
-        return;
-    }
-
-    let start = () => {
-        while (active < limit && nextPath < unique.length) {
-            let path = unique[nextPath++];
-            active++;
-            query(path);
-        }
-    };
-    let query = path => {
-        let settle = exists => {
-            values[path] = exists;
-            active--;
-            outstanding--;
-            if (outstanding === 0)
-                onDone(values);
-            else
-                start();
-        };
+function pathsExistAsync(paths, onDone, concurrency, fileFactory, options) {
+    return _batchAsync(paths, onDone, concurrency, false,
+        (path, cancellable, settle) => {
         try {
             let file = fileFactory ? fileFactory(resolve(path))
                                    : Gio.File.new_for_path(resolve(path));
             file.query_info_async(
                 "standard::type", Gio.FileQueryInfoFlags.NONE,
-                GLib.PRIORITY_DEFAULT, null, (file, result) => {
+                GLib.PRIORITY_DEFAULT, cancellable, (file, result) => {
                     try {
                         file.query_info_finish(result);
                         settle(true);
@@ -252,8 +301,7 @@ function pathsExistAsync(paths, onDone, concurrency, fileFactory) {
         } catch (e) {
             settle(false);
         }
-    };
-    start();
+    }, options);
 }
 
 function exists(path) {
@@ -346,13 +394,21 @@ function listDir(path) {
  * filesystem. Entries arrive in bounded batches: a machine with a crowded
  * hwmon tree yields between batches instead of monopolising the compositor.
  */
-function listDirAsync(path, onDone, fileFactory) {
+function listDirAsync(path, onDone, fileFactory, options) {
     let names = [];
+    let enumerator = null;
+    let operation = _asyncOperation(() => {
+        onDone(names.sort(naturalCompare));
+    }, options);
 
-    let finish = () => onDone(names.sort(naturalCompare));
-    let close = enumerator => {
+    let finish = () => {
+        if (operation.finish())
+            onDone(names.sort(naturalCompare));
+    };
+    let close = handle => {
         try {
-            enumerator.close_async(GLib.PRIORITY_DEFAULT, null, (source, result) => {
+            handle.close_async(GLib.PRIORITY_DEFAULT, operation.cancellable,
+                (source, result) => {
                 try {
                     source.close_finish(result);
                 } catch (e) {
@@ -366,12 +422,15 @@ function listDirAsync(path, onDone, fileFactory) {
     };
 
     try {
+        if (!operation.active)
+            return operation;
         let directory = fileFactory ? fileFactory(resolve(path))
                                     : Gio.File.new_for_path(resolve(path));
         directory.enumerate_children_async(
             "standard::name", Gio.FileQueryInfoFlags.NONE,
-            GLib.PRIORITY_DEFAULT, null, (source, result) => {
-                let enumerator;
+            GLib.PRIORITY_DEFAULT, operation.cancellable, (source, result) => {
+                if (!operation.active)
+                    return;
                 try {
                     enumerator = source.enumerate_children_finish(result);
                 } catch (e) {
@@ -381,8 +440,11 @@ function listDirAsync(path, onDone, fileFactory) {
 
                 let next = () => {
                     try {
-                        enumerator.next_files_async(64, GLib.PRIORITY_DEFAULT, null,
+                        enumerator.next_files_async(64, GLib.PRIORITY_DEFAULT,
+                            operation.cancellable,
                             (files, nextResult) => {
+                                if (!operation.active)
+                                    return;
                                 let entries;
                                 try {
                                     entries = files.next_files_finish(nextResult);
@@ -407,4 +469,5 @@ function listDirAsync(path, onDone, fileFactory) {
     } catch (e) {
         finish();
     }
+    return operation;
 }

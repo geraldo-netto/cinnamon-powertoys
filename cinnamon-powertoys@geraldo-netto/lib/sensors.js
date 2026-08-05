@@ -422,7 +422,7 @@ function _directoryInventory() {
     return directories;
 }
 
-function _listDirectoriesAsync(paths, directories, onDone) {
+function _listDirectoriesAsync(paths, directories, onDone, ioOptions) {
     let unique = Array.from(new Set(paths));
     let outstanding = unique.length;
     if (outstanding === 0) {
@@ -435,14 +435,14 @@ function _listDirectoriesAsync(paths, directories, onDone) {
             outstanding--;
             if (outstanding === 0)
                 onDone();
-        });
+        }, null, ioOptions);
     }
 }
 
 /* Directory enumeration is asynchronous too, and one bounded listing is made
  * per directory. The arrays form one immutable inventory for the rest of the
  * sweep, so hardware moving during it is caught by the next topology check. */
-function _directoryInventoryAsync(onDone) {
+function _directoryInventoryAsync(onDone, ioOptions) {
     let directories = {};
     _listDirectoriesAsync([HWMON_DIR, THERMAL_DIR, POWERCAP_DIR], directories, () => {
         let children = [];
@@ -452,8 +452,8 @@ function _directoryInventoryAsync(onDone) {
         }
         for (let entry of directories[THERMAL_DIR])
             children.push(THERMAL_DIR + "/" + entry);
-        _listDirectoriesAsync(children, directories, () => onDone(directories));
-    });
+        _listDirectoriesAsync(children, directories, () => onDone(directories), ioOptions);
+    }, ioOptions);
 }
 
 function _metadataPaths(directories) {
@@ -810,7 +810,7 @@ function _topologyFromInventory(directories, readString, readLink) {
  * link route as discovery. Values that move on every reading are excluded;
  * everything retained is something discovery uses to classify or name a
  * sensor. Nothing here blocks Cinnamon's main thread. */
-function topologyKeyAsync(onDone) {
+function topologyKeyAsync(onDone, ioOptions) {
     _directoryInventoryAsync(directories => {
         let metadata = null;
         let links = null;
@@ -824,17 +824,17 @@ function topologyKeyAsync(onDone) {
         IO.readStringsAsync(_metadataPaths(directories), values => {
             metadata = values;
             finish();
-        }, 32);
+        }, 32, null, ioOptions);
         IO.readLinksAsync(_linkPaths(directories), values => {
             links = values;
             finish();
-        }, 32);
-    });
+        }, 32, null, ioOptions);
+    }, ioOptions);
 }
 
 /* One complete sensor snapshot, assembled only after every asynchronous part
  * has answered. Until this callback, callers keep using the prior snapshot. */
-function discoverSnapshotAsync(onDone) {
+function discoverSnapshotAsync(onDone, ioOptions) {
     _directoryInventoryAsync(directories => {
         let metadata = null;
         let links = null;
@@ -855,21 +855,21 @@ function discoverSnapshotAsync(onDone) {
                         directories[POWERCAP_DIR] || [], read),
                     topology: _topologyFromInventory(directories, read, readLink),
                 });
-            });
+            }, ioOptions);
         };
         IO.readStringsAsync(_metadataPaths(directories), values => {
             metadata = values;
             finish();
-        }, 32);
+        }, 32, null, ioOptions);
         IO.readLinksAsync(_linkPaths(directories), values => {
             links = values;
             finish();
-        }, 32);
-    });
+        }, 32, null, ioOptions);
+    }, ioOptions);
 }
 
-function discoverSensorsAsync(onDone) {
-    discoverSnapshotAsync(snapshot => onDone(snapshot.sensors));
+function discoverSensorsAsync(onDone, ioOptions) {
+    discoverSnapshotAsync(snapshot => onDone(snapshot.sensors), ioOptions);
 }
 
 /* Turns a monotonic microjoule counter into watts. */
@@ -965,6 +965,8 @@ var SensorSet = class SensorSet {
         this._refreshChanged = false;
         this._refreshWaiters = [];
         this._destroyed = false;
+        this._ioScope = new IO.AsyncScope();
+        this._ioOptions = { scope: this._ioScope };
 
         if (this._asynchronous)
             this.discoverAsync();
@@ -1011,7 +1013,7 @@ var SensorSet = class SensorSet {
                 this._refreshPending = false;
                 this._startRefresh();
             }
-        });
+        }, this._ioOptions);
     }
 
     _adopt(found, counters, topology, directPowers) {
@@ -1085,7 +1087,7 @@ var SensorSet = class SensorSet {
                 return;
             }
             this.discoverAsync(() => this._finishRefresh(true));
-        });
+        }, this._ioOptions);
     }
 
     _finishRefresh(changed) {
@@ -1279,7 +1281,7 @@ var SensorSet = class SensorSet {
                 return;
             }
             finish(this._assemble(keep, path => IO.toNumber(values[path]), found));
-        });
+        }, 32, null, this._ioOptions);
     }
 
     /* What was discovered, as one thing that can be held on to. */
@@ -1333,6 +1335,7 @@ var SensorSet = class SensorSet {
         if (this._destroyed)
             return;
         this._destroyed = true;
+        this._ioScope.cancel();
         this._onChanged = function () {};
         this._discovering = false;
         this._discoverAgain = false;

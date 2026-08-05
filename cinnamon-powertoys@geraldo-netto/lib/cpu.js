@@ -79,6 +79,8 @@ var CpuControl = class CpuControl {
         this._refreshWaiters = [];
         this._stateGeneration = 0;
         this._destroyed = false;
+        this._ioScope = new IO.AsyncScope();
+        this._ioOptions = { scope: this._ioScope };
 
         this.policies = [];
         this.reference = null;
@@ -220,16 +222,16 @@ var CpuControl = class CpuControl {
             IO.readStringsAsync(valuePaths, answer => {
                 values = answer;
                 finish();
-            }, 32);
+            }, 32, null, this._ioOptions);
             IO.pathsExistAsync(existencePaths, answer => {
                 existence = answer;
                 finish();
-            }, 32);
+            }, 32, null, this._ioOptions);
             Hardware.machineNamesAsync([], answer => {
                 names = answer;
                 finish();
-            });
-        });
+            }, this._ioOptions);
+        }, null, this._ioOptions);
     }
 
     _stateFrom(policies, values, existence, model) {
@@ -375,7 +377,7 @@ var CpuControl = class CpuControl {
             this._adoptDynamic(this._dynamicFrom(
                 policies, energyPolicies, boostPath, boostInverted, read));
             done(true);
-        }, 32);
+        }, 32, null, this._ioOptions);
     }
 
     get available() {
@@ -501,6 +503,7 @@ var CpuControl = class CpuControl {
 
     destroy() {
         this._destroyed = true;
+        this._ioScope.cancel();
         this._stateGeneration++;
         this._refreshPending = false;
         this._refreshWaiters = [];
