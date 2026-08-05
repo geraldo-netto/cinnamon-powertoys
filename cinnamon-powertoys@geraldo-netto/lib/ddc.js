@@ -276,17 +276,6 @@ var DdcMonitor = class DdcMonitor {
         this._held = null;
     }
 
-    /*
-     * Whether ddcutil is talking to this monitor right now, either way round.
-     *
-     * The flag has always existed to keep this monitor's own calls off each
-     * other's toes; what reads it from outside is the group, which has to
-     * know whether a probe would land on top of one. See DdcBacklight.busy.
-     */
-    get busy() {
-        return this._busy;
-    }
-
     /* Kept across a re-detection when this is still the same physical monitor:
      * the display number ddcutil hands out is a position in its own list and
      * moves when something else is unplugged. The bus locates the socket; EDID
@@ -522,16 +511,14 @@ var DdcBacklight = class DdcBacklight {
 
         this._onChanged = onChanged || function () {};
         this._runCommand = run || runCommand;
-        /* Counts commands independently of the monitor objects that started
-         * them. stop() removes those objects immediately, but their ddcutil
-         * processes still own the buses until their callbacks arrive. */
+        /* The scheduler owns every accepted command. The count includes its
+         * active job and queue, independently of monitor lifetimes. */
         this._commandsInFlight = 0;
         this._activeCommand = null;
         this._commandQueue = [];
         this._run = (argv, onDone, kind) => this._invoke(argv, onDone, kind);
         this._started = false;
         this._startPending = false;
-        this._detecting = false;
         /* Which probe is the current one; see _detect. */
         this._probe = null;
         this._detectFailures = 0;
@@ -577,7 +564,6 @@ var DdcBacklight = class DdcBacklight {
         this._started = false;
         this._startPending = false;
         this._probe = null;
-        this._detecting = false;
         for (let monitor of this.monitors)
             monitor.destroy();
         this.monitors = [];
@@ -593,34 +579,16 @@ var DdcBacklight = class DdcBacklight {
         this._onChanged();
     }
 
-    /*
-     * Whether anything of this machine's is on the I2C bus at this moment.
-     *
-     * There are two conversations here and they were guarded separately: a
-     * probe against another probe (_detecting), and one monitor against its own
-     * next read or write (_busy, per monitor). Nothing guarded a probe against
-     * the reads, and the former menu path lined those two up as a matter of
-     * course: it sent a getvcp to every monitor, then started the watch whose
-     * first probe went out at once. A drag can still meet the recurring watch
-     * the same way: a setvcp in flight, a tick, a detect.
-     *
-     * A detect walks every bus, so it collides with whatever is on one of them,
-     * and two ddcutil talking to one monitor is how ddcutil comes back with
-     * nothing - PT-135 and PT-145c met a third time in the former menu-open
-     * refresh path. It heals silently, because a monitor that has answered
-     * before keeps its last value through a read that fails, which is exactly
-     * what makes it worth closing rather than watching for.
-     *
-     * So the two guards become one question, asked of the whole machine.
-     */
+    /* The scheduler is the single DDC ownership invariant: if this is true,
+     * one command is active or waiting and no independent path may call the
+     * transport. It covers detect, reads and writes across every monitor. */
     get busy() {
         return this._commandsInFlight > 0;
     }
 
-    /* Every command crosses this boundary, including commands belonging to a
-     * monitor stop() has removed. The decrement happens after the consumer has
-     * processed its answer, so a detect callback may start its reads without a
-     * moment where the shared bus appears idle between them. */
+    /* Every command crosses this boundary. Writes are inserted before
+     * automatic reads and probes while preserving order within each class;
+     * only _drainCommands calls the transport. */
     _invoke(argv, onDone, kind) {
         let job = { argv: argv, onDone: onDone, kind: kind || "read" };
         this._commandsInFlight++;
@@ -785,36 +753,15 @@ var DdcBacklight = class DdcBacklight {
         return this._missingConfirmations >= MISSING_CONFIRMATIONS;
     }
 
-    /*
-     * A probe is the detect and the reads it starts, and it is not over until
-     * the reads are back.
-     *
-     * _detecting used to come down the moment the detect answered, with the
-     * getvcp calls that same answer had just sent still out. That was harmless
-     * while the only thing asking was a monitor being plugged in, which the
-     * desktop says exactly once; a caller that asks every second means the next
-     * ask sends a detect across every bus while the last probe is still reading
-     * one of them, and two ddcutil talking to one monitor is how ddcutil comes
-     * back with nothing - the same collision PT-135 met from the other end.
-     *
-     * So the flag covers the whole probe. redetect retains one request that
-     * lands inside it: recurring asks coalesce, while a connector signal that
-     * occurs only once is still acted on after the bus is free.
-     *
-     * Which probe is finishing has to be checked, because stop() disowns one
-     * rather than waiting for it: switching the setting off and straight back
-     * on leaves the old probe to answer whenever it answers, and it must not
-     * lower the flag belonging to the probe that has started since.
-     */
+    /* A probe is detect plus the reads it schedules. The command boundary
+     * keeps that sequence exclusive, while redetect retains one later request.
+     * The token rejects a probe stop() disowned before its answer arrived. */
     _detect() {
         let probe = {};
         this._probe = probe;
-        this._detecting = true;
         let settled = () => {
-            if (this._probe === probe) {
-                this._detecting = false;
+            if (this._probe === probe)
                 this._drainRedetect();
-            }
         };
 
         this._run(["ddcutil", "--brief", "detect"], (output, status) => {
@@ -879,12 +826,9 @@ var DdcBacklight = class DdcBacklight {
         }, "probe");
     }
 
-    /*
-     * Every monitor at once rather than one after another. They are on
-     * separate buses and do not wait for each other, and a queue of ten
-     * monitors that each take a fifth of a second is two seconds of a menu
-     * filling in a row at a time.
-     */
+    /* Queue one read per monitor. DdcBacklight's boundary runs them one at a
+     * time because ddcutil itself takes whole-machine locks; this count keeps
+     * the snapshot atomic even though individual monitor callbacks settle. */
     refresh(onDone) {
         let done = onDone || function () {};
         let pending = this.monitors.length;
@@ -916,10 +860,9 @@ var DdcBacklight = class DdcBacklight {
     /*
      * Ask every monitor to move, and answer once the last of them has.
      *
-     * They are on separate buses and do not wait for each other, so the count
-     * is the only thing that knows when the group has finished - and each
-     * monitor answers exactly once whether its write went out, was replaced by
-     * a later one or was dropped with the monitor. See DdcMonitor.setPercentage.
+     * The scheduler runs them serially, and this count knows when the complete
+     * group has finished. Each monitor answers exactly once whether its write
+     * went out, was replaced, or was dropped. See DdcMonitor.setPercentage.
      *
      * Every monitor that has ever answered, which is not the same as every
      * monitor in the list. One that has never answered a read has no
@@ -987,7 +930,6 @@ var DdcBacklight = class DdcBacklight {
         this._started = false;
         this._startPending = false;
         this._probe = null;
-        this._detecting = false;
         this.available = false;
         this._redetectPending = false;
         for (let monitor of this.monitors)

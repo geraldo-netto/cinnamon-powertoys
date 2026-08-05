@@ -150,16 +150,15 @@ function started(output, status, brightness) {
 
 var cases = {};
 
-cases["a monitor exposes whether its own bus call is in flight"] = function () {
+cases["a monitor keeps its local scheduling state private"] = function () {
     let finish = null;
     let monitor = new Ddc.DdcMonitor(
         { number: "1", bus: "/dev/i2c-4", name: "Monitor" },
         (argv, onDone) => { finish = onDone; });
-    Harness.equal(monitor.busy, false, "idle before a read");
+    Harness.equal(monitor.busy, undefined, "the group has the only public busy state");
     monitor.refresh();
-    Harness.equal(monitor.busy, true, "busy while ddcutil owns the monitor");
     finish("VCP 10 C 40 100\n", 0);
-    Harness.equal(monitor.busy, false, "idle after the reply");
+    Harness.equal(monitor.available, true, "private serialization still completes the read");
 };
 
 cases["the shared DDC command boundary settles throws and duplicate replies"] = function () {
@@ -563,7 +562,7 @@ cases["a re-detection waits for every monitor read"] = function () {
 
     /* Reproduce the former menu ordering directly to retain the bus guard. */
     control.refresh();
-    Harness.equal(control.busy, true, "two reads are out");
+    Harness.equal(control.busy, true, "the read batch is queued or active");
     control.redetect();
     Harness.equal(run.waiting.length, 1, "so only the first serialized read is on the bus");
 
