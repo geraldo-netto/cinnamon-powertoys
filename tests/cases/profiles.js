@@ -16,6 +16,7 @@
 const Fuzz = imports.fuzz;
 const Harness = imports.harness;
 
+const Log = Harness.requireXlet("./lib/log.js");
 const Profiles = Harness.requireXlet("./lib/profiles.js");
 
 const HADESS = "net.hadess.PowerProfiles";
@@ -346,25 +347,39 @@ cases["a name that answers with an error is passed over"] = function () {
 
 cases["a failed name watch is probed instead of treated as absent"] = function () {
     let system = ownerBus({ [UPOWER]: daemon() });
+    let timers = retryTimers(system);
     let watches = 0;
     system.watch = function (name, onAppeared, onVanished) {
         watches++;
-        if (name === UPOWER)
+        if (name === UPOWER && watches === 2)
             throw new Error("watch unavailable");
         system.watched.push({ name: name, appeared: onAppeared, vanished: onVanished });
-        onVanished();
-        return 41;
+        if (name === UPOWER)
+            onAppeared();
+        else
+            onVanished();
+        return name === UPOWER ? 42 : 41;
     };
 
-    let client = new Profiles.PowerProfilesClient(null, system);
-    Harness.equal(client.available, true, "the daemon behind the failed watch is discovered");
-    Harness.equal(client.busName, UPOWER, "the failed watcher name was probed directly");
-    Harness.deepEqual(system.asked, [UPOWER],
-                      "confirmed absence stays skipped while unknown ownership is searched");
-    Harness.deepEqual(system.watched.map(entry => entry.name), [HADESS],
-                      "the successful watch remains active");
-    client.destroy();
-    Harness.deepEqual(system.unwatched, [41], "the partial watch set is still released");
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    try {
+        let client = new Profiles.PowerProfilesClient(null, system);
+        Harness.equal(client.available, true, "the daemon behind the failed watch is discovered");
+        Harness.equal(client.busName, UPOWER, "the failed watcher name was probed directly");
+        Harness.deepEqual(system.asked, [UPOWER],
+                          "confirmed absence stays skipped while unknown ownership is searched");
+        Harness.deepEqual(system.watched.map(entry => entry.name), [HADESS],
+                          "the successful watch remains active");
+        timers.fire();
+        Harness.deepEqual(system.watched.map(entry => entry.name), [HADESS, UPOWER],
+                          "the missing backend watch is restored");
+        Harness.equal(lines.length, 1, "the registration incident is logged once");
+        client.destroy();
+    } finally {
+        Log.setSink(null);
+    }
+    Harness.deepEqual(system.unwatched, [41, 42], "both recovered watches are released");
 };
 
 cases["a daemon that answers after the client is gone is not connected to"] = function () {

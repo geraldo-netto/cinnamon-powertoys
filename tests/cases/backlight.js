@@ -220,6 +220,37 @@ cases["the owner watch performs the only production startup read"] = function ()
     Harness.deepEqual(owner.unwatched, [19], "the injected owner watch is released");
 };
 
+cases["a failed backlight owner watch is restored"] = function () {
+    let stub = proxy({ GetPercentage: 42 });
+    let owner = ownerWatcher();
+    let timers = retryTimers(owner);
+    let install = owner.watch;
+    let attempts = 0;
+    owner.watch = function (appeared, vanished) {
+        attempts++;
+        if (attempts === 1)
+            throw new Error("session bus unavailable");
+        return install(appeared, vanished);
+    };
+    let lines = [];
+    let screen;
+    Log.setSink(line => lines.push(line));
+    try {
+        screen = new Backlight.BacklightControl(
+            Backlight.SCREEN, null, null,
+            (xml, onDone) => onDone(stub, null), owner);
+        Harness.equal(screen.available, true, "direct discovery preserves the current value");
+        timers.fire();
+        Harness.equal(attempts, 2, "the missing owner edge is installed later");
+        Harness.equal(lines.length, 1, "the registration incident is logged once");
+    } finally {
+        Log.setSink(null);
+        if (screen)
+            screen.destroy();
+    }
+    Harness.deepEqual(owner.unwatched, [19], "the recovered watch is released");
+};
+
 cases["teardown cancels an in-flight proxy initialization"] = function () {
     let owner = ownerWatcher();
     let pending = null;

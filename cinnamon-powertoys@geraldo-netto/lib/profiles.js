@@ -11,6 +11,9 @@
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 
+const Log = require("./lib/log.js");
+const OwnerWatch = require("./lib/owner-watch.js");
+
 const BACKENDS = [
     { name: "net.hadess.PowerProfiles", path: "/net/hadess/PowerProfiles" },
     { name: "org.freedesktop.UPower.PowerProfiles", path: "/org/freedesktop/UPower/PowerProfiles" },
@@ -231,7 +234,7 @@ var PowerProfilesClient = class PowerProfilesClient {
         this._bus = bus || systemBus();
         this._proxy = null;
         this._propSignalId = 0;
-        this._watchIds = [];
+        this._ownerWatches = [];
         this._ownerAware = this._bus.watchReportsInitialState === true;
         this._ownerStates = BACKENDS.map(() => null);
         this._setCall = null;
@@ -245,26 +248,42 @@ var PowerProfilesClient = class PowerProfilesClient {
         this._connectCall = null;
         this._retryTimerId = 0;
         this._retryDelay = RETRY_INITIAL_MS;
+        this._failures = new Log.FailureLog();
         /* Built on demand and dropped whenever the daemon says anything has
          * changed - see snapshot(). */
         this._snapshot = null;
 
         for (let index = 0; index < BACKENDS.length; index++) {
             let backend = BACKENDS[index];
-            try {
-                let id = this._bus.watch(
-                    backend.name,
-                    () => this._ownerChanged(index, true),
-                    () => this._ownerChanged(index, false));
-                if (id)
-                    this._watchIds.push(id);
-            } catch (e) {
-                /* One unavailable watcher must not discard an earlier one or
-                 * prevent the current daemon from being used. The initial
-                 * search below still supplies a complete present-time state. */
-                if (this._ownerAware)
-                    this._ownerStates[index] = OWNER_WATCH_FAILED;
-            }
+            let watcher = new OwnerWatch.ResilientOwnerWatch({
+                install: (appeared, vanished) =>
+                    this._bus.watch(backend.name, appeared, vanished),
+                release: id => this._bus.unwatch(id),
+                appeared: () => this._ownerChanged(index, true),
+                vanished: () => this._ownerChanged(index, false),
+                onInstalled: reported => {
+                    if (this._ownerAware && !reported)
+                        this._ownerStates[index] = null;
+                },
+                onFailed: () => {
+                    /* Unknown ownership stays probeable while this missing
+                     * edge is being restored. */
+                    if (this._ownerAware)
+                        this._ownerStates[index] = OWNER_WATCH_FAILED;
+                },
+                failures: this._failures,
+                failureKey: "owner-watch:" + backend.name,
+                failureMessage: "cannot watch " + backend.name + " ownership",
+                timers: {
+                    add: (delay, callback) => this._bus.timeoutAdd
+                        ? this._bus.timeoutAdd(delay, callback)
+                        : GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback),
+                    remove: id => this._bus.removeTimer
+                        ? this._bus.removeTimer(id) : GLib.source_remove(id),
+                },
+            });
+            this._ownerWatches.push(watcher);
+            watcher.start();
         }
 
         /* Install every viable edge listener before taking the initial state,
@@ -654,13 +673,8 @@ var PowerProfilesClient = class PowerProfilesClient {
         this._cancelConnect();
         this._cancelProfileWrites(null, false);
         this._disconnectProxy();
-        for (let id of this._watchIds) {
-            try {
-                this._bus.unwatch(id);
-            } catch (e) {
-                /* already gone */
-            }
-        }
-        this._watchIds = [];
+        for (let watcher of this._ownerWatches)
+            watcher.stop();
+        this._ownerWatches = [];
     }
 };

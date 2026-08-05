@@ -433,6 +433,7 @@ cinnamon-powertoys@geraldo-netto/
 ├── lib/power-supply.js     charge limit and ACPI platform profile nodes
 ├── lib/upower.js           UPower D-Bus client
 ├── lib/profiles.js         power-profiles-daemon client
+├── lib/owner-watch.js      recoverable D-Bus ownership watches
 ├── lib/privileged.js       finding, running and queueing the pkexec helper
 │
 │   what is made of a reading; no widget, no shell, all of it checkable

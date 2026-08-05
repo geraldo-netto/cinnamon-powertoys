@@ -12,6 +12,7 @@ const UPowerGlib = imports.gi.UPowerGlib;
 
 const Format = require("./lib/format.js");
 const Log = require("./lib/log.js");
+const OwnerWatch = require("./lib/owner-watch.js");
 
 var BUS_NAME = "org.freedesktop.UPower";
 var MANAGER_PATH = "/org/freedesktop/UPower";
@@ -232,7 +233,7 @@ var UPowerMonitor = class UPowerMonitor {
         this._busSignalIds = [];
         this._propSignalId = 0;
         this._displaySignalId = 0;
-        this._watchId = 0;
+        this._ownerWatch = null;
         this._generation = 0;
         this._connecting = false;
         this._managerRequest = null;
@@ -248,17 +249,28 @@ var UPowerMonitor = class UPowerMonitor {
         this._watchDegraded = false;
 
         if (this._bus.watch) {
-            try {
-                this._watchId = this._bus.watch(() => this._onNameAppeared(),
-                                                () => this._onNameVanished());
-            } catch (e) {
-                Log.error("cannot watch UPower: " + e);
-                this._watchDegraded = true;
-                /* Ownership edges are optional for the initial state. Keep
-                 * the direct discovery path so a watcher setup failure does
-                 * not hide a perfectly usable daemon for this whole run. */
+            this._ownerWatch = new OwnerWatch.ResilientOwnerWatch({
+                install: (appeared, vanished) => this._bus.watch(appeared, vanished),
+                release: id => this._bus.unwatch(id),
+                appeared: () => this._onNameAppeared(),
+                vanished: () => this._onNameVanished(),
+                onInstalled: () => { this._watchDegraded = false; },
+                onFailed: () => { this._watchDegraded = true; },
+                failures: this._failures,
+                failureKey: "owner-watch",
+                failureMessage: "cannot watch UPower",
+                timers: {
+                    add: (delay, callback) => this._bus.timeoutAdd
+                        ? this._bus.timeoutAdd(delay, callback)
+                        : GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback),
+                    remove: id => this._bus.removeTimer
+                        ? this._bus.removeTimer(id) : GLib.source_remove(id),
+                },
+            });
+            /* Ownership edges are optional for the initial state. Keep the
+             * direct discovery path while registration is degraded. */
+            if (!this._ownerWatch.start())
                 this._connect();
-            }
         } else {
             this._connect();
         }
@@ -833,14 +845,8 @@ var UPowerMonitor = class UPowerMonitor {
     destroy() {
         this.destroyed = true;
         this._cancelRetry();
-        if (this._watchId && this._bus.unwatch) {
-            try {
-                this._bus.unwatch(this._watchId);
-            } catch (e) {
-                /* already unwatched */
-            }
-        }
-        this._watchId = 0;
+        if (this._ownerWatch)
+            this._ownerWatch.stop();
         /* Every other backend here lowers this on the way out, and a reading
          * taken from a torn down monitor would otherwise say UPower is
          * available and hand back no devices at all. */

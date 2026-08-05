@@ -61,17 +61,11 @@ cases["the production owner adapter preserves edges and cleanup"] = function () 
     unwatch();
     Harness.deepEqual(removed, [29], "the returned cleanup releases the watch");
 
-    let lines = [];
-    Log.setSink(line => lines.push(line));
-    try {
-        Harness.equal(Bluez.systemNameWatcher(() => {}, () => {}, {
+    Harness.throws(() => {
+        Bluez.systemNameWatcher(() => {}, () => {}, {
             bus_watch_name: () => { throw new Error("watch failed"); },
-        }), null, "a failed watch has no cleanup token");
-    } finally {
-        Log.setSink(null);
-    }
-    Harness.equal(lines.length, 1, "the setup failure is recorded");
-    Harness.ok(lines[0].indexOf("watch failed") >= 0, "the original failure is retained");
+        });
+    }, "the transport preserves setup failures for the resilient boundary");
 };
 
 function signalBus() {
@@ -205,7 +199,8 @@ cases["a failed BlueZ owner watcher is retried until wiring is complete"] = func
     let timers = fakeTimers();
     let reads = 0;
     let control;
-    Log.setSink(() => {});
+    let lines = [];
+    Log.setSink(line => lines.push(line));
     try {
         control = new Bluez.BluezBatteries(null,
             (path, iface, method, onDone) => { reads++; onDone(tree()); },
@@ -223,6 +218,7 @@ cases["a failed BlueZ owner watcher is retried until wiring is complete"] = func
             control.destroy();
     }
     Harness.equal(unwatched, 1, "the recovered watcher is released at teardown");
+    Harness.equal(lines.length, 1, "the continuous registration failure is logged once");
 };
 
 function nameWatcher() {

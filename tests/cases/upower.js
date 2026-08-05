@@ -687,14 +687,48 @@ cases["degraded UPower discovery retries without ownership edges"] = function ()
         let monitor = monitorOn(bus);
         Harness.equal(monitor._ownerPresent, null,
                       "degraded discovery does not invent an ownership edge");
-        Harness.equal(Object.keys(timers.pending).length, 1,
-                      "the transient direct-discovery failure arms a retry");
-        timers.fire();
+        let pending = Object.keys(timers.pending).map(Number);
+        Harness.equal(pending.length, 2,
+                      "ownership and direct discovery each retain their recovery path");
+        let managerRetry = Math.max.apply(null, pending);
+        let callback = timers.pending[managerRetry];
+        delete timers.pending[managerRetry];
+        callback();
         Harness.equal(attempts, 2, "the degraded path tries the manager again");
         Harness.equal(monitor.available, true, "the retry recovers UPower");
         Harness.equal(monitor.snapshot().length, 1, "and publishes its devices");
         monitor.destroy();
     });
+};
+
+cases["a failed UPower owner watch is restored after direct discovery"] = function () {
+    let manager = managerFor([BAT0]);
+    let bus = busFor(manager, {
+        [BAT0]: proxyFor(),
+        [DISPLAY]: proxyFor(),
+    }, { watch: true });
+    let timers = retryTimers(bus);
+    let attempts = 0;
+    bus.watch = function (appeared, vanished) {
+        attempts++;
+        if (attempts === 1)
+            throw new Error("owner watch failed");
+        bus.onAppeared = appeared;
+        bus.onVanished = vanished;
+        appeared();
+        return 88;
+    };
+
+    logging(function (lines) {
+        let monitor = monitorOn(bus);
+        Harness.equal(monitor.available, true, "direct discovery preserves current data");
+        timers.fire();
+        Harness.equal(attempts, 2, "the missing lifecycle edge is registered later");
+        Harness.equal(monitor._ownerPresent, true, "the restored watch reports current ownership");
+        Harness.equal(lines.length, 1, "the setup incident has one diagnostic");
+        monitor.destroy();
+    });
+    Harness.deepEqual(bus.unwatched, [88], "the recovered watch is released");
 };
 
 cases["a manager answering after the applet has gone is dropped"] = function () {

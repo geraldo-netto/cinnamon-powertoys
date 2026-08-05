@@ -13,6 +13,7 @@ const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 
 const Log = require("./lib/log.js");
+const OwnerWatch = require("./lib/owner-watch.js");
 
 var BUS_NAME = "org.cinnamon.SettingsDaemon.Power";
 var OBJECT_PATH = "/org/cinnamon/SettingsDaemon/Power";
@@ -151,7 +152,7 @@ var BacklightControl = class BacklightControl {
         this._xml = INTERFACES[kind] || null;
         this._proxy = null;
         this._signalId = 0;
-        this._watchId = 0;
+        this._ownerWatch = null;
         this._ownerPresent = false;
         this._retryTimerId = 0;
         this._retryDelay = RETRY_INITIAL_MS;
@@ -178,14 +179,29 @@ var BacklightControl = class BacklightControl {
          * permanent hardware decision. */
         let watching = false;
         if (!connect || owner) {
-            try {
-                let install = owner ? owner.watch : watchOwner;
-                this._watchId = install(() => this._onOwnerAppeared(),
-                                        () => this._onOwnerVanished());
-                watching = !!this._watchId;
-            } catch (e) {
-                /* The direct connection below still gets one chance. */
-            }
+            let install = owner ? owner.watch : watchOwner;
+            this._ownerWatch = new OwnerWatch.ResilientOwnerWatch({
+                install: (appeared, vanished) => install(appeared, vanished),
+                release: id => {
+                    if (owner && owner.unwatch)
+                        owner.unwatch(id);
+                    else
+                        unwatchOwner(id);
+                },
+                appeared: () => this._onOwnerAppeared(),
+                vanished: () => this._onOwnerVanished(),
+                failures: this._failures,
+                failureKey: "owner-watch",
+                failureMessage: "cannot watch backlight service ownership",
+                timers: {
+                    add: (delay, callback) => owner && owner.timeoutAdd
+                        ? owner.timeoutAdd(delay, callback)
+                        : GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback),
+                    remove: id => owner && owner.removeTimer
+                        ? owner.removeTimer(id) : GLib.source_remove(id),
+                },
+            });
+            watching = this._ownerWatch.start();
         }
 
         /* Gio's owner watch always reports the current state. Let its initial
@@ -668,17 +684,8 @@ var BacklightControl = class BacklightControl {
     destroy() {
         this.destroyed = true;
         this._cancelRetry();
-        if (this._watchId) {
-            try {
-                if (this._owner && this._owner.unwatch)
-                    this._owner.unwatch(this._watchId);
-                else
-                    unwatchOwner(this._watchId);
-            } catch (e) {
-                /* already unwatched */
-            }
-        }
-        this._watchId = 0;
+        if (this._ownerWatch)
+            this._ownerWatch.stop();
         this._dropProxy();
         this.available = false;
     }

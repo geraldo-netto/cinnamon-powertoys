@@ -16,6 +16,7 @@ const GLib = imports.gi.GLib;
 const UPowerGlib = imports.gi.UPowerGlib;
 
 const Log = require("./lib/log.js");
+const OwnerWatch = require("./lib/owner-watch.js");
 
 var BUS_NAME = "org.bluez";
 
@@ -171,18 +172,15 @@ function parseObjects(objects) {
  * cannot report an abrupt daemon exit, because the process that would emit
  * them has already gone. The returned function releases the watch. */
 function systemNameWatcher(onAppeared, onVanished, bus) {
-    try {
-        let adapter = bus || Gio;
-        let id = adapter.bus_watch_name(
-            Gio.BusType.SYSTEM, BUS_NAME, Gio.BusNameWatcherFlags.NONE,
-            () => onAppeared(), () => onVanished());
-        return function () {
-            adapter.bus_unwatch_name(id);
-        };
-    } catch (error) {
-        Log.error("cannot watch ownership of BlueZ: " + error);
-        return null;
-    }
+    let adapter = bus || Gio;
+    let id = adapter.bus_watch_name(
+        Gio.BusType.SYSTEM, BUS_NAME, Gio.BusNameWatcherFlags.NONE,
+        () => onAppeared(), () => onVanished());
+    if (!id)
+        throw new Error("BlueZ ownership watch returned no id");
+    return function () {
+        adapter.bus_unwatch_name(id);
+    };
 }
 /* Gio's name watcher always reports the current owner after registration.
  * Injected watchers are not assumed to have that contract. */
@@ -209,13 +207,30 @@ var BluezBatteries = class BluezBatteries {
             ? (call ? null : systemNameWatcher) : watchName;
         this._signalBus = signalBus || null;
         this._timers = timers || GLib;
-        this._unwatchName = null;
+        this._ownerWatch = null;
         this._signalIds = [];
         this._signalKeys = new Set();
         this._refreshTimerId = 0;
         this._retryTimerId = 0;
         this._retryDelay = RETRY_INITIAL_MS;
         this._failures = new Log.FailureLog();
+        if (this._watchName) {
+            this._ownerWatch = new OwnerWatch.ResilientOwnerWatch({
+                install: (appeared, vanished) =>
+                    this._watchName(appeared, vanished),
+                release: unwatch => unwatch(),
+                appeared: () => this._ownerAppeared(),
+                vanished: () => this._ownerVanished(),
+                failures: this._failures,
+                failureKey: "owner-watch",
+                failureMessage: "cannot watch ownership of BlueZ",
+                timers: {
+                    add: (delay, callback) => this._timers.timeout_add(
+                        GLib.PRIORITY_DEFAULT, delay, callback),
+                    remove: id => this._timers.source_remove(id),
+                },
+            });
+        }
         this._degradedTimerId = 0;
         this._degradedDelay = DEGRADED_INITIAL_MS;
         /* The last complete object tree is the base to which signal deltas
@@ -240,7 +255,7 @@ var BluezBatteries = class BluezBatteries {
          * startup path expected by integrations and tests. */
         if (!ownerDriven || !watching)
             this._refresh();
-        if (!signalsReady || (this._watchName && !watching))
+        if (!signalsReady)
             this._scheduleDegradedPoll();
     }
 
@@ -397,21 +412,7 @@ var BluezBatteries = class BluezBatteries {
     }
 
     _watchOwner() {
-        if (!this._watchName)
-            return false;
-        if (this._unwatchName)
-            return true;
-        try {
-            this._unwatchName = this._watchName(
-                () => this._ownerAppeared(), () => this._ownerVanished());
-            if (this._unwatchName)
-                this._failures.recover("owner-watch");
-            return !!this._unwatchName;
-        } catch (error) {
-            this._failures.report(
-                "owner-watch", "cannot watch ownership of BlueZ: " + error);
-            return false;
-        }
+        return this._ownerWatch ? this._ownerWatch.start() : false;
     }
 
     _ownerAppeared() {
@@ -613,13 +614,12 @@ var BluezBatteries = class BluezBatteries {
     }
 
     _repairWiring() {
-        let signalsReady = this._watch();
-        let ownerReady = !this._watchName || this._watchOwner();
-        return signalsReady && ownerReady;
+        return this._watch();
     }
 
-    /* Missing signal or ownership edges turn the cache into a polled one until
-     * those registrations can be restored. The interval backs off to a fixed
+    /* Missing signal edges turn the cache into a polled one until those
+     * registrations can be restored. Ownership registration has its own
+     * resilient boundary. The interval backs off to a fixed
      * ceiling: enough to avoid hammering a broken bus, never long enough to
      * leave a changed device stale for the rest of the session. */
     _scheduleDegradedPoll() {
@@ -677,14 +677,8 @@ var BluezBatteries = class BluezBatteries {
             this._timers.source_remove(this._refreshTimerId);
             this._refreshTimerId = 0;
         }
-        if (this._unwatchName) {
-            try {
-                this._unwatchName();
-            } catch (error) {
-                /* already gone */
-            }
-            this._unwatchName = null;
-        }
+        if (this._ownerWatch)
+            this._ownerWatch.stop();
         for (let id of this._signalIds) {
             try {
                 let connection = this._signalBus || Gio.DBus.system;
