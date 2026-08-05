@@ -547,13 +547,10 @@ cases["a probe that finds nothing to read is over when the detect answers"] = fu
     Harness.equal(run.waiting.length, 1, "nor does one that found nothing to talk to");
 };
 
-cases["a probe disowned by stop does not end the one started after it"] = function () {
+cases["a restart waits for the probe stop disowned"] = function () {
     /*
-     * stop() lets a probe in flight go rather than waiting for it, so the
-     * setting switched off and straight back on has two probes out at once.
-     * The old one answers into a control that has moved on: what it found is
-     * a list from before the control was emptied, and it must neither be
-     * adopted on top of the fresh probe nor say that probe has finished.
+     * The old answer is unwanted, but its process still owns every bus it is
+     * probing. The new probe waits for that ownership to end.
      */
     let run = held();
     let control = new Ddc.DdcBacklight(null, run);
@@ -561,12 +558,12 @@ cases["a probe disowned by stop does not end the one started after it"] = functi
     control.start();
     control.stop();
     control.start();
-    Harness.equal(run.waiting.length, 2, "the disowned detect, and the new one");
+    Harness.equal(run.waiting.length, 1, "only the disowned detect is on the buses");
 
     /* The first, answering after the setting said no and yes again. */
     run.answer(DETECT_TWO, 0);
     Harness.deepEqual(control.monitors, [], "what it found belongs to the control it left");
-    Harness.equal(run.waiting.length, 1, "and it started no reads");
+    Harness.equal(run.waiting.length, 1, "and only now is the replacement probe started");
 
     control.redetect();
     Harness.equal(run.waiting.length, 1,
@@ -576,6 +573,41 @@ cases["a probe disowned by stop does not end the one started after it"] = functi
     Harness.equal(run.waiting.length, 1, "the new probe reads the monitor it found");
     run.answer("VCP 10 C 40 100\n", 0);
     Harness.equal(control.monitors.length, 1, "and that is the list that stands");
+};
+
+cases["a restart waits for reads whose monitors stop removed"] = function () {
+    let run = held();
+    let control = new Ddc.DdcBacklight(null, run);
+    control.start();
+    run.answer(DETECT_TWO, 0);
+    run.answer("VCP 10 C 40 100\n", 0);
+    run.answer("VCP 10 C 40 100\n", 0);
+
+    control.refresh();
+    control.stop();
+    control.start();
+    Harness.equal(run.waiting.length, 2, "both old reads finish before another probe");
+    run.answer("VCP 10 C 40 100\n", 0);
+    Harness.equal(run.waiting.length, 1, "one old read still owns its bus");
+    run.answer("VCP 10 C 40 100\n", 0);
+    Harness.equal(run.waiting.length, 1, "the new detect starts after the final read");
+    Harness.equal(run.waiting[0].argv, "ddcutil --brief detect", "and is the only new command");
+};
+
+cases["a restart waits for a write whose monitor stop removed"] = function () {
+    let run = held();
+    let control = new Ddc.DdcBacklight(null, run);
+    control.start();
+    run.answer(DETECT_ONE, 0);
+    run.answer("VCP 10 C 40 100\n", 0);
+
+    control.monitors[0].setPercentage(70);
+    control.stop();
+    control.start();
+    Harness.equal(run.waiting.length, 1, "the old write remains the only command");
+    run.answer("", 0);
+    Harness.equal(run.waiting.length, 1, "the new detect starts after the write answers");
+    Harness.equal(run.waiting[0].argv, "ddcutil --brief detect", "without overlap");
 };
 
 cases["starting twice probes once"] = function () {

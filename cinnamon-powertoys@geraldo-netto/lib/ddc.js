@@ -522,8 +522,14 @@ var DdcBacklight = class DdcBacklight {
         this.hidden = 0;
 
         this._onChanged = onChanged || function () {};
-        this._run = run || runCommand;
+        this._runCommand = run || runCommand;
+        /* Counts commands independently of the monitor objects that started
+         * them. stop() removes those objects immediately, but their ddcutil
+         * processes still own the buses until their callbacks arrive. */
+        this._commandsInFlight = 0;
+        this._run = (argv, onDone) => this._invoke(argv, onDone);
         this._started = false;
+        this._startPending = false;
         this._detecting = false;
         /* Which probe is the current one; see _detect. */
         this._probe = null;
@@ -543,6 +549,10 @@ var DdcBacklight = class DdcBacklight {
         if (this._started || this.destroyed)
             return;
         this._started = true;
+        if (this.busy) {
+            this._startPending = true;
+            return;
+        }
         this._detect();
     }
 
@@ -556,14 +566,17 @@ var DdcBacklight = class DdcBacklight {
      * a concession: monitors may well have been plugged or unplugged while it
      * was off, and nothing was watching.
      *
-     * A probe already in flight is disowned rather than waited for. _detect
-     * checks _started when it answers, so the monitors it found are dropped
-     * instead of quietly reappearing after the setting said no.
+     * An operation already in flight is disowned, but remains machine-level
+     * busy until its command answers. A start asked in that interval is held
+     * rather than putting a fresh whole-bus probe on top of it.
      */
     stop() {
         if (!this._started)
             return;
         this._started = false;
+        this._startPending = false;
+        this._probe = null;
+        this._detecting = false;
         for (let monitor of this.monitors)
             monitor.destroy();
         this.monitors = [];
@@ -600,9 +613,44 @@ var DdcBacklight = class DdcBacklight {
      * So the two guards become one question, asked of the whole machine.
      */
     get busy() {
-        if (this._detecting)
-            return true;
-        return this.monitors.some(monitor => monitor.busy);
+        return this._commandsInFlight > 0;
+    }
+
+    /* Every command crosses this boundary, including commands belonging to a
+     * monitor stop() has removed. The decrement happens after the consumer has
+     * processed its answer, so a detect callback may start its reads without a
+     * moment where the shared bus appears idle between them. */
+    _invoke(argv, onDone) {
+        this._commandsInFlight++;
+        let answered = false;
+        let finish = (output, status) => {
+            if (answered)
+                return;
+            answered = true;
+            try {
+                onDone(output, status);
+            } finally {
+                this._commandsInFlight--;
+                this._drainWork();
+            }
+        };
+        try {
+            this._runCommand(argv, finish);
+        } catch (error) {
+            Log.error("could not run ddcutil: " + error);
+            finish("", -1);
+        }
+    }
+
+    _drainWork() {
+        if (this.destroyed || this.busy)
+            return;
+        if (this._startPending && this._started) {
+            this._startPending = false;
+            this._detect();
+            return;
+        }
+        this._drainRedetect();
     }
 
     /*
@@ -903,6 +951,10 @@ var DdcBacklight = class DdcBacklight {
 
     destroy() {
         this.destroyed = true;
+        this._started = false;
+        this._startPending = false;
+        this._probe = null;
+        this._detecting = false;
         this.available = false;
         this._redetectPending = false;
         for (let monitor of this.monitors)
