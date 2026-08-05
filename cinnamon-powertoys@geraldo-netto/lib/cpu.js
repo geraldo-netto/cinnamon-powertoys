@@ -313,7 +313,8 @@ var CpuControl = class CpuControl {
             energyPreference: agreed(energyPolicies, "energy_performance_preference"),
             boostEnabled: boostValue === null ? null
                 : (boostInverted ? boostValue === 0 : boostValue === 1),
-            averageFrequency: count > 0 ? (total / count) / 1000 : null,
+            averageFrequency: count > 0 && count === policies.length
+                ? (total / count) / 1000 : null,
         };
     }
 
@@ -439,7 +440,8 @@ var CpuControl = class CpuControl {
             total += value;
             count++;
         }
-        return count > 0 ? (total / count) / 1000 : null;
+        return count > 0 && count === this.policies.length
+            ? (total / count) / 1000 : null;
     }
 
     /* Read once per refresh, in MHz. */

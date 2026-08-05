@@ -193,19 +193,35 @@ cases["the ceiling is the highest valid policy maximum"] = function () {
         Harness.near(cpu.maxFrequency(), 5100, 0.001,
                      "a heterogeneous processor's fastest policy");
     });
+    scratch({
+        "/sys/devices/system/cpu/cpufreq/policy0/cpuinfo_max_freq": "0\n",
+    }, function () {
+        let cpu = new Cpu.CpuControl(() => {});
+        Harness.equal(cpu.maxFrequency(), null, "zero is not a hardware frequency ceiling");
+    });
 };
 
-cases["a policy that will not answer is left out of the average"] = function () {
-    /* Rather than counted as nought, which would pull the figure down and
-     * report a processor that is idling when one core group is simply not
-     * answering. */
+cases["a policy that will not answer makes the whole average unavailable"] = function () {
+    /* One figure claims to represent the processor, so a readable core group
+     * cannot stand in for another one whose frequency is unknown. */
     scratch({
         "/sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq": "4000000\n",
         "/sys/devices/system/cpu/cpufreq/policy1/scaling_driver": "acpi-cpufreq\n",
     }, function () {
         let cpu = new Cpu.CpuControl(() => {});
         Harness.equal(cpu.policies.length, 2, "two policies");
-        Harness.near(cpu.averageFrequency(), 4000, 0.001, "and one figure between them");
+        Harness.equal(cpu.averageFrequency(), null,
+                      "a partial sample is not presented as a processor average");
+
+        let asynchronous = Harness.settle(function (done) {
+            let created = new Cpu.CpuControl(() => {}, {
+                asynchronous: true,
+                onChanged: () => done(created),
+            });
+        }, "partial asynchronous CPU discovery");
+        Harness.equal(asynchronous.averageFrequency(), null,
+                      "the asynchronous snapshot follows the same all-policy contract");
+        asynchronous.destroy();
     });
 };
 
@@ -432,8 +448,12 @@ cases["an asynchronous control adopts one complete CPU snapshot"] = function () 
         let after = cpu.snapshot();
         Harness.equal(after.available, true, "the complete machine is adopted together");
         Harness.deepEqual(after.governors, ["performance", "powersave"], "with its choices");
+        Harness.deepEqual(after.energyPreferences, ["default", "performance", "power"],
+                          "including every shared energy preference");
         Harness.equal(after.governor, "powersave", "current values were loaded off-thread too");
+        Harness.equal(after.energyPreference, "power", "with the current EPP");
         Harness.near(after.averageFrequency, 3500, 0.001, "including every policy frequency");
+        Harness.near(after.maxFrequency, 5462.711, 0.001, "and the valid hardware ceiling");
         cpu.destroy();
     } finally {
         release();
@@ -517,7 +537,9 @@ cases["an asynchronous sample refreshes only live CPU values"] = function () {
         }, "initial asynchronous CPU discovery");
         let readStrings = IO.readStringsAsync;
         let sampled = [];
-        IO.readStringsAsync = function (paths, done) {
+        let concurrency = null;
+        IO.readStringsAsync = function (paths, done, limit) {
+            concurrency = limit;
             sampled = paths.slice();
             let values = {};
             for (let path of paths) {
@@ -542,6 +564,7 @@ cases["an asynchronous sample refreshes only live CPU values"] = function () {
             Harness.equal(after.boostEnabled, false, "the current boost value is replaced");
             Harness.near(after.averageFrequency, 2000, 0.001, "policy frequencies are replaced");
             Harness.ok(sampled.length > 0, "live nodes were read");
+            Harness.equal(concurrency, 32, "the live batch retains its bounded concurrency");
             Harness.equal(sampled.some(path => /scaling_driver$/.test(path)), false,
                           "the scaling topology was not rediscovered");
             Harness.equal(sampled.some(path => /cpuinfo_max_freq$/.test(path)), false,
@@ -609,6 +632,8 @@ cases["one policy is a machine, not half of one"] = function () {
     }, function () {
         let cpu = new Cpu.CpuControl(() => {});
         Harness.equal(cpu.policies.length, 1, "one policy");
+        Harness.equal(cpu.reference, Cpu.CPUFREQ_DIR + "/policy0", "and it is the reference policy");
+        Harness.equal(cpu._stateGeneration, 0, "synchronous discovery starts no async generation");
         Harness.equal(cpu.available, true, "and that is a machine this applet can set");
         Harness.equal(cpu.governor, "powersave", "with a governor to read");
     });
