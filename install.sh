@@ -16,16 +16,86 @@ TARGET_DIR=${DESTDIR:-}$PREFIX/cinnamon/applets/$UUID
 
 [ -d "$SOURCE_DIR" ] || { echo "missing $SOURCE_DIR" >&2; exit 1; }
 
-mkdir -p "$(dirname "$TARGET_DIR")"
-rm -rf "$TARGET_DIR"
-cp -r "$SOURCE_DIR" "$TARGET_DIR"
-chmod +x "$TARGET_DIR/powertoys-helper"
+TARGET_PARENT=$(dirname "$TARGET_DIR")
+mkdir -p "$TARGET_PARENT"
 
-echo "Installed to $TARGET_DIR"
+# Build the complete replacement beside the live applet. A failed or
+# interrupted copy can then touch only this private directory, not the version
+# Cinnamon is currently loading.
+STAGING=$(mktemp -d "$TARGET_PARENT/.${UUID}.new.XXXXXX")
+BACKUP=
+SWAPPED=no
+COMMITTED=no
+
+cleanup() {
+    status=$?
+    trap - EXIT HUP INT TERM
+
+    if [ "$COMMITTED" != yes ]; then
+        if [ -n "$BACKUP" ] && { [ -e "$BACKUP" ] || [ -L "$BACKUP" ]; }; then
+            rm -rf -- "$TARGET_DIR"
+            mv -- "$BACKUP" "$TARGET_DIR" || {
+                echo "could not restore previous install from $BACKUP" >&2
+                status=1
+            }
+        elif [ "$SWAPPED" = yes ]; then
+            rm -rf -- "$TARGET_DIR"
+        fi
+    fi
+    if [ -n "$STAGING" ] && { [ -e "$STAGING" ] || [ -L "$STAGING" ]; }; then
+        rm -rf -- "$STAGING"
+    fi
+    if [ "$COMMITTED" = yes ] && [ -n "$BACKUP" ] &&
+            { [ -e "$BACKUP" ] || [ -L "$BACKUP" ]; }; then
+        rm -rf -- "$BACKUP"
+    fi
+    exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+cp -R "$SOURCE_DIR/." "$STAGING/"
+chmod 0755 "$STAGING"
+chmod +x "$STAGING/powertoys-helper"
+
+# These are the minimum files Cinnamon and the settings loader need. Check the
+# staged tree before the first rename, while the old installation is intact.
+for required in applet.js metadata.json settings-schema.json powertoys-helper; do
+    [ -f "$STAGING/$required" ] || {
+        echo "incomplete applet copy: missing $required" >&2
+        exit 1
+    }
+done
+[ -d "$STAGING/lib" ] || {
+    echo "incomplete applet copy: missing lib" >&2
+    exit 1
+}
+
+if [ -e "$TARGET_DIR" ] || [ -L "$TARGET_DIR" ]; then
+    BACKUP=$(mktemp -d "$TARGET_PARENT/.${UUID}.old.XXXXXX")
+    rmdir "$BACKUP"
+    mv -- "$TARGET_DIR" "$BACKUP"
+fi
+mv -- "$STAGING" "$TARGET_DIR"
+STAGING=
+SWAPPED=yes
+
 
 # A .po in po/ does nothing until it is compiled into the directory the applet
 # binds its text domain to.
 "$(dirname "$0")/tools/install-translations.sh" install "${DESTDIR:-}$PREFIX/locale"
+
+# Translation installation is part of the operation too. Only after it has
+# succeeded is the prior applet discarded; until here the EXIT trap restores
+# it if anything fails.
+COMMITTED=yes
+if [ -n "$BACKUP" ]; then
+    rm -rf -- "$BACKUP"
+    BACKUP=
+fi
+trap - EXIT HUP INT TERM
+
+echo "Installed to $TARGET_DIR"
 
 # A staged install is for building a package, not for using: it must not reach
 # into the running session.
