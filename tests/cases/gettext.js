@@ -19,12 +19,60 @@
  */
 
 const GLib = imports.gi.GLib;
+const ByteArray = imports.byteArray;
 const Harness = imports.harness;
 const Fuzz = imports.fuzz;
 
 const Translate = Harness.requireXlet("./lib/gettext.js");
 
 var cases = {};
+
+function installedTree(msgfmt, body) {
+    let directory = GLib.dir_make_tmp("powertoys-gettext-XXXXXX");
+    let tools = directory + "/tools";
+    let po = directory + "/" + Harness.UUID + "/po";
+    let locale = directory + "/locale";
+    let bin = directory + "/bin";
+    GLib.mkdir_with_parents(tools, 0o755);
+    GLib.mkdir_with_parents(po, 0o755);
+    GLib.mkdir_with_parents(bin, 0o755);
+    try {
+        let script = tools + "/install-translations.sh";
+        GLib.file_set_contents(script,
+            Harness.readFile(Harness.testsDir() + "/../tools/install-translations.sh"));
+        GLib.chmod(script, 0o700);
+        GLib.file_set_contents(bin + "/msgfmt", "#!/bin/sh\n" + msgfmt + "\n");
+        GLib.chmod(bin + "/msgfmt", 0o700);
+        return body({ directory: directory, script: script, po: po,
+                      locale: locale, bin: bin });
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
+    }
+}
+
+function write(path, value) {
+    GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o755);
+    GLib.file_set_contents(path, value + "\n");
+}
+
+function read(path) {
+    try {
+        let result = GLib.file_get_contents(path);
+        return ByteArray.toString(result[1]).trim();
+    } catch (error) {
+        return null;
+    }
+}
+
+function install(tree) {
+    let environment = GLib.get_environ();
+    environment = GLib.environ_setenv(environment, "PATH",
+        tree.bin + ":" + (GLib.getenv("PATH") || ""), true);
+    let result = GLib.spawn_sync(null, [tree.script, "install", tree.locale],
+                                 environment, GLib.SpawnFlags.NONE, null);
+    return result[3];
+}
 
 cases["the domain is the applet's own uuid"] = function () {
     /* Cinnamon hands every xlet file its own metadata, so nothing here is
@@ -54,6 +102,35 @@ cases["an installed applet binds catalogues beside its data root"] = function ()
                "the install script accepts the locale root for the chosen prefix");
     Harness.ok(script.indexOf('$UUID.mo') >= 0,
                "and still names the catalogue after the uuid this binds as");
+};
+
+cases["an upgrade prunes only obsolete catalogues from this domain"] = function () {
+    installedTree('[ "$1" = -o ] && cp "$3" "$2"', tree => {
+        write(tree.po + "/fr.po", "new french catalogue");
+        let old = tree.locale + "/en/LC_MESSAGES/" + Harness.UUID + ".mo";
+        let other = tree.locale + "/en/LC_MESSAGES/another-application.mo";
+        let current = tree.locale + "/fr/LC_MESSAGES/" + Harness.UUID + ".mo";
+        write(old, "obsolete");
+        write(other, "keep me");
+        write(current, "old french catalogue");
+
+        Harness.equal(install(tree), 0, "the translation install succeeded");
+        Harness.equal(read(old), null, "a language no longer in po/ was removed");
+        Harness.equal(read(other), "keep me", "another gettext domain was untouched");
+        Harness.equal(read(current), "new french catalogue", "the current language was replaced");
+    });
+};
+
+cases["a failed translation update does not prune old catalogues"] = function () {
+    installedTree("exit 1", tree => {
+        write(tree.po + "/fr.po", "broken catalogue");
+        let old = tree.locale + "/en/LC_MESSAGES/" + Harness.UUID + ".mo";
+        write(old, "still installed");
+
+        Harness.ok(install(tree) !== 0, "the compile failure reaches the installer");
+        Harness.equal(read(old), "still installed",
+                      "pruning waits until the current set compiled successfully");
+    });
 };
 
 cases["a string with no translation is the string"] = function () {
