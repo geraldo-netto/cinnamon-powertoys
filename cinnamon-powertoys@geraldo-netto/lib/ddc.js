@@ -47,6 +47,12 @@ var STEP = 5;
  */
 var MAX_DISPLAYS = 10;
 
+/* Removal needs confirmation; command failures get one extra chance because
+ * they say nothing about topology at all. Both bounds are deliberately small
+ * while the menu probes once a second. */
+var MISSING_CONFIRMATIONS = 2;
+var FAILURE_GRACE = 3;
+
 /*
  * Runs a command and hands back its output. Gio.Subprocess rather than
  * Cinnamon's spawn helpers, so this module stays loadable outside the shell,
@@ -482,6 +488,9 @@ var DdcBacklight = class DdcBacklight {
         this._detecting = false;
         /* Which probe is the current one; see _detect. */
         this._probe = null;
+        this._detectFailures = 0;
+        this._missingSignature = null;
+        this._missingConfirmations = 0;
     }
 
     /*
@@ -521,6 +530,9 @@ var DdcBacklight = class DdcBacklight {
         this.hidden = 0;
         this.available = false;
         this.percentage = null;
+        this._detectFailures = 0;
+        this._missingSignature = null;
+        this._missingConfirmations = 0;
         /* Emptying the list is a change like any other; see lib/bluez.js,
          * where the same silence kept dead rows in the menu. */
         this._onChanged();
@@ -608,6 +620,31 @@ var DdcBacklight = class DdcBacklight {
         return monitors;
     }
 
+    _clearTopology() {
+        this.hidden = 0;
+        this.monitors = this._adopt([]);
+        this._sync();
+    }
+
+    _missingTopologyIsConfirmed(found) {
+        let ids = new Set(found.map(display =>
+            display.bus || ("display:" + display.number)));
+        if (!this.monitors.some(monitor => !ids.has(monitor.id))) {
+            this._missingSignature = null;
+            this._missingConfirmations = 0;
+            return true;
+        }
+
+        let signature = Array.from(ids).sort().join("\u0000");
+        if (signature === this._missingSignature)
+            this._missingConfirmations++;
+        else {
+            this._missingSignature = signature;
+            this._missingConfirmations = 1;
+        }
+        return this._missingConfirmations >= MISSING_CONFIRMATIONS;
+    }
+
     /*
      * A probe is the detect and the reads it starts, and it is not over until
      * the reads are back.
@@ -655,19 +692,39 @@ var DdcBacklight = class DdcBacklight {
                 return;
             }
             if (status !== 0) {
-                /* No ddcutil, no permission, or no display answered. */
+                /* A failed command says nothing about which displays exist.
+                 * Keep the last topology briefly, then stop presenting stale
+                 * controls if the tool or permissions stay broken. */
+                this._missingSignature = null;
+                this._missingConfirmations = 0;
+                this._detectFailures++;
+                if (this._detectFailures >= FAILURE_GRACE)
+                    this._clearTopology();
                 settled();
                 this._onChanged();
                 return;
             }
 
             let found = nameDisplays(parseDisplays(output));
+            this._detectFailures = 0;
+            let visible = found.slice(0, MAX_DISPLAYS);
+            if (!this._missingTopologyIsConfirmed(visible)) {
+                /* One successful empty/partial detect is commonly a sleeping
+                 * monitor. Do not renumber or query the old controls from an
+                 * unconfirmed topology. */
+                settled();
+                this._onChanged();
+                return;
+            }
+
+            this._missingSignature = null;
+            this._missingConfirmations = 0;
             this.hidden = Math.max(0, found.length - MAX_DISPLAYS);
             if (this.hidden > 0)
                 Log.error("more than " + MAX_DISPLAYS + " monitors answered DDC/CI; " +
                           this.hidden + " of them have no slider");
 
-            this.monitors = this._adopt(found.slice(0, MAX_DISPLAYS));
+            this.monitors = this._adopt(visible);
             if (this.monitors.length === 0) {
                 settled();
                 this._sync();

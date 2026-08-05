@@ -298,10 +298,48 @@ cases["unplugging one renumbers the other rather than renaming it"] = function (
     /* The LG is now display 1, because the Dell in front of it is gone. */
     output = DETECT_SECOND_ONLY;
     control.redetect();
+    Harness.equal(control.monitors.length, 2, "one partial result is held for confirmation");
+    control.redetect();
     Harness.equal(control.monitors.length, 1, "one left");
     Harness.equal(control.monitors[0], second, "and it is the one that was there");
     Harness.equal(control.monitors[0].number, "1",
                   "ddcutil numbers by position, so the number it is asked for moved");
+};
+
+cases["an empty topology needs confirmation"] = function () {
+    let output = DETECT_ONE;
+    let run = runner(function (argv) {
+        if (argv.indexOf("detect") >= 0)
+            return [output, 0];
+        return ["VCP 10 C 40 100\n", 0];
+    });
+    let control = new Ddc.DdcBacklight(null, run);
+    control.start();
+    Harness.equal(control.monitors.length, 1, "a known monitor");
+
+    output = "";
+    control.redetect();
+    Harness.equal(control.monitors.length, 1, "one empty success may be a sleeping display");
+    control.redetect();
+    Harness.equal(control.monitors.length, 0, "the repeated empty topology is accepted");
+};
+
+cases["repeated detect failures eventually clear stale monitors"] = function () {
+    let status = 0;
+    let run = runner(function (argv) {
+        if (argv.indexOf("detect") >= 0)
+            return [status === 0 ? DETECT_ONE : "", status];
+        return ["VCP 10 C 40 100\n", 0];
+    });
+    let control = new Ddc.DdcBacklight(null, run);
+    control.start();
+    status = -1;
+
+    control.redetect();
+    control.redetect();
+    Harness.equal(control.monitors.length, 1, "brief command failure keeps the last topology");
+    control.redetect();
+    Harness.equal(control.monitors.length, 0, "a permanent failure cannot leave stale sliders");
 };
 
 cases["a monitor that misses one read keeps its slider"] = function () {
