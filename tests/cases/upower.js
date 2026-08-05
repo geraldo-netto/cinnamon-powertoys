@@ -407,6 +407,46 @@ cases["a manager that answers with an error is no UPower"] = function () {
     });
 };
 
+cases["a partially wired UPower manager is rolled back and retried"] = function () {
+    let manager = managerFor([]);
+    manager.connectSignal = function (name, handler) {
+        if (name === "DeviceRemoved")
+            throw new Error("signal transport failed");
+        manager.signals[name] = handler;
+        return 31;
+    };
+    let bus = busFor(manager, {});
+    let timers = retryTimers(bus);
+    logging(function (lines) {
+        let monitor = monitorOn(bus);
+        Harness.equal(monitor.available, false, "the half-wired manager is never published");
+        Harness.equal(monitor._manager, null, "there is no partial manager state");
+        Harness.deepEqual(manager.disconnected, [31], "the first attached handler is removed");
+        Harness.equal(monitor.counts.ready, 1, "readiness settles despite setup failure");
+        Harness.equal(Object.keys(timers.pending).length, 1, "existing recovery is armed");
+        Harness.ok(lines.join("").indexOf("signal transport failed") >= 0,
+                   "the subscription failure is diagnosed");
+        monitor.destroy();
+    });
+};
+
+cases["an unwired UPower display proxy is not published"] = function () {
+    let display = proxyFor();
+    display.connect = function () { throw new Error("display signal failed"); };
+    let bus = busFor(managerFor([]), { [DISPLAY]: display });
+    let timers = retryTimers(bus);
+    logging(function (lines) {
+        let monitor = monitorOn(bus);
+        Harness.equal(monitor.available, true, "the fully wired manager remains available");
+        Harness.equal(monitor._display, null, "the display proxy is atomic with its handler");
+        Harness.equal(monitor.counts.ready, 1, "enumeration still settles readiness");
+        Harness.equal(Object.keys(timers.pending).length, 1, "the missing branch schedules repair");
+        Harness.ok(lines.join("").indexOf("display signal failed") >= 0,
+                   "the display wiring failure is diagnosed");
+        monitor.destroy();
+    });
+};
+
 cases["UPower ownership drives availability and reconnection"] = function () {
     let manager = managerFor([BAT0], { onBattery: true });
     let bus = busFor(manager, { [BAT0]: proxyFor() }, { watch: true });

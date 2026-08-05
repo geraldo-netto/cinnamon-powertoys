@@ -17,6 +17,7 @@ const Gio = imports.gi.Gio;
 const Harness = imports.harness;
 
 const Backlight = Harness.requireXlet("./lib/backlight.js");
+const Log = Harness.requireXlet("./lib/log.js");
 
 /*
  * A settings daemon proxy. `answers` says what each call returns; a value of
@@ -262,6 +263,35 @@ cases["a failed connection is retried on refresh"] = function () {
     Harness.equal(attempts, 2, "refresh reconnects rather than keeping no proxy forever");
     Harness.equal(screen.available, true, "and adopts the recovered backend");
     Harness.equal(screen.percentage, 64, "with its current value");
+};
+
+cases["a backlight proxy is published only after its signal is wired"] = function () {
+    let broken = proxy({ GetPercentage: 20 });
+    broken.connectSignal = function () { throw new Error("Changed subscription failed"); };
+    let recovered = proxy({ GetPercentage: 64 });
+    let attempts = 0;
+    let ready = 0;
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    let screen;
+    try {
+        screen = new Backlight.BacklightControl(
+            Backlight.SCREEN, null, () => ready++,
+            (xml, onDone) => onDone(attempts++ === 0 ? broken : recovered, null));
+        Harness.equal(screen._proxy, null, "the unwired proxy is not visible");
+        Harness.equal(screen.available, false, "nor is it treated as a backlight");
+        Harness.equal(ready, 1, "the failed setup still settles readiness");
+        Harness.ok(lines.join("").indexOf("Changed subscription failed") >= 0,
+                   "the wiring failure is diagnosed");
+
+        screen.refresh();
+        Harness.equal(attempts, 2, "the next refresh rebuilds the proxy");
+        Harness.equal(screen.percentage, 64, "the fully wired replacement is published");
+    } finally {
+        if (screen)
+            screen.destroy();
+        Log.setSink(null);
+    }
 };
 
 cases["overlapping refreshes share one proxy initialization"] = function () {

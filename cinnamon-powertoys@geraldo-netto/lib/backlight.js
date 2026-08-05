@@ -11,6 +11,8 @@
 
 const Gio = imports.gi.Gio;
 
+const Log = require("./lib/log.js");
+
 var BUS_NAME = "org.cinnamon.SettingsDaemon.Power";
 var OBJECT_PATH = "/org/cinnamon/SettingsDaemon/Power";
 
@@ -210,9 +212,20 @@ var BacklightControl = class BacklightControl {
             this._connectCancellable = null;
             this._connecting = false;
             if (!error && proxy) {
-                this._proxy = proxy;
-                this._signalId = proxy.connectSignal(
-                    "Changed", () => this.refresh(() => this._onChanged()));
+                let signalId = 0;
+                try {
+                    signalId = proxy.connectSignal(
+                        "Changed", () => this.refresh(() => this._onChanged()));
+                } catch (signalError) {
+                    Log.error("cannot subscribe to " + this.kind +
+                              " backlight changes: " + signalError);
+                }
+                /* A proxy without its Changed edge is not live state. Leave
+                 * it unpublished so the next refresh retries construction. */
+                if (signalId) {
+                    this._proxy = proxy;
+                    this._signalId = signalId;
+                }
             }
             let waiters = this._connectWaiters.splice(0);
             for (let waiter of waiters)

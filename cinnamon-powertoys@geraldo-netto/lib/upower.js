@@ -305,7 +305,49 @@ var UPowerMonitor = class UPowerMonitor {
             return;
         }
 
+        let busSignalIds = [];
+        let propSignalId = 0;
+        try {
+            busSignalIds.push(proxy.connectSignal("DeviceAdded", (p, sender, [path]) => {
+                if (generation === this._generation)
+                    this._addDevice(path, null, generation);
+            }));
+            busSignalIds.push(proxy.connectSignal("DeviceRemoved", (p, sender, [path]) => {
+                if (generation !== this._generation)
+                    return;
+                this._removeDevice(path);
+                this._onChanged();
+            }));
+            propSignalId = proxy.connect("g-properties-changed", () => {
+                if (generation === this._generation)
+                    this._onChanged();
+            });
+        } catch (signalError) {
+            for (let id of busSignalIds) {
+                try {
+                    proxy.disconnectSignal(id);
+                } catch (e) {
+                    /* The failed setup may already have removed it. */
+                }
+            }
+            if (propSignalId) {
+                try {
+                    proxy.disconnect(propSignalId);
+                } catch (e) {
+                    /* Likewise. */
+                }
+            }
+            Log.error("cannot subscribe to UPower manager: " + signalError);
+            this._settleReady();
+            this._scheduleRetry();
+            return;
+        }
+
+        /* Publish only the fully wired proxy. _disconnectManager can now
+         * always tear down every handler belonging to a visible manager. */
         this._manager = proxy;
+        this._busSignalIds = busSignalIds;
+        this._propSignalId = propSignalId;
         this.available = true;
         let initialPending = 2;
         let initialFailed = false;
@@ -321,21 +363,6 @@ var UPowerMonitor = class UPowerMonitor {
             else
                 this._cancelRetry();
         };
-
-        this._busSignalIds.push(proxy.connectSignal("DeviceAdded", (p, sender, [path]) => {
-            if (generation === this._generation)
-                this._addDevice(path, null, generation);
-        }));
-        this._busSignalIds.push(proxy.connectSignal("DeviceRemoved", (p, sender, [path]) => {
-            if (generation !== this._generation)
-                return;
-            this._removeDevice(path);
-            this._onChanged();
-        }));
-        this._propSignalId = proxy.connect("g-properties-changed", () => {
-            if (generation === this._generation)
-                this._onChanged();
-        });
 
         /*
          * The composite battery, which is the one the panel speaks for.
@@ -354,11 +381,19 @@ var UPowerMonitor = class UPowerMonitor {
                 initialized(false);
                 return;
             }
+            let signalId;
+            try {
+                signalId = displayProxy.connect("g-properties-changed", () => {
+                    if (generation === this._generation)
+                        this._onChanged();
+                });
+            } catch (signalError) {
+                Log.error("cannot subscribe to UPower display device: " + signalError);
+                initialized(false);
+                return;
+            }
             this._display = displayProxy;
-            this._displaySignalId = displayProxy.connect("g-properties-changed", () => {
-                if (generation === this._generation)
-                    this._onChanged();
-            });
+            this._displaySignalId = signalId;
             /* Enumeration can finish first and publish a physical battery as
              * the panel's fallback. Adopting the composite device changes
              * that answer just as surely as one of its properties changing. */
