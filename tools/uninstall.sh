@@ -50,6 +50,15 @@ print(os.path.realpath(path))
 '
 }
 
+reload_theme() {
+    command -v gdbus >/dev/null 2>&1 || return 1
+    gdbus call --session \
+        --dest org.Cinnamon \
+        --object-path /org/Cinnamon \
+        --method org.Cinnamon.Eval \
+        'imports.ui.main.themeManager._changeTheme();' 2>/dev/null | grep -q '^(true,'
+}
+
 backup_translations() {
     TRANSLATION_BACKUP=$(mktemp -d "${TMPDIR:-/tmp}/.$UUID.locale.XXXXXX")
     for mo in "$LOCALE_DIR"/*/LC_MESSAGES/"$UUID.mo"; do
@@ -230,6 +239,18 @@ fi
 
 COMMITTED=yes
 trap - EXIT HUP INT TERM
+
+# Cinnamon keeps an xlet stylesheet after the xlet itself is unloaded. The
+# removal is already committed, so a session that refuses Eval is a restart
+# requirement rather than a reason to restore files and re-enable the applet.
+if [ -z "${DESTDIR:-}" ]; then
+    if reload_theme; then
+        echo "reloaded the Cinnamon theme to drop the removed applet stylesheet"
+    else
+        echo "warning: could not reload the Cinnamon theme; the removed applet stylesheet may remain active until Cinnamon is restarted (Alt+F2, then r) or the next login" >&2
+    fi
+fi
+
 if [ -n "$SOURCE_BACKUP" ] && ! rm -rf -- "$SOURCE_BACKUP"; then
     echo "warning: applet removed, but source backup remains at $SOURCE_BACKUP" >&2
 fi

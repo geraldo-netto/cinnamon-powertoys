@@ -80,7 +80,8 @@ function scratch(options, body) {
         let path = GLib.getenv("PATH") || "/usr/bin:/bin";
         if (options.rmdirStatus || options.signalPublish || options.failedReload ||
                 options.runningQueryFailure ||
-                options.uninstallRuntime || options.uninstallQueryFailure) {
+                options.uninstallRuntime || options.uninstallQueryFailure ||
+                options.uninstallThemeFailure) {
             let bin = directory + "/bin";
             GLib.mkdir_with_parents(bin, 0o755);
             if (options.rmdirStatus) {
@@ -123,7 +124,9 @@ function scratch(options, body) {
             if (options.uninstallRuntime) {
                 let disabled = directory + "/disabled";
                 let settings = directory + "/enabled-applets";
+                let themeState = directory + "/uninstall-theme-count";
                 let activePath = options.uninstallActivePath || target;
+                GLib.file_set_contents(themeState, "0\n");
                 GLib.file_set_contents(bin + "/gsettings",
                     "#!/bin/sh\n" +
                     "if [ \"$1\" = get ]; then\n" +
@@ -133,6 +136,12 @@ function scratch(options, body) {
                 GLib.file_set_contents(bin + "/gdbus",
                     "#!/bin/sh\n" +
                     "case \"$*\" in\n" +
+                    "  *_changeTheme*)\n" +
+                    "    themes=$(cat '" + themeState + "')\n" +
+                    "    echo $((themes + 1)) > '" + themeState + "'\n" +
+                    (options.uninstallThemeFailure
+                        ? "    echo \"(false, 'debugging disabled')\";;\n"
+                        : "    echo \"(true, '')\";;\n") +
                     "  *Eval*) echo \"(true, '\\\"" + activePath + "\\\"')\";;\n" +
                     "  *GetRunningXletUUIDs*)\n" +
                     (options.uninstallNotRunning ?
@@ -142,6 +151,7 @@ function scratch(options, body) {
                     "esac\n");
                 GLib.chmod(bin + "/gdbus", 0o700);
                 options.enabledState = settings;
+                options.uninstallThemeState = themeState;
             }
             if (options.uninstallQueryFailure) {
                 GLib.file_set_contents(bin + "/gdbus", "#!/bin/sh\nexit 23\n");
@@ -345,6 +355,22 @@ cases["a live uninstall disables the applet before deleting it"] = function () {
         let enabled = read(options.enabledState);
         Harness.equal(enabled.indexOf(UUID), -1, "the stale panel entry was removed");
         Harness.ok(enabled.indexOf("menu@cinnamon.org") >= 0, "other applets were preserved");
+        Harness.equal(read(options.uninstallThemeState), "1",
+                      "the committed removal reloads the retained stylesheet once");
+    });
+};
+
+cases["a refused uninstall theme reload reports the restart requirement"] = function () {
+    let options = { uninstallRuntime: true, uninstallThemeFailure: true };
+    scratch(options, tree => {
+        let outcome = uninstall(tree, true);
+        Harness.equal(outcome.status, 0, "theme access cannot undo a committed removal");
+        Harness.equal(GLib.file_test(tree.target, GLib.FileTest.EXISTS), false,
+                      "the applet remains removed");
+        Harness.equal(read(options.uninstallThemeState), "1",
+                      "the guarded theme reload was attempted once");
+        Harness.ok(outcome.stderr.indexOf("may remain active until Cinnamon is restarted") >= 0,
+                   "the retained stylesheet has an actionable warning: " + outcome.stderr);
     });
 };
 
