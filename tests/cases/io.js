@@ -438,6 +438,30 @@ cases["readability metadata batches do not sample node contents"] = function () 
                       "only access metadata is requested");
 };
 
+cases["readability metadata failures are safely unreadable"] = function () {
+    let factory = path => ({
+        query_info_async: function (requested, flags, priority, token, onDone) {
+            if (path.indexOf("setup") >= 0)
+                throw new Error("cannot start metadata query");
+            onDone(this, {});
+        },
+        query_info_finish: function () {
+            if (path.indexOf("failed") >= 0)
+                throw new Error("metadata vanished");
+            return { get_attribute_boolean: () => false };
+        },
+    });
+    let values = Harness.settle(done =>
+        IO.pathsReadableAsync(["/unreadable", "/failed", "/setup"], done, 2, factory),
+        "negative readability metadata");
+
+    Harness.deepEqual(values, {
+        "/unreadable": false,
+        "/failed": false,
+        "/setup": false,
+    }, "denial, failed reply and failed query setup are all safe negatives");
+};
+
 function asyncDirectory(options) {
     let settings = options || {};
     let batches = (settings.batches || [[]]).slice();
