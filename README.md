@@ -450,7 +450,7 @@ cinnamon-powertoys@geraldo-netto/
 ├── lib/keyed-list.js       menu rows that follow a list of values
 ├── lib/gettext.js          the text domain, bound once
 ├── lib/notifications.js    exception-safe Cinnamon notification delivery
-├── lib/log.js              the one thing in lib/ that knows about the shell
+├── lib/log.js              shell diagnostics, one line per continuous failure
 ├── powertoys-helper        validating pkexec helper for root owned settings
 ├── metadata.json
 ├── settings-schema.json
