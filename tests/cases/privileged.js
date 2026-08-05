@@ -35,16 +35,35 @@ var cases = {};
 
 cases["the root owned helper is preferred"] = function () {
     let helper = helperWith([SYSTEM, OWN], [0, ""]);
-    Harness.equal(helper.path(), SYSTEM, "the one the polkit action names");
+    let path = Harness.settle(done => helper.path(done), "helper selection");
+    Harness.equal(path, SYSTEM, "the one the polkit action names");
     Harness.deepEqual(helper.repaired, [],
                       "and it is not ours to chmod, so it is left alone");
 };
 
 cases["without it, the applet's own copy is used and repaired"] = function () {
     let helper = helperWith([OWN], [0, ""]);
-    Harness.equal(helper.path(), OWN, "ours");
+    let path = Harness.settle(done => helper.path(done), "helper selection");
+    Harness.equal(path, OWN, "ours");
     Harness.deepEqual(helper.repaired, [OWN],
                       "a checkout or a zip download can lose the executable bit");
+};
+
+cases["an incompatible system helper yields to the bundled helper"] = function () {
+    let spawned = [];
+    let helper = new Privileged.PrivilegedHelper(
+        [SYSTEM, OWN], () => true, () => {},
+        (argv, onDone) => { spawned.push(argv); onDone(0, ""); },
+        (path, onDone) => onDone(path === OWN,
+                                 path === OWN ? "" : "reported protocol 0"));
+    let outcome = null;
+    helper.run(["boost", "1"], result => { outcome = result; });
+
+    Harness.equal(spawned.length, 1, "only the compatible helper is executed through pkexec");
+    Harness.equal(spawned[0][1], OWN, "the stale root-owned copy did not override the bundle");
+    Harness.equal(outcome.applied, true, "the requested change can still be applied");
+    Harness.equal(outcome.warningCode, "stale-system-helper",
+                  "and the installation problem is reported explicitly");
 };
 
 cases["with no helper at all, nothing is spawned"] = function () {
@@ -337,6 +356,15 @@ cases["the shipped helper emits the structured contract"] = function () {
     Harness.equal(result.status, 1, "the value was refused");
     Harness.ok(/^powertoys-helper-error invalid-value /.test(result.stderr),
                "and the final line carries a stable code: " + result.stderr);
+};
+
+cases["the shipped helper identifies its protocol before authentication"] = function () {
+    let path = Harness.xletDir() + "/powertoys-helper";
+    let compatible = Harness.settle(done => Privileged._probeHelper(
+        path, (ok, diagnostic) => done({ ok: ok, diagnostic: diagnostic })),
+        "the helper protocol probe");
+    Harness.equal(compatible.ok, true, "the applet and bundled helper agree");
+    Harness.equal(compatible.diagnostic, "", "with no compatibility warning");
 };
 
 cases["a refusal is written to the log with its status and its reason"] = function () {

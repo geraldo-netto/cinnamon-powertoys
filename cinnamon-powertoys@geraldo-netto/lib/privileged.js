@@ -20,23 +20,25 @@ const Log = require("./lib/log.js");
  * check out. Both mean the user knows perfectly well nothing happened. */
 var PKEXEC_DISMISSED = 126;
 var PKEXEC_UNAUTHORISED = 127;
+var HELPER_PROTOCOL = 1;
+var HELPER_PROTOCOL_LINE = "cinnamon-powertoys-helper-protocol " + HELPER_PROTOCOL;
 
 function _spawn(argv, onDone) {
     let process;
     try {
         process = new Gio.Subprocess({
             argv: argv,
-            flags: Gio.SubprocessFlags.STDERR_PIPE,
+            flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE,
         });
         process.init(null);
     } catch (error) {
-        onDone(-1, String(error));
+        onDone(-1, String(error), "");
         return;
     }
 
     process.communicate_utf8_async(null, null, (source, result) => {
         try {
-            let [, , stderr] = source.communicate_utf8_finish(result);
+            let [, stdout, stderr] = source.communicate_utf8_finish(result);
             /* A process that was killed never exited, and asking one for an
              * exit status is a GLib CRITICAL rather than a number - the same
              * assertion lib/ddc.js guards its own read with. Nothing here
@@ -44,10 +46,28 @@ function _spawn(argv, onDone) {
              * dialog on screen, the polkit agent dying, or the OOM killer;
              * each of them is a change that did not happen, which is what -1
              * already means to _outcome. */
-            onDone(source.get_if_exited() ? source.get_exit_status() : -1, stderr || "");
+            onDone(source.get_if_exited() ? source.get_exit_status() : -1,
+                   stderr || "", stdout || "");
         } catch (error) {
-            onDone(-1, String(error));
+            onDone(-1, String(error), "");
         }
+    });
+}
+
+/* A helper identifies its command and failure vocabulary before pkexec is
+ * involved. Executing the probe also verifies that the candidate is a regular
+ * executable with a working interpreter rather than merely an existing path. */
+function _probeHelper(path, onDone) {
+    _spawn([path, "protocol-version"], (status, stderr, stdout) => {
+        let answer = String(stdout || "").trim();
+        if (status === 0 && answer === HELPER_PROTOCOL_LINE) {
+            onDone(true, "");
+            return;
+        }
+        let diagnostic = status === 0
+            ? "reported " + (answer || "no protocol")
+            : String(stderr || "probe exited with status " + status).trim();
+        onDone(false, diagnostic);
     });
 }
 
@@ -73,11 +93,18 @@ var PrivilegedHelper = class PrivilegedHelper {
      * the applet. `exists` and `repair` are how the caller reaches the file
      * system, so this module needs none of its own.
      */
-    constructor(candidates, exists, repair, spawn) {
+    constructor(candidates, exists, repair, spawn, probe) {
         this._candidates = candidates || [];
         this._exists = exists || (() => false);
         this._repair = repair || function () {};
         this._spawn = spawn || _spawn;
+        /* An injected spawn normally stands for pkexec in tests or another
+         * integration and cannot execute a candidate directly. Such callers
+         * may inject a probe too; runtime uses the real protocol handshake. */
+        this._probe = probe || (spawn
+            ? ((path, onDone) => onDone(true, ""))
+            : _probeHelper);
+        this._selection = null;
 
         /*
          * One at a time. Two clicks in quick succession used to spawn two
@@ -117,16 +144,48 @@ var PrivilegedHelper = class PrivilegedHelper {
      * first candidate is the root owned one; only ours is ours to repair, so
      * the executable bit is only ever put back on the later candidates.
      */
-    path() {
-        for (let i = 0; i < this._candidates.length; i++) {
-            let candidate = this._candidates[i];
-            if (!this._exists(candidate))
-                continue;
-            if (i > 0)
-                this._repair(candidate);
-            return candidate;
+    path(onDone) {
+        let done = onDone || function () {};
+        if (this._selection) {
+            done(this._selection.path, this._selection.issue);
+            return this._selection.path;
         }
+        this._tryCandidate(0, null, done);
         return null;
+    }
+
+    _tryCandidate(index, issue, onDone) {
+        if (index >= this._candidates.length) {
+            this._selection = { path: null, issue: issue };
+            onDone(null, issue);
+            return;
+        }
+
+        let candidate = this._candidates[index];
+        if (!this._exists(candidate)) {
+            this._tryCandidate(index + 1, issue, onDone);
+            return;
+        }
+        if (index > 0)
+            this._repair(candidate);
+
+        this._probe(candidate, (compatible, diagnostic) => {
+            if (compatible) {
+                this._selection = { path: candidate, issue: issue };
+                if (issue)
+                    Log.error(issue.diagnostic + "; using " + candidate);
+                onDone(candidate, issue);
+                return;
+            }
+            let rejected = {
+                code: index === 0 ? "stale-system-helper" : "helper-incompatible",
+                diagnostic: (index === 0
+                    ? "the installed privileged helper is incompatible"
+                    : "a privileged helper is incompatible") +
+                    (diagnostic ? ": " + diagnostic : ""),
+            };
+            this._tryCandidate(index + 1, issue || rejected, onDone);
+        });
     }
 
     /*
@@ -162,22 +221,30 @@ var PrivilegedHelper = class PrivilegedHelper {
             return;
 
         let job = this._queue.shift();
-        let helper = this.path();
-
-        if (!helper) {
-            job.done({ applied: false, code: "helper-not-found",
-                       diagnostic: "the helper script could not be found",
-                       error: "the helper script could not be found" });
-            this._next();
-            return;
-        }
-
         this._running = true;
-        let argv = ["pkexec", helper].concat(job.args.map(argument => String(argument)));
-        this._spawn(argv, (status, stderr) => {
-            this._running = false;
-            job.done(this._outcome(status, stderr));
-            this._next();
+        this.path((helper, issue) => {
+            if (!helper) {
+                this._running = false;
+                let diagnostic = issue ? issue.diagnostic : "the helper script could not be found";
+                job.done({ applied: false,
+                           code: issue ? issue.code : "helper-not-found",
+                           diagnostic: diagnostic, error: diagnostic });
+                this._next();
+                return;
+            }
+
+            let argv = ["pkexec", helper].concat(job.args.map(argument => String(argument)));
+            this._spawn(argv, (status, stderr) => {
+                this._running = false;
+                let outcome = this._outcome(status, stderr);
+                if (issue)
+                    outcome = Object.assign({}, outcome, {
+                        warningCode: issue.code,
+                        warningDiagnostic: issue.diagnostic,
+                    });
+                job.done(outcome);
+                this._next();
+            });
         });
     }
 

@@ -2805,6 +2805,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._helper.run(args, outcome => {
             if (this._destroyed)
                 return;
+            this._reportHelperWarning(outcome);
             this._cpu.refresh();
             this._update();
             if (!outcome.applied && !outcome.cancelled)
@@ -2835,9 +2836,21 @@ class PowerToysApplet extends Applet.TextIconApplet {
             return _("The change failed and some previous settings could not be restored.");
         case "helper-not-found":
             return _("The privileged helper could not be found.");
+        case "stale-system-helper":
+            return _("The installed privileged helper is outdated. Re-run the policy installation.");
+        case "helper-incompatible":
+            return _("The privileged helper is incompatible with this applet version.");
         default:
             return _("The change could not be applied.");
         }
+    }
+
+    _reportHelperWarning(outcome) {
+        if (!outcome || outcome.warningCode !== "stale-system-helper")
+            return;
+        Main.notifyError(
+            _("Power Toys"),
+            _("The installed privileged helper is outdated. Re-run the policy installation."));
     }
 
     /* Gio prefixes a remote error with the D-Bus error name, which means
@@ -2940,6 +2953,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             if (this._destroyed)
                 return;
 
+            this._reportHelperWarning(outcome);
             this._cpu.refresh();
             this._update();
 
