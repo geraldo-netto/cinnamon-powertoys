@@ -325,10 +325,10 @@ cases["profile collections and controls reject a backend transition"] = function
 
 cases["a profile write stays with the backend that produced its control"] = function () {
     let source = Harness.readFile(Harness.xletDir() + "/applet.js");
-    let match = /    _setProfile\(name\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* A password dialog/.exec(source);
+    let match = /    _setProfile\(name, onResult\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* A password dialog/.exec(source);
     Harness.ok(match, "the profile action can be isolated");
     let setProfile = Function(
-        "Reading", "Profiles", "return function (name) {" + match[1] + "\n};")({
+        "Reading", "Profiles", "return function (name, onResult) {" + match[1] + "\n};")({
         shownProfile: () => "balanced",
     }, {
         profileWriteError: outcome => outcome,
@@ -346,6 +346,7 @@ cases["a profile write stays with the backend that produced its control"] = func
     let firmware = { setProfile: () => { throw new Error("wrong profile backend"); } };
     let profile = { source: daemon, generation: 7 };
     let notices = [];
+    let results = [];
     let updates = 0;
     let applet = {
         _profileBackend: daemon,
@@ -354,20 +355,61 @@ cases["a profile write stays with the backend that produced its control"] = func
         _latest: { profile: profile },
         _pending: {
             value: null,
-            request: (name, write, report) => write(outcome => report(outcome)),
+            request: (name, write, report) => write(outcome => report(outcome, true)),
         },
         _notifyProfileError: (name, error) => notices.push([name, error]),
         _scheduleUpdate: () => updates++,
     };
 
-    Harness.equal(setProfile.call(applet, "performance"), true, "the write was accepted");
+    Harness.equal(setProfile.call(applet, "performance", error => results.push(error)), true,
+                  "the write was accepted");
     Harness.deepEqual(writes, ["performance"], "the snapshot's backend received it");
 
     applet._profileBackend = firmware;
     applet._profileBackendGeneration = 8;
     oldDone(new Error("old daemon vanished"));
     Harness.deepEqual(notices, [], "the obsolete writer cannot report against new controls");
+    Harness.deepEqual(results, [], "nor report a result for the obsolete control");
     Harness.equal(updates, 2, "the optimistic and final states are both redrawn");
+};
+
+cases["profile announcements wait for matching success"] = function () {
+    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let match = /    _stepProfile\(step, wrap, announce\) \{([\s\S]*?)\n    \}\n\n    _cycleProfile/.exec(source);
+    Harness.ok(match, "the profile step can be isolated");
+    let notices = [];
+    let callbacks = [];
+    let stepProfile = Function(
+        "Reading", "Profiles", "Main", "_", "Format",
+        "return function (step, wrap, announce) {" + match[1] + "\n};")({
+        shownProfile: () => "balanced",
+    }, {
+        nextProfile: () => "performance",
+    }, {
+        notify: (title, body) => notices.push([title, body]),
+    }, text => text, {
+        profileLabel: name => name,
+    });
+    let applet = {
+        _profileState: () => ({ list: ["balanced", "performance"] }),
+        _latest: {},
+        _pending: { value: null },
+        _setProfile: (name, done) => {
+            callbacks.push(done);
+            return true;
+        },
+    };
+
+    Harness.equal(stepProfile.call(applet, 1, true, true), true, "the step was accepted");
+    Harness.deepEqual(notices, [], "acceptance alone announces nothing");
+    callbacks.shift()(new Error("authentication cancelled"));
+    Harness.deepEqual(notices, [], "a failed result announces nothing");
+
+    stepProfile.call(applet, 1, true, true);
+    Harness.deepEqual(notices, [], "the next accepted request still waits");
+    callbacks.shift()(null);
+    Harness.deepEqual(notices, [["Power Toys", "Power profile: performance"]],
+                      "only the matching success is announced");
 };
 
 cases["slow rediscovery includes CPU topology"] = function () {

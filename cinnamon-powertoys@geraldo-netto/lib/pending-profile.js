@@ -90,6 +90,10 @@ var PendingProfile = class PendingProfile {
             if (answered)
                 return;
             answered = true;
+            /* The request serial still identifies this operation after the
+             * machine has already adopted it and settle() has cleared the
+             * optimistic value. A different ask advances the serial. */
+            let matching = request === this._request;
             /* A truthy outcome is not necessarily an Error: the daemon client
              * also reports an intentionally superseded queued write. It was
              * not written either way, and the name guard keeps an obsolete
@@ -98,7 +102,7 @@ var PendingProfile = class PendingProfile {
                 this.failed(name, request);
             else
                 this.written(name, request);
-            report(outcome || null);
+            report(outcome || null, matching);
         };
 
         let accepted;

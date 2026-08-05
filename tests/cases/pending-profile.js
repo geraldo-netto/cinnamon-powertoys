@@ -174,6 +174,41 @@ cases["a late answer cannot alter the same request on a replacement backend"] = 
     Harness.equal(profile.value, null, "only the replacement's own answer clears it");
 };
 
+cases["results say whether they still belong to the latest request"] = function () {
+    let profile = pending();
+    let balancedDone = null;
+    let performanceDone = null;
+    let results = [];
+    profile.request("balanced", done => {
+        balancedDone = done;
+        return true;
+    }, (outcome, matching) => results.push([outcome, matching]));
+    profile.request("performance", done => {
+        performanceDone = done;
+        return true;
+    }, (outcome, matching) => results.push([outcome, matching]));
+
+    balancedDone(null);
+    performanceDone(null);
+    Harness.deepEqual(results, [[null, false], [null, true]],
+                      "only the newest request is eligible for presentation feedback");
+};
+
+cases["an adopted request remains its matching success"] = function () {
+    let profile = pending();
+    let finish = null;
+    let matching = null;
+    profile.request("performance", done => {
+        finish = done;
+        return true;
+    }, (outcome, current) => { matching = current; });
+
+    profile.settle("performance");
+    finish(null);
+    Harness.equal(matching, true,
+                  "a fast machine reading does not hide its later transport success");
+};
+
 cases["a write nobody has taken waits indefinitely"] = function () {
     /* A pkexec dialog can be on screen for as long as the user leaves it
      * there, and until it is answered nothing has happened yet. */

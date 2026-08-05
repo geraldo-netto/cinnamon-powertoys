@@ -2820,7 +2820,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * about the change - the wheel, the hotkey - can say it only when there
      * was one. Asking again for the profile already in flight is not one.
      */
-    _setProfile(name) {
+    _setProfile(name, onResult) {
         let state = this._profileState();
         if (!state)
             return false;
@@ -2831,7 +2831,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         if (name === shown)
             return false;
         let accepted = this._pending.request(name,
-            done => backend.setProfile(name, done), outcome => {
+            done => backend.setProfile(name, done), (outcome, matching) => {
                 /* Ownership moved while the old transport was in flight.
                  * Its result describes neither the current controls nor the
                  * current writer, and _chooseProfileBackend already cleared
@@ -2847,6 +2847,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
                     if (error.message !== "cancelled")
                         this._notifyProfileError(name, error);
                 }
+                if (matching && onResult)
+                    onResult(error);
                 this._scheduleUpdate();
             });
 
@@ -3016,12 +3018,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
         if (!name)
             return false;
 
-        /* Announced only where the call was taken, which is the whole of what
-         * the return value above is for. */
-        if (!this._setProfile(name))
+        /* Acceptance means a write is in progress, not that it happened.
+         * Announce only when this exact request answers successfully; the
+         * pending panel state is the feedback while it is in flight. */
+        if (!this._setProfile(name, error => {
+            if (announce && !error)
+                Main.notify(_("Power Toys"),
+                            _("Power profile") + ": " + Format.profileLabel(name));
+        }))
             return false;
-        if (announce)
-            Main.notify(_("Power Toys"), _("Power profile") + ": " + Format.profileLabel(name));
         return true;
     }
 
