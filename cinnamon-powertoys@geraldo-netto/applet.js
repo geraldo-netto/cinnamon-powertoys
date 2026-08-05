@@ -860,7 +860,11 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
         this.actor.set_accessible_role(Atk.Role.SLIDER);
         this.actor.set_accessible_name(_("Brightness") + ": " + label);
         this._accessible = this.actor.get_accessible();
-        this._accessible.set_description("0–100% · " + BACKLIGHT_STEP + "%");
+        /* Slider accessibles also implement Atk.Action, whose set_description
+         * takes an action index before the text. Name Atk.Object explicitly so
+         * GJS cannot resolve the colliding interface method. */
+        Atk.Object.prototype.set_description.call(
+            this._accessible, "0–100% · " + BACKLIGHT_STEP + "%");
 
         this.tooltip = new Tooltips.Tooltip(this.actor, label);
 
