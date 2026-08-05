@@ -91,6 +91,23 @@ function control(kind, stub, error) {
     return backlight;
 }
 
+function ownerWatcher() {
+    let owner = {
+        reportsInitialState: true,
+        unwatched: [],
+        watch: function (appeared, vanished) {
+            owner.appeared = appeared;
+            owner.vanished = vanished;
+            appeared();
+            return 19;
+        },
+        unwatch: function (id) {
+            owner.unwatched.push(id);
+        },
+    };
+    return owner;
+}
+
 var cases = {};
 
 cases["monitor brightness follows the visible display topology"] = function () {
@@ -125,6 +142,63 @@ cases["a backlight answers with what the daemon reports"] = function () {
     Harness.equal(screen.available, true, "the daemon answered, so there is one");
     Harness.equal(screen.percentage, 42, "and this is where it is");
     Harness.equal(screen.readyCount(), 1, "ready is said once, when the answer is in");
+};
+
+cases["the owner watch performs the only production startup read"] = function () {
+    let stub = proxy({ GetPercentage: 42 });
+    let owner = ownerWatcher();
+    let connections = 0;
+    let screen = new Backlight.BacklightControl(
+        Backlight.SCREEN, null, null,
+        (xml, onDone) => { connections++; onDone(stub, null); }, owner);
+
+    Harness.equal(connections, 1, "the proxy is initialized once");
+    Harness.deepEqual(stub.calls.filter(call => call[0] === "GetPercentage"),
+                      [["GetPercentage"]], "with one startup percentage read");
+    screen.destroy();
+    Harness.deepEqual(owner.unwatched, [19], "the injected owner watch is released");
+};
+
+cases["teardown cancels an in-flight proxy initialization"] = function () {
+    let owner = ownerWatcher();
+    let pending = null;
+    let token = null;
+    let ready = 0;
+    let screen = new Backlight.BacklightControl(
+        Backlight.SCREEN, null, () => ready++,
+        (xml, onDone, cancellable) => {
+            pending = onDone;
+            token = cancellable;
+        }, owner);
+
+    Harness.ok(token, "proxy initialization owns a cancellable");
+    screen.destroy();
+    Harness.equal(token.is_cancelled(), true, "the obsolete bus work is stopped");
+    pending(proxy({ GetPercentage: 70 }), null);
+    Harness.equal(screen.available, false, "its late answer is ignored");
+    Harness.equal(ready, 0, "and cannot call into the removed applet");
+};
+
+cases["owner replacement cancels the old backlight proxy initialization"] = function () {
+    let owner = ownerWatcher();
+    let pending = [];
+    let tokens = [];
+    let screen = new Backlight.BacklightControl(
+        Backlight.SCREEN, null, null,
+        (xml, onDone, cancellable) => {
+            pending.push(onDone);
+            tokens.push(cancellable);
+        }, owner);
+
+    owner.vanished();
+    Harness.equal(tokens[0].is_cancelled(), true, "owner loss stops the old proxy request");
+    owner.appeared();
+    Harness.equal(tokens.length, 2, "the replacement owner gets a fresh request");
+    pending[0](proxy({ GetPercentage: 10 }), null);
+    Harness.equal(screen.available, false, "the old owner's late proxy is ignored");
+    pending[1](proxy({ GetPercentage: 65 }), null);
+    Harness.equal(screen.percentage, 65, "the replacement proxy supplies the value");
+    screen.destroy();
 };
 
 cases["an interface with no backlight behind it is not available"] = function () {
@@ -372,6 +446,91 @@ cases["a mutation invalidates an older percentage read"] = function () {
     answers.GetPercentage = 20;
     stub.pending.shift()();
     Harness.equal(screen.percentage, 80, "the older read cannot overwrite the mutation");
+};
+
+cases["stale step replies cannot change the visible percentage"] = function () {
+    function attempt(configure, answer, error) {
+        let live = proxy({ GetPercentage: 40, StepUp: 90 });
+        let screen = control(Backlight.SCREEN, live);
+        let generation = screen._generation;
+        let valueGeneration = screen._valueGeneration;
+        let calls = 0;
+        let reply = null;
+        live.StepUpRemote = onDone => { calls++; reply = onDone; };
+
+        let finished = 0;
+        let count = (configure === "value" || configure === "empty") ? 1 : 3;
+        screen._runSteps({ count: count, up: true }, live, generation,
+                         valueGeneration, () => finished++);
+        if (configure === "destroyed")
+            screen.destroyed = true;
+        else if (configure === "generation")
+            screen._generation++;
+        else if (configure === "proxy")
+            screen._proxy = proxy({ GetPercentage: 10 });
+        else if (configure === "value")
+            screen._valueGeneration++;
+        reply(answer, error || null);
+        Harness.equal(screen.percentage, 40, configure + " reply is stale");
+        Harness.equal(calls, 1, configure + " reaches one already-started call");
+        Harness.equal(finished, 1, configure + " still settles");
+        screen.destroyed = false;
+        screen._proxy = live;
+        screen.destroy();
+    }
+
+    attempt("destroyed", [90]);
+    attempt("generation", [90]);
+    attempt("proxy", [90]);
+    attempt("value", [90]);
+    attempt("error", [90], new Error("daemon refused the step"));
+    attempt("empty", null);
+};
+
+cases["a failed step stops the rest of a gathered flick"] = function () {
+    let stub = proxy({ GetPercentage: 40, StepUp: 90 });
+    let screen = control(Backlight.SCREEN, stub);
+    let calls = 0;
+    stub.StepUpRemote = onDone => {
+        calls++;
+        onDone(null, new Error("step failed"));
+    };
+
+    screen.stepBy(3);
+    Harness.equal(calls, 1, "an error terminates the sequence immediately");
+    Harness.equal(screen.percentage, 40, "and does not invent a new value");
+    screen.destroy();
+};
+
+cases["a mutation reply after teardown cannot change brightness"] = function () {
+    let stub = proxy({ GetPercentage: 40, SetPercentage: value => value },
+                     { deferred: ["SetPercentage"] });
+    let screen = control(Backlight.SCREEN, stub);
+    let answered = 0;
+    screen.setPercentage(75, () => answered++);
+
+    screen.destroyed = true;
+    stub.pending.shift()();
+    Harness.equal(screen.percentage, 40, "the removed applet keeps its last confirmed value");
+    Harness.equal(answered, 1, "the operation still settles exactly once");
+    screen.destroyed = false;
+    screen.destroy();
+};
+
+cases["proxy loss settles every coalesced refresh waiter"] = function () {
+    let stub = proxy({ GetPercentage: 40 }, { deferred: ["GetPercentage"] });
+    let screen = control(Backlight.SCREEN, stub);
+    stub.pending.shift()();
+    let answered = 0;
+
+    screen.refresh(() => answered++);
+    screen.refresh(() => answered++);
+    screen.refresh(() => answered++);
+    screen.destroy();
+    Harness.equal(answered, 3, "the active read and both queued callers are released");
+
+    stub.pending.shift()();
+    Harness.equal(answered, 3, "the late bus reply cannot answer any caller twice");
 };
 
 cases["a destroyed control lets go and stops answering"] = function () {
