@@ -110,3 +110,13 @@ cases["the privileged setting names every gated control"] = function () {
     Harness.ok(setting.tooltip.indexOf("ACPI platform profile") >= 0,
                "the firmware profile is named among the gated writes");
 };
+
+cases["the primary sensor documentation names every primary kind"] = function () {
+    let schema = JSON.parse(readFile(Harness.xletDir() + "/settings-schema.json"));
+    let tooltip = schema["show-all-sensors"].tooltip;
+    let readme = readFile(Harness.testsDir() + "/../README.md");
+    for (let name of ["CPU", "GPU", "processor-package", "battery"])
+        Harness.ok(tooltip.indexOf(name) >= 0, "the setting tooltip names " + name);
+    Harness.ok(readme.indexOf("CPU, GPU, processor-package and battery sensors") >= 0,
+               "the README names the complete primary set");
+};

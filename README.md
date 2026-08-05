@@ -111,7 +111,7 @@ read as *Radeon RX 6600/6600 XT/6600M* and *AMD Raphael* rather than as
 *Edge*, *Junction*, *Fan* — because the heading has already said whose they
 are. The processor's frequency and scaling driver head its own group, since
 they are readings off that chip like the rest of them. The list can be limited
-to CPU and GPU only.
+to CPU, GPU, processor-package and battery sensors.
 
 **Alerts.** Configurable low and critical battery notifications, separate
 thresholds for peripherals, and an optional high temperature warning. All with

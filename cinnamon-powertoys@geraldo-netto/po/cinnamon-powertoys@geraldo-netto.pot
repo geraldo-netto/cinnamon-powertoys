@@ -748,7 +748,8 @@ msgid "Include disk, network and board sensors"
 msgstr ""
 
 #. settings-schema.json->show-all-sensors->tooltip
-msgid "When off, only CPU and GPU sensors are listed."
+msgid ""
+"When off, only CPU, GPU, processor-package and battery sensors are listed."
 msgstr ""
 
 #. settings-schema.json->monitor-brightness->description

@@ -108,7 +108,7 @@
         "type": "switch",
         "default": false,
         "description": "Include disk, network and board sensors",
-        "tooltip": "When off, only CPU and GPU sensors are listed.",
+        "tooltip": "When off, only CPU, GPU, processor-package and battery sensors are listed.",
         "dependency": "show-sensors"
     },
     "monitor-brightness": {
