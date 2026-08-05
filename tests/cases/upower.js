@@ -620,6 +620,34 @@ cases["a failed UPower owner watch falls back to direct discovery"] = function (
     Harness.deepEqual(bus.unwatched, [], "no invented watch id is released");
 };
 
+cases["degraded UPower discovery retries without ownership edges"] = function () {
+    let manager = managerFor([BAT0]);
+    let bus = busFor(manager, { [BAT0]: proxyFor() }, { watch: true });
+    let timers = retryTimers(bus);
+    let attempts = 0;
+    bus.watch = function () { throw new Error("owner watch failed"); };
+    bus.manager = function (onDone) {
+        attempts++;
+        if (attempts === 1)
+            onDone(null, new Error("manager was starting"));
+        else
+            onDone(manager, null);
+    };
+
+    logging(function () {
+        let monitor = monitorOn(bus);
+        Harness.equal(monitor._ownerPresent, null,
+                      "degraded discovery does not invent an ownership edge");
+        Harness.equal(Object.keys(timers.pending).length, 1,
+                      "the transient direct-discovery failure arms a retry");
+        timers.fire();
+        Harness.equal(attempts, 2, "the degraded path tries the manager again");
+        Harness.equal(monitor.available, true, "the retry recovers UPower");
+        Harness.equal(monitor.snapshot().length, 1, "and publishes its devices");
+        monitor.destroy();
+    });
+};
+
 cases["a manager answering after the applet has gone is dropped"] = function () {
     /*
      * The bus answers in its own time, and the applet can be removed from the

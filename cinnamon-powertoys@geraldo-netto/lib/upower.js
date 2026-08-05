@@ -243,6 +243,7 @@ var UPowerMonitor = class UPowerMonitor {
         this.available = false;
         this.destroyed = false;
         this._ownerPresent = this._bus.watch ? null : true;
+        this._watchDegraded = false;
 
         if (this._bus.watch) {
             try {
@@ -250,6 +251,7 @@ var UPowerMonitor = class UPowerMonitor {
                                                 () => this._onNameVanished());
             } catch (e) {
                 Log.error("cannot watch UPower: " + e);
+                this._watchDegraded = true;
                 /* Ownership edges are optional for the initial state. Keep
                  * the direct discovery path so a watcher setup failure does
                  * not hide a perfectly usable daemon for this whole run. */
@@ -430,13 +432,16 @@ var UPowerMonitor = class UPowerMonitor {
     }
 
     _scheduleRetry() {
-        if (this.destroyed || this._ownerPresent !== true || this._retryTimerId)
+        if (this.destroyed ||
+                (this._ownerPresent !== true && !this._watchDegraded) ||
+                this._retryTimerId)
             return;
         let delay = this._retryDelay;
         this._retryDelay = Math.min(delay * 2, RETRY_MAX_MS);
         let callback = () => {
             this._retryTimerId = 0;
-            if (!this.destroyed && this._ownerPresent === true) {
+            if (!this.destroyed &&
+                    (this._ownerPresent === true || this._watchDegraded)) {
                 let changed = this.available || this._devices.size > 0 || this._display !== null;
                 this._disconnectManager();
                 if (changed)
