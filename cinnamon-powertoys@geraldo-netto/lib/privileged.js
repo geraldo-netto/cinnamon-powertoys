@@ -146,10 +146,11 @@ var PrivilegedHelper = class PrivilegedHelper {
      */
     path(onDone) {
         let done = onDone || function () {};
-        if (this._selection) {
-            done(this._selection.path, this._selection.issue);
-            return this._selection.path;
-        }
+        /* A deployment can add, replace or remove the system candidate while
+         * Cinnamon keeps this object alive. Selection is therefore a hint for
+         * diagnostics, never an authority: every job rechecks candidates in
+         * priority order and repeats the protocol handshake. */
+        this._selection = null;
         this._tryCandidate(0, null, done);
         return null;
     }
@@ -248,6 +249,11 @@ var PrivilegedHelper = class PrivilegedHelper {
             let argv = ["pkexec", helper].concat(job.args.map(argument => String(argument)));
             this._spawn(argv, (status, stderr) => {
                 this._running = false;
+                /* Failure before a helper could report its own structured
+                 * result may mean the selected path vanished or changed.
+                 * Force the next queued job through discovery again. */
+                if (status === -1)
+                    this._selection = null;
                 let outcome = this._outcome(status, stderr);
                 if (issue)
                     outcome = Object.assign({}, outcome, {

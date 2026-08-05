@@ -66,11 +66,59 @@ cases["an incompatible system helper yields to the bundled helper"] = function (
                   "and the installation problem is reported explicitly");
 };
 
+cases["helper selection follows live installation changes"] = function () {
+    let present = [OWN];
+    let spawned = [];
+    let helper = new Privileged.PrivilegedHelper(
+        [SYSTEM, OWN], path => present.indexOf(path) >= 0, () => {},
+        (argv, onDone) => { spawned.push(argv[1]); onDone(0, ""); },
+        (path, onDone) => onDone(true, ""));
+
+    helper.run(["boost", "1"], () => {});
+    present.unshift(SYSTEM);
+    helper.run(["boost", "0"], () => {});
+    present = [OWN];
+    helper.run(["boost", "1"], () => {});
+
+    Harness.deepEqual(spawned, [OWN, SYSTEM, OWN],
+                      "each job uses the highest-priority candidate that still exists");
+};
+
+cases["helper protocol drift invalidates a cached candidate"] = function () {
+    let systemCompatible = true;
+    let spawned = [];
+    let helper = new Privileged.PrivilegedHelper(
+        [SYSTEM, OWN], () => true, () => {},
+        (argv, onDone) => { spawned.push(argv[1]); onDone(0, ""); },
+        (path, onDone) => onDone(path === OWN || systemCompatible,
+                                 "reported an old protocol"));
+
+    helper.run(["boost", "1"], () => {});
+    systemCompatible = false;
+    helper.run(["boost", "0"], () => {});
+
+    Harness.deepEqual(spawned, [SYSTEM, OWN],
+                      "a newly incompatible installed helper yields to the bundle");
+};
+
+cases["a spawn failure forces helper reselection"] = function () {
+    let probes = 0;
+    let runs = 0;
+    let helper = new Privileged.PrivilegedHelper(
+        [SYSTEM], () => true, () => {},
+        (argv, onDone) => onDone(runs++ === 0 ? -1 : 0, "spawn failed"),
+        (path, onDone) => { probes++; onDone(true, ""); });
+
+    helper.run(["boost", "1"], () => {});
+    helper.run(["boost", "0"], () => {});
+    Harness.equal(probes, 2, "the next job repeats the compatibility handshake");
+};
+
 cases["with no helper at all, nothing is spawned"] = function () {
     let helper = helperWith([], [0, ""]);
     let outcome = null;
     helper.run(["governor", "powersave"], result => { outcome = result; });
-    Harness.equal(helper.path(), null, "none found");
+    Harness.equal(helper.path(), null, "selection remains asynchronous when none is found");
     Harness.deepEqual(helper.spawned, [], "and pkexec was never asked");
     Harness.equal(outcome.applied, false, "reported as not applied");
     Harness.ok(outcome.error, "with a reason");
