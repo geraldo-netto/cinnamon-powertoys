@@ -135,12 +135,12 @@ msgid "Some battery limits could not be read."
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:1977 applet.js:3050 applet.js:3064 applet.js:3123 applet.js:3186
-#: applet.js:3195 applet.js:3350
+#: applet.js:1975 applet.js:3048 applet.js:3062 applet.js:3121 applet.js:3184
+#: applet.js:3193 applet.js:3348
 msgid "Power Toys"
 msgstr ""
 
-#: applet.js:1978
+#: applet.js:1976
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "
@@ -148,64 +148,64 @@ msgid ""
 "shortcuts."
 msgstr ""
 
-#: applet.js:2999 applet.js:3154
+#: applet.js:2997 applet.js:3152
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:3024
+#: applet.js:3022
 msgid "The requested value is not valid for this control."
 msgstr ""
 
-#: applet.js:3026
+#: applet.js:3024
 msgid "This control is not supported on this system."
 msgstr ""
 
-#: applet.js:3028
+#: applet.js:3026
 msgid "This control is currently unavailable."
 msgstr ""
 
-#: applet.js:3030
+#: applet.js:3028
 msgid "The system refused the requested change."
 msgstr ""
 
-#: applet.js:3032
+#: applet.js:3030
 msgid "The change failed; the previous settings were restored."
 msgstr ""
 
-#: applet.js:3034
+#: applet.js:3032
 msgid "The change failed and some previous settings could not be restored."
 msgstr ""
 
-#: applet.js:3036
+#: applet.js:3034
 msgid "The privileged helper could not be found."
 msgstr ""
 
-#: applet.js:3038 applet.js:3051
+#: applet.js:3036 applet.js:3049
 msgid ""
 "The installed privileged helper is outdated. Re-run the policy installation."
 msgstr ""
 
-#: applet.js:3040
+#: applet.js:3038
 msgid "The privileged helper is incompatible with this applet version."
 msgstr ""
 
-#: applet.js:3042
+#: applet.js:3040
 msgid "The change could not be applied."
 msgstr ""
 
-#: applet.js:3061
+#: applet.js:3059
 msgid "Could not switch to %{profile}: %{detail}"
 msgstr ""
 
-#: applet.js:3062
+#: applet.js:3060
 msgid "Could not switch to %{profile}"
 msgstr ""
 
-#: applet.js:3124
+#: applet.js:3122
 msgid "Power profile: %{profile}"
 msgstr ""
 
-#: applet.js:3351
+#: applet.js:3349
 msgid "Shortcut is already in use: %{shortcut}"
 msgstr ""
 

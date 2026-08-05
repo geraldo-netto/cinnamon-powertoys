@@ -1665,18 +1665,16 @@ class MenuPresenter {
 }
 
 /*
- * The applet itself: the wiring, and only the wiring.
+ * The applet coordinator.
  *
  * It binds the settings, builds the backends, owns the poll timer, assembles
  * one reading from those backends, hands that reading to the panel, the menu
  * and the alert policy, and turns what the user does - a click, the wheel, a
- * hotkey - into a call on a backend. It draws nothing and decides nothing
- * about how anything looks.
- *
- * Four groups here are still more than wiring, and each is somebody else's
- * item: choosing between the two profile backends (PT-32), what a device row
- * says about itself (PT-33, PT-34), and running the privileged helper
- * (PT-37).
+ * hotkey - into a call on a backend. It also owns backend selection,
+ * privileged-change coordination and teardown. Panel and menu presentation
+ * stay in their presenters above, Cinnamon compatibility in
+ * lib/cinnamon-panel.js, and machine access plus reusable derived policy in
+ * the other libraries.
  */
 class PowerToysApplet extends Applet.TextIconApplet {
     constructor(metadata, orientation, panelHeight, instanceId, backends) {

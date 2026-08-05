@@ -422,6 +422,7 @@ settings.
 ```
 cinnamon-powertoys@geraldo-netto/
 ├── applet.js               panel item, menu, wiring, polling
+├── lib/cinnamon-panel.js   Cinnamon panel and tooltip compatibility boundary
 │
 │   reading the machine, and writing to it
 ├── lib/io.js               file reads, rooted so a captured /sys can stand in
