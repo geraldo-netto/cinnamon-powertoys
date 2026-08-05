@@ -439,6 +439,35 @@ cases["profile announcements wait for matching success"] = function () {
                       "only the matching success is announced");
 };
 
+cases["malformed battery icon metadata keeps the panel fallback"] = function () {
+    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let match = /    _updateIcon\(data, source, profile\) \{([\s\S]*?)\n    \}\n\n    destroy\(\)/.exec(source);
+    Harness.ok(match, "the panel icon boundary can be isolated");
+    let updateIcon = Function(
+        "Gio", "Format", "DEFAULT_ICON",
+        "return function (data, source, profile) {" + match[1] + "\n};")({
+        icon_new_for_string: () => { throw new Error("malformed icon"); },
+    }, {
+        batteryIconName: () => "battery-fallback",
+        profileIconName: () => null,
+    }, "powertoys");
+    let calls = [];
+    let presenter = {
+        _iconKey: null,
+        _iconDir: "/icons",
+        _shell: {
+            setBatteryIcon: (fallback, icon, sourceName) =>
+                calls.push([fallback, icon, sourceName]),
+            setIconPath: () => {},
+            setSymbolicIcon: () => {},
+        },
+    };
+
+    updateIcon.call(presenter, { primary: { icon: "not a valid icon" } }, "battery", null);
+    Harness.deepEqual(calls, [["battery-fallback", null, "not a valid icon"]],
+                      "the validated symbolic fallback still reaches the panel");
+};
+
 cases["slow rediscovery includes CPU topology"] = function () {
     let source = Harness.readFile(Harness.xletDir() + "/applet.js");
     let rediscover = /    _rediscover\(\) \{([\s\S]*?)\n    \}/.exec(source);

@@ -290,8 +290,16 @@ class PanelPresenter {
             if (key === this._iconKey)
                 return;
             this._iconKey = key;
+            let parsed = null;
+            if (icon) {
+                try {
+                    parsed = Gio.icon_new_for_string(icon);
+                } catch (e) {
+                    /* Optional daemon metadata cannot abort presentation. */
+                }
+            }
             this._shell.setBatteryIcon(Format.batteryIconName(),
-                                       icon ? Gio.icon_new_for_string(icon) : null,
+                                       parsed,
                                        icon);
             return;
         }
