@@ -40,6 +40,7 @@ const Device = require("./lib/device.js");
 const IO = require("./lib/io.js");
 const KeyedList = require("./lib/keyed-list.js");
 const Log = require("./lib/log.js");
+const Notifications = require("./lib/notifications.js");
 const PanelText = require("./lib/panel-text.js");
 const PendingProfile = require("./lib/pending-profile.js");
 const PowerSupply = require("./lib/power-supply.js");
@@ -169,6 +170,7 @@ function defaultBackends() {
         bluetoothBatteries: onChanged => new Bluez.BluezBatteries(onChanged),
         upowerMonitor: (onChanged, onReady) => new UPower.UPowerMonitor(onChanged, onReady),
         fileExists: path => IO.exists(path),
+        notifications: () => new Notifications.NotificationCenter(Main),
         privilegedHelper: (candidates, exists, repair) =>
             new Privileged.PrivilegedHelper(candidates, exists, repair),
     };
@@ -1635,6 +1637,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._panel = null;
         this.settings = null;
         this._helper = null;
+        this._notifications = null;
         this._sensors = null;
         this._cpu = null;
         this._chargeControl = null;
@@ -1668,6 +1671,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this.metadata = metadata;
         this.instanceId = instanceId;
         this._backends = backends || defaultBackends();
+        this._notifications = this._backends.notifications
+            ? this._backends.notifications()
+            : new Notifications.NotificationCenter(Main);
         this.setAllowedLayout(Applet.AllowedLayout.BOTH);
         this.set_show_label_in_vertical_panels(false);
 
@@ -1708,10 +1714,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * said is the applet's, because it is the only part of this that has a
          * tray to say it in. */
         this._alerts = new Alerts.AlertPolicy((urgent, title, body) => {
-            if (urgent)
-                Main.criticalNotify(title, body);
-            else
-                Main.notify(title, body);
+            return urgent
+                ? this._notifications.critical(title, body)
+                : this._notifications.notify(title, body);
         });
         /* A hover gets one prefetch so a later menu is ready; only an open
          * menu keeps probing. The tooltip itself names no monitor. */
@@ -1908,29 +1913,24 @@ class PowerToysApplet extends Applet.TextIconApplet {
         if (this.introduced)
             return;
 
-        /*
-         * Inside a try because this is the last thing the constructor does
-         * and the least important thing the applet does, and because it has
-         * been seen to throw.
-         *
-         * Once, on Cinnamon 6.6.9, this line ended the constructor with
+        /* Once, on Cinnamon 6.6.9, the shell call ended the constructor with
          * "right-hand side of 'in' should be an object, got undefined" and
          * the applet never reached the panel - no icon, and nothing to go on
-         * but a stack in the shell log naming a greeting. It has not happened
-         * again: called from the same session afterwards, Main.notify does
-         * not throw. So the cause is not known and is not claimed here. What
-         * is known is that an exception on this line costs somebody the whole
-         * applet, and that no first run message is worth that.
+         * but a stack in the shell log naming a greeting. The notification
+         * boundary now contains that shell failure and reports whether the
+         * greeting was delivered before it is remembered.
          */
-        try {
-            Main.notify(_("Power Toys"),
-                        _("Power profiles, processor settings, batteries and sensors " +
-                          "are in this menu. The wheel over the icon changes screen " +
-                          "brightness, a middle click toggles the keyboard backlight. " +
-                          "Right click to configure those, and to set shortcuts."));
-            this.settings.setValue("introduced", true);
-        } catch (error) {
-            Log.error("could not show the first-run notification: " + error);
+        if (this._notifications.notify(
+                _("Power Toys"),
+                _("Power profiles, processor settings, batteries and sensors " +
+                  "are in this menu. The wheel over the icon changes screen " +
+                  "brightness, a middle click toggles the keyboard backlight. " +
+                  "Right click to configure those, and to set shortcuts."))) {
+            try {
+                this.settings.setValue("introduced", true);
+            } catch (error) {
+                Log.error("could not remember the first-run notification: " + error);
+            }
         }
     }
 
@@ -2984,7 +2984,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _reportHelperWarning(outcome) {
         if (!outcome || outcome.warningCode !== "stale-system-helper")
             return;
-        Main.notifyError(
+        this._notifications.error(
             _("Power Toys"),
             _("The installed privileged helper is outdated. Re-run the policy installation."));
     }
@@ -2994,9 +2994,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _notifyProfileError(name, error) {
         let detail = error && error.message ? error.message : String(error);
         detail = detail.replace(/^GDBus\.Error:[^\s:]+:\s*/, "").trim();
-        Main.notifyError(_("Power Toys"),
-                         _("Could not switch to") + " " + Format.profileLabel(name) +
-                         (detail ? ": " + detail : ""));
+        this._notifications.error(
+            _("Power Toys"),
+            _("Could not switch to") + " " + Format.profileLabel(name) +
+            (detail ? ": " + detail : ""));
     }
 
     /*
@@ -3053,8 +3054,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * pending panel state is the feedback while it is in flight. */
         if (!this._setProfile(name, error => {
             if (announce && !error)
-                Main.notify(_("Power Toys"),
-                            _("Power profile") + ": " + Format.profileLabel(name));
+                this._notifications.notify(
+                    _("Power Toys"),
+                    _("Power profile") + ": " + Format.profileLabel(name));
         }))
             return false;
         return true;
@@ -3115,7 +3117,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
                  */
                 let changed = Reading.describeChange(args);
                 if (changed)
-                    Main.notify(_("Power Toys"), changed);
+                    this._notifications.notify(_("Power Toys"), changed);
                 if (onDone)
                     onDone(outcome);
                 return;
@@ -3124,8 +3126,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
             /* Cancelled means the user closed the dialog or the password did
              * not check out; they do not need telling what they just did. */
             if (!outcome.cancelled)
-                Main.notifyError(_("Power Toys"),
-                                 this._helperErrorMessage(outcome));
+                this._notifications.error(_("Power Toys"),
+                                          this._helperErrorMessage(outcome));
             if (onDone)
                 onDone(outcome);
         });
@@ -3278,8 +3280,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._hotkeyIds.push(name);
             return;
         }
-        Main.notifyError(_("Power Toys"),
-                         _("Shortcut is already in use") + ": " + accelerator);
+        this._notifications.error(
+            _("Power Toys"), _("Shortcut is already in use") + ": " + accelerator);
     }
 
     _removeHotkeys() {

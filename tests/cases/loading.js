@@ -20,7 +20,7 @@ var cases = {};
 const MODULES = ["io", "log", "gettext", "format", "device", "hardware", "sensors", "cpu",
                  "power-supply", "privileged", "upower", "profiles", "backlight", "ddc",
                  "bluez", "alerts", "reading", "sensor-rows", "panel-text", "pending-profile",
-                 "keyed-list", "cinnamon-panel"];
+                 "keyed-list", "cinnamon-panel", "notifications"];
 
 for (let name of MODULES) {
     cases["lib/" + name + ".js loads"] = function () {
@@ -425,6 +425,7 @@ cases["profile announcements wait for matching success"] = function () {
             callbacks.push(done);
             return true;
         },
+        _notifications: { notify: (title, body) => notices.push([title, body]) },
     };
 
     Harness.equal(stepProfile.call(applet, 1, true, true), true, "the step was accepted");
