@@ -66,12 +66,20 @@ function read(path) {
 }
 
 function install(tree) {
+    return installResult(tree).status;
+}
+
+function installResult(tree) {
     let environment = GLib.get_environ();
     environment = GLib.environ_setenv(environment, "PATH",
         tree.bin + ":" + (GLib.getenv("PATH") || ""), true);
     let result = GLib.spawn_sync(null, [tree.script, "install", tree.locale],
                                  environment, GLib.SpawnFlags.NONE, null);
-    return result[3];
+    return {
+        status: result[3],
+        stdout: ByteArray.toString(result[1] || []),
+        stderr: ByteArray.toString(result[2] || []),
+    };
 }
 
 cases["the domain is the applet's own uuid"] = function () {
@@ -173,6 +181,34 @@ cases["a publication failure restores every prior catalogue"] = function () {
                       "the language published first was rolled back");
         Harness.equal(read(french), "old french catalogue",
                       "the failed language kept its prior version too");
+    });
+};
+
+cases["a failed translation rollback retains its recovery backup"] = function () {
+    installedTree('[ "$1" = -o ] && cp "$3" "$2"', tree => {
+        write(tree.po + "/fr.po", "new french catalogue");
+        let french = tree.locale + "/fr/LC_MESSAGES/" + Harness.UUID + ".mo";
+        write(french, "old french catalogue");
+
+        let move = tree.bin + "/mv";
+        GLib.file_set_contents(move, "#!/bin/sh\nexit 9\n");
+        GLib.chmod(move, 0o700);
+
+        let copy = tree.bin + "/cp";
+        GLib.file_set_contents(copy, [
+            "#!/bin/sh",
+            "case \"$3\" in *'.backup.'*) exit 8 ;; esac",
+            "exec /usr/bin/cp \"$@\"",
+            "",
+        ].join("\n"));
+        GLib.chmod(copy, 0o700);
+
+        let result = installResult(tree);
+        Harness.ok(result.status !== 0, "the failed restoration reaches the parent");
+        let retained = /backup retained at ([^\n]+)/.exec(result.stderr);
+        Harness.ok(retained, "the recovery path is printed: " + result.stderr);
+        Harness.equal(read(retained[1] + "/fr.mo"), "old french catalogue",
+                      "the only recoverable copy is preserved for manual restoration");
     });
 };
 

@@ -49,6 +49,7 @@ mkdir -p "$LOCALE_DIR"
 STAGING=$(mktemp -d "$LOCALE_DIR/.${UUID}.stage.XXXXXX")
 BACKUP=
 BACKUP_READY=no
+BACKUP_RETAINED=no
 COMMITTED=no
 
 cleanup() {
@@ -73,13 +74,16 @@ cleanup() {
             cp -f -- "$old" "$target/$UUID.mo" || rollback_status=1
         done
         if [ "$rollback_status" -ne 0 ]; then
-            echo "could not restore the previous translations from $BACKUP" >&2
+            echo "could not restore every previous translation; backup retained at $BACKUP" >&2
+            BACKUP_RETAINED=yes
             status=1
         fi
     fi
 
     [ -n "$STAGING" ] && rm -rf -- "$STAGING"
-    [ -n "$BACKUP" ] && rm -rf -- "$BACKUP"
+    if [ "$BACKUP_RETAINED" != yes ] && [ -n "$BACKUP" ]; then
+        rm -rf -- "$BACKUP"
+    fi
     exit "$status"
 }
 trap cleanup EXIT
