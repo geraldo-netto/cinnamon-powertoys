@@ -39,6 +39,7 @@ var PREFERRED_CPU_SENSORS = ["tctl", "tdie", "package id 0", "cpu"];
 function powerSourceLabel(source) {
     switch (source) {
         case "battery": return _("battery");
+        case "platform": return _("platform total");
         case "package": return _("package");
         case "gpu": return _("GPU");
         default: return "";
@@ -56,10 +57,10 @@ function powerText(data) {
  * The same figure for the panel, where every character is expensive.
  *
  * What a battery is losing is the whole machine and needs no explanation. The
- * other two sources are one part of it - the processor package, a graphics
- * card - and a bare number there reads as system power when it is not: a
- * desktop that cannot read its RAPL counters would show the graphics card's
- * 54 W as if it were the lot. Those say which.
+ * Other sources say what they measure. A processor package and a graphics
+ * card are only components, while a DTPM aggregate is a platform total with a
+ * materially different source from the battery estimate. A bare number would
+ * erase those distinctions.
  */
 function panelPowerText(data) {
     if (data.systemWattsSource === "battery")

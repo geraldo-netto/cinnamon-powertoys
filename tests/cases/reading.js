@@ -41,9 +41,10 @@ function power(watts, source) {
 var cases = {};
 
 cases["a power figure says which power it is"] = function () {
-    /* Three different measurements of three different things, and a bare
+    /* Different measurements of different things, and a bare
      * number would read as the machine's draw whichever it was. */
     Harness.equal(Reading.powerText(power(8.4, "battery")), "8.4 W (battery)", "battery");
+    Harness.equal(Reading.powerText(power(72, "platform")), "72 W (platform total)", "DTPM");
     Harness.equal(Reading.powerText(power(54, "package")), "54 W (package)", "the socket");
     Harness.equal(Reading.powerText(power(54, "gpu")), "54 W (GPU)", "a graphics card");
 };
@@ -58,6 +59,8 @@ cases["the panel spells out only the sources that need it"] = function () {
     /* What a battery is losing is the whole machine and needs no explanation;
      * the other two are one part of it and a bare number there misleads. */
     Harness.equal(Reading.panelPowerText(power(8.4, "battery")), "8.4 W", "no room, no need");
+    Harness.equal(Reading.panelPowerText(power(72, "platform")), "72 W (platform total)",
+                  "the DTPM aggregate names its source");
     Harness.equal(Reading.panelPowerText(power(54, "package")), "54 W (package)",
                   "worth the characters, because it is not the machine");
     Harness.equal(Reading.panelPowerText(power(54, "gpu")), "54 W (GPU)", "likewise");

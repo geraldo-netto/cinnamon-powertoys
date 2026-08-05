@@ -53,11 +53,11 @@ msgstr ""
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1188 lib/panel-text.js:226 lib/reading.js:139
+#: applet.js:1188 lib/panel-text.js:226 lib/reading.js:140
 msgid "Governor"
 msgstr ""
 
-#: applet.js:1191 lib/reading.js:141
+#: applet.js:1191 lib/reading.js:142
 msgid "Energy preference"
 msgstr ""
 
@@ -65,7 +65,7 @@ msgstr ""
 msgid "Devices"
 msgstr ""
 
-#: applet.js:1242 lib/reading.js:145
+#: applet.js:1242 lib/reading.js:146
 msgid "Charge limit"
 msgstr ""
 
@@ -552,18 +552,22 @@ msgid "battery"
 msgstr ""
 
 #: lib/reading.js:42
-msgid "package"
+msgid "platform total"
 msgstr ""
 
 #: lib/reading.js:43
+msgid "package"
+msgstr ""
+
+#: lib/reading.js:44
 msgid "GPU"
 msgstr ""
 
-#: lib/reading.js:143
+#: lib/reading.js:144
 msgid "Turbo boost on"
 msgstr ""
 
-#: lib/reading.js:143
+#: lib/reading.js:144
 msgid "Turbo boost off"
 msgstr ""
 
