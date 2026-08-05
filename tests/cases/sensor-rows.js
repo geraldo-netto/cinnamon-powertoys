@@ -223,6 +223,18 @@ cases["the processor's own rows are filed under the processor"] = function () {
     Harness.equal(entries[1].value, "3.51 GHz / 4.65 GHz", "what it is at, and what it reaches");
 };
 
+cases["mixed scaling drivers are all shown"] = function () {
+    let entries = SensorRows.rows(reading({
+        cpu: { available: true, driver: null,
+               drivers: ["amd-pstate-epp", "acpi-cpufreq"],
+               amdPstateStatus: "active", model: "Ryzen 5 5600" },
+    }), options());
+    let driver = entries.find(entry => entry.key === "cpu:driver");
+    Harness.equal(driver.label, "Scaling drivers", "the row admits there is more than one");
+    Harness.equal(driver.value, "AMD (amd-pstate-epp) / ACPI (acpi-cpufreq)",
+                  "each policy driver remains visible");
+};
+
 cases["a processor that reports no temperature still gets its heading"] = function () {
     /*
      * There is no sensor group to attach to on a machine whose processor

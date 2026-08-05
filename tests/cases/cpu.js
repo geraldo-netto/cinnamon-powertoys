@@ -124,6 +124,29 @@ cases["heterogeneous policies expose only shared choices and agreed values"] = f
     });
 };
 
+cases["heterogeneous policies report every scaling driver"] = function () {
+    let files = {
+        "/sys/devices/system/cpu/cpufreq/policy0/scaling_driver": "amd-pstate-epp\n",
+        "/sys/devices/system/cpu/cpufreq/policy1/scaling_driver": "acpi-cpufreq\n",
+    };
+    scratch(files, function () {
+        let cpu = new Cpu.CpuControl(() => {});
+        Harness.deepEqual(cpu.drivers, ["amd-pstate-epp", "acpi-cpufreq"],
+                          "the policy drivers stay distinct");
+        Harness.equal(cpu.driver, null, "no first policy is promoted to machine-wide truth");
+
+        let async = Harness.settle(function (done) {
+            let created = new Cpu.CpuControl(() => {}, {
+                asynchronous: true,
+                onChanged: () => done(created),
+            });
+        }, "heterogeneous asynchronous discovery");
+        Harness.deepEqual(async.snapshot().drivers, cpu.drivers,
+                          "synchronous and asynchronous discovery agree");
+        async.destroy();
+    });
+};
+
 cases["a policy that cannot describe its governors prevents unsafe choices"] = function () {
     scratch({
         "/sys/devices/system/cpu/cpufreq/policy0/scaling_available_governors":

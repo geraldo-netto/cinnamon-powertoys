@@ -58,6 +58,16 @@ function _agreed(paths, node) {
     return values.every(value => value === values[0]) ? values[0] : null;
 }
 
+/* Every policy participates in the visible driver identity. An unreadable
+ * policy makes the set unknown rather than letting the first readable one
+ * stand in for the whole processor. */
+function _policyDrivers(policies, readString) {
+    let values = policies.map(policy => readString(policy + "/scaling_driver"));
+    if (values.some(value => value === null))
+        return [];
+    return values.filter((value, index) => values.indexOf(value) === index);
+}
+
 var CpuControl = class CpuControl {
     constructor(runner, options) {
         let configuration = options || {};
@@ -73,6 +83,7 @@ var CpuControl = class CpuControl {
         this.policies = [];
         this.reference = null;
         this.driver = null;
+        this.drivers = [];
         this.governors = [];
         this.energyPolicies = [];
         this.energyPreferences = [];
@@ -135,7 +146,8 @@ var CpuControl = class CpuControl {
             .map(name => CPUFREQ_DIR + "/" + name);
         this.reference = this.policies.length > 0 ? this.policies[0] : null;
 
-        this.driver = this.reference ? IO.readString(this.reference + "/scaling_driver") : null;
+        this.drivers = _policyDrivers(this.policies, IO.readString);
+        this.driver = this.drivers.length === 1 ? this.drivers[0] : null;
         this.governors = _intersection(this.policies.map(policy =>
             IO.readWords(policy + "/scaling_available_governors")));
         this.energyPolicies = this.policies.filter(policy =>
@@ -243,10 +255,12 @@ var CpuControl = class CpuControl {
             boostPath = CPU_DIR + "/intel_pstate/no_turbo";
             boostInverted = true;
         }
+        let drivers = _policyDrivers(policies, read);
         return Object.assign({
             policies: policies,
             reference: policies.length > 0 ? policies[0] : null,
-            driver: policies.length > 0 ? read(policies[0] + "/scaling_driver") : null,
+            driver: drivers.length === 1 ? drivers[0] : null,
+            drivers: drivers,
             governors: _intersection(policies.map(policy =>
                 words(policy + "/scaling_available_governors"))),
             energyPolicies: energyPolicies,
@@ -308,6 +322,7 @@ var CpuControl = class CpuControl {
         this.policies = state.policies;
         this.reference = state.reference;
         this.driver = state.driver;
+        this.drivers = state.drivers;
         this.governors = state.governors;
         this.energyPolicies = state.energyPolicies;
         this.energyPreferences = state.energyPreferences;
@@ -445,6 +460,7 @@ var CpuControl = class CpuControl {
         let reading = {
             available: this.available,
             driver: this.driver,
+            drivers: this.drivers,
             governors: this.governors,
             energyPreferences: this.energyPreferences,
             boostSupported: this.boostSupported,

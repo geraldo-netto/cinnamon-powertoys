@@ -161,10 +161,14 @@ function cpuReadingRows(data) {
         rows.push({ key: "cpu:frequency", label: _("Frequency"),
                     value: frequencies.join(" / "), warning: false });
 
-    let driver = Format.driverLabel(data.cpu.driver, data.cpu.amdPstateStatus);
-    if (data.cpu.driver)
-        rows.push({ key: "cpu:driver", label: _("Scaling driver"),
-                    value: driver, warning: false });
+    let drivers = data.cpu.drivers || (data.cpu.driver ? [data.cpu.driver] : []);
+    if (drivers.length > 0) {
+        let labels = drivers.map(driver => Format.driverLabel(
+            driver, /^amd[-_]pstate/.test(driver) ? data.cpu.amdPstateStatus : null));
+        rows.push({ key: "cpu:driver",
+                    label: drivers.length > 1 ? _("Scaling drivers") : _("Scaling driver"),
+                    value: labels.join(" / "), warning: false });
+    }
 
     /*
      * The governor and the energy preference were stated here too, while

@@ -563,19 +563,23 @@ msgstr ""
 msgid "Frequency"
 msgstr ""
 
-#: lib/sensor-rows.js:166
+#: lib/sensor-rows.js:169
+msgid "Scaling drivers"
+msgstr ""
+
+#: lib/sensor-rows.js:169
 msgid "Scaling driver"
 msgstr ""
 
-#: lib/sensor-rows.js:210
+#: lib/sensor-rows.js:214
 msgid "No primary sensors found"
 msgstr ""
 
-#: lib/sensor-rows.js:211
+#: lib/sensor-rows.js:215
 msgid "Enable disk, network and board sensors in settings"
 msgstr ""
 
-#: lib/sensor-rows.js:213
+#: lib/sensor-rows.js:217
 msgid "No sensors found"
 msgstr ""
 
