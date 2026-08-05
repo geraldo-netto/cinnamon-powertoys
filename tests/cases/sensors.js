@@ -906,6 +906,32 @@ cases["a sweep is only run again where the hardware has moved"] = function () {
     });
 };
 
+cases["a sensor node changing inside an existing device triggers a sweep"] = function () {
+    on("machine", function () {
+        let originalListDir = IO.listDir;
+        let extraNode = false;
+        IO.listDir = function (path) {
+            let entries = originalListDir(path);
+            if (extraNode && /\/hwmon0$/.test(path))
+                return entries.concat(["temp99_input"]).sort(IO.naturalCompare);
+            return entries;
+        };
+        try {
+            let set = new Sensors.SensorSet();
+            let before = set.temperatureSensors.length;
+            Harness.equal(set.refresh(), false, "the unchanged nested inventory is current");
+
+            extraNode = true;
+            Harness.equal(set.refresh(), true, "the new channel changes topology");
+            Harness.equal(set.temperatureSensors.length, before + 1,
+                          "rediscovery adopts the channel without a new hwmon device");
+            Harness.equal(set.refresh(), false, "the expanded inventory is remembered");
+        } finally {
+            IO.listDir = originalListDir;
+        }
+    });
+};
+
 cases["RAPL access changing is a topology change"] = function () {
     on("machine", function () {
         let originalCanRead = IO.canRead;

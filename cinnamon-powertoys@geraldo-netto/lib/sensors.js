@@ -720,10 +720,17 @@ function _powercapTopology(entries, readable) {
     }).join(",");
 }
 
+function _nestedTopology(directories, root) {
+    return (directories[root] || []).map(entry => {
+        let base = root + "/" + entry;
+        return entry + "[" + (directories[base] || []).join(",") + "]";
+    }).join(",");
+}
+
 function _topologyFromInventory(directories, readString) {
     let powercap = directories[POWERCAP_DIR] || [];
-    return [(directories[HWMON_DIR] || []).join(","),
-            (directories[THERMAL_DIR] || []).join(","),
+    return [_nestedTopology(directories, HWMON_DIR),
+            _nestedTopology(directories, THERMAL_DIR),
             _powercapTopology(powercap, path => readString(path) !== null)].join("|");
 }
 
@@ -880,24 +887,24 @@ var SensorSet = class SensorSet {
     }
 
     /*
-     * A cheap description of what is present: three directory listings plus
-     * access metadata for the few powercap counters. A card waking up, a USB
-     * sensor being plugged in or a driver being loaded changes a listing;
-     * installing the optional RAPL rule changes the access metadata.
+     * A cheap description of what is present: the three roots, one shallow
+     * listing per hwmon and thermal device, and access metadata for the few
+     * powercap counters. This catches both whole devices and sensor channels
+     * moving inside an existing device; installing the optional RAPL rule
+     * changes the access metadata.
      */
     _topologyKey() {
-        return [IO.listDir(HWMON_DIR).join(","),
-                IO.listDir(THERMAL_DIR).join(","),
-                _powercapTopology(IO.listDir(POWERCAP_DIR), IO.canRead)].join("|");
+        let directories = _directoryInventory();
+        return _topologyFromInventory(
+            directories, path => IO.canRead(path) ? "readable" : null);
     }
 
     /*
      * Checks for hardware that has come or gone, and sweeps again only if
      * there is any. Answers whether it did.
      *
-     * A driver that grows a new node inside a directory that was already
-     * there is missed until the next real change; that is the price of not
-     * re-reading every label file each time the menu is opened.
+     * The comparison is directory names only; values and labels are still not
+     * reread unless the exposed node set or access state changes.
      */
     refresh() {
         if (this._topologyKey() === this._topology)
