@@ -441,7 +441,12 @@ var BluezBatteries = class BluezBatteries {
         this._ownerEpoch++;
         this._cancelRead();
         this._cancelRetry();
-        this.available = false;
+        /* The watcher has answered the inventory question completely: an
+         * unowned BlueZ name contains no devices. That is different from a
+         * failed object-tree snapshot, whose contents remain unknown. */
+        let availabilityChanged = this.available !== true;
+        let devicesChanged = this.devices.length > 0;
+        this.available = true;
         this._objects = {};
         this._cacheReady = false;
         if (this._refreshTimerId) {
@@ -449,6 +454,8 @@ var BluezBatteries = class BluezBatteries {
             this._refreshTimerId = 0;
         }
         this._settle([]);
+        if (availabilityChanged && !devicesChanged)
+            this._onChanged();
     }
 
     _subscribe(iface, member, arg0, onSignal) {

@@ -233,6 +233,10 @@ cases["each degraded source preserves only the latches it owns"] = function () {
     bluetooth.alerts.check(reading([mouse(10)]), limits());
     Harness.equal(bluetooth.said.length, 1,
                   "a failed BlueZ inventory does not reannounce its returning mouse");
+    bluetooth.alerts.check(reading([]), limits());
+    bluetooth.alerts.check(reading([mouse(10)]), limits());
+    Harness.equal(bluetooth.said.length, 2,
+                  "a watcher-confirmed empty BlueZ inventory rearms the mouse alert");
 
     let unknown = policy();
     let unusual = battery(10, { path: "/vendor/power/BAT0" });

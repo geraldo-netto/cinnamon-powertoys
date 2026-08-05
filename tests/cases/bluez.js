@@ -418,7 +418,7 @@ cases["bluetoothd going away empties the list and says so"] = function () {
     Harness.equal(changes, 1, "which was news");
 
     watcher.vanished();
-    Harness.equal(control.available, false, "the daemon is not there");
+    Harness.equal(control.available, true, "confirmed absence is a complete empty inventory");
     Harness.deepEqual(control.devices, [], "so nothing is connected");
     Harness.equal(changes, 2,
                   "and the menu is told, rather than keeping the rows until the next poll");
@@ -711,7 +711,7 @@ cases["a reply from before bluetoothd vanished cannot restore stale devices"] = 
     watcher.vanished();
     waiting.shift()(objects);
     Harness.deepEqual(control.devices, [], "the stale reply is ignored after the owner changed");
-    Harness.equal(control.available, false, "and cannot make the vanished daemon available");
+    Harness.equal(control.available, true, "the watched absence remains a complete inventory");
     control.destroy();
 };
 
@@ -724,6 +724,22 @@ cases["a daemon that was never there is not a change"] = function () {
     control._refresh();
     control._refresh();
     Harness.equal(changes, 0, "nothing changed, so nothing was said");
+    control.destroy();
+};
+
+cases["a watched absent daemon completes the empty inventory"] = function () {
+    let changes = 0;
+    let watcher = nameWatcher();
+    let control = new Bluez.BluezBatteries(
+        () => changes++,
+        (path, iface, method, onDone) =>
+            onDone(null, new Error("BlueZ has no owner")), watcher.watch);
+
+    Harness.equal(control.available, false, "a failed snapshot alone is incomplete");
+    watcher.vanished();
+    Harness.equal(control.available, true, "the owner watch confirms an empty inventory");
+    Harness.deepEqual(control.devices, [], "there are no stale devices");
+    Harness.equal(changes, 1, "the readiness transition is reported even with no rows");
     control.destroy();
 };
 
