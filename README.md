@@ -209,10 +209,10 @@ make check
 
 `cjs` is Cinnamon's own JavaScript interpreter and is what the tests and the
 parse check run under, so they fail for the same reasons the shell would.
-`gettext` is for the translations, and the typelib is what four of the
-libraries open with. `cinnamon-xlet-makepot`, which `make pot` calls, ships in
-the `cinnamon` package itself and so is already there on the desktop this is
-written for.
+`gettext` is for the translations, and the typelib is the runtime dependency
+for modules that consume UPower device data or enums. `cinnamon-xlet-makepot`,
+which `make pot` calls, ships in the `cinnamon` package itself and so is already
+there on the desktop this is written for.
 
 ## Permissions
 
@@ -510,8 +510,9 @@ numbers a refactor moves. See
 [.github/workflows/check.yml](.github/workflows/check.yml). None of it needs
 Cinnamon, a session bus or real hardware, because the libraries take their
 file root, their D-Bus calls and their spawns as parameters. It does need one
-typelib, `gir1.2-upowerglib-1.0`, which the runner installs alongside `cjs`;
-without it four of the libraries throw the moment they are loaded.
+typelib, `gir1.2-upowerglib-1.0`, which the runner installs alongside `cjs`.
+Modules that consume UPower device data or enums import that runtime typelib
+directly and cannot load without it.
 
 `tests/harness.js` loads the libraries exactly as Cinnamon does — strict mode,
 the same export collection, a `require()` bound to the xlet directory — so a
