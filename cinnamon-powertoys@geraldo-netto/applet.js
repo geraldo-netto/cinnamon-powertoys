@@ -1224,7 +1224,7 @@ class MenuPresenter {
                                          (row, entry) => row.update(entry.model));
 
         /* An empty group is indistinguishable from a broken one. Say which. */
-        this._noDevicesRow = new InfoRow(_("Nothing with a battery is connected"), "");
+        this._noDevicesRow = new InfoRow("", "");
         this._noDevicesRow.actor.hide();
         menu.addMenuItem(this._noDevicesRow);
 
@@ -1527,7 +1527,9 @@ class MenuPresenter {
          * whose bluetooth mouse happens to be switched off this group is
          * empty for a perfectly good reason. Say which it is.
          */
-        this._noDevicesRow.actor.visible = lines.length === 0 && devices.length === 0;
+        let emptyStatus = Device.emptyStatus(data);
+        this._noDevicesRow.setLabel(emptyStatus);
+        this._noDevicesRow.actor.visible = emptyStatus !== "";
     }
 
     _updateCpu(data, options) {

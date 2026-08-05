@@ -44,7 +44,9 @@ above them, by model where UPower knows it, so whether the machine is on the
 cable is the first line under *Devices*.
 Connected bluetooth devices are read from BlueZ as well as from UPower, which
 does not bridge all of them, and where nothing is connected the group says so
-in words rather than being empty.
+in words rather than being empty. If UPower is unavailable, the group reports
+that status cannot be read instead of claiming there are no devices; a battery
+found independently through its sysfs charge-limit control is still acknowledged.
 
 **Brightness.** *Screen* and *Keyboard* sliders under *Brightness*, at the foot
 of the first column where the profile and the processor leave the room free,
