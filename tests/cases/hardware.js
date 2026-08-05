@@ -108,6 +108,45 @@ cases["asynchronous machine naming handles present and absent PCI slots together
     });
 };
 
+cases["failed asynchronous CPU metadata is retried and cannot erase success"] = function () {
+    let real = IO.readStringsAsync;
+    let pending = [];
+    let requests = [];
+    IO.readStringsAsync = (paths, done) => {
+        requests.push(paths.slice());
+        pending.push(done);
+    };
+    Hardware.forget();
+    try {
+        let answers = [];
+        Hardware.machineNamesAsync([], value => answers.push(value.cpuName));
+        Hardware.machineNamesAsync([], value => answers.push(value.cpuName));
+        pending[1]({ "/proc/cpuinfo": "model name : Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz" });
+        pending[0]({ "/proc/cpuinfo": null });
+        Harness.deepEqual(answers, ["Intel Core i7-8550U", "Intel Core i7-8550U"],
+                          "a later failed reply keeps the confirmed concurrent name");
+
+        Hardware.machineNamesAsync([], value => answers.push(value.cpuName));
+        Harness.equal(requests[2].indexOf("/proc/cpuinfo"), -1,
+                      "a confirmed name is not loaded again");
+        pending[2]({});
+        Harness.equal(answers[2], "Intel Core i7-8550U", "the cached name is returned");
+
+        Hardware.forget();
+        Hardware.machineNamesAsync([], value => answers.push(value.cpuName));
+        pending[3]({ "/proc/cpuinfo": null });
+        Harness.equal(answers[3], null, "a failed first read has a stable public fallback");
+        Hardware.machineNamesAsync([], value => answers.push(value.cpuName));
+        Harness.ok(requests[4].indexOf("/proc/cpuinfo") >= 0,
+                   "the failed metadata is requested again");
+        pending[4]({ "/proc/cpuinfo": "Hardware : BCM2711" });
+        Harness.equal(answers[4], "BCM2711", "the retry can recover without a reload");
+    } finally {
+        IO.readStringsAsync = real;
+        Hardware.forget();
+    }
+};
+
 cases["a chip with only a codename gets its vendor in front of it"] = function () {
     Harness.equal(Hardware.deviceDisplayName("Raphael", "Advanced Micro Devices, Inc. [AMD/ATI]"),
                   "AMD Raphael", "a codename alone says nothing about whose it is");
@@ -208,6 +247,39 @@ cases["an EDID code is turned into the name on the front of the monitor"] = func
                       "a code nobody registered is already the brand");
         Harness.equal(Hardware.monitorVendorName(""), "", "nothing");
     });
+};
+
+cases["failed PNP metadata is retried but a readable unsupported table is confirmed"] = function () {
+    let real = IO.readString;
+    let mode = "failed";
+    IO.readString = path => {
+        if (path.indexOf("pnp.ids") < 0)
+            return real(path);
+        if (mode === "failed")
+            return null;
+        if (mode === "valid")
+            return path.indexOf("hwdata") >= 0 ? "DEL Dell Inc.\n" : null;
+        return "this is readable but not a PNP table";
+    };
+    Hardware.forget();
+    try {
+        Harness.equal(Hardware.monitorVendorName("DEL"), "DEL",
+                      "a failed table read falls back to the code");
+        mode = "valid";
+        Harness.equal(Hardware.monitorVendorName("DEL"), "Dell",
+                      "and a later read recovers without dropping the cache");
+
+        Hardware.forget();
+        mode = "unsupported";
+        Harness.equal(Hardware.monitorVendorName("DEL"), "DEL",
+                      "a readable unsupported table has no registration");
+        mode = "valid";
+        Harness.equal(Hardware.monitorVendorName("DEL"), "DEL",
+                      "that confirmed format result is cached");
+    } finally {
+        IO.readString = real;
+        Hardware.forget();
+    }
 };
 
 cases["a maker is not said twice in a monitor's name"] = function () {

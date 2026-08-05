@@ -66,6 +66,13 @@ function _cpuInfoValue(text, key) {
     return match ? match[1].trim() : null;
 }
 
+function _cpuNameFrom(text) {
+    let raw = _cpuInfoValue(text, "model name") ||
+              _cpuInfoValue(text, "Model") ||
+              _cpuInfoValue(text, "Hardware");
+    return tidyCpuName(raw);
+}
+
 /*
  * "Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz" is a marketing string with a
  * model number inside it. What is dropped is everything that is true of every
@@ -99,11 +106,12 @@ function cpuModelName() {
     if (_cpuName !== undefined)
         return _cpuName;
 
-    let text = IO.readString(CPUINFO) || "";
-    let raw = _cpuInfoValue(text, "model name") ||
-              _cpuInfoValue(text, "Model") ||
-              _cpuInfoValue(text, "Hardware");
-    _cpuName = tidyCpuName(raw);
+    let text = IO.readString(CPUINFO);
+    if (text === null)
+        return null;
+    /* A readable file in an unsupported format is a confirmed absence. A
+     * failed read is not, and is deliberately retried next time. */
+    _cpuName = _cpuNameFrom(text);
     return _cpuName;
 }
 
@@ -348,11 +356,9 @@ function machineNamesAsync(addresses, onDone, ioOptions) {
 
     IO.readStringsAsync(paths, values => {
         if (_cpuName === undefined) {
-            let text = values[CPUINFO] || "";
-            let raw = _cpuInfoValue(text, "model name") ||
-                      _cpuInfoValue(text, "Model") ||
-                      _cpuInfoValue(text, "Hardware");
-            _cpuName = tidyCpuName(raw);
+            let text = values[CPUINFO];
+            if (text !== null && text !== undefined)
+                _cpuName = _cpuNameFrom(text);
         }
 
         let wanted = [];
@@ -370,7 +376,8 @@ function machineNamesAsync(addresses, onDone, ioOptions) {
         }
 
         if (wanted.length === 0) {
-            onDone({ cpuName: _cpuName, pciNames: names });
+            onDone({ cpuName: _cpuName === undefined ? null : _cpuName,
+                     pciNames: names });
             return;
         }
 
@@ -391,7 +398,8 @@ function machineNamesAsync(addresses, onDone, ioOptions) {
                     names[item.address] = name;
                 }
             }
-            onDone({ cpuName: _cpuName, pciNames: names });
+            onDone({ cpuName: _cpuName === undefined ? null : _cpuName,
+                     pciNames: names });
         }, PCI_IDS_PATHS.length, null, ioOptions);
     }, undefined, null, ioOptions);
 }
@@ -428,14 +436,26 @@ function tidyVendorName(name) {
 function _pnpTable() {
     if (_pnpNames)
         return _pnpNames;
-    _pnpNames = {};
-    let text = _firstReadable(PNP_IDS_PATHS) || "";
-    for (let line of text.split("\n")) {
-        let match = /^([A-Za-z]{3})\s+(.+)$/.exec(line);
-        if (match)
-            _pnpNames[match[1].toUpperCase()] = match[2].trim();
+    let names = {};
+    let readable = false;
+    for (let path of PNP_IDS_PATHS) {
+        let text = IO.readString(path);
+        if (text === null)
+            continue;
+        readable = true;
+        for (let line of text.split("\n")) {
+            let match = /^([A-Za-z]{3})\s+(.+)$/.exec(line);
+            if (match)
+                names[match[1].toUpperCase()] = match[2].trim();
+        }
+        if (Object.keys(names).length > 0)
+            break;
     }
-    return _pnpNames;
+    /* Keep a confirmed table, including a readable but unsupported empty
+     * one. If every read failed, return a temporary fallback and retry. */
+    if (readable)
+        _pnpNames = names;
+    return names;
 }
 
 /*
