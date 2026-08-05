@@ -746,6 +746,21 @@ function _topologyFromInventory(directories, readString) {
             _powercapTopology(powercap, path => readString(path) !== null)].join("|");
 }
 
+/* The refresh check follows the same asynchronous directory route as a full
+ * discovery, but reads only the few powercap nodes whose accessibility is
+ * itself part of the topology. Nothing here blocks Cinnamon's main thread. */
+function topologyKeyAsync(onDone) {
+    _directoryInventoryAsync(directories => {
+        let energyPaths = (directories[POWERCAP_DIR] || [])
+            .filter(entry => /^(intel-rapl|amd-rapl|dtpm)/.test(entry))
+            .map(entry => POWERCAP_DIR + "/" + entry + "/energy_uj");
+        IO.readStringsAsync(energyPaths, values => {
+            let read = path => values[path] === undefined ? null : values[path];
+            onDone(_topologyFromInventory(directories, read));
+        }, 16);
+    });
+}
+
 /* One complete sensor snapshot, assembled only after every asynchronous part
  * has answered. Until this callback, callers keep using the prior snapshot. */
 function discoverSnapshotAsync(onDone) {
@@ -865,6 +880,9 @@ var SensorSet = class SensorSet {
         this._discovering = false;
         this._discoverAgain = false;
         this._discoverWaiters = [];
+        this._refreshing = false;
+        this._refreshPending = false;
+        this._refreshWaiters = [];
 
         if (this._asynchronous)
             this.discoverAsync();
@@ -896,6 +914,12 @@ var SensorSet = class SensorSet {
             if (this._discoverAgain) {
                 this._discoverAgain = false;
                 this.discoverAsync();
+            } else if (this._refreshPending && !this._refreshing) {
+                /* A refresh requested during discovery checks the completed
+                 * snapshot instead of queuing another complete sweep before
+                 * that snapshot has even established its topology. */
+                this._refreshPending = false;
+                this._startRefresh();
             }
         });
     }
@@ -927,19 +951,49 @@ var SensorSet = class SensorSet {
 
     /*
      * Checks for hardware that has come or gone, and sweeps again only if
-     * there is any. Answers whether it did.
+     * there is any. Synchronous sets answer whether they swept; asynchronous
+     * sets take an optional callback with that answer and report that the
+     * request was accepted immediately.
      *
      * The comparison is directory names only; values and labels are still not
      * reread unless the exposed node set or access state changes.
      */
-    refresh() {
-        if (this._topologyKey() === this._topology)
-            return false;
-        if (this._asynchronous)
-            this.discoverAsync();
-        else
+    refresh(onDone) {
+        if (!this._asynchronous) {
+            if (this._topologyKey() === this._topology)
+                return false;
             this.discover();
+            return true;
+        }
+
+        if (onDone)
+            this._refreshWaiters.push(onDone);
+        if (this._refreshing)
+            return true;
+        if (this._discovering) {
+            this._refreshPending = true;
+            return true;
+        }
+        this._startRefresh();
         return true;
+    }
+
+    _startRefresh() {
+        this._refreshing = true;
+        topologyKeyAsync(topology => {
+            if (topology === this._topology) {
+                this._finishRefresh(false);
+                return;
+            }
+            this.discoverAsync(() => this._finishRefresh(true));
+        });
+    }
+
+    _finishRefresh(changed) {
+        this._refreshing = false;
+        let waiters = this._refreshWaiters.splice(0);
+        for (let waiter of waiters)
+            waiter(changed);
     }
 
     _temperature(sensor, readNumber) {

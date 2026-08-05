@@ -680,7 +680,57 @@ cases["an asynchronous sensor set keeps an atomic snapshot"] = function () {
         Harness.equal(set.temperatureSensors.length, 8, "the complete snapshot is adopted together");
         Harness.equal(set.fanSensors.length, 1, "including fans");
         Harness.equal(set.powerSensors.length, 3, "and power meters");
-        Harness.equal(set.refresh(), false, "the asynchronous topology signature is current");
+        let changed = Harness.settle(done => set.refresh(done), "asynchronous topology check");
+        Harness.equal(changed, false, "the asynchronous topology signature is current");
+    });
+};
+
+cases["asynchronous topology checks never use synchronous filesystem calls"] = function () {
+    on("machine", function () {
+        let set = Harness.settle(function (done) {
+            let created = new Sensors.SensorSet({ asynchronous: true, onChanged: () => done(created) });
+        }, "initial sensor discovery");
+        let listDir = IO.listDir;
+        let canRead = IO.canRead;
+        IO.listDir = () => { throw new Error("synchronous directory listing"); };
+        IO.canRead = () => { throw new Error("synchronous access query"); };
+        try {
+            let changed = Harness.settle(done => set.refresh(done), "non-blocking topology check");
+            Harness.equal(changed, false, "the completed asynchronous snapshot was compared");
+        } finally {
+            IO.listDir = listDir;
+            IO.canRead = canRead;
+        }
+    });
+};
+
+cases["concurrent asynchronous refreshes share one topology check"] = function () {
+    on("machine", function () {
+        let set = Harness.settle(function (done) {
+            let created = new Sensors.SensorSet({ asynchronous: true, onChanged: () => done(created) });
+        }, "initial sensor discovery");
+        let real = IO.listDirAsync;
+        let held = [];
+        IO.listDirAsync = (path, done) => held.push(() => real(path, done));
+        try {
+            let answers = Harness.settle(done => {
+                let results = [];
+                let finish = changed => {
+                    results.push(changed);
+                    if (results.length === 2)
+                        done(results);
+                };
+                set.refresh(finish);
+                set.refresh(finish);
+                Harness.equal(held.length, 3, "one listing of the three topology roots");
+                IO.listDirAsync = real;
+                for (let start of held)
+                    start();
+            }, "coalesced topology checks");
+            Harness.deepEqual(answers, [false, false], "both callers receive the shared answer");
+        } finally {
+            IO.listDirAsync = real;
+        }
     });
 };
 
