@@ -134,6 +134,7 @@ function named(body) {
     Hardware.forget();
     IO.setRoot(Harness.fixture("machine"));
     try {
+        Harness.settle(done => Hardware.loadPnpNamesAsync(done), "the PNP name table");
         return body();
     } finally {
         IO.setRoot("");
@@ -246,6 +247,34 @@ cases["two of the same monitor are told apart by where they are plugged in"] = f
         Harness.equal(displays[0].name, "Dell U2415 (DP-1)", "the socket, not the serial");
         Harness.equal(displays[1].name, "Dell U2415 (DP-2)", "and the other socket");
     });
+};
+
+cases["monitor names refresh when asynchronous PNP metadata arrives"] = function () {
+    let realLoad = Hardware.loadPnpNamesAsync;
+    let realName = Hardware.monitorName;
+    let loadDone = null;
+    let friendly = false;
+    Hardware.loadPnpNamesAsync = onDone => {
+        loadDone = onDone;
+        return { active: true, cancel: function () {} };
+    };
+    Hardware.monitorName = () => friendly ? "Dell U2415" : "DEL U2415";
+    try {
+        let changed = 0;
+        let control = new Ddc.DdcBacklight(() => changed++, detecting(DETECT_ONE, 0));
+        control.start();
+        Harness.equal(control.monitors[0].name, "DEL U2415",
+                      "discovery does not wait on the filesystem");
+
+        friendly = true;
+        loadDone(true);
+        Harness.equal(control.monitors[0].name, "Dell U2415",
+                      "the existing row adopts the registered vendor name");
+        Harness.equal(changed, 2, "the initial row and its later rename are both presented");
+    } finally {
+        Hardware.loadPnpNamesAsync = realLoad;
+        Hardware.monitorName = realName;
+    }
 };
 
 cases["brightness is a fraction of whatever the monitor's maximum is"] = function () {
@@ -801,25 +830,27 @@ function writesRefused(brightness) {
 }
 
 cases["a write the monitor refused is not taken as its value"] = function () {
-    logging(function (lines) {
-        let run = writesRefused();
-        let control = new Ddc.DdcBacklight(null, run);
-        control.start();
-        Harness.equal(control.monitors[0].percentage, 40, "where the monitor said it was");
+    named(function () {
+        logging(function (lines) {
+            let run = writesRefused();
+            let control = new Ddc.DdcBacklight(null, run);
+            control.start();
+            Harness.equal(control.monitors[0].percentage, 40, "where the monitor said it was");
 
-        control.monitors[0].setPercentage(70);
-        Harness.equal(control.monitors[0].percentage, 40,
-                      "ddcutil would not take it, so the screen is still at 40");
-        Harness.equal(control.monitors[0].available, true,
-                      "a refused write is not proof the monitor has gone");
+            control.monitors[0].setPercentage(70);
+            Harness.equal(control.monitors[0].percentage, 40,
+                          "ddcutil would not take it, so the screen is still at 40");
+            Harness.equal(control.monitors[0].available, true,
+                          "a refused write is not proof the monitor has gone");
 
-        /* The only trace there is: ddcutil's own complaint goes to a stderr
-         * this module silences, and the slider cannot say anything, because
-         * from the outside a refusal looks exactly like nothing happening. */
-        Harness.equal(lines.length, 1, "one line per refused write");
-        Harness.ok(lines[0].indexOf("would not set the brightness") >= 0 &&
-                   lines[0].indexOf("Dell U2415") >= 0,
-                   "naming the monitor, since there may be several: " + lines[0]);
+            /* The only trace there is: ddcutil's own complaint goes to a stderr
+             * this module silences, and the slider cannot say anything, because
+             * from the outside a refusal looks exactly like nothing happening. */
+            Harness.equal(lines.length, 1, "one line per refused write");
+            Harness.ok(lines[0].indexOf("would not set the brightness") >= 0 &&
+                       lines[0].indexOf("Dell U2415") >= 0,
+                       "naming the monitor, since there may be several: " + lines[0]);
+        });
     });
 };
 

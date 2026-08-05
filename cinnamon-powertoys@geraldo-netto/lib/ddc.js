@@ -260,6 +260,7 @@ var DdcMonitor = class DdcMonitor {
         this.id = display.bus || ("display:" + display.number);
         this.number = display.number;
         this.name = display.name;
+        this._display = Object.assign({}, display);
         this.available = false;
         this.percentage = null;
         this.maximum = null;
@@ -289,7 +290,12 @@ var DdcMonitor = class DdcMonitor {
                 this._identity[field] = identity[field];
         this.number = display.number;
         this.name = display.name;
+        this._display = Object.assign({}, display);
         return true;
+    }
+
+    get display() {
+        return Object.assign({}, this._display);
     }
 
     /*
@@ -525,6 +531,7 @@ var DdcBacklight = class DdcBacklight {
         this._missingSignature = null;
         this._missingConfirmations = 0;
         this._redetectPending = false;
+        this._nameLoad = null;
     }
 
     /*
@@ -699,6 +706,30 @@ var DdcBacklight = class DdcBacklight {
         this._detect();
     }
 
+    _prepareMonitorNames() {
+        if (this._nameLoad || this.destroyed)
+            return;
+        let token = {};
+        this._nameLoad = token;
+        Hardware.loadPnpNamesAsync(() => {
+            if (this._nameLoad !== token)
+                return;
+            this._nameLoad = null;
+            if (this.destroyed || this.monitors.length === 0)
+                return;
+
+            let displays = nameDisplays(this.monitors.map(monitor => monitor.display));
+            let changed = false;
+            for (let i = 0; i < this.monitors.length; i++) {
+                if (this.monitors[i].name !== displays[i].name)
+                    changed = true;
+                this.monitors[i].adopt(displays[i]);
+            }
+            if (changed)
+                this._onChanged();
+        });
+    }
+
     /*
      * The monitors that are there now, keeping the ones that were there
      * before.
@@ -761,6 +792,7 @@ var DdcBacklight = class DdcBacklight {
      * keeps that sequence exclusive, while redetect retains one later request.
      * The token rejects a probe stop() disowned before its answer arrived. */
     _detect() {
+        this._prepareMonitorNames();
         let probe = {};
         this._probe = probe;
         let settled = () => {
@@ -936,6 +968,7 @@ var DdcBacklight = class DdcBacklight {
         this._probe = null;
         this.available = false;
         this._redetectPending = false;
+        this._nameLoad = null;
         for (let monitor of this.monitors)
             monitor.destroy();
         this.monitors = [];

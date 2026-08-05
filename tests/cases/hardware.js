@@ -27,6 +27,10 @@ function on(machine, body) {
     }
 }
 
+function loadPnp() {
+    return Harness.settle(done => Hardware.loadPnpNamesAsync(done), "the PNP name table");
+}
+
 var cases = {};
 
 /* ---------------------------------------------------------------- */
@@ -241,6 +245,7 @@ cases["a replacement at one PCI address gets its own name"] = function () {
 
 cases["an EDID code is turned into the name on the front of the monitor"] = function () {
     on("machine", function () {
+        loadPnp();
         Harness.equal(Hardware.monitorVendorName("DEL"), "Dell", "Dell Inc. is Dell");
         Harness.equal(Hardware.monitorVendorName("GSM"), "LG", "LG Electronics is LG");
         Harness.equal(Hardware.monitorVendorName("AOC"), "AOC",
@@ -250,40 +255,61 @@ cases["an EDID code is turned into the name on the front of the monitor"] = func
 };
 
 cases["failed PNP metadata is retried but a readable unsupported table is confirmed"] = function () {
-    let real = IO.readString;
+    let real = IO.readStringsAsync;
     let mode = "failed";
-    IO.readString = path => {
-        if (path.indexOf("pnp.ids") < 0)
-            return real(path);
-        if (mode === "failed")
-            return null;
-        if (mode === "valid")
-            return path.indexOf("hwdata") >= 0 ? "DEL Dell Inc.\n" : null;
-        return "this is readable but not a PNP table";
+    IO.readStringsAsync = (paths, onDone) => {
+        let values = {};
+        for (let path of paths) {
+            values[path] = mode === "failed" ? null
+                : mode === "valid" && path.indexOf("hwdata") >= 0
+                    ? "DEL Dell Inc.\n"
+                    : "this is readable but not a PNP table";
+        }
+        onDone(values);
+        return { active: false, cancel: function () {} };
     };
     Hardware.forget();
     try {
+        Harness.equal(loadPnp(), false, "a failed batch is not cached");
         Harness.equal(Hardware.monitorVendorName("DEL"), "DEL",
                       "a failed table read falls back to the code");
         mode = "valid";
+        Harness.equal(loadPnp(), true, "a later load is allowed to recover");
         Harness.equal(Hardware.monitorVendorName("DEL"), "Dell",
                       "and a later read recovers without dropping the cache");
 
         Hardware.forget();
         mode = "unsupported";
+        Harness.equal(loadPnp(), true, "a readable unsupported table is still confirmed");
         Harness.equal(Hardware.monitorVendorName("DEL"), "DEL",
                       "a readable unsupported table has no registration");
         mode = "valid";
+        Harness.equal(loadPnp(), true, "the confirmed empty table remains cached");
         Harness.equal(Hardware.monitorVendorName("DEL"), "DEL",
                       "that confirmed format result is cached");
     } finally {
-        IO.readString = real;
+        IO.readStringsAsync = real;
         Hardware.forget();
     }
 };
 
+cases["PNP metadata never uses the synchronous file reader"] = function () {
+    on("machine", function () {
+        let real = IO.readString;
+        IO.readString = () => { throw new Error("synchronous PNP read"); };
+        try {
+            loadPnp();
+            Harness.equal(Hardware.monitorVendorName("DEL"), "Dell",
+                          "the asynchronous cache supplies the registered name");
+        } finally {
+            IO.readString = real;
+        }
+    });
+};
+
 cases["a maker is not said twice in a monitor's name"] = function () {
     on("machine", function () {
+        loadPnp();
         Harness.equal(Hardware.monitorName("DEL", "DELL U2415"), "Dell U2415",
                       "the model already starts with the maker, so it is rewritten");
         Harness.equal(Hardware.monitorName("GSM", "LG HDR 4K"), "LG HDR 4K", "likewise");
@@ -457,22 +483,28 @@ cases["the first word of a company name is not dropped as a company word"] = fun
 };
 
 cases["a monitor with only half a name is named by that half"] = function () {
-    Harness.equal(Hardware.monitorName("", "U2415"), "U2415",
-                  "no maker, so the model is the name");
-    Harness.equal(Hardware.monitorName("DEL", ""), "Dell",
-                  "no model, so the maker is");
-    Harness.equal(Hardware.monitorName("", ""), "", "and neither is nothing");
+    on("machine", function () {
+        loadPnp();
+        Harness.equal(Hardware.monitorName("", "U2415"), "U2415",
+                      "no maker, so the model is the name");
+        Harness.equal(Hardware.monitorName("DEL", ""), "Dell",
+                      "no model, so the maker is");
+        Harness.equal(Hardware.monitorName("", ""), "", "and neither is nothing");
+    });
 };
 
 cases["a model that already opens with its maker is left alone"] = function () {
     /* EDID strings are written by whoever assembled the monitor, and some of
      * them repeat the maker. "Dell Dell U2415" is the failure. */
-    Harness.equal(Hardware.monitorName("DEL", "DELL U2415"), "Dell U2415",
-                  "the code at the front is replaced by the name");
-    Harness.equal(Hardware.monitorName("DEL", "Dell U2415"), "Dell U2415",
-                  "and the name at the front is left where it is");
-    Harness.equal(Hardware.monitorName("DEL", "U2415"), "Dell U2415",
-                  "while a model that says nothing about its maker gets one");
+    on("machine", function () {
+        loadPnp();
+        Harness.equal(Hardware.monitorName("DEL", "DELL U2415"), "Dell U2415",
+                      "the code at the front is replaced by the name");
+        Harness.equal(Hardware.monitorName("DEL", "Dell U2415"), "Dell U2415",
+                      "and the name at the front is left where it is");
+        Harness.equal(Hardware.monitorName("DEL", "U2415"), "Dell U2415",
+                      "while a model that says nothing about its maker gets one");
+    });
 };
 
 /* ---------------------------------------------------------------- */

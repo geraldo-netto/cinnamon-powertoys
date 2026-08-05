@@ -40,12 +40,18 @@ var PCI_ADDRESS = /[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f]/gi;
 
 let _pciNames = {};
 let _pnpNames = null;
+let _pnpLoad = null;
+let _pnpWaiters = [];
 let _cpuName;
 
 /* Everything cached here is a fact about hardware that does not change while
  * the applet runs, so this exists for the tests, which change the machine. */
 function forget() {
     _pciNames = {};
+    if (_pnpLoad && _pnpLoad.active)
+        _pnpLoad.cancel();
+    _pnpLoad = null;
+    _pnpWaiters = [];
     _pnpNames = null;
     _cpuName = undefined;
 }
@@ -432,15 +438,19 @@ function tidyVendorName(name) {
 /*
  * pnp.ids, as a table of the three letter code EDID carries to the company that
  * registered it. Small enough - sixty kilobytes - to keep, unlike pci.ids.
+ * Loading is asynchronous because monitor discovery completes on Cinnamon's
+ * main thread and even this small cold file read can pause panel rendering.
  */
 function _pnpTable() {
-    if (_pnpNames)
-        return _pnpNames;
+    return _pnpNames || {};
+}
+
+function _pnpTableFrom(values) {
     let names = {};
     let readable = false;
     for (let path of PNP_IDS_PATHS) {
-        let text = IO.readString(path);
-        if (text === null)
+        let text = values[path];
+        if (text === null || text === undefined)
             continue;
         readable = true;
         for (let line of text.split("\n")) {
@@ -451,11 +461,37 @@ function _pnpTable() {
         if (Object.keys(names).length > 0)
             break;
     }
-    /* Keep a confirmed table, including a readable but unsupported empty
-     * one. If every read failed, return a temporary fallback and retry. */
-    if (readable)
-        _pnpNames = names;
-    return names;
+    return { readable: readable, names: names };
+}
+
+/* Coalesce callers while the shared table is loading. A failed read is not
+ * cached, so the next DDC discovery gets another chance; a readable empty or
+ * unsupported table is a confirmed answer and is retained. */
+function loadPnpNamesAsync(onDone, ioOptions) {
+    let done = onDone || function () {};
+    if (_pnpNames !== null) {
+        done(true);
+        return null;
+    }
+
+    _pnpWaiters.push(done);
+    if (_pnpLoad)
+        return _pnpLoad;
+
+    let marker = {};
+    _pnpLoad = marker;
+    let operation = IO.readStringsAsync(PNP_IDS_PATHS, values => {
+        _pnpLoad = null;
+        let answer = _pnpTableFrom(values);
+        if (answer.readable)
+            _pnpNames = answer.names;
+        let waiters = _pnpWaiters.splice(0);
+        for (let waiter of waiters)
+            waiter(answer.readable);
+    }, PNP_IDS_PATHS.length, null, ioOptions);
+    if (_pnpLoad === marker)
+        _pnpLoad = operation && operation.active ? operation : null;
+    return operation;
 }
 
 /*
