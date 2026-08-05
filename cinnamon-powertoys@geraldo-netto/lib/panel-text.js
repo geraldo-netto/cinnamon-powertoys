@@ -232,9 +232,11 @@ function performanceEntries(data, options) {
         processor.push(_("maximum %s").replace("%s", maximum));
     if (processor.length > 0)
         entries.push(_("Processor") + ": " + processor.join(" · "));
-    if (data.cpuTemperature !== null)
-        entries.push(_("Temperature") + ": " +
-                     Format.temperature(data.cpuTemperature, options.tempUnit, 1));
+    if (data.selectedTemperature) {
+        let sensor = data.selectedTemperature;
+        let source = sensor.label || sensor.groupLabel || _("Temperature");
+        entries.push(source + ": " + Format.temperature(sensor.celsius, options.tempUnit, 1));
+    }
     return entries;
 }
 

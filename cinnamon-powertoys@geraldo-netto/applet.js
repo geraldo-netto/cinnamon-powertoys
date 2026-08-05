@@ -2362,7 +2362,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
             chargeLimitAvailable: charge.available,
             chargeLimit: charge.limit,
             chargeLimitState: charge.state,
-            cpuTemperature: picked.sensor === null ? null : picked.sensor.celsius,
+            /* The picker can deliberately choose a GPU, battery or explicitly
+             * hinted sensor. Keep its identity beside the value so an alert
+             * and the tooltip can say what they are reporting. */
+            selectedTemperature: picked.sensor,
             /* whether the user's hint is the reason it came from there -
              * false means they asked for a sensor and it was not found,
              * which is worth saying out loud */

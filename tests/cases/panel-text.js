@@ -27,7 +27,7 @@ function reading(parts) {
         primary: null,
         onBattery: false,
         cpu: { governor: null, averageFrequency: null, maxFrequency: null },
-        cpuTemperature: null,
+        selectedTemperature: null,
         powers: [],
         packageWatts: null,
         systemWatts: null,
@@ -281,7 +281,9 @@ cases["the tooltip carries what the panel deliberately does not"] = function () 
      */
     let data = reading({
         cpu: { governor: "schedutil", averageFrequency: 2440, maxFrequency: 4800 },
-        cpuTemperature: 62.5,
+        selectedTemperature: {
+            id: "cpu:tctl", label: "AMD Ryzen 7 Tctl", celsius: 62.5,
+        },
         systemWatts: 24.4,
         systemWattsSource: "package",
         packageWatts: 24.4,
@@ -293,7 +295,7 @@ cases["the tooltip carries what the panel deliberately does not"] = function () 
                        "  Profile: Performance",
                        "  Governor: Scheduler guided",
                        "  Processor: 2.44 GHz · maximum 4.80 GHz",
-                       "  Temperature: 62.5 °C"],
+                       "  AMD Ryzen 7 Tctl: 62.5 °C"],
                       "related facts grouped in the order they answer to each other");
 };
 

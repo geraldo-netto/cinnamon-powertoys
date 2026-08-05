@@ -60,14 +60,14 @@ var AlertPolicy = class AlertPolicy {
     constructor(notify) {
         this._notify = notify || function () {};
         this._alerted = new Map();
-        this._tempAlerted = false;
+        this._tempAlerted = null;
     }
 
     check(data, limits) {
         for (let device of data.devices)
             this._checkDevice(device, limits);
         this._forgetAbsent(data.devices);
-        this._checkTemperature(data.cpuTemperature, limits);
+        this._checkTemperature(data.selectedTemperature, limits);
     }
 
     /*
@@ -118,23 +118,27 @@ var AlertPolicy = class AlertPolicy {
         }
     }
 
-    _checkTemperature(celsius, limits) {
+    _checkTemperature(sensor, limits) {
         if (!limits.highTemp) {
-            this._tempAlerted = false;
+            this._tempAlerted = null;
             return;
         }
         /* No sample says nothing about recovery. Clearing here rearmed the
          * notification while the machine could still be above the threshold. */
-        if (celsius === null)
+        if (!sensor || sensor.celsius === null)
             return;
+        let celsius = sensor.celsius;
+        let identity = sensor.id || sensor.label || "temperature";
         if (celsius >= limits.highTempCelsius) {
-            if (!this._tempAlerted) {
-                this._tempAlerted = true;
+            if (this._tempAlerted !== identity) {
+                this._tempAlerted = identity;
+                let source = sensor.label || sensor.groupLabel || _("Temperature");
                 this._notify(false, _("High temperature"),
+                             source + " - " +
                              Format.temperature(celsius, limits.tempUnit, 1));
             }
         } else if (celsius < limits.highTempCelsius - HYSTERESIS) {
-            this._tempAlerted = false;
+            this._tempAlerted = null;
         }
     }
 };

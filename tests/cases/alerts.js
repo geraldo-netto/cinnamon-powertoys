@@ -59,7 +59,14 @@ function mouse(percentage, overrides) {
 }
 
 function reading(devices, celsius) {
-    return { devices: devices, cpuTemperature: celsius === undefined ? null : celsius };
+    return {
+        devices: devices,
+        selectedTemperature: celsius === undefined || celsius === null ? null : {
+            id: "cpu-temperature",
+            label: "Processor",
+            celsius: celsius,
+        },
+    };
 }
 
 /* A policy plus the notifications it produced, in order. */
@@ -257,6 +264,20 @@ cases["a missing temperature sample does not rearm a hot alert"] = function () {
     Harness.equal(each.said.length, 2, "a confirmed recovery still rearms it");
 };
 
+cases["a different hot sensor is identified and reported"] = function () {
+    let each = policy();
+    each.alerts.check({ devices: [], selectedTemperature: {
+        id: "cpu", label: "Processor", celsius: 95,
+    } }, limits());
+    each.alerts.check({ devices: [], selectedTemperature: {
+        id: "gpu", label: "Radeon RX 6600 edge", celsius: 95,
+    } }, limits());
+
+    Harness.equal(each.said.length, 2, "a new source is distinct news");
+    Harness.equal(each.said[0].body, "Processor - 95.0 °C", "the CPU is named");
+    Harness.equal(each.said[1].body, "Radeon RX 6600 edge - 95.0 °C", "the GPU is named");
+};
+
 cases["a level that never bound is left alone rather than clamped"] = function () {
     /*
      * A key missing from the schema binds to nothing and leaves its property
@@ -427,12 +448,13 @@ cases["what an alert says is the device and where it is"] = function () {
     let hot = policy();
     hot.alerts.check(reading([], 90), limits());
     Harness.equal(hot.said[0].title, "High temperature", "the temperature's title");
-    Harness.equal(hot.said[0].body, "90.0 °C",
-                  "and the reading itself, to the tenth the menu shows");
+    Harness.equal(hot.said[0].body, "Processor - 90.0 °C",
+                  "and its source with the reading, to the tenth the menu shows");
 
     let fahrenheit = policy();
     fahrenheit.alerts.check(reading([], 90), limits({ tempUnit: "fahrenheit" }));
-    Harness.equal(fahrenheit.said[0].body, "194.0 °F", "in whichever unit is set");
+    Harness.equal(fahrenheit.said[0].body, "Processor - 194.0 °F",
+                  "in whichever unit is set");
 };
 
 cases["a temperature alert switched off says nothing at any temperature"] = function () {
