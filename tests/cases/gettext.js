@@ -133,6 +133,49 @@ cases["a failed translation update does not prune old catalogues"] = function ()
     });
 };
 
+cases["all translations compile before any are published"] = function () {
+    installedTree('case "$3" in *de.po) exit 1 ;; *) cp "$3" "$2" ;; esac', tree => {
+        write(tree.po + "/fr.po", "new french catalogue");
+        write(tree.po + "/de.po", "broken german catalogue");
+        let french = tree.locale + "/fr/LC_MESSAGES/" + Harness.UUID + ".mo";
+        let obsolete = tree.locale + "/en/LC_MESSAGES/" + Harness.UUID + ".mo";
+        write(french, "old french catalogue");
+        write(obsolete, "old english catalogue");
+
+        Harness.ok(install(tree) !== 0, "one broken source fails the set");
+        Harness.equal(read(french), "old french catalogue",
+                      "a language compiled earlier was never published");
+        Harness.equal(read(obsolete), "old english catalogue",
+                      "and pruning did not begin");
+    });
+};
+
+cases["a publication failure restores every prior catalogue"] = function () {
+    installedTree('[ "$1" = -o ] && cp "$3" "$2"', tree => {
+        write(tree.po + "/de.po", "new german catalogue");
+        write(tree.po + "/fr.po", "new french catalogue");
+        let german = tree.locale + "/de/LC_MESSAGES/" + Harness.UUID + ".mo";
+        let french = tree.locale + "/fr/LC_MESSAGES/" + Harness.UUID + ".mo";
+        write(german, "old german catalogue");
+        write(french, "old french catalogue");
+
+        let move = tree.bin + "/mv";
+        GLib.file_set_contents(move, [
+            "#!/bin/sh",
+            "case \"$*\" in *'/fr/LC_MESSAGES/'*) exit 9 ;; esac",
+            "exec /usr/bin/mv \"$@\"",
+            "",
+        ].join("\n"));
+        GLib.chmod(move, 0o700);
+
+        Harness.ok(install(tree) !== 0, "the failed atomic rename reaches the parent");
+        Harness.equal(read(german), "old german catalogue",
+                      "the language published first was rolled back");
+        Harness.equal(read(french), "old french catalogue",
+                      "the failed language kept its prior version too");
+    });
+};
+
 cases["a string with no translation is the string"] = function () {
     /* The ordinary case on the machine this is built on, and on every machine
      * running in English: nothing is installed for the domain, the shell has

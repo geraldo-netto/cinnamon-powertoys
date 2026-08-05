@@ -45,23 +45,79 @@ if [ "$has_sources" = yes ] && ! command -v msgfmt > /dev/null 2>&1; then
 fi
 
 installed=0
-failed=0
+mkdir -p "$LOCALE_DIR"
+STAGING=$(mktemp -d "$LOCALE_DIR/.${UUID}.stage.XXXXXX")
+BACKUP=
+BACKUP_READY=no
+COMMITTED=no
+
+cleanup() {
+    status=$?
+    trap - EXIT HUP INT TERM
+    set +e
+
+    if [ "$COMMITTED" != yes ] && [ "$BACKUP_READY" = yes ] &&
+            [ -n "$BACKUP" ] && [ -d "$BACKUP" ]; then
+        rollback_status=0
+        # Remove every catalogue this failed transaction may have published,
+        # then restore the exact set that existed before it began.
+        for mo in "$LOCALE_DIR"/*/LC_MESSAGES/"$UUID.mo"; do
+            [ -f "$mo" ] || continue
+            rm -f -- "$mo" || rollback_status=1
+        done
+        for old in "$BACKUP"/*.mo; do
+            [ -f "$old" ] || continue
+            language=$(basename "$old" .mo)
+            target="$LOCALE_DIR/$language/LC_MESSAGES"
+            mkdir -p "$target" || rollback_status=1
+            cp -f -- "$old" "$target/$UUID.mo" || rollback_status=1
+        done
+        if [ "$rollback_status" -ne 0 ]; then
+            echo "could not restore the previous translations from $BACKUP" >&2
+            status=1
+        fi
+    fi
+
+    [ -n "$STAGING" ] && rm -rf -- "$STAGING"
+    [ -n "$BACKUP" ] && rm -rf -- "$BACKUP"
+    exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+# Compile the complete desired set before touching any installed catalogue.
+# A broken language therefore cannot publish the valid languages before it.
 for po in "$PO_DIR"/*.po; do
     # No translations yet is the normal case, not a failure.
     [ -f "$po" ] || continue
     language=$(basename "$po" .po)
+    compiled="$STAGING/$language.mo"
+    if ! msgfmt -o "$compiled" "$po"; then
+        echo "could not compile $po" >&2
+        exit 1
+    fi
+    chmod 0644 "$compiled"
+    installed=$((installed + 1))
+done
+
+# Back up this domain only. The locale directories also contain every other
+# application's catalogues and are never replaced wholesale.
+BACKUP=$(mktemp -d "$LOCALE_DIR/.${UUID}.backup.XXXXXX")
+for mo in "$LOCALE_DIR"/*/LC_MESSAGES/"$UUID.mo"; do
+    [ -f "$mo" ] || continue
+    language=$(basename "$(dirname "$(dirname "$mo")")")
+    cp -f -- "$mo" "$BACKUP/$language.mo"
+done
+BACKUP_READY=yes
+
+# STAGING is inside LOCALE_DIR, so each move is a same-filesystem atomic
+# rename. The rollback trap covers a later publish or prune failure.
+for compiled in "$STAGING"/*.mo; do
+    [ -f "$compiled" ] || continue
+    language=$(basename "$compiled" .mo)
     target="$LOCALE_DIR/$language/LC_MESSAGES"
     mkdir -p "$target"
-    temporary=$(mktemp "$target/.${UUID}.XXXXXX")
-    if msgfmt -o "$temporary" "$po"; then
-        chmod 0644 "$temporary"
-        mv -f -- "$temporary" "$target/$UUID.mo"
-        installed=$((installed + 1))
-    else
-        rm -f -- "$temporary"
-        echo "could not compile $po" >&2
-        failed=$((failed + 1))
-    fi
+    mv -f -- "$compiled" "$target/$UUID.mo"
 done
 
 # Keep the locale tree in step with po/. A language removed or renamed in the
@@ -69,16 +125,16 @@ done
 # would leave its old translation installed forever. Match by language and
 # remove only this gettext domain; every other application's catalogue in the
 # same LC_MESSAGES directory is left alone.
-if [ "$failed" -eq 0 ]; then
-    for mo in "$LOCALE_DIR"/*/LC_MESSAGES/"$UUID.mo"; do
-        [ -f "$mo" ] || continue
-        language=$(basename "$(dirname "$(dirname "$mo")")")
-        [ -f "$PO_DIR/$language.po" ] || rm -f -- "$mo"
-    done
-fi
+for mo in "$LOCALE_DIR"/*/LC_MESSAGES/"$UUID.mo"; do
+    [ -f "$mo" ] || continue
+    language=$(basename "$(dirname "$(dirname "$mo")")")
+    [ -f "$PO_DIR/$language.po" ] || rm -f -- "$mo"
+done
 
 if [ "$installed" -gt 0 ]; then
     echo "installed $installed translation(s) into $LOCALE_DIR"
 fi
 
-[ "$failed" -eq 0 ] || exit 1
+# Nothing that can fail follows this assignment. A failure before it restores
+# the backup; reaching it makes the catalogue set the committed one.
+COMMITTED=yes
