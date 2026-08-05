@@ -453,6 +453,35 @@ cases["an asynchronous CPU refresh performs no synchronous file access"] = funct
     }
 };
 
+cases["overlapping CPU refreshes settle from a newer discovery"] = function () {
+    try {
+        let cpu = control("machine");
+        let discoveries = [];
+        let answers = [];
+        let changed = 0;
+        cpu._asynchronous = true;
+        cpu._discoverAsync = done => discoveries.push(done);
+        cpu._adopt = governor => { cpu._governor = governor; };
+        cpu._onChanged = () => changed++;
+
+        cpu.refresh(() => answers.push(cpu.snapshot().governor));
+        cpu.refresh(() => answers.push(cpu.snapshot().governor));
+        Harness.equal(discoveries.length, 1, "one discovery starts immediately");
+
+        discoveries.shift()("old");
+        Harness.equal(discoveries.length, 1, "the overlapping request starts one replay");
+        Harness.deepEqual(answers, [], "no caller settles from the superseded snapshot");
+        Harness.equal(changed, 0, "the superseded snapshot is not announced");
+
+        discoveries.shift()("new");
+        Harness.deepEqual(answers, ["new", "new"], "both callers see the replayed state");
+        Harness.equal(changed, 1, "only the current snapshot is announced");
+        cpu.destroy();
+    } finally {
+        release();
+    }
+};
+
 cases["one policy is a machine, not half of one"] = function () {
     /*
      * Plenty of machines expose a single cpufreq policy for every core - an

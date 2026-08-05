@@ -65,6 +65,7 @@ var CpuControl = class CpuControl {
         this._asynchronous = !!configuration.asynchronous;
         this._onChanged = configuration.onChanged || function () {};
         this._refreshing = false;
+        this._refreshPending = false;
         this._refreshWaiters = [];
         this._destroyed = false;
 
@@ -98,13 +99,27 @@ var CpuControl = class CpuControl {
             return;
         if (onDone)
             this._refreshWaiters.push(onDone);
-        if (this._refreshing)
+        if (this._refreshing) {
+            /* The current discovery may have begun before this request and
+             * therefore cannot prove what is true after it. Keep one replay;
+             * any number of overlapping requests need only one newer sweep. */
+            this._refreshPending = true;
             return;
+        }
+        this._startRefresh();
+    }
+
+    _startRefresh() {
         this._refreshing = true;
         this._discoverAsync(state => {
             if (this._destroyed)
                 return;
             this._adopt(state);
+            if (this._refreshPending) {
+                this._refreshPending = false;
+                this._startRefresh();
+                return;
+            }
             this._refreshing = false;
             let waiters = this._refreshWaiters.splice(0);
             for (let waiter of waiters)
@@ -408,6 +423,7 @@ var CpuControl = class CpuControl {
 
     destroy() {
         this._destroyed = true;
+        this._refreshPending = false;
         this._refreshWaiters = [];
     }
 };
