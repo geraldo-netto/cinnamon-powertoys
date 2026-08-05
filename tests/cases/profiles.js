@@ -280,6 +280,21 @@ cases["a name that offers no profiles is passed over"] = function () {
     Harness.equal(client.available, true, "and found one");
 };
 
+cases["an unwired profile proxy is passed over transactionally"] = function () {
+    let broken = daemon();
+    broken.connect = () => { throw new Error("property subscription failed"); };
+    let fallback = daemon({ active: "performance" });
+    let client = new Profiles.PowerProfilesClient(null, bus({
+        [HADESS]: broken,
+        [UPOWER]: fallback,
+    }));
+
+    Harness.equal(client.busName, UPOWER, "discovery continues to the usable backend");
+    Harness.equal(client.active, "performance", "only the wired proxy is published");
+    Harness.equal(client._proxy, fallback, "the failed candidate never becomes available");
+    client.destroy();
+};
+
 cases["the caller is told once the daemon has answered"] = function () {
     /*
      * The whole of why connecting is asynchronous. The bus is no longer asked
@@ -709,7 +724,12 @@ cases["a proxy without a property handler disconnects cleanly"] = function () {
     stub.disconnect = id => stub.disconnected.push(id);
     let daemons = { [HADESS]: stub };
     let system = ownerBus(daemons);
+    let timers = retryTimers(system);
     let client = new Profiles.PowerProfilesClient(null, system);
+
+    Harness.equal(client.available, false, "an unwired proxy is never published");
+    Harness.equal(Object.keys(timers.pending).length, 1,
+                  "the still-owned backend is retried after wiring failure");
 
     delete daemons[HADESS];
     system.watched.find(entry => entry.name === HADESS).vanished();

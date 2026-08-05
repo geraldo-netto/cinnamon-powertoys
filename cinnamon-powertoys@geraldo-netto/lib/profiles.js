@@ -384,14 +384,26 @@ var PowerProfilesClient = class PowerProfilesClient {
                     return;
                 }
 
+                let signalId = 0;
+                try {
+                    signalId = proxy.connect("g-properties-changed",
+                                             () => this._invalidate());
+                } catch (e) {
+                    next();
+                    return;
+                }
+                if (!signalId) {
+                    next();
+                    return;
+                }
+
                 this._connecting = false;
                 this._connectPending = false;
                 this._cancelRetry();
                 this._proxy = proxy;
                 this.busName = backend.name;
                 this.busPath = backend.path;
-                this._propSignalId = proxy.connect("g-properties-changed",
-                                                   () => this._invalidate());
+                this._propSignalId = signalId;
                 this._invalidate();
             }, cancellable);
         } catch (e) {
