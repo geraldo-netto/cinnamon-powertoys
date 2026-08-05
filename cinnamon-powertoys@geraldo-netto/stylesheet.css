@@ -157,6 +157,14 @@
     opacity: 1.0;
 }
 
+/* A heading does not react to the pointer, so PopupMenuItem gives it the
+ * insensitive pseudo-state and themes commonly halve that state's foreground
+ * alpha. Inherit the menu's own foreground instead of naming a light or dark
+ * colour that would only work on one kind of theme. */
+.popup-menu-item.powertoys-group-title:insensitive {
+    color: inherit;
+}
+
 .powertoys-group-title-text {
     font-size: 0.9em;
     font-weight: bold;
