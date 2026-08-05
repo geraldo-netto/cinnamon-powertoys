@@ -758,18 +758,17 @@ cases["overlapping asynchronous refreshes settle after a newer topology check"] 
         let set = Harness.settle(function (done) {
             let created = new Sensors.SensorSet({ asynchronous: true, onChanged: () => done(created) });
         }, "initial sensor discovery");
-        let real = IO.listDirAsync;
+        let real = IO.listDirsAsync;
         let held = [];
         let holding = true;
         let rootListings = 0;
-        IO.listDirAsync = function (path, done) {
-            if (path === Sensors.HWMON_DIR || path === Sensors.THERMAL_DIR ||
-                    path === Sensors.POWERCAP_DIR)
-                rootListings++;
+        IO.listDirsAsync = function (paths, done) {
+            rootListings += paths.filter(path => path === Sensors.HWMON_DIR ||
+                path === Sensors.THERMAL_DIR || path === Sensors.POWERCAP_DIR).length;
             if (holding)
-                held.push(() => real(path, done));
+                held.push(() => real(paths, done));
             else
-                real(path, done);
+                real(paths, done);
         };
         try {
             let answers = Harness.settle(done => {
@@ -781,7 +780,7 @@ cases["overlapping asynchronous refreshes settle after a newer topology check"] 
                 };
                 set.refresh(finish);
                 set.refresh(finish);
-                Harness.equal(held.length, 3, "one listing of the three topology roots");
+                Harness.equal(held.length, 1, "one batch of the three topology roots");
                 holding = false;
                 for (let start of held)
                     start();
@@ -789,22 +788,23 @@ cases["overlapping asynchronous refreshes settle after a newer topology check"] 
             Harness.equal(rootListings, 6, "the overlapping request gets one newer inventory");
             Harness.deepEqual(answers, [false, false], "both callers receive the replayed answer");
         } finally {
-            IO.listDirAsync = real;
+            IO.listDirsAsync = real;
         }
     });
 };
 
 cases["destroyed sensor discovery cannot publish its late answer"] = function () {
-    let listDirAsync = IO.listDirAsync;
+    let listDirsAsync = IO.listDirsAsync;
     let pending = [];
-    IO.listDirAsync = (path, done) => pending.push(() => done([]));
+    IO.listDirsAsync = (paths, done) => pending.push(() => done(
+        Object.fromEntries(paths.map(path => [path, []]))));
     try {
         let changed = 0;
         let set = new Sensors.SensorSet({
             asynchronous: true,
             onChanged: () => changed++,
         });
-        Harness.equal(pending.length, 3, "the three root listings are in flight");
+        Harness.equal(pending.length, 1, "the root listing batch is in flight");
         set.destroy();
         set.destroy();
         for (let answer of pending.splice(0))
@@ -814,7 +814,7 @@ cases["destroyed sensor discovery cannot publish its late answer"] = function ()
         Harness.equal(set.refresh(() => changed++), false, "destroyed sets reject new work");
         Harness.equal(changed, 0, "rejected work has no callback into the old owner");
     } finally {
-        IO.listDirAsync = listDirAsync;
+        IO.listDirsAsync = listDirsAsync;
     }
 };
 
@@ -831,9 +831,10 @@ cases["destroyed sensor sets reject synchronous and asynchronous discovery"] = f
 };
 
 cases["destroying sensor work settles every accepted caller once"] = function () {
-    let original = IO.listDirAsync;
+    let original = IO.listDirsAsync;
     let pending = [];
-    IO.listDirAsync = (path, done) => pending.push(() => done([]));
+    IO.listDirsAsync = (paths, done) => pending.push(() => done(
+        Object.fromEntries(paths.map(path => [path, []]))));
     try {
         let set = new Sensors.SensorSet();
         set._asynchronous = true;
@@ -851,14 +852,15 @@ cases["destroying sensor work settles every accepted caller once"] = function ()
             answer();
         Harness.equal(answers.length, 3, "cancelled filesystem replies cannot settle twice");
     } finally {
-        IO.listDirAsync = original;
+        IO.listDirsAsync = original;
     }
 };
 
 cases["overlapping sensor discoveries settle callers from their own generation"] = function () {
-    let original = IO.listDirAsync;
+    let original = IO.listDirsAsync;
     let pending = [];
-    IO.listDirAsync = (path, done) => pending.push(() => done([]));
+    IO.listDirsAsync = (paths, done) => pending.push(() => done(
+        Object.fromEntries(paths.map(path => [path, []]))));
     IO.setRoot("/definitely/not/here");
     try {
         let set = new Sensors.SensorSet();
@@ -873,11 +875,11 @@ cases["overlapping sensor discoveries settle callers from their own generation"]
             };
             set.discoverAsync(result => answers.push(result));
             set.discoverAsync(result => answers.push(result));
-            Harness.equal(pending.length, 3, "one discovery owns the three roots");
+            Harness.equal(pending.length, 1, "one discovery owns the root batch");
             for (let answer of pending.splice(0))
                 answer();
         }, "the first overlapping sensor discovery");
-        Harness.equal(pending.length, 3, "the overlap becomes one replay");
+        Harness.equal(pending.length, 1, "the overlap becomes one replay");
         Harness.deepEqual(answers, [true],
                           "the first caller settles from the snapshot it requested");
         Harness.settle(done => {
@@ -893,7 +895,7 @@ cases["overlapping sensor discoveries settle callers from their own generation"]
         Harness.equal(changes, 2, "each completed coherent snapshot is announced");
         set.destroy();
     } finally {
-        IO.listDirAsync = original;
+        IO.listDirsAsync = original;
         IO.setRoot("");
     }
 };

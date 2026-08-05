@@ -497,3 +497,14 @@ function listDirAsync(path, onDone, fileFactory, options) {
     }
     return operation;
 }
+
+/* Several directory listings with one cap across their open enumerators. */
+function listDirsAsync(paths, onDone, concurrency, fileFactory, options) {
+    return _batchAsync(paths, onDone, concurrency, [],
+        (path, cancellable, settle) => {
+            let childOptions = Object.assign({}, options || {}, {
+                cancellable: cancellable,
+            });
+            listDirAsync(path, settle, fileFactory, childOptions);
+        }, options);
+}

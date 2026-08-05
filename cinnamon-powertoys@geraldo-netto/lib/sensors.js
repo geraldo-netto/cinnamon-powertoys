@@ -423,20 +423,14 @@ function _directoryInventory() {
 }
 
 function _listDirectoriesAsync(paths, directories, onDone, ioOptions) {
-    let unique = Array.from(new Set(paths));
-    let outstanding = unique.length;
-    if (outstanding === 0) {
+    if (paths.length === 0) {
         onDone();
         return;
     }
-    for (let path of unique) {
-        IO.listDirAsync(path, entries => {
-            directories[path] = entries;
-            outstanding--;
-            if (outstanding === 0)
-                onDone();
-        }, null, ioOptions);
-    }
+    IO.listDirsAsync(paths, values => {
+        Object.assign(directories, values);
+        onDone();
+    }, 8, null, ioOptions);
 }
 
 /* Directory enumeration is asynchronous too, and one bounded listing is made

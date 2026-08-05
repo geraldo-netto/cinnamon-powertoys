@@ -553,6 +553,33 @@ cases["a listing opened by a late cancellation reply is still closed"] = functio
     Harness.equal(closed, 1, "the late handle is closed after cancellation");
 };
 
+cases["directory batches cap their open enumerators"] = function () {
+    let pending = [];
+    let active = 0;
+    let maximum = 0;
+    let factory = () => {
+        let directory = asyncDirectory({ batches: [[]] });
+        directory.enumerate_children_async = function (attributes, flags, priority, token, onDone) {
+            active++;
+            maximum = Math.max(maximum, active);
+            pending.push(() => {
+                active--;
+                onDone(this, {});
+            });
+        };
+        return directory;
+    };
+    let answer = null;
+    IO.listDirsAsync(["/a", "/b", "/c"], value => { answer = value; }, 2, factory);
+    Harness.equal(pending.length, 2, "only the permitted listings start");
+    while (pending.length > 0)
+        pending.shift()();
+
+    Harness.equal(maximum, 2, "the directory concurrency limit is observed");
+    Harness.deepEqual(answer, { "/a": [], "/b": [], "/c": [] },
+                      "every directory still settles");
+};
+
 cases["asking for no nodes at all still answers"] = function () {
     /* A machine with every sensor filtered out asks for nothing, and a caller
      * that is never answered is a poll that never finishes. */
