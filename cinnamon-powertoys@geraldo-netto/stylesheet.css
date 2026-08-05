@@ -1,13 +1,10 @@
 /*
- * Bold means one thing in this menu: something is wrong.
- *
- * It used to mark four - the summary line, the column titles, the group
- * headings and a warning - and a signal spent on the ordinary furniture of a
- * menu is not a signal any more. The warning is the only one that has to be
- * found without being looked for, so it keeps the weight, and the structure
- * is told apart by size instead: the group headings a tenth larger than the
- * rows and quieter, the chip names inside the sensors quieter again. That is
- * a hierarchy, which is all of them were ever drawing.
+ * The primary group headings are the anchors of this dense, three-column
+ * menu. They use weight, size and the theme's full foreground so they are seen
+ * before the controls and readings they organise. A warning is bold too, but
+ * its orange colour still gives it a separate meaning. Chip names inside the
+ * sensor list remain quieter, because they are the second level of the
+ * hierarchy rather than another group competing for attention.
  *
  * The summary had a size of its own too, when it was a strip across the whole
  * menu. It is a row at the top of a column now and is drawn as one.
@@ -23,8 +20,8 @@
  * inherited size in pixels and then applies the result as points, so every
  * unit comes out four thirds larger than it reads: measured in this menu,
  * where the inherited size is 10, "1em" gives 13.33 and so do "100%" and
- * "9pt". Multiplying by 0.75 undoes it, which is why a tenth larger than the
- * rows is written 0.83em and a tenth smaller is written 0.68em.
+ * "9pt". Multiplying by 0.75 undoes it, which is why a fifth larger than the
+ * rows is written 0.9em and a tenth smaller is written 0.68em.
  */
 .powertoys-info-label {
     padding-right: 16px;
@@ -123,8 +120,8 @@
 
 /*
  * What a group of rows is: the profile, the processor, the devices, the
- * sensors. A shade quieter than the rows it heads, because a heading is
- * furniture and the numbers are what is read.
+ * sensors. It is stronger than the rows it heads so the eye can find a subject
+ * before reading its controls and values.
  *
  * Two class names, for the reason spelled out under the spaced rule below: a
  * menu item is a .popup-menu-item, the theme sets padding on that, and the
@@ -157,11 +154,12 @@
 .popup-menu-item.powertoys-group-title {
     padding-top: 8px;
     padding-bottom: 2px;
-    opacity: 0.85;
+    opacity: 1.0;
 }
 
 .powertoys-group-title-text {
-    font-size: 0.83em;
+    font-size: 0.9em;
+    font-weight: bold;
 }
 
 /*
