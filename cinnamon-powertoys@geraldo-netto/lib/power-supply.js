@@ -21,6 +21,24 @@ var PLATFORM_PROFILE_CHOICES = "/sys/firmware/acpi/platform_profile_choices";
  */
 var PLATFORM_BACKEND = "acpi-platform-profile";
 
+function _chargeReading(values) {
+    let readable = values.filter(value => value !== null);
+    let agreed = readable.length === values.length && readable.length > 0 &&
+                 readable.every(value => value === readable[0]);
+    let incomplete = readable.length !== values.length || values.length === 0;
+    let divided = !incomplete && !agreed;
+    return {
+        limits: values,
+        limit: agreed ? readable[0] : null,
+        state: agreed ? "agreed" : divided ? "divided" : "incomplete",
+        agreed: agreed,
+        divided: divided,
+        incomplete: incomplete,
+        readableCount: readable.length,
+        batteryCount: values.length,
+    };
+}
+
 /*
  * The charge limit, across every battery that has one.
  *
@@ -61,22 +79,7 @@ var ChargeControl = class ChargeControl {
      * the latter two without pretending an incomplete read is disagreement.
      */
     reading() {
-        let values = this.limits;
-        let readable = values.filter(value => value !== null);
-        let agreed = readable.length === values.length && readable.length > 0 &&
-                     readable.every(value => value === readable[0]);
-        let incomplete = readable.length !== values.length || values.length === 0;
-        let divided = !incomplete && !agreed;
-        return {
-            limits: values,
-            limit: agreed ? readable[0] : null,
-            state: agreed ? "agreed" : divided ? "divided" : "incomplete",
-            agreed: agreed,
-            divided: divided,
-            incomplete: incomplete,
-            readableCount: readable.length,
-            batteryCount: values.length,
-        };
+        return _chargeReading(this.limits);
     }
 
     get limit() {
@@ -85,6 +88,153 @@ var ChargeControl = class ChargeControl {
 
     setLimit(percent, onDone) {
         this._runner(["charge-threshold", String(percent)], onDone);
+    }
+};
+
+/* The runtime charge backend keeps topology and values in complete cached
+ * snapshots. Discovery and sampling both use Gio through IO, so opening the
+ * menu never asks a power-supply driver a question on Cinnamon's thread. */
+var AsyncChargeControl = class AsyncChargeControl {
+    constructor(runner, onChanged) {
+        this.batteries = [];
+        this._runner = runner || function () {};
+        this._onChanged = onChanged || function () {};
+        this._reading = _chargeReading([]);
+        this._scope = new IO.AsyncScope();
+        this._ioOptions = { scope: this._scope };
+        this._refreshing = false;
+        this._refreshPending = false;
+        this._refreshChanged = false;
+        this._refreshWaiters = [];
+        this._destroyed = false;
+    }
+
+    get available() {
+        return this.batteries.length > 0;
+    }
+
+    reading() {
+        return this._reading;
+    }
+
+    get limit() {
+        return this._reading.limit;
+    }
+
+    refresh(onDone) {
+        if (this._destroyed) {
+            if (onDone)
+                onDone(false);
+            return;
+        }
+        if (onDone)
+            this._refreshWaiters.push(onDone);
+        if (this._refreshing) {
+            this._refreshPending = true;
+            return;
+        }
+        this._startRefresh();
+    }
+
+    _startRefresh() {
+        this._refreshing = true;
+        IO.listDirAsync(POWER_SUPPLY_DIR, entries => {
+            let typePaths = entries.map(name => POWER_SUPPLY_DIR + "/" + name + "/type");
+            let thresholdPaths = entries.map(name =>
+                POWER_SUPPLY_DIR + "/" + name + "/charge_control_end_threshold");
+            let types = null;
+            let existence = null;
+            let finish = () => {
+                if (types === null || existence === null)
+                    return;
+                let batteries = [];
+                for (let name of entries) {
+                    let base = POWER_SUPPLY_DIR + "/" + name;
+                    let path = base + "/charge_control_end_threshold";
+                    if (types[base + "/type"] === "Battery" && existence[path])
+                        batteries.push({ name: name, path: path });
+                }
+                this._sampleBatteries(batteries, values =>
+                    this._finishRefresh(batteries, values));
+            };
+            IO.readStringsAsync(typePaths, answer => {
+                types = answer;
+                finish();
+            }, 16, null, this._ioOptions);
+            IO.pathsExistAsync(thresholdPaths, answer => {
+                existence = answer;
+                finish();
+            }, 16, null, this._ioOptions);
+        }, null, this._ioOptions);
+    }
+
+    _sampleBatteries(batteries, onDone) {
+        let paths = batteries.map(battery => battery.path);
+        IO.readStringsAsync(paths, values => {
+            onDone(paths.map(path => IO.toNumber(values[path])));
+        }, 16, null, this._ioOptions);
+    }
+
+    _finishRefresh(batteries, values) {
+        if (this._destroyed)
+            return;
+        let previous = JSON.stringify([this.batteries, this._reading]);
+        this.batteries = batteries;
+        this._reading = _chargeReading(values);
+        let changed = previous !== JSON.stringify([this.batteries, this._reading]);
+        this._refreshChanged = this._refreshChanged || changed;
+        if (this._refreshPending) {
+            this._refreshPending = false;
+            this._startRefresh();
+            return;
+        }
+        this._refreshing = false;
+        let waiters = this._refreshWaiters.splice(0);
+        for (let waiter of waiters)
+            waiter(true);
+        if (this._refreshChanged)
+            this._onChanged();
+        this._refreshChanged = false;
+    }
+
+    sample(onDone) {
+        let done = onDone || function () {};
+        if (this._destroyed) {
+            done(false);
+            return;
+        }
+        let batteries = this.batteries.slice();
+        this._sampleBatteries(batteries, values => {
+            if (this._destroyed) {
+                done(false);
+                return;
+            }
+            /* A topology refresh may have landed while these values were in
+             * flight. Its complete newer snapshot wins. */
+            if (batteries.length !== this.batteries.length ||
+                    batteries.some((battery, index) =>
+                        battery.path !== this.batteries[index].path)) {
+                done(false);
+                return;
+            }
+            this._reading = _chargeReading(values);
+            done(true);
+        });
+    }
+
+    setLimit(percent, onDone) {
+        this._runner(["charge-threshold", String(percent)], onDone);
+    }
+
+    destroy() {
+        if (this._destroyed)
+            return;
+        this._destroyed = true;
+        this._scope.cancel();
+        let waiters = this._refreshWaiters.splice(0);
+        for (let waiter of waiters)
+            waiter(false);
+        this._onChanged = function () {};
     }
 };
 
@@ -127,14 +277,84 @@ function platformProfile() {
  * have to: it holds one of these and asks it.
  */
 var PlatformProfileClient = class PlatformProfileClient {
-    constructor(runner) {
+    constructor(runner, options) {
+        let configuration = options || {};
         this._runner = runner || function () {};
+        this._asynchronous = !!configuration.asynchronous;
+        this._onChanged = configuration.onChanged || function () {};
+        this._profile = null;
+        this._scope = new IO.AsyncScope();
+        this._ioOptions = { scope: this._scope };
+        this._destroyed = false;
+        this._refreshGeneration = 0;
     }
 
     /* Read every time: the firmware moves this on its own - a lid closed, a
      * charger unplugged - and vendor tools write it too. */
     _read() {
-        return platformProfile();
+        return this._asynchronous ? this._profile : platformProfile();
+    }
+
+    refresh(onDone) {
+        let done = onDone || function () {};
+        if (!this._asynchronous) {
+            done(true);
+            return;
+        }
+        if (this._destroyed) {
+            done(false);
+            return;
+        }
+        let generation = ++this._refreshGeneration;
+        IO.readStringsAsync([PLATFORM_PROFILE, PLATFORM_PROFILE_CHOICES], values => {
+            if (this._destroyed) {
+                done(false);
+                return;
+            }
+            if (generation !== this._refreshGeneration) {
+                done(false);
+                return;
+            }
+            let active = values[PLATFORM_PROFILE];
+            let rawChoices = values[PLATFORM_PROFILE_CHOICES];
+            let profile = active === null || rawChoices === null ? null : {
+                active: active,
+                choices: rawChoices ? rawChoices.split(/\s+/) : [],
+            };
+            let changed = JSON.stringify(profile) !== JSON.stringify(this._profile);
+            this._profile = profile;
+            done(true);
+            if (changed)
+                this._onChanged();
+        }, 2, null, this._ioOptions);
+    }
+
+    sample(onDone) {
+        let done = onDone || function () {};
+        if (!this._asynchronous) {
+            done(true);
+            return;
+        }
+        if (this._destroyed) {
+            done(false);
+            return;
+        }
+        if (this._profile === null) {
+            done(true);
+            return;
+        }
+        let profile = this._profile;
+        IO.readStringsAsync([PLATFORM_PROFILE], values => {
+            if (this._destroyed || profile !== this._profile) {
+                done(false);
+                return;
+            }
+            this._profile = {
+                active: values[PLATFORM_PROFILE],
+                choices: profile.choices,
+            };
+            done(true);
+        }, 1, null, this._ioOptions);
     }
 
     get available() {
@@ -206,11 +426,12 @@ var PlatformProfileClient = class PlatformProfileClient {
         return true;
     }
 
-    /*
-     * Nothing to release: this backend is two files and a runner it was
-     * handed. It exists so that the applet can tear every backend down the
-     * same way, without knowing which of them happen to hold something.
-     */
     destroy() {
+        if (this._destroyed)
+            return;
+        this._destroyed = true;
+        this._refreshGeneration++;
+        this._scope.cancel();
+        this._onChanged = function () {};
     }
 };

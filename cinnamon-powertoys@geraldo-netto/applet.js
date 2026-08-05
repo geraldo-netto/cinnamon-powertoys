@@ -155,8 +155,13 @@ function defaultBackends() {
             asynchronous: true,
             onChanged: onChanged,
         }),
-        chargeControl: runner => PowerSupply.discoverChargeControl(runner),
-        platformProfileClient: runner => new PowerSupply.PlatformProfileClient(runner),
+        chargeControl: (runner, onChanged) =>
+            new PowerSupply.AsyncChargeControl(runner, onChanged),
+        platformProfileClient: (runner, onChanged) =>
+            new PowerSupply.PlatformProfileClient(runner, {
+                asynchronous: true,
+                onChanged: onChanged,
+            }),
         profilesClient: onChanged => new Profiles.PowerProfilesClient(onChanged),
         backlight: (kind, onChanged, onReady) =>
             new Backlight.BacklightControl(kind, onChanged, onReady),
@@ -1767,8 +1772,13 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._scheduleUpdate();
         });
         this._platformProfiles = this._backends.platformProfileClient(
-            (args, onDone) => this._runHelperQuietly(args, onDone));
+            (args, onDone) => this._runHelperQuietly(args, onDone), () => {
+                this._chooseProfileBackend();
+                this._scheduleUpdate();
+            });
         this._chooseProfileBackend();
+        if (typeof this._platformProfiles.refresh === "function")
+            this._platformProfiles.refresh();
         this._upower = this._backends.upowerMonitor(() => this._onUPowerChanged(),
                                                     () => this._onUPowerChanged());
         /* A stubbed backend can answer inside its own constructor, before the
@@ -2300,8 +2310,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
         let readings = null;
         let sensorsReady = false;
         let cpuReady = false;
+        let chargeReady = false;
+        let profileReady = false;
         let finish = () => {
-            if (!sensorsReady || !cpuReady)
+            if (!sensorsReady || !cpuReady || !chargeReady || !profileReady)
                 return;
             /* Teardown destroys the backends after a read has started. A
              * backend still settles its callback so the collection can let
@@ -2328,6 +2340,26 @@ class PowerToysApplet extends Applet.TextIconApplet {
             cpuReady = true;
             finish();
         });
+        if (this.menu && this.menu.isOpen && this._chargeControl &&
+                typeof this._chargeControl.sample === "function") {
+            this._chargeControl.sample(() => {
+                chargeReady = true;
+                finish();
+            });
+        } else {
+            chargeReady = true;
+            finish();
+        }
+        let profileBackend = this._profileBackend;
+        if (profileBackend && typeof profileBackend.sample === "function") {
+            profileBackend.sample(() => {
+                profileReady = true;
+                finish();
+            });
+        } else {
+            profileReady = true;
+            finish();
+        }
     }
 
     /*
@@ -2391,37 +2423,37 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * firmware and vendor tools move these; it was the set of batteries that
      * was frozen.
      *
-     * Cheap enough to ask where the sensors are asked: a listing of
-     * /sys/class/power_supply and a type node per entry. The group in the menu
-     * now follows the reading rather than the constructor, so an answer that
-     * changes is drawn either way.
+     * The runtime backend performs that listing asynchronously and keeps the
+     * prior complete topology until the replacement has also sampled every
+     * threshold. The group in the menu follows that cached reading, so an
+     * answer that changes is drawn either way without blocking Cinnamon.
      */
     _rediscoverChargeControl() {
-        this._chargeControl =
-            this._backends.chargeControl((args, onDone) => this._runHelper(args, onDone));
+        if (!this._chargeControl) {
+            this._chargeControl = this._backends.chargeControl(
+                (args, onDone) => this._runHelper(args, onDone),
+                () => this._scheduleUpdate());
+        }
+        if (this._chargeControl && typeof this._chargeControl.refresh === "function")
+            this._chargeControl.refresh();
     }
 
     /*
      * The charge limit, read only when it could be looked at.
      *
-     * It is deliberately a live read rather than something remembered: the
-     * firmware and other tools change it too. But it appears in one place -
-     * the device panel - so with the menu shut there is nobody it could be
-     * read for, and it was the last reading in the poll still being taken
-     * regardless.
+     * The firmware and other tools change it too, so the asynchronous
+     * collector samples it whenever the device panel is open. With the menu
+     * shut there is nobody it could answer, and the cached value is omitted.
      *
-     * Opening the menu re-reads before anything is drawn, so what is on screen
-     * is never the value from the last time the menu happened to be open. That
-     * is what _adoptChargeLimit is for: the reading the menu is first painted
-     * from was assembled with the menu shut, which means it carries no limit at
-     * all, and without the re-read the group would draw with nothing marked and
-     * fill in a moment later.
+     * Opening the menu starts a fresh collection. _adoptChargeLimit fills its
+     * first paint from the last complete cache rather than opening sysfs in
+     * the menu signal; the fresh asynchronous value replaces it shortly after.
      */
     _readChargeLimit() {
         /* Whether there is a control at all is a fact about the machine and is
          * reported whatever the menu is doing; the value is what costs a read
          * and is only worth taking while somebody could be looking at it. */
-        let available = !!this._chargeControl;
+        let available = !!this._chargeControl && this._chargeControl.available;
         if (!available)
             return { available: available, limit: null, state: null, divided: false };
         if (!this.menu || !this.menu.isOpen)
@@ -2465,6 +2497,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._sensors.refresh();
         this._cpu.refresh();
         this._rediscoverChargeControl();
+        if (this._platformProfiles && typeof this._platformProfiles.refresh === "function")
+            this._platformProfiles.refresh();
         this._chooseProfileBackend();
     }
 
@@ -2597,8 +2631,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * a moment later when the fresh reading arrives, which reads as a control
      * that was broken and then was not.
      *
-     * Two file reads, taken here because this is the first moment they can
-     * answer: the menu is open by the time open-state-changed is emitted.
+     * This is a cache read only. The menu-open collection performs the actual
+     * filesystem sample away from the compositor thread.
      */
     _adoptChargeLimit(data) {
         let charge = this._readChargeLimit();
@@ -3264,6 +3298,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         }
         destroy("_cpu", "CPU backend");
         destroy("_sensors", "sensor backend");
+        destroy("_chargeControl", "charge-limit backend");
         /* Before settings and presentation: no queued privileged job may put
          * a password dialog on screen after its owner has gone. */
         destroy("_helper", "privileged helper");

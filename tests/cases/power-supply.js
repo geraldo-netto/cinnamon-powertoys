@@ -183,6 +183,112 @@ cases["whatever the batteries say, a reading is a limit or nothing"] = function 
     });
 };
 
+cases["runtime charge discovery and sampling never use synchronous sysfs"] = function () {
+    let real = {
+        listDir: IO.listDir,
+        readString: IO.readString,
+        readNumber: IO.readNumber,
+        exists: IO.exists,
+        listDirAsync: IO.listDirAsync,
+        readStringsAsync: IO.readStringsAsync,
+        pathsExistAsync: IO.pathsExistAsync,
+    };
+    let limit = "80";
+    let changes = 0;
+    let synchronous = () => { throw new Error("synchronous filesystem access"); };
+    IO.listDir = synchronous;
+    IO.readString = synchronous;
+    IO.readNumber = synchronous;
+    IO.exists = synchronous;
+    IO.listDirAsync = (path, done) => done(["AC", "BAT0"]);
+    IO.pathsExistAsync = (paths, done) => done({
+        "/sys/class/power_supply/AC/charge_control_end_threshold": false,
+        "/sys/class/power_supply/BAT0/charge_control_end_threshold": true,
+    });
+    IO.readStringsAsync = (paths, done) => {
+        let values = {};
+        for (let path of paths) {
+            if (/\/type$/.test(path))
+                values[path] = path.indexOf("BAT0") >= 0 ? "Battery" : "Mains";
+            else
+                values[path] = limit;
+        }
+        done(values);
+    };
+
+    let client = new PowerSupply.AsyncChargeControl(null, () => changes++);
+    try {
+        let refreshed = null;
+        client.refresh(value => { refreshed = value; });
+        Harness.equal(refreshed, true, "topology discovery settles");
+        Harness.equal(client.available, true, "the cached topology has a battery");
+        Harness.equal(client.reading().limit, 80, "discovery publishes its complete sample");
+        Harness.equal(changes, 1, "the new topology is reported");
+
+        limit = "65";
+        let sampled = null;
+        client.sample(value => { sampled = value; });
+        Harness.equal(sampled, true, "the live value sample settles");
+        Harness.equal(client.limit, 65, "and replaces the cached value");
+
+        client.destroy();
+        client.sample(value => { sampled = value; });
+        Harness.equal(sampled, false, "teardown rejects later samples");
+    } finally {
+        client.destroy();
+        for (let name in real)
+            IO[name] = real[name];
+    }
+};
+
+cases["runtime charge work coalesces and rejects stale lifecycle replies"] = function () {
+    let commands = [];
+    let client = new PowerSupply.AsyncChargeControl(
+        (args, done) => { commands.push(args); if (done) done(true); });
+    let starts = 0;
+    let results = [];
+    client._startRefresh = function () {
+        starts++;
+        this._refreshing = true;
+    };
+    client.refresh(value => results.push(value));
+    client.refresh(value => results.push(value));
+    Harness.equal(starts, 1, "overlapping topology requests start one sweep");
+    Harness.equal(client._refreshPending, true, "one newer sweep is retained");
+
+    client._finishRefresh([], []);
+    Harness.equal(starts, 2, "the retained sweep starts after the first snapshot");
+    client._finishRefresh([], []);
+    Harness.deepEqual(results, [true, true], "both callers settle after the newer sweep");
+
+    client.batteries = [{ name: "BAT0", path: "/old" }];
+    let sampleDone = null;
+    client._sampleBatteries = (batteries, done) => { sampleDone = done; };
+    client.sample(value => results.push(value));
+    client.batteries = [{ name: "BAT1", path: "/new" }];
+    sampleDone([80]);
+    Harness.equal(results[2], false, "a sample for replaced topology is rejected");
+
+    client.batteries = [{ name: "BAT0", path: "/old" }];
+    client.sample(value => results.push(value));
+    client.destroy();
+    sampleDone([70]);
+    Harness.equal(results[3], false, "an in-flight sample settles false at teardown");
+    client.refresh(value => results.push(value));
+    client.refresh();
+    Harness.equal(results[4], false, "later discovery is rejected too");
+
+    let writeResult = null;
+    let writer = new PowerSupply.AsyncChargeControl((args, done) => {
+        commands.push(args);
+        done("written");
+    });
+    writer.setLimit(75, value => { writeResult = value; });
+    Harness.deepEqual(commands[0], ["charge-threshold", "75"], "writes keep the helper protocol");
+    Harness.equal(writeResult, "written", "and preserve the runner callback");
+    writer.destroy();
+};
+
 /* ---------------------------------------------------------------- */
 /* the firmware's own profile                                        */
 
@@ -289,5 +395,107 @@ cases["the firmware backend says which backend it is"] = function () {
         Harness.deepEqual(client.holds, [], "nor about applications holding a profile");
     } finally {
         client.release();
+    }
+};
+
+cases["the runtime firmware backend discovers and samples asynchronously"] = function () {
+    let real = {
+        exists: IO.exists,
+        readString: IO.readString,
+        readWords: IO.readWords,
+        readStringsAsync: IO.readStringsAsync,
+    };
+    let active = "balanced";
+    let synchronous = () => { throw new Error("synchronous filesystem access"); };
+    IO.exists = synchronous;
+    IO.readString = synchronous;
+    IO.readWords = synchronous;
+    IO.readStringsAsync = (paths, done) => {
+        let values = {};
+        for (let path of paths)
+            values[path] = /choices$/.test(path) ? "quiet balanced performance" : active;
+        done(values);
+    };
+
+    let changes = 0;
+    let client = new PowerSupply.PlatformProfileClient(null, {
+        asynchronous: true,
+        onChanged: () => changes++,
+    });
+    try {
+        Harness.equal(client.available, false, "nothing is guessed before discovery");
+        let refreshed = null;
+        client.refresh(value => { refreshed = value; });
+        Harness.equal(refreshed, true, "topology discovery settles");
+        Harness.equal(client.available, true, "the cached choices make a backend");
+        Harness.deepEqual(client.profiles, ["quiet", "balanced", "performance"],
+                          "choices are cached from the discovery snapshot");
+        Harness.equal(changes, 1, "the first complete snapshot is reported");
+
+        active = "quiet";
+        let sampled = null;
+        client.sample(value => { sampled = value; });
+        Harness.equal(sampled, true, "the active-profile sample settles");
+        Harness.equal(client.active, "quiet", "only the moving value is updated");
+        Harness.deepEqual(client.profiles, ["quiet", "balanced", "performance"],
+                          "sampling preserves topology");
+
+        client.destroy();
+        client.sample(value => { sampled = value; });
+        Harness.equal(sampled, false, "teardown rejects later active-profile samples");
+    } finally {
+        client.destroy();
+        for (let name in real)
+            IO[name] = real[name];
+    }
+};
+
+cases["firmware refreshes reject superseded and teardown replies"] = function () {
+    let real = IO.readStringsAsync;
+    let pending = [];
+    IO.readStringsAsync = (paths, done) => pending.push(done);
+    try {
+        let synchronous = new PowerSupply.PlatformProfileClient();
+        let sync = [];
+        synchronous.refresh(value => sync.push(value));
+        synchronous.sample(value => sync.push(value));
+        Harness.deepEqual(sync, [true, true], "the synchronous compatibility path is immediate");
+        synchronous.destroy();
+
+        let client = new PowerSupply.PlatformProfileClient(null, { asynchronous: true });
+        let results = [];
+        client.sample(value => results.push(value));
+        Harness.deepEqual(results, [true], "no discovered backend needs no active read");
+
+        client.refresh(value => results.push(value));
+        client.refresh(value => results.push(value));
+        pending[0]({
+            "/sys/firmware/acpi/platform_profile": "quiet",
+            "/sys/firmware/acpi/platform_profile_choices": "quiet balanced",
+        });
+        pending[1]({
+            "/sys/firmware/acpi/platform_profile": null,
+            "/sys/firmware/acpi/platform_profile_choices": null,
+        });
+        Harness.deepEqual(results, [true, false, true],
+                          "the superseded topology is rejected and the newest is adopted");
+
+        client._profile = { active: "balanced", choices: ["quiet", "balanced"] };
+        client.sample(value => results.push(value));
+        client._profile = { active: "quiet", choices: ["quiet", "balanced"] };
+        pending[2]({ "/sys/firmware/acpi/platform_profile": "balanced" });
+        Harness.equal(results[3], false, "a sample cannot overwrite newer profile topology");
+
+        client.refresh(value => results.push(value));
+        client.destroy();
+        pending[3]({
+            "/sys/firmware/acpi/platform_profile": "quiet",
+            "/sys/firmware/acpi/platform_profile_choices": "quiet balanced",
+        });
+        Harness.equal(results[4], false, "a topology reply after teardown is rejected");
+        client.refresh(value => results.push(value));
+        Harness.equal(results[5], false, "new refreshes after teardown are rejected");
+    } finally {
+        IO.readStringsAsync = real;
     }
 };

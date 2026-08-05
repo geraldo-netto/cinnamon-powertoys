@@ -220,6 +220,35 @@ cases["a late collection stops when its applet is destroyed"] = function () {
     Harness.deepEqual(logged, [], "ordinary teardown is not reported as a collection error");
 };
 
+cases["collection waits for asynchronous charge and firmware samples"] = function () {
+    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let match = /    _collect\(onDone\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* The sensor readings/.exec(source);
+    Harness.ok(match, "the collection method can be isolated");
+    let collect = Function("Log", "return function (onDone) {" + match[1] + "\n};")({
+        error: message => { throw new Error(message); },
+    });
+    let pending = {};
+    let answers = [];
+    let applet = {
+        _destroyed: false,
+        menu: { isOpen: true },
+        _sensorFilter: () => function () { return true; },
+        _sensors: { readAsync: (wanted, done) => { pending.sensors = done; } },
+        _cpu: { sample: done => { pending.cpu = done; } },
+        _chargeControl: { sample: done => { pending.charge = done; } },
+        _profileBackend: { sample: done => { pending.profile = done; } },
+        _assemble: readings => readings,
+    };
+
+    collect.call(applet, answer => answers.push(answer));
+    pending.sensors({ temperatures: [] });
+    pending.cpu(true);
+    pending.charge(true);
+    Harness.deepEqual(answers, [], "three of four backend answers are not a snapshot");
+    pending.profile(true);
+    Harness.deepEqual(answers, [{ temperatures: [] }], "the complete snapshot answers once");
+};
+
 cases["slow rediscovery includes CPU topology"] = function () {
     let source = Harness.readFile(Harness.xletDir() + "/applet.js");
     let rediscover = /    _rediscover\(\) \{([\s\S]*?)\n    \}/.exec(source);
