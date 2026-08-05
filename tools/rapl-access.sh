@@ -7,12 +7,17 @@ ACTION=${1:-}
 SOURCE=${2:-}
 DESTINATION=${3:-}
 GROUP=${4:-}
+LOCK_TARGET=${5:-}
 POWERCAP_ROOT=${POWERTOYS_POWERCAP_ROOT:-/sys/class/powercap}
 
-[ "$ACTION" = install ] || [ "$ACTION" = uninstall ] || {
-    echo "usage: rapl-access.sh install|uninstall SOURCE DESTINATION [GROUP]" >&2
+[ "$#" -eq 5 ] && { [ "$ACTION" = install ] || [ "$ACTION" = uninstall ]; } &&
+        [ -n "$LOCK_TARGET" ] || {
+    echo "usage: rapl-access.sh install|uninstall SOURCE DESTINATION GROUP LOCK" >&2
     exit 2
 }
+
+. "$(dirname "$0")/transition-lock.sh"
+acquire_transition_lock "$LOCK_TARGET" RAPL
 
 reload_rules() {
     udevadm control --reload

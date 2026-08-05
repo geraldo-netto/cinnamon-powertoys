@@ -34,28 +34,8 @@ if [ "$ACTION" = install ]; then
     }
 fi
 
-command -v flock >/dev/null 2>&1 || {
-    echo "the flock command required for policy transitions is unavailable" >&2
-    exit 1
-}
-if [ -d "$LOCK_TARGET" ]; then
-    exec 9<"$LOCK_TARGET" || {
-        echo "cannot open policy transition lock: $LOCK_TARGET" >&2
-        exit 1
-    }
-else
-    lock_directory=$(dirname "$LOCK_TARGET")
-    [ -d "$lock_directory" ] || install -d -m 0755 "$lock_directory"
-    umask 022
-    exec 9>>"$LOCK_TARGET" || {
-        echo "cannot open policy transition lock: $LOCK_TARGET" >&2
-        exit 1
-    }
-fi
-flock -x 9 || {
-    echo "cannot acquire policy transition lock: $LOCK_TARGET" >&2
-    exit 1
-}
+. "$(dirname "$0")/transition-lock.sh"
+acquire_transition_lock "$LOCK_TARGET" policy
 
 helper_directory=$(dirname "$HELPER_DESTINATION")
 policy_directory=$(dirname "$POLICY_DESTINATION")

@@ -203,6 +203,8 @@ cases["RAPL Make targets share one transition implementation"] = function () {
                "install delegates the whole state change");
     Harness.ok(source.indexOf('sh "$(RAPL_TOOL)" uninstall') >= 0,
                "uninstall delegates to the same owner");
+    Harness.equal((source.match(/"\$\(RAPL_LOCK\)"/g) || []).length, 2,
+                  "both actions pass the same lock target");
 };
 
 function writeExecutable(path, source) {
@@ -246,7 +248,7 @@ function transition(action, udevSource, withCounter, signalPublish) {
         let outcome = Harness.settle(done => Privileged._spawn(
             ["env", "PATH=" + path, "DESTDIR=",
              "POWERTOYS_POWERCAP_ROOT=" + powercap, "POWERTOYS_LOG=" + log,
-             "sh", tool, action, source, destination, "adm"],
+             "sh", tool, action, source, destination, "adm", directory],
             (status, stderr) => done({
                 status: status,
                 stderr: stderr,
@@ -276,6 +278,64 @@ cases["a failed RAPL install restores the previous rule and live policy"] = func
                   "udev is reloaded for publish and rollback");
     Harness.equal((outcome.calls.match(/udevadm trigger/g) || []).length, 2,
                   "the restored policy is replayed");
+};
+
+cases["RAPL uninstall waits for install publication and live replay"] = function () {
+    let directory = GLib.dir_make_tmp("powertoys-rapl-lock-XXXXXX");
+    try {
+        let bin = directory + "/bin";
+        let rules = directory + "/rules";
+        let powercap = directory + "/powercap";
+        let source = directory + "/source.rules";
+        let destination = rules + "/99-powertoys.rules";
+        let log = directory + "/calls";
+        let started = directory + "/install-reload-started";
+        let runner = directory + "/run-race";
+        let tool = Harness.testsDir() + "/../tools/rapl-access.sh";
+        GLib.mkdir_with_parents(bin, 0o755);
+        GLib.mkdir_with_parents(rules, 0o755);
+        GLib.mkdir_with_parents(powercap, 0o755);
+        GLib.file_set_contents(source, "GROUP=@GROUP@\n");
+        GLib.file_set_contents(log, "");
+        writeExecutable(bin + "/udevadm",
+            "#!/bin/sh\n" +
+            "printf '%s %s\\n' \"$POWERTOYS_ACTION\" \"$*\" >> \"" + log + "\"\n" +
+            "if [ \"$POWERTOYS_ACTION $*\" = 'install control --reload' ]; then\n" +
+            "  touch \"" + started + "\"\n" +
+            "  sleep 0.2\n" +
+            "fi\n");
+        writeExecutable(runner,
+            "#!/bin/sh\n" +
+            "PATH=\"" + bin + ":$PATH\" POWERTOYS_ACTION=install " +
+                "POWERTOYS_POWERCAP_ROOT=\"" + powercap + "\" DESTDIR= " +
+                "sh \"" + tool + "\" install \"" + source + "\" " +
+                "\"" + destination + "\" adm \"" + directory + "\" &\n" +
+            "installer=$!\n" +
+            "while [ ! -f \"" + started + "\" ]; do sleep 0.01; done\n" +
+            "PATH=\"" + bin + ":$PATH\" POWERTOYS_ACTION=uninstall " +
+                "POWERTOYS_POWERCAP_ROOT=\"" + powercap + "\" DESTDIR= " +
+                "sh \"" + tool + "\" uninstall \"" + source + "\" " +
+                "\"" + destination + "\" adm \"" + directory + "\" &\n" +
+            "uninstaller=$!\n" +
+            "wait \"$installer\"\n" +
+            "wait \"$uninstaller\"\n");
+
+        let outcome = Harness.settle(done => Privileged._spawn(
+            [runner], (status, stderr) => done({ status: status, stderr: stderr })),
+            "concurrent RAPL transitions");
+        Harness.equal(outcome.status, 0, "both transitions complete: " + outcome.stderr);
+        Harness.equal(Harness.readFile(log).trim(),
+                      "install control --reload\n" +
+                      "install trigger --subsystem-match=powercap\n" +
+                      "uninstall control --reload\n" +
+                      "uninstall trigger --subsystem-match=powercap",
+                      "uninstall begins only after install finishes its live replay");
+        Harness.equal(GLib.file_test(destination, GLib.FileTest.EXISTS), false,
+                      "the later uninstall removes the committed rule");
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
+    }
 };
 
 cases["a RAPL publish cannot be interrupted before it is recorded"] = function () {

@@ -358,6 +358,9 @@ for the socket and one for each domain inside it the kernel publishes.
 Uninstall resets the counters to the kernel's root-only default and then
 replays the remaining udev rules. If the distribution, administrator or
 another application has its own powercap policy, that policy has the final say.
+Install and uninstall share one root-owned transition lock through rule
+publication or removal, live permission changes, udev replay and rollback, so
+concurrent commands cannot report a state produced by the other operation.
 
 ### One prompt instead of one per change
 

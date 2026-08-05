@@ -34,6 +34,7 @@ RAPL_RULE   := 99-cinnamon-powertoys-rapl.rules
 RAPL_DIR    := $(DESTDIR)/etc/udev/rules.d
 RAPL_GROUP  ?= adm
 RAPL_TOOL   := tools/rapl-access.sh
+RAPL_LOCK   := $(if $(DESTDIR),$(DESTDIR),/run/cinnamon-powertoys-rapl.lock)
 
 # Where a coverage run puts the copies it measures and the lcov it produces,
 # and the figure every function has to reach. Per function rather than per
@@ -111,7 +112,7 @@ install-rapl:
 	@[ -n "$(DESTDIR)" ] || getent group "$(RAPL_GROUP)" >/dev/null || \
 		{ echo "no such group: $(RAPL_GROUP)"; exit 1; }
 	@DESTDIR="$(DESTDIR)" sh "$(RAPL_TOOL)" install "udev/$(RAPL_RULE)" \
-		"$(RAPL_DIR)/$(RAPL_RULE)" "$(RAPL_GROUP)"
+		"$(RAPL_DIR)/$(RAPL_RULE)" "$(RAPL_GROUP)" "$(RAPL_LOCK)"
 	@echo "installed $(RAPL_DIR)/$(RAPL_RULE), reading given to group $(RAPL_GROUP)"
 	@echo "open the applet menu to discover the counters now, or wait up to one minute"
 
@@ -119,7 +120,7 @@ uninstall-rapl:
 	@[ -n "$(DESTDIR)" ] || [ "$$(id -u)" = 0 ] || \
 		{ echo "needs root: sudo make uninstall-rapl"; exit 1; }
 	@DESTDIR="$(DESTDIR)" sh "$(RAPL_TOOL)" uninstall "udev/$(RAPL_RULE)" \
-		"$(RAPL_DIR)/$(RAPL_RULE)" "$(RAPL_GROUP)"
+		"$(RAPL_DIR)/$(RAPL_RULE)" "$(RAPL_GROUP)" "$(RAPL_LOCK)"
 	@echo "removed $(RAPL_DIR)/$(RAPL_RULE)"
 	@echo "reapplied the remaining udev policy (root only when no other rule grants access)"
 
@@ -128,7 +129,8 @@ check:
 	@cjs tools/parse-check.js $(UUID)/applet.js $(UUID)/lib/*.js
 	@cjs tests/run.js
 	@sh -n $(UUID)/powertoys-helper install.sh tools/install-translations.sh \
-		tools/uninstall.sh tools/deployment-lock.sh tools/rapl-access.sh tools/install-policy.sh \
+		tools/uninstall.sh tools/deployment-lock.sh tools/transition-lock.sh \
+		tools/rapl-access.sh tools/install-policy.sh \
 		&& echo "shell ok     helper and install scripts"
 	@python3 -c "import json; [json.load(open(f)) for f in ['$(UUID)/metadata.json','$(UUID)/settings-schema.json']]" \
 		&& echo "json ok      $(UUID)/metadata.json $(UUID)/settings-schema.json"
