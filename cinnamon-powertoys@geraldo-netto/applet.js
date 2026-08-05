@@ -413,6 +413,10 @@ class NoteRow extends PopupMenu.PopupBaseMenuItem {
         this.addActor(this._label, { span: -1, expand: true });
     }
 
+    setText(text) {
+        this._label.set_text(text || "");
+    }
+
     getColumnWidths() {
         return [];
     }
@@ -1261,10 +1265,9 @@ class MenuPresenter {
          * is instead, and say that choosing one ends it - which is true,
          * because the helper writes every battery that has the node.
          */
-        this._chargeDividedRow = new NoteRow(
-            _("The batteries are set to different limits; choosing one sets both"));
-        this._chargeDividedRow.actor.hide();
-        menu.addMenuItem(this._chargeDividedRow);
+        this._chargeStateRow = new NoteRow("");
+        this._chargeStateRow.actor.hide();
+        menu.addMenuItem(this._chargeStateRow);
     }
 
     _buildSensorGroup() {
@@ -1583,7 +1586,15 @@ class MenuPresenter {
          * looks again. An empty list clears the group, which is how it hides. */
         let show = data.chargeLimitAvailable && options.privileged && !options.busy;
         this._chargeGroup.sync(show ? CHARGE_LIMITS : [], data.chargeLimit);
-        this._chargeDividedRow.actor.visible = data.chargeLimitDivided === true;
+        let note = "";
+        if (data.chargeLimitState === "divided")
+            note = _("The batteries have different limits; choosing one sets all batteries.");
+        else if (data.chargeLimitState === "incomplete")
+            note = _("Some battery limits could not be read; choosing one sets all batteries.");
+        this._chargeStateRow.setText(note);
+        /* With no selector beside it, this sentence promises an action that
+         * is not on screen. Busy or disabled controls therefore hide it too. */
+        this._chargeStateRow.actor.visible = show && note !== "";
     }
 }
 
@@ -2267,7 +2278,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
             /* whether this machine has a battery whose limit can be written */
             chargeLimitAvailable: charge.available,
             chargeLimit: charge.limit,
-            /* two batteries something else has set apart; see _updateCharge */
+            chargeLimitState: charge.state,
+            /* Compatibility for reading consumers that only need this case. */
             chargeLimitDivided: charge.divided,
             cpuTemperature: picked.sensor === null ? null : picked.sensor.celsius,
             /* whether the user's hint is the reason it came from there -
@@ -2324,9 +2336,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * and is only worth taking while somebody could be looking at it. */
         let available = !!this._chargeControl;
         if (!available || !this.enablePrivilegedControls)
-            return { available: available, limit: null, divided: false };
+            return { available: available, limit: null, state: null, divided: false };
         if (!this.menu || !this.menu.isOpen)
-            return { available: available, limit: null, divided: false };
+            return { available: available, limit: null, state: null, divided: false };
         return Object.assign({ available: true }, this._chargeControl.reading());
     }
 
@@ -2505,6 +2517,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         let charge = this._readChargeLimit();
         data.chargeLimitAvailable = charge.available;
         data.chargeLimit = charge.limit;
+        data.chargeLimitState = charge.state;
         data.chargeLimitDivided = charge.divided;
     }
 

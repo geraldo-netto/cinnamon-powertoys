@@ -55,21 +55,27 @@ var ChargeControl = class ChargeControl {
     /*
      * What those come to, in one look rather than two.
      *
-     * `limit` is the number where every battery says the same and null where
-     * they do not: no battery, one that will not answer, or two that
-     * something else has set apart. `divided` picks out that last case, which
-     * is the only one of the three the caller has anything to say about - the
-     * others are a control with nothing behind it, which speaks for itself.
+     * `state` keeps three materially different reasons for a null limit apart:
+     * every readable battery agrees, every battery answered but disagrees, or
+     * at least one did not answer. The menu can offer a corrective write for
+     * the latter two without pretending an incomplete read is disagreement.
      */
     reading() {
         let values = this.limits;
         let readable = values.filter(value => value !== null);
         let agreed = readable.length === values.length && readable.length > 0 &&
                      readable.every(value => value === readable[0]);
+        let incomplete = readable.length !== values.length || values.length === 0;
+        let divided = !incomplete && !agreed;
         return {
             limits: values,
             limit: agreed ? readable[0] : null,
-            divided: readable.length > 1 && !agreed,
+            state: agreed ? "agreed" : divided ? "divided" : "incomplete",
+            agreed: agreed,
+            divided: divided,
+            incomplete: incomplete,
+            readableCount: readable.length,
+            batteryCount: values.length,
         };
     }
 

@@ -45,6 +45,8 @@ cases["one battery is a limit, and is not two batteries disagreeing"] = function
         let reading = charge.reading();
         Harness.deepEqual(reading.limits, [80], "the one battery");
         Harness.equal(reading.limit, 80, "and its limit is the limit");
+        Harness.equal(reading.state, "agreed", "the explicit state");
+        Harness.equal(reading.agreed, true, "one complete value agrees");
         Harness.equal(reading.divided, false,
                       "one battery cannot disagree with anything");
         Harness.equal(charge.limit, 80, "the shorthand says the same");
@@ -58,6 +60,7 @@ cases["two batteries at the same limit are one limit"] = function () {
     try {
         let reading = charge.reading();
         Harness.equal(reading.limit, 80, "both agreed");
+        Harness.equal(reading.state, "agreed", "the state says why there is a limit");
         Harness.equal(reading.divided, false, "so there is nothing to explain");
     } finally {
         charge.release();
@@ -74,6 +77,7 @@ cases["two batteries set apart have no one limit, and say which case it is"] = f
     try {
         let reading = charge.reading();
         Harness.equal(reading.limit, null, "no single figure to dot");
+        Harness.equal(reading.state, "divided", "all answered, but differently");
         Harness.equal(reading.divided, true, "and the reason is that they differ");
     } finally {
         charge.release();
@@ -91,6 +95,10 @@ cases["a battery that will not answer is not a battery that disagrees"] = functi
         let reading = charge.reading();
         Harness.deepEqual(reading.limits, [80, null], "one answered, one did not");
         Harness.equal(reading.limit, null, "so there is no limit to show");
+        Harness.equal(reading.state, "incomplete", "the missing answer is explicit");
+        Harness.equal(reading.incomplete, true, "and available as a direct predicate");
+        Harness.equal(reading.readableCount, 1, "one answer");
+        Harness.equal(reading.batteryCount, 2, "from two batteries");
         Harness.equal(reading.divided, false,
                       "and no claim that somebody set them differently");
     } finally {
@@ -101,6 +109,7 @@ cases["a battery that will not answer is not a battery that disagrees"] = functi
     try {
         let reading = silent.reading();
         Harness.equal(reading.limit, null, "the only battery said nothing");
+        Harness.equal(reading.state, "incomplete", "one missing answer is incomplete too");
         Harness.equal(reading.divided, false, "which is not a disagreement either");
     } finally {
         silent.release();
@@ -115,6 +124,7 @@ cases["no batteries at all is no limit"] = function () {
     let reading = charge.reading();
     Harness.deepEqual(reading.limits, [], "no batteries");
     Harness.equal(reading.limit, null, "no limit");
+    Harness.equal(reading.state, "incomplete", "an empty direct control is incomplete");
     Harness.equal(reading.divided, false, "and nothing to explain");
 };
 
@@ -158,6 +168,15 @@ cases["whatever the batteries say, a reading is a limit or nothing"] = function 
             }
             if (reading.divided && !(limits.filter(value => value !== null).length > 1))
                 throw new Error("claimed a disagreement between " + JSON.stringify(limits));
+            let expectedState = limits.length === 0 || limits.some(value => value === null)
+                ? "incomplete"
+                : limits.every(value => value === limits[0]) ? "agreed" : "divided";
+            if (reading.state !== expectedState)
+                throw new Error("state " + reading.state + " for " + JSON.stringify(limits));
+            if ((reading.state === "agreed") !== reading.agreed ||
+                    (reading.state === "divided") !== reading.divided ||
+                    (reading.state === "incomplete") !== reading.incomplete)
+                throw new Error("state predicates disagree for " + JSON.stringify(limits));
         } finally {
             charge.release();
         }

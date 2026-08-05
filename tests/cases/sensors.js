@@ -486,6 +486,7 @@ cases["two batteries set apart read as no one limit, and say so"] = function () 
         let reading = PowerSupply.discoverChargeControl().reading();
         Harness.equal(reading.limit, null,
                       "one of the two would be a number the other battery is not at");
+        Harness.equal(reading.state, "divided", "the explicit multi-battery state");
         Harness.equal(reading.divided, true, "and that is worth saying out loud");
     });
 };
@@ -494,6 +495,7 @@ cases["one battery reads as its own limit"] = function () {
     on("machine", function () {
         let reading = PowerSupply.discoverChargeControl().reading();
         Harness.equal(reading.limit, 80, "what the one battery says");
+        Harness.equal(reading.state, "agreed", "a complete agreed read");
         Harness.equal(reading.divided, false, "with nothing to disagree with");
     });
 };
@@ -504,6 +506,7 @@ cases["a battery that will not answer is not two batteries disagreeing"] = funct
         IO.setRoot("/nonexistent");
         let reading = control.reading();
         Harness.equal(reading.limit, null, "nothing to show");
+        Harness.equal(reading.state, "incomplete", "the failed reads are explicit");
         Harness.equal(reading.divided, false,
                       "a control with nothing behind it speaks for itself");
     });

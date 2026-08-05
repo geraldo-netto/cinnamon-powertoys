@@ -16,94 +16,99 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: applet.js:857 applet.js:888 applet.js:1112
+#: applet.js:861 applet.js:892 applet.js:1116
 msgid "Brightness"
 msgstr ""
 
-#: applet.js:1090
+#: applet.js:1094
 msgid "System power settings"
 msgstr ""
 
-#: applet.js:1117
+#: applet.js:1121
 msgid "Screen"
 msgstr ""
 
-#: applet.js:1135 lib/format.js:108
+#: applet.js:1139 lib/format.js:108
 msgid "Keyboard"
 msgstr ""
 
-#: applet.js:1143 applet.js:2838
+#: applet.js:1147 applet.js:2851
 msgid "Power profile"
 msgstr ""
 
-#: applet.js:1149
+#: applet.js:1153
 msgid "Performance limited"
 msgstr ""
 
-#: applet.js:1175 lib/sensors.js:37
+#: applet.js:1179 lib/sensors.js:37
 msgid "Processor"
 msgstr ""
 
-#: applet.js:1180
+#: applet.js:1184
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1198 lib/panel-text.js:179 lib/reading.js:139
+#: applet.js:1202 lib/panel-text.js:179 lib/reading.js:139
 msgid "Governor"
 msgstr ""
 
-#: applet.js:1201 lib/reading.js:141
+#: applet.js:1205 lib/reading.js:141
 msgid "Energy preference"
 msgstr ""
 
-#: applet.js:1216
+#: applet.js:1220
 msgid "Devices"
 msgstr ""
 
-#: applet.js:1237
+#: applet.js:1241
 msgid "Nothing with a battery is connected"
 msgstr ""
 
-#: applet.js:1255 lib/reading.js:145
+#: applet.js:1259 lib/reading.js:145
 msgid "Charge limit"
 msgstr ""
 
-#: applet.js:1265
-msgid "The batteries are set to different limits; choosing one sets both"
-msgstr ""
-
-#: applet.js:1271
+#: applet.js:1274
 msgid "Sensors"
 msgstr ""
 
-#: applet.js:1378
+#: applet.js:1381
 #, javascript-format
 msgid "Only the first %d monitors have a slider"
 msgstr ""
 
-#: applet.js:1499
+#: applet.js:1502
 msgid "an application"
 msgstr ""
 
-#: applet.js:1518
+#: applet.js:1521
 msgid "Connected"
 msgstr ""
 
-#: applet.js:1518
+#: applet.js:1521
 msgid "Disconnected"
 msgstr ""
 
-#: applet.js:1569
+#: applet.js:1572
 msgid "No sensor matches"
 msgstr ""
 
+#: applet.js:1591
+msgid "The batteries have different limits; choosing one sets all batteries."
+msgstr ""
+
+#: applet.js:1593
+msgid ""
+"Some battery limits could not be read; choosing one sets all batteries."
+msgstr ""
+
 #. metadata.json->name
-#: applet.js:1848 applet.js:2784 applet.js:2838 applet.js:2896 applet.js:2905
-#: applet.js:3060 lib/panel-text.js:226
+#: applet.js:1859 applet.js:2797 applet.js:2851 applet.js:2909 applet.js:2918
+#: applet.js:3073 lib/panel-text.js:226
 msgid "Power Toys"
 msgstr ""
 
-#: applet.js:1849
+#: applet.js:1860
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "
@@ -111,47 +116,47 @@ msgid ""
 "shortcuts."
 msgstr ""
 
-#: applet.js:2737 applet.js:2865
+#: applet.js:2750 applet.js:2878
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2761
+#: applet.js:2774
 msgid "The requested value is not valid for this control."
 msgstr ""
 
-#: applet.js:2763
+#: applet.js:2776
 msgid "This control is not supported on this system."
 msgstr ""
 
-#: applet.js:2765
+#: applet.js:2778
 msgid "This control is currently unavailable."
 msgstr ""
 
-#: applet.js:2767
+#: applet.js:2780
 msgid "The system refused the requested change."
 msgstr ""
 
-#: applet.js:2769
+#: applet.js:2782
 msgid "The change failed; the previous settings were restored."
 msgstr ""
 
-#: applet.js:2771
+#: applet.js:2784
 msgid "The change failed and some previous settings could not be restored."
 msgstr ""
 
-#: applet.js:2773
+#: applet.js:2786
 msgid "The privileged helper could not be found."
 msgstr ""
 
-#: applet.js:2775
+#: applet.js:2788
 msgid "The change could not be applied."
 msgstr ""
 
-#: applet.js:2785
+#: applet.js:2798
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:3061
+#: applet.js:3074
 msgid "Shortcut is already in use"
 msgstr ""
 
