@@ -283,7 +283,15 @@ function busFor(manager, devices, options) {
     let stub = {
         asked: [],
         waiting: waiting,
-        manager: function (onDone) {
+        cancellables: [],
+        cancellable: function () {
+            let token = { cancelled: false, cancel: function () { token.cancelled = true; } };
+            stub.cancellables.push(token);
+            return token;
+        },
+        manager: function (onDone, cancellable) {
+            if (cancellable)
+                cancellable.kind = "manager";
             if (settings.noBus)
                 throw new Error("no system bus here");
             /* Neither a proxy nor a reason, which is what a wrapper that was
@@ -299,7 +307,9 @@ function busFor(manager, devices, options) {
             else
                 answer();
         },
-        device: function (path, onDone) {
+        device: function (path, onDone, cancellable) {
+            if (cancellable)
+                cancellable.path = path;
             stub.asked.push(path);
             if (settings.throwDevices)
                 throw new Error("cannot construct proxy for " + path);
@@ -440,6 +450,19 @@ cases["a bus that cannot be reached at all is logged, not thrown"] = function ()
     });
 };
 
+cases["a failed UPower owner watch leaves no false registration"] = function () {
+    let bus = busFor(null, {}, { watch: true });
+    bus.watch = function () { throw new Error("owner watch failed"); };
+    logging(function (lines) {
+        let monitor = monitorOn(bus);
+        Harness.equal(monitor.counts.ready, 1, "watch failure is a settled unavailable state");
+        Harness.ok(lines.join("").indexOf("owner watch failed") >= 0,
+                   "the setup failure retains its diagnostic");
+        monitor.destroy();
+    });
+    Harness.deepEqual(bus.unwatched, [], "no invented watch id is released");
+};
+
 cases["a manager answering after the applet has gone is dropped"] = function () {
     /*
      * The bus answers in its own time, and the applet can be removed from the
@@ -449,8 +472,10 @@ cases["a manager answering after the applet has gone is dropped"] = function () 
      */
     let bus = busFor(managerFor([BAT0]), { [BAT0]: proxyFor() }, { holdManager: true });
     let monitor = monitorOn(bus);
+    let request = bus.cancellables.find(token => token.kind === "manager");
 
     monitor.destroy();
+    Harness.equal(request.cancelled, true, "the manager initialization is cancelled at teardown");
     bus.answer();
 
     Harness.equal(monitor.available, false, "still nothing available");
@@ -547,6 +572,8 @@ cases["a device arriving after the applet has gone is not adopted"] = function (
     let monitor = monitorOn(bus);
 
     monitor.destroy();
+    Harness.ok(bus.cancellables.filter(token => token.path).every(token => token.cancelled),
+               "every pending device proxy initialization is cancelled");
     while (bus.waiting.length)
         bus.answer();
 
@@ -611,6 +638,8 @@ cases["a device that goes away while its proxy is on the way is not taken on"] =
 
     manager.signals["DeviceAdded"](manager, null, [BAT0]);
     manager.signals["DeviceRemoved"](manager, null, [BAT0]);
+    Harness.equal(bus.cancellables.find(token => token.path === BAT0).cancelled, true,
+                  "the vanished device's proxy initialization is cancelled");
     while (bus.waiting.length)
         bus.answer();
 
@@ -621,6 +650,26 @@ cases["a device that goes away while its proxy is on the way is not taken on"] =
     while (bus.waiting.length)
         bus.answer();
     Harness.equal(monitor.snapshot().length, 1, "the one that came back is here");
+    monitor.destroy();
+};
+
+cases["owner loss cancels every pending UPower proxy"] = function () {
+    let manager = managerFor([BAT0]);
+    let bus = busFor(manager, { [DISPLAY]: proxyFor(), [BAT0]: proxyFor() },
+                     { watch: true, holdDevices: true });
+    let monitor = monitorOn(bus);
+    bus.appear();
+
+    Harness.equal(bus.cancellables.filter(token => token.path).length, 2,
+                  "the display and enumerated battery are in flight");
+    bus.vanish();
+    Harness.ok(bus.cancellables.filter(token => token.path).every(token => token.cancelled),
+               "daemon loss cancels both obsolete initializations");
+    Harness.deepEqual(monitor.snapshot(), [], "the old generation is empty immediately");
+
+    while (bus.waiting.length)
+        bus.answer();
+    Harness.deepEqual(monitor.snapshot(), [], "late replies cannot restore it");
     monitor.destroy();
 };
 
@@ -681,6 +730,22 @@ cases["initial composite battery adoption redraws the panel"] = function () {
     bus.answer();
     Harness.equal(monitor.counts.changed, changes + 1, "adoption is announced immediately");
     Harness.equal(monitor.read().primary.path, DISPLAY, "the redraw sees the composite battery");
+};
+
+cases["an errored composite proxy is never adopted"] = function () {
+    let rejected = proxyFor({ Model: "invalid display" });
+    let bus = busFor(managerFor([]), {});
+    bus.device = function (path, onDone, cancellable) {
+        bus.asked.push(path);
+        if (cancellable)
+            cancellable.path = path;
+        onDone(rejected, new Error("proxy initialization failed"));
+    };
+    let monitor = monitorOn(bus);
+
+    Harness.equal(monitor.displayDevice(), null, "an error wins over a stray proxy object");
+    Harness.equal(rejected.handlers.length, 0, "nothing is connected to the rejected proxy");
+    monitor.destroy();
 };
 
 cases["a reading describes each device once, whatever it is asked for"] = function () {
@@ -818,6 +883,8 @@ cases["a destroyed monitor lets go of every handler it connected"] = function ()
     Harness.equal(batteryProxy.disconnected.length, 1, "and the device's own");
     Harness.equal(monitor.available, false, "and it claims nothing afterwards");
     Harness.deepEqual(monitor.snapshot(), [], "with no devices left to describe");
+    Harness.equal(monitor._propSignalId, 0, "the manager property sentinel is cleared");
+    Harness.equal(monitor._displaySignalId, 0, "the display property sentinel is cleared");
 };
 
 cases["a proxy that is neither an answer nor a reason is no proxy"] = function () {
