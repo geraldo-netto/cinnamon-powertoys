@@ -155,6 +155,7 @@ var BacklightControl = class BacklightControl {
         this._ownerPresent = false;
         this._retryTimerId = 0;
         this._retryDelay = RETRY_INITIAL_MS;
+        this._failures = new Log.FailureLog();
         this._connecting = false;
         this._connectCancellable = null;
         this._connectWaiters = [];
@@ -236,12 +237,15 @@ var BacklightControl = class BacklightControl {
                     signalId = proxy.connectSignal(
                         "Changed", () => this.refresh(() => this._onChanged()));
                 } catch (signalError) {
-                    Log.error("cannot subscribe to " + this.kind +
-                              " backlight changes: " + signalError);
+                    this._failures.report(
+                        "signals",
+                        "cannot subscribe to " + this.kind +
+                        " backlight changes: " + signalError);
                 }
                 /* A proxy without its Changed edge is not live state. Leave
                  * it unpublished so the next refresh retries construction. */
                 if (signalId) {
+                    this._failures.recover("signals");
                     this._proxy = proxy;
                     this._signalId = signalId;
                 }
@@ -304,6 +308,7 @@ var BacklightControl = class BacklightControl {
         if (this.destroyed)
             return;
         this._ownerPresent = false;
+        this._failures.clear();
         this._cancelRetry();
         let changed = this.available || this._proxy !== null;
         this._dropProxy();

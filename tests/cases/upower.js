@@ -483,6 +483,7 @@ cases["owned UPower manager failures retry with capped backoff"] = function () {
     let timers = retryTimers(bus);
     let failures = 6;
     let attempts = 0;
+    let lines = [];
     bus.manager = function (onDone, cancellable) {
         attempts++;
         if (cancellable)
@@ -490,19 +491,27 @@ cases["owned UPower manager failures retry with capped backoff"] = function () {
         onDone(failures-- > 0 ? null : manager,
                failures >= 0 ? new Error("manager timeout") : null);
     };
-    let monitor = monitorOn(bus);
-    bus.appear();
+    let monitor;
+    Log.setSink(line => lines.push(line));
+    try {
+        monitor = monitorOn(bus);
+        bus.appear();
 
-    for (let i = 0; i < 6; i++)
-        timers.fire();
-    Harness.deepEqual(timers.delays, [500, 1000, 2000, 4000, 8000, 8000],
-                      "manager retry delay doubles only to its cap");
-    Harness.equal(attempts, 7, "the owned manager is retried until it recovers");
-    Harness.equal(monitor.available, true, "the recovered manager is adopted");
-    Harness.equal(Object.keys(timers.pending).length, 0, "success cancels further retry");
-    Harness.equal(monitor._retryDelay, UPower.RETRY_INITIAL_MS,
-                  "success resets backoff for a later incident");
-    monitor.destroy();
+        for (let i = 0; i < 6; i++)
+            timers.fire();
+        Harness.deepEqual(timers.delays, [500, 1000, 2000, 4000, 8000, 8000],
+                          "manager retry delay doubles only to its cap");
+        Harness.equal(attempts, 7, "the owned manager is retried until it recovers");
+        Harness.equal(lines.length, 1, "the continuous manager failure is logged once");
+        Harness.equal(monitor.available, true, "the recovered manager is adopted");
+        Harness.equal(Object.keys(timers.pending).length, 0, "success cancels further retry");
+        Harness.equal(monitor._retryDelay, UPower.RETRY_INITIAL_MS,
+                      "success resets backoff for a later incident");
+    } finally {
+        Log.setSink(null);
+        if (monitor)
+            monitor.destroy();
+    }
 };
 
 cases["UPower retry is cancelled on owner loss and teardown"] = function () {

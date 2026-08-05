@@ -357,7 +357,7 @@ cases["a backlight proxy is published only after its signal is wired"] = functio
     try {
         screen = new Backlight.BacklightControl(
             Backlight.SCREEN, null, () => ready++,
-            (xml, onDone) => onDone(attempts++ === 0 ? broken : recovered, null));
+            (xml, onDone) => onDone(attempts++ < 2 ? broken : recovered, null));
         Harness.equal(screen._proxy, null, "the unwired proxy is not visible");
         Harness.equal(screen.available, false, "nor is it treated as a backlight");
         Harness.equal(ready, 1, "the failed setup still settles readiness");
@@ -365,7 +365,10 @@ cases["a backlight proxy is published only after its signal is wired"] = functio
                    "the wiring failure is diagnosed");
 
         screen.refresh();
-        Harness.equal(attempts, 2, "the next refresh rebuilds the proxy");
+        Harness.equal(attempts, 2, "the next refresh retries the broken wiring");
+        Harness.equal(lines.length, 1, "the continuous wiring failure is logged once");
+        screen.refresh();
+        Harness.equal(attempts, 3, "a later refresh rebuilds the proxy again");
         Harness.equal(screen.percentage, 64, "the fully wired replacement is published");
     } finally {
         if (screen)

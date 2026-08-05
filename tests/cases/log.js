@@ -154,3 +154,31 @@ cases["setting the sink back to nothing puts the old route back"] = function () 
         Harness.equal(printed.length, 2, "printed once more");
     });
 };
+
+cases["a continuous keyed failure is reported once until recovery"] = function () {
+    let lines = [];
+    let failures = new Log.FailureLog();
+    Log.setSink(line => lines.push(line));
+    try {
+        Harness.equal(failures.report("upower", "manager unavailable"), true,
+                      "the transition into failure is reported");
+        Harness.equal(failures.report("upower", "manager still unavailable"), false,
+                      "a retry in the same failure is quiet");
+        Harness.equal(failures.report("bluez", "signals unavailable"), true,
+                      "a different failure retains its own diagnostic");
+        Harness.equal(failures.recover("upower"), true, "recovery closes that failure");
+        Harness.equal(failures.report("upower", "manager unavailable again"), true,
+                      "a later outage is reportable again");
+        failures.clear();
+        Harness.equal(failures.report("bluez", "new daemon, new failure"), true,
+                      "clearing an owner transition resets every key");
+    } finally {
+        Log.setSink(null);
+    }
+    Harness.deepEqual(lines, [
+        "[powertoys] manager unavailable",
+        "[powertoys] signals unavailable",
+        "[powertoys] manager unavailable again",
+        "[powertoys] new daemon, new failure",
+    ], "only failure transitions reached the sink");
+};

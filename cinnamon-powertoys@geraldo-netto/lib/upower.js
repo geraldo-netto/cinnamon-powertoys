@@ -239,6 +239,7 @@ var UPowerMonitor = class UPowerMonitor {
         this._proxyRequests = new Set();
         this._retryTimerId = 0;
         this._retryDelay = RETRY_INITIAL_MS;
+        this._failures = new Log.FailureLog();
         this._readySent = false;
         this.managerAvailable = false;
         this.available = false;
@@ -286,7 +287,7 @@ var UPowerMonitor = class UPowerMonitor {
                 return;
             this._managerRequest = null;
             this._connecting = false;
-            Log.error("cannot reach UPower: " + e);
+            this._failures.report("manager", "cannot reach UPower: " + e);
             this._settleReady();
             this._scheduleRetry();
         }
@@ -300,11 +301,14 @@ var UPowerMonitor = class UPowerMonitor {
             return;
         this._connecting = false;
         if (error || !proxy) {
-            Log.error("UPower manager unavailable: " + (error ? error.message : "no proxy"));
+            this._failures.report(
+                "manager",
+                "UPower manager unavailable: " + (error ? error.message : "no proxy"));
             this._settleReady();
             this._scheduleRetry();
             return;
         }
+        this._failures.recover("manager");
 
         let busSignalIds = [];
         let propSignalId = 0;
@@ -338,11 +342,13 @@ var UPowerMonitor = class UPowerMonitor {
                     /* Likewise. */
                 }
             }
-            Log.error("cannot subscribe to UPower manager: " + signalError);
+            this._failures.report(
+                "manager-signals", "cannot subscribe to UPower manager: " + signalError);
             this._settleReady();
             this._scheduleRetry();
             return;
         }
+        this._failures.recover("manager-signals");
 
         /* Publish only the fully wired proxy. _disconnectManager can now
          * always tear down every handler belonging to a visible manager. */
@@ -390,10 +396,13 @@ var UPowerMonitor = class UPowerMonitor {
                         this._onChanged();
                 });
             } catch (signalError) {
-                Log.error("cannot subscribe to UPower display device: " + signalError);
+                this._failures.report(
+                    "display-signals",
+                    "cannot subscribe to UPower display device: " + signalError);
                 initialized(false);
                 return;
             }
+            this._failures.recover("display-signals");
             this._display = displayProxy;
             this._displaySignalId = signalId;
             /* Enumeration can finish first and publish a physical battery as
@@ -409,13 +418,16 @@ var UPowerMonitor = class UPowerMonitor {
             let paths = result && Array.isArray(result[0]) ? result[0] : null;
             if (enumError || !paths) {
                 this.available = false;
-                Log.error("EnumerateDevices failed: " +
-                          (enumError ? enumError.message : "invalid reply"));
+                this._failures.report(
+                    "enumerate",
+                    "EnumerateDevices failed: " +
+                    (enumError ? enumError.message : "invalid reply"));
                 this._settleReady();
                 this._onChanged();
                 initialized(false);
                 return;
             }
+            this._failures.recover("enumerate");
             let pending = paths.length;
             if (pending === 0) {
                 this.available = true;
@@ -462,6 +474,7 @@ var UPowerMonitor = class UPowerMonitor {
         if (this.destroyed)
             return;
         this._ownerPresent = false;
+        this._failures.clear();
         this._cancelRetry();
         let changed = this.available || this._manager !== null ||
                       this._devices.size > 0 || this._display !== null;

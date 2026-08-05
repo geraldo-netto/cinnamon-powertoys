@@ -161,8 +161,9 @@ cases["incomplete BlueZ signals poll with capped backoff until restored"] = func
     let timers = fakeTimers();
     let answer = tree({ [HEADSET]: device("BW01", "audio-headset", true, 90) });
     let reads = 0;
+    let lines = [];
     let control;
-    Log.setSink(() => {});
+    Log.setSink(line => lines.push(line));
     try {
         control = new Bluez.BluezBatteries(null,
             (path, iface, method, onDone) => { reads++; onDone(cloneTree(answer)); },
@@ -175,6 +176,7 @@ cases["incomplete BlueZ signals poll with capped backoff until restored"] = func
                           "degraded polling backs off only to its ceiling");
         Harness.equal(control.devices[0].percentage, 37,
                       "polling repairs state while the signal remains missing");
+        Harness.equal(lines.length, 1, "the continuous signal failure is logged once");
 
         recover = true;
         timers.fire();

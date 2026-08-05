@@ -215,6 +215,7 @@ var BluezBatteries = class BluezBatteries {
         this._refreshTimerId = 0;
         this._retryTimerId = 0;
         this._retryDelay = RETRY_INITIAL_MS;
+        this._failures = new Log.FailureLog();
         this._degradedTimerId = 0;
         this._degradedDelay = DEGRADED_INITIAL_MS;
         /* The last complete object tree is the base to which signal deltas
@@ -403,9 +404,12 @@ var BluezBatteries = class BluezBatteries {
         try {
             this._unwatchName = this._watchName(
                 () => this._ownerAppeared(), () => this._ownerVanished());
+            if (this._unwatchName)
+                this._failures.recover("owner-watch");
             return !!this._unwatchName;
         } catch (error) {
-            Log.error("cannot watch ownership of BlueZ: " + error);
+            this._failures.report(
+                "owner-watch", "cannot watch ownership of BlueZ: " + error);
             return false;
         }
     }
@@ -426,6 +430,7 @@ var BluezBatteries = class BluezBatteries {
         if (this.destroyed)
             return;
         this._ownerPresent = false;
+        this._failures.clear();
         this._ownerEpoch++;
         this._cancelRead();
         this._cancelRetry();
@@ -466,10 +471,13 @@ var BluezBatteries = class BluezBatteries {
                 throw new Error("subscription returned no id");
             this._signalIds.push(id);
             this._signalKeys.add(key);
+            this._failures.recover("signal:" + key);
             return true;
         } catch (error) {
-            Log.error("cannot watch BlueZ for " + member +
-                      (arg0 ? " on " + arg0 : "") + ": " + error);
+            this._failures.report(
+                "signal:" + key,
+                "cannot watch BlueZ for " + member +
+                (arg0 ? " on " + arg0 : "") + ": " + error);
             return false;
         }
     }

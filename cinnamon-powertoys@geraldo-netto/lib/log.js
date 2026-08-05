@@ -33,3 +33,36 @@ function error(message) {
     if (typeof printerr === "function")
         printerr(line);
 }
+
+/*
+ * One line for one continuous failure.
+ *
+ * Backoff keeps a broken service from being called in a tight loop; it does
+ * not by itself keep every retry from saying the same thing. Each owner keeps
+ * one of these, reports a keyed transition into failure, and clears that key
+ * when the operation succeeds again. `clear()` ends every failure when a
+ * daemon disappears, so a later daemon instance gets one useful diagnostic of
+ * its own rather than inheriting the old one's silence.
+ */
+var FailureLog = class FailureLog {
+    constructor() {
+        this._active = new Set();
+    }
+
+    report(key, message) {
+        key = String(key);
+        if (this._active.has(key))
+            return false;
+        this._active.add(key);
+        error(message);
+        return true;
+    }
+
+    recover(key) {
+        return this._active.delete(String(key));
+    }
+
+    clear() {
+        this._active.clear();
+    }
+};
