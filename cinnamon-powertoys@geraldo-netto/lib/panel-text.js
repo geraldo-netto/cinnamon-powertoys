@@ -257,7 +257,9 @@ function deviceEntries(data) {
 function tooltipText(data, options) {
     let lines = [powerStatusTooltip(data)];
 
-    if (data.primary)
+    let primaryInDevices = data.primary && data.primary.path &&
+        (data.devices || []).some(device => device.path === data.primary.path);
+    if (data.primary && !primaryInDevices)
         lines.push(namedStatus(Format.deviceKindName(data.primary.kind), data.primary));
 
     appendSection(lines, _("Consumption"), consumptionEntries(data));

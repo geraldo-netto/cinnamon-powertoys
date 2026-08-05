@@ -198,7 +198,7 @@ cases["a coarse battery level is written everywhere"] = function () {
     let coarse = battery({ percentage: 0, batteryLevel: Level.LOW });
     let data = reading({ primary: coarse, devices: [coarse] });
     Harness.equal(PanelText.labelText(data, options(), "battery", null), "Low", "panel label");
-    Harness.ok(PanelText.tooltipText(data, options()).indexOf("Battery: Low") >= 0,
+    Harness.ok(PanelText.tooltipText(data, options()).indexOf("BAT0: Low") >= 0,
                "tooltip: " + PanelText.tooltipText(data, options()));
 
     let mouse = peripheral({ percentage: 0, batteryLevel: Level.CRITICAL });
@@ -392,9 +392,18 @@ cases["chargers and batteries are devices too"] = function () {
     Harness.ok(text.indexOf("MX: 40%") >= 0, "peripheral: " + text);
 };
 
-cases["a primary device remains in the complete device section"] = function () {
+cases["a fallback primary is shown once in the complete device section"] = function () {
     let primary = battery({ path: "/bat0" });
     let text = PanelText.tooltipText(reading({ primary: primary, devices: [primary] }), options());
-    Harness.ok(text.indexOf("Battery: 61%") >= 0, "composite summary: " + text);
+    Harness.equal(text.indexOf("Battery: 61%"), -1, "no duplicate primary summary: " + text);
     Harness.ok(text.indexOf("BAT0: 61%") >= 0, "complete device list: " + text);
+};
+
+cases["a composite primary remains separate from every physical device"] = function () {
+    let primary = battery({ path: "/display" });
+    let physical = battery({ path: "/bat0" });
+    let text = PanelText.tooltipText(
+        reading({ primary: primary, devices: [physical] }), options());
+    Harness.ok(text.indexOf("Battery: 61%") >= 0, "composite summary: " + text);
+    Harness.ok(text.indexOf("BAT0: 61%") >= 0, "physical device: " + text);
 };
