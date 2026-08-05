@@ -74,6 +74,16 @@ function connectProxy(xml, onDone) {
     }
 }
 
+function watchOwner(onAppeared, onVanished) {
+    return Gio.bus_watch_name(Gio.BusType.SESSION, BUS_NAME,
+                              Gio.BusNameWatcherFlags.NONE,
+                              onAppeared, onVanished);
+}
+
+function unwatchOwner(id) {
+    Gio.bus_unwatch_name(id);
+}
+
 var BacklightControl = class BacklightControl {
     /*
      * onChanged fires when anything else moves this backlight - a function
@@ -98,27 +108,106 @@ var BacklightControl = class BacklightControl {
         this._onChanged = onChanged || function () {};
         this._onReady = onReady || function () {};
         this._connect = connect || connectProxy;
+        this._xml = INTERFACES[kind] || null;
         this._proxy = null;
         this._signalId = 0;
+        this._watchId = 0;
+        this._connecting = false;
+        this._connectWaiters = [];
+        this._generation = 0;
+        this._readySent = false;
 
-        let xml = INTERFACES[kind];
-        if (!xml) {
-            this._onReady(this);
+        if (!this._xml) {
+            this._settleReady();
             return;
         }
 
-        this._connect(xml, (proxy, error) => {
-            if (this.destroyed)
-                return;
-            if (error || !proxy) {
-                this._onReady(this);
-                return;
+        /* Test connectors are deliberately self-contained. The runtime
+         * connector also watches the daemon name so a failed startup is not a
+         * permanent hardware decision. */
+        if (!connect) {
+            try {
+                this._watchId = watchOwner(() => this._onOwnerAppeared(),
+                                           () => this._onOwnerVanished());
+            } catch (e) {
+                /* The immediate connection below still gets one chance. */
             }
-            this._proxy = proxy;
-            this._signalId = proxy.connectSignal("Changed",
-                                                 () => this.refresh(() => this._onChanged()));
-            this.refresh(() => this._onReady(this));
+        }
+
+        this.refresh(() => this._settleReady());
+    }
+
+    _settleReady() {
+        if (this.destroyed || this._readySent)
+            return;
+        this._readySent = true;
+        this._onReady(this);
+    }
+
+    _ensureProxy(onDone) {
+        if (this._proxy) {
+            onDone(true);
+            return;
+        }
+        this._connectWaiters.push(onDone);
+        if (this._connecting)
+            return;
+
+        this._connecting = true;
+        let generation = ++this._generation;
+        this._connect(this._xml, (proxy, error) => {
+            if (this.destroyed || generation !== this._generation)
+                return;
+            this._connecting = false;
+            if (!error && proxy) {
+                this._proxy = proxy;
+                this._signalId = proxy.connectSignal(
+                    "Changed", () => this.refresh(() => this._onChanged()));
+            }
+            let waiters = this._connectWaiters.splice(0);
+            for (let waiter of waiters)
+                waiter(this._proxy !== null);
         });
+    }
+
+    _dropProxy() {
+        ++this._generation;
+        this._connecting = false;
+        if (this._proxy && this._signalId) {
+            try {
+                this._proxy.disconnectSignal(this._signalId);
+            } catch (e) {
+                /* already gone */
+            }
+        }
+        this._proxy = null;
+        this._signalId = 0;
+        let waiters = this._connectWaiters.splice(0);
+        for (let waiter of waiters)
+            waiter(false);
+    }
+
+    _onOwnerAppeared() {
+        if (this.destroyed)
+            return;
+        let before = this.available;
+        this.refresh(() => {
+            this._settleReady();
+            if (this.available !== before || this.available)
+                this._onChanged();
+        });
+    }
+
+    _onOwnerVanished() {
+        if (this.destroyed)
+            return;
+        let changed = this.available || this._proxy !== null;
+        this._dropProxy();
+        this.available = false;
+        this.percentage = null;
+        this._settleReady();
+        if (changed)
+            this._onChanged();
     }
 
     /* Asks the daemon where the backlight is now. An error here is the
@@ -126,17 +215,30 @@ var BacklightControl = class BacklightControl {
     refresh(onDone) {
         let done = onDone || function () {};
         if (!this._proxy) {
-            done();
+            this._ensureProxy(connected => {
+                if (!connected)
+                    done();
+                else
+                    this._readPercentage(done);
+            });
             return;
         }
+        this._readPercentage(done);
+    }
+
+    _readPercentage(done) {
+        let generation = this._generation;
         this._proxy.GetPercentageRemote((result, error) => {
-            if (this.destroyed) {
+            if (this.destroyed || generation !== this._generation) {
                 done();
                 return;
             }
             if (error || !result) {
                 this.available = false;
                 this.percentage = null;
+                /* A proxy tied to a vanished owner cannot recover its cached
+                 * interface reliably. The next refresh builds a fresh one. */
+                this._dropProxy();
             } else {
                 this.available = true;
                 this.percentage = result[0];
@@ -244,15 +346,15 @@ var BacklightControl = class BacklightControl {
 
     destroy() {
         this.destroyed = true;
-        if (this._proxy && this._signalId) {
+        if (this._watchId) {
             try {
-                this._proxy.disconnectSignal(this._signalId);
+                unwatchOwner(this._watchId);
             } catch (e) {
-                /* already gone */
+                /* already unwatched */
             }
         }
-        this._proxy = null;
-        this._signalId = 0;
+        this._watchId = 0;
+        this._dropProxy();
         this.available = false;
     }
 };

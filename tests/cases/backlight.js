@@ -104,6 +104,42 @@ cases["a daemon that will not connect is not available"] = function () {
     Harness.equal(screen.readyCount(), 1, "still answered");
 };
 
+cases["a failed connection is retried on refresh"] = function () {
+    let attempts = 0;
+    let recovered = proxy({ GetPercentage: 64 });
+    let screen = new Backlight.BacklightControl(
+        Backlight.SCREEN, null, null, (xml, onDone) => {
+            attempts++;
+            if (attempts === 1)
+                onDone(null, new Error("daemon is starting"));
+            else
+                onDone(recovered, null);
+        });
+
+    Harness.equal(screen.available, false, "the first attempt failed");
+    screen.refresh();
+    Harness.equal(attempts, 2, "refresh reconnects rather than keeping no proxy forever");
+    Harness.equal(screen.available, true, "and adopts the recovered backend");
+    Harness.equal(screen.percentage, 64, "with its current value");
+};
+
+cases["a failed first read rebuilds the proxy"] = function () {
+    let attempts = 0;
+    let first = proxy({ GetPercentage: null });
+    let recovered = proxy({ GetPercentage: 58 });
+    let screen = new Backlight.BacklightControl(
+        Backlight.SCREEN, null, null, (xml, onDone) => {
+            attempts++;
+            onDone(attempts === 1 ? first : recovered, null);
+        });
+
+    Harness.equal(screen.available, false, "the interface did not answer at startup");
+    screen.refresh();
+    Harness.equal(attempts, 2, "the stale proxy was replaced");
+    Harness.equal(screen.available, true, "a later successful read promotes it");
+    Harness.equal(screen.percentage, 58, "from the replacement proxy");
+};
+
 cases["a kind this module does not know is ready at once"] = function () {
     let odd = control("fingerprint-reader", proxy({ GetPercentage: 50 }));
     Harness.equal(odd.available, false, "there is no interface for it");

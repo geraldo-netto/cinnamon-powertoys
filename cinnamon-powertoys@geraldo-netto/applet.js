@@ -1688,7 +1688,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             () => this._onBacklightChanged());
         this._backlights.screen = this._backends.backlight(
             Backlight.SCREEN,
-            () => this._onBacklightChanged(),
+            () => this._onScreenBacklightChanged(),
             control => this._onScreenBacklightKnown(control));
 
         /* Bluetooth devices UPower does not bridge - which on some builds is
@@ -1874,8 +1874,18 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * constructor, before there is a field. See where the backlights are
          * built.
          */
-        this._hasKernelBacklight = control.available;
+        if (control.available)
+            this._hasKernelBacklight = true;
         this._considerMonitorBacklight();
+        this._onBacklightChanged();
+    }
+
+    _onScreenBacklightChanged() {
+        let control = this._backlights.screen;
+        if (control.available && !this._hasKernelBacklight) {
+            this._hasKernelBacklight = true;
+            this._considerMonitorBacklight();
+        }
         this._onBacklightChanged();
     }
 
@@ -1898,9 +1908,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * off will look at is whether the sliders went.
      */
     _considerMonitorBacklight() {
-        if (!this.monitorBrightness)
+        if (!this.monitorBrightness || this._hasKernelBacklight)
             this._backlights.monitor.stop();
-        else if (!this._hasKernelBacklight)
+        else
             this._backlights.monitor.start();
         /* Both of the answers above can move under a reason that is already
          * held - the daemon answering late, the setting switched with the menu
