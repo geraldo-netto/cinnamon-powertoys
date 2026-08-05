@@ -52,7 +52,8 @@ function scratch(options, body) {
         GLib.chmod(tools + "/install-translations.sh", 0o700);
 
         let path = GLib.getenv("PATH") || "/usr/bin:/bin";
-        if (options.rmdirStatus || options.failedReload || options.uninstallRuntime) {
+        if (options.rmdirStatus || options.failedReload || options.runningQueryFailure ||
+                options.uninstallRuntime) {
             let bin = directory + "/bin";
             GLib.mkdir_with_parents(bin, 0o755);
             if (options.rmdirStatus) {
@@ -75,6 +76,10 @@ function scratch(options, body) {
                     "    echo $((count + 1)) > '" + state + "';;\n" +
                     "  *Eval*) echo \"(true, '')\";;\n" +
                     "esac\n");
+                GLib.chmod(bin + "/gdbus", 0o700);
+            }
+            if (options.runningQueryFailure) {
+                GLib.file_set_contents(bin + "/gdbus", "#!/bin/sh\nexit 23\n");
                 GLib.chmod(bin + "/gdbus", 0o700);
             }
             if (options.uninstallRuntime) {
@@ -160,6 +165,18 @@ cases["a failure after the swap restores the previous applet"] = function () {
         Harness.equal(read(tree.target + "/marker"), "old", "the prior tree was restored");
         Harness.equal(read(tree.target + "/applet.js"), null, "the replacement was removed");
         Harness.deepEqual(temporaryEntries(tree), [], "neither staging nor backup was stranded");
+    });
+};
+
+cases["a failed running-state query leaves an upgrade untouched"] = function () {
+    scratch({ runningQueryFailure: true }, tree => {
+        let outcome = install(tree, true);
+        Harness.ok(outcome.status !== 0, "the unknown prior state aborts the upgrade");
+        Harness.equal(read(tree.target + "/marker"), "old", "the existing applet was not moved");
+        Harness.equal(read(tree.target + "/applet.js"), null, "the replacement was not published");
+        Harness.ok(outcome.stderr.indexOf("could not determine whether") >= 0,
+                   "the observation failure is explicit: " + outcome.stderr);
+        Harness.deepEqual(temporaryEntries(tree), [], "the unused staging tree was removed");
     });
 };
 

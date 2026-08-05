@@ -105,18 +105,25 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 
-# Remember whether this operation is replacing a live panel instance. A first
-# install is allowed to finish with next-step instructions; an upgrade of a
-# running applet is not successful unless a running instance comes back.
-was_running=unknown
-if [ -z "${DESTDIR:-}" ] && command -v gdbus >/dev/null 2>&1; then
-    if running_xlet; then
-        was_running=yes
-    else
-        running_status=$?
-        if [ "$running_status" -eq 1 ]; then
-            was_running=no
+# Remember whether this operation is replacing a live panel instance. Absence
+# is a valid answer; a failed query is not. Proceeding after an observation
+# error could publish a replacement that failed to reload while treating it as
+# a disabled or first install.
+was_running=no
+if [ -z "${DESTDIR:-}" ]; then
+    if command -v gdbus >/dev/null 2>&1; then
+        if running_xlet; then
+            was_running=yes
+        else
+            running_status=$?
+            if [ "$running_status" -ne 1 ]; then
+                echo "could not determine whether $UUID is running; install was not changed" >&2
+                exit 1
+            fi
         fi
+    elif [ -e "$TARGET_DIR" ] || [ -L "$TARGET_DIR" ]; then
+        echo "gdbus is required to replace an existing live install safely" >&2
+        exit 1
     fi
 fi
 
