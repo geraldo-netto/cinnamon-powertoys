@@ -306,7 +306,7 @@ var UPowerMonitor = class UPowerMonitor {
          * its own account. That happens to be most of the time, which is why
          * it went unnoticed; it is not the same thing as being told.
          */
-        this._bus.device(DISPLAY_DEVICE_PATH, (displayProxy, displayError) => {
+        this._requestDevice(DISPLAY_DEVICE_PATH, (displayProxy, displayError) => {
             if (this.destroyed || generation !== this._generation ||
                 displayError || !displayProxy)
                 return;
@@ -364,6 +364,24 @@ var UPowerMonitor = class UPowerMonitor {
             this._onChanged();
     }
 
+    /* Proxy wrappers normally report failure to their callback, but reaching
+     * the bus and constructing the wrapper can throw before one is installed.
+     * Turn both routes into the one exactly-once contract every caller uses. */
+    _requestDevice(path, onDone) {
+        let settled = false;
+        let finish = (proxy, error) => {
+            if (settled)
+                return;
+            settled = true;
+            onDone(proxy, error);
+        };
+        try {
+            this._bus.device(path, finish);
+        } catch (error) {
+            finish(null, error);
+        }
+    }
+
     /*
      * One proxy per path, counting the one that is on its way.
      *
@@ -397,7 +415,7 @@ var UPowerMonitor = class UPowerMonitor {
         }
 
         this._adding.add(path);
-        this._bus.device(path, (proxy, error) => {
+        this._requestDevice(path, (proxy, error) => {
             if (generation !== this._generation) {
                 settle();
                 return;

@@ -301,6 +301,8 @@ function busFor(manager, devices, options) {
         },
         device: function (path, onDone) {
             stub.asked.push(path);
+            if (settings.throwDevices)
+                throw new Error("cannot construct proxy for " + path);
             let proxy = (devices || {})[path];
             let answer = () => onDone(proxy || null,
                                       proxy || settings.silentDevices
@@ -527,6 +529,17 @@ cases["a device that cannot be proxied is passed over, not waited for"] = functi
     Harness.deepEqual(monitor.snapshot().map(entry => entry.path), [BAT0],
                       "the one that answered");
     Harness.equal(monitor.counts.ready, 1, "and the answer is in, rather than still pending");
+};
+
+cases["a synchronous device proxy failure still settles enumeration"] = function () {
+    let monitor = monitorOn(busFor(managerFor([BAT0, MOUSE]), {}, { throwDevices: true }));
+
+    Harness.equal(monitor.available, true, "the manager remains usable");
+    Harness.deepEqual(monitor.snapshot(), [], "failed device proxies are passed over");
+    Harness.equal(monitor._adding.size, 0, "every failed path leaves the in-flight set");
+    Harness.equal(monitor.counts.ready, 1, "the enumeration count still reaches zero");
+    Harness.equal(monitor.counts.changed, 1, "the settled empty reading is announced");
+    monitor.destroy();
 };
 
 cases["a device arriving after the applet has gone is not adopted"] = function () {
