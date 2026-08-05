@@ -31,15 +31,16 @@ the governor it wrote. All of it hides itself rather than sitting there empty.
 
 ## Features
 
-**Batteries, every device type.** Everything UPower knows about is listed, not
-just the laptop battery: mice, keyboards, headsets, game controllers, phones,
-tablets, UPS units, styluses. Each row shows charge, state, time remaining,
-voltage, stored versus full energy, health (capacity versus design capacity)
-and charge cycles when the device reports them. Devices that only report a
-coarse level (low / normal / high) are shown that way instead of a fake
-percentage. Chargers are listed
-above them, by model where UPower knows it, so whether the machine is on the
-cable is the first line under *Devices*.
+**Batteries, every device type.** Every present device UPower enumerates is
+listed, not just the laptop battery: mice, keyboards, headsets, game
+controllers, phones, tablets, UPS units, styluses. UPower's synthetic display
+battery is used for the panel and summary when available, not repeated as
+another physical device. Each row shows charge, state, time remaining, voltage,
+stored versus full energy, health (capacity versus design capacity) and charge
+cycles when the device reports them. Devices that only report a coarse level
+(low / normal / high) are shown that way instead of a fake percentage.
+Chargers are listed above them, by model where UPower knows it, so whether the
+machine is on the cable is the first line under *Devices*.
 Connected bluetooth devices are read from BlueZ as well as from UPower, which
 does not bridge all of them, and where nothing is connected the group says so
 in words rather than being empty. If UPower is unavailable, the group reports
@@ -146,19 +147,75 @@ discharge rate is identified as the whole-system estimate; processor-package
 and GPU meters keep their own names rather than any component being presented
 as a system total.
 
+## When data updates
+
+The applet takes its first reading as it starts. After that, values and
+hardware topology deliberately follow different paths: values are cheap and
+frequent, while rediscovering every file below `/sys` or probing every monitor
+over I2C is not.
+
+| data | timing or event |
+|------|-----------------|
+| Sensor values, CPU state and the visible presentation | Every **4 seconds** by default; *Refresh interval* accepts **1–60 seconds**. Primary temperature, fan and power sensors plus an explicitly selected sensor are read in the background. The complete *Show all sensors* set is read only while that list is visible in the open menu. |
+| Batteries, line power and lid state | UPower manager, device and display-device property signals, and device-added/device-removed signals schedule a reading immediately. The regular reading also consumes the current proxy cache; it does not issue a second D-Bus request for every property. |
+| Bluetooth batteries | BlueZ interface-added, interface-removed and relevant device/battery property signals update the cache and schedule a reading. Invalidated or incomplete signal data is repaired with one coalesced snapshot after **250 ms**. |
+| Power profiles | Either supported daemon name appearing, disappearing or changing properties schedules a reading. The daemon snapshot is unpacked once and cached until one of those events. The firmware fallback samples `/sys/firmware/acpi/platform_profile` with each regular reading. |
+| Screen and keyboard brightness | `org.cinnamon.SettingsDaemon.Power` ownership and `Changed` signals refresh the affected cached percentage and slider. Opening the menu retries a backlight only when it currently has no valid value. |
+| Sensor, CPU, charge-control and firmware-profile topology | Discovered at startup, whenever the menu opens, and on the first regular poll that reaches or passes **60 seconds** since the last discovery. Thus a 7-second refresh interval checks at 63 seconds, not in a separate exact-minute timer. Sensor discovery performs the full metadata sweep only when its cheap topology signature changed. |
+| Charge limit | The set of batteries and controls follows the topology discovery above. The current limit is sampled only while the menu is open; opening it first paints the last complete reading, then starts a fresh one. |
+| External DDC/CI monitors | Probed only when enabled and either no built-in backlight exists or UPower confirms that the laptop lid is closed. Eligibility starts with an immediate detection; a desktop `monitors-changed` event detects again, the first tooltip hover performs one prefetch, and an open menu probes immediately and then every **1 second** until it closes. DDC/CI is never part of the regular reading poll. |
+| Settings, theme, layout and controls | A relevant setting change redraws or restarts only the affected path; an icon-theme change invalidates icon caches, and panel orientation or height changes rebuild/redraw the presentation. Completed writes, hotkeys, clicks and a wheel gesture also update the affected state; wheel events are gathered for **250 ms** before one brightness or profile action is sent. |
+
+Event-triggered full readings are coalesced onto the next Cinnamon main-loop
+idle turn. Only one asynchronous collection runs at a time; if more changes
+arrive during it, they become one follow-up collection rather than concurrent
+or unbounded work. Every completed reading updates the panel and alert policy,
+while menu rows are composed only while the menu is open. A requested power
+profile is shown optimistically until the backend confirms it, rejects it, or
+three completed readings after an accepted write still report another profile.
+
+Failure recovery has its own timings, none of which changes the selected
+refresh interval. Failed D-Bus owner-watch registration retries after 1 second
+and doubles to a 30-second ceiling. An owned UPower, profile, backlight or BlueZ
+backend that cannot connect or take its initial snapshot retries from 500 ms to
+an 8-second ceiling. If BlueZ cannot install all of its signal subscriptions,
+its temporary snapshot poll backs off from 1 to 30 seconds while also trying
+to restore the signals. Asynchronous filesystem batches have a 5-second safety
+deadline, each `ddcutil` command an 8-second deadline, and the privileged
+helper compatibility probe a 2-second deadline; a deadline produces a
+best-effort missing value or error rather than blocking Cinnamon.
+
 ## Install
 
 ### Dependencies
 
-There are none to install to make it run. Cinnamon, UPower and polkit are what
-a Cinnamon desktop is built on, and the two GObject introspection pieces the
-applet opens with — `gir1.2-upowerglib-1.0` for batteries and
-`xapp-symbolic-icons` for the device icons — are already Cinnamon 6.6's own
-dependencies. On a machine that can run Cinnamon, this runs.
+Two things are required for the applet itself to load:
+
+| required runtime | why it is required |
+|------------------|--------------------|
+| Cinnamon 5.4 or newer | Supplies CJS, the applet/menu/settings APIs and the ATK, Clutter, Gio, GLib, Gtk, Pango and St introspection namespaces imported when `applet.js` loads. |
+| The UPowerGlib introspection typelib | `UPowerGlib` is imported unconditionally by the device, formatting, reading, panel, UPower and BlueZ modules. On Debian, Ubuntu and Mint the package is `gir1.2-upowerglib-1.0`; the applet cannot load without it even when no UPower daemon is running. |
+
+The repository's CI installs the typelib explicitly instead of assuming that
+the desktop pulled it in. On a Debian-family system:
+
+```sh
+sudo apt install gir1.2-upowerglib-1.0
+```
+
+The following desktop services are not load-critical. Their bus names are
+watched throughout the applet's lifetime, so starting, stopping or restarting
+one changes the available data without an applet reload.
+
+| service | what uses it | when it is absent |
+|---------|--------------|-------------------|
+| UPower | batteries, chargers, power source and lid state | those data are reported unavailable; independently discovered sysfs controls and sensors still work |
+| Cinnamon Settings Daemon's Power service | built-in screen and keyboard brightness | those sliders are hidden; eligible DDC/CI monitor sliders can still be used |
+| BlueZ | Bluetooth batteries that UPower did not enumerate | only that supplementary Bluetooth device list is unavailable |
 
 The optional packages each buy one feature and are inert until you install
 them; the applet finds them at runtime and shows nothing where they are
-missing. On Debian, Ubuntu and Mint:
+missing. A common Debian, Ubuntu or Mint install for the first three is:
 
 ```sh
 sudo apt install ddcutil hwdata power-profiles-daemon
@@ -169,11 +226,26 @@ sudo apt install ddcutil hwdata power-profiles-daemon
 | `ddcutil` | brightness for monitors on a cable, over DDC/CI | no monitor sliders — and it needs the `i2c` group as well, see [External monitor brightness](#external-monitor-brightness) |
 | `hwdata` | `pci.ids` and `pnp.ids`, the tables that name the hardware | sensor groups headed by the driver's name, monitors by their EDID code |
 | `power-profiles-daemon` | the **Power profile** control | falls back to the ACPI platform profile, and where the firmware has none the control is not shown |
+| `xapp-symbolic-icons` | the preferred battery and device icon names | falls back to standard freedesktop icon names |
+| polkit's `pkexec` and `flock` | authenticated writes to root-owned governor, energy preference, boost, firmware-profile and charge-limit files; `flock` serializes each helper transaction | monitoring and unprivileged controls work; privileged changes report that they could not be applied |
 
 `hwdata` depends on `pci.ids`, so it brings both tables; `ddcutil` and
 `pciutils` pull in `pci.ids` on their own but not `pnp.ids`. On Fedora and
 Arch both files are in `hwdata` alone. Elsewhere, search for the upstream
 names rather than these — every one of them is its own project.
+
+Repository commands have their own dependencies; they are not dependencies of
+the running applet. The scripts also assume the ordinary POSIX shell and
+command-line utilities.
+
+| workflow | commands it additionally requires |
+|----------|------------------------------------|
+| Clone the repository | `git`; a source archive can be downloaded instead and the installed applet does not use Git. |
+| Install or upgrade | `flock` for the deployment transaction. `gdbus` is required to observe, replace and reload an existing live install safely; without it, only a first or staged install can proceed. |
+| Uninstall from a live session | `flock`, `gdbus`, `gsettings` and `python3`, so the script can disable the exact panel entry, verify that Cinnamon unloaded it and roll back on failure. A `DESTDIR` package-image uninstall does not touch the session and does not need the last three. |
+| Install source translations | gettext's `msgfmt`, but only when one or more `.po` files exist; this repository currently carries only the `.pot` template. |
+| Develop and check | `make`, `cjs` and `python3`; gettext for translation work, and Cinnamon's `cinnamon-xlet-makepot` for `make pot`. |
+| Install or remove optional RAPL access | root, `getent` for live group validation and `udevadm` to reload and replay the powercap rules. |
 
 ### The applet
 
@@ -200,19 +272,25 @@ To remove it:
 make uninstall
 ```
 
+That removes the per-user applet, its compiled translations and its panel
+entry. If you installed either optional system-wide grant, remove it separately
+with `sudo make uninstall-policy` and/or `sudo make uninstall-rapl`, as described
+in their sections below.
+
 ### To work on it
 
 ```sh
-sudo apt install cjs gettext gir1.2-upowerglib-1.0
+sudo apt install cjs gettext gir1.2-upowerglib-1.0 make python3
 make check
 ```
 
 `cjs` is Cinnamon's own JavaScript interpreter and is what the tests and the
 parse check run under, so they fail for the same reasons the shell would.
-`gettext` is for the translations, and the typelib is the runtime dependency
-for modules that consume UPower device data or enums. `cinnamon-xlet-makepot`,
-which `make pot` calls, ships in the `cinnamon` package itself and so is already
-there on the desktop this is written for.
+`python3` checks the JSON and policy metadata, `gettext` is for the
+translations, and the typelib is the runtime dependency for modules that
+consume UPower device data or enums. `cinnamon-xlet-makepot`, which `make pot`
+calls, ships in the `cinnamon` package itself and so is already there on the
+desktop this is written for.
 
 ## Permissions
 
@@ -255,16 +333,19 @@ these files: a power trace sampled fast enough says what the processor is doing.
 Whatever the group can run can take that trace.
 
 ```sh
-sudo make install-rapl                      # group adm, which a desktop user is already in
-sudo make install-rapl RAPL_GROUP=powermon  # a group of your own instead
+sudo make install-rapl                      # grant the existing group adm
+sudo make install-rapl RAPL_GROUP=powermon  # grant another existing group
 sudo make uninstall-rapl                    # remove this applet's access rule
 ```
 
-`adm` is the default because a desktop session is already in it, so the counters
-become readable without logging out. Open the applet menu after installing to
-discover them immediately; otherwise the periodic topology check finds them
-within one minute. The row then appears under *Package* in the Sensors column,
-one line for the socket and one for each domain inside it the kernel publishes.
+`adm` is the default. The installer requires the selected group to exist; it
+does not create the group or change account membership. If the running Cinnamon
+session already belongs to that group, the counters become readable immediately.
+After adding the account to a group, log out and back in before expecting the
+applet to inherit it. Open the applet menu after installing to discover the
+counters immediately; otherwise the periodic topology check finds them within
+one minute. The row then appears under *Package* in the Sensors column, one line
+for the socket and one for each domain inside it the kernel publishes.
 
 Uninstall resets the counters to the kernel's root-only default and then
 replays the remaining udev rules. If the distribution, administrator or
@@ -360,7 +441,10 @@ None of this is privileged in the way the CPU controls are — the applet spawns
 turn the probe off with *Control external monitor brightness* in the applet
 settings.
 
-## Requirements
+## Runtime compatibility details
+
+The dependency tables above are the install checklist. This section records
+the exact compatibility floor behind the two load-critical requirements.
 
 - Cinnamon 5.4 or newer. Only 6.6 has been run. The claim is kept honest by
   reading the Cinnamon sources rather than by trying it: whenever this applet
@@ -390,32 +474,17 @@ settings.
   And the `=` operator in a settings-schema `dependency`. All of them are in
   5.4.0.
 
-  Three things the applet leans on are not Cinnamon's at all and are older than
-  any of this: `Gio.File.load_contents_async`, which takes the sensor reads off
-  the compositor's thread, `Gtk.IconTheme`'s `changed` signal, and
-  `Pango.EllipsizeMode`, which is what lets a monitor's name give way when its
-  brightness row is wider than the column.
-- UPower, for battery and device data, through `gir1.2-upowerglib-1.0`
-- `xapp-symbolic-icons`, optional in the sense that the code copes without it:
-  device and battery icons prefer that set, and where it is absent the applet
-  falls back to the freedesktop names every icon theme has carried for twenty
-  years. Cinnamon 6.6 depends on it, so on the desktops this is written for it
-  is already installed; the fallback is for the older ones, whose power applet
-  did not use those names yet.
-- `ddcutil`, optional, only for external monitor brightness, and it needs a
-  group of its own before it works — see
-  [External monitor brightness](#external-monitor-brightness). Never probed
-  while a built-in screen is usable; on a laptop, external monitors are probed
-  only while UPower reports the lid closed. It can be turned off entirely with
-  *Control external monitor brightness*
-- `hwdata`, optional, for `pci.ids` and `pnp.ids` — the tables that turn
-  `03:00.0` into a graphics card and `DEL` into Dell. `pci.ids` alone is on
-  almost every machine already, because `pciutils` and `ddcutil` both depend on
-  it, so in practice it is the monitor half that is missing. Without either, a
-  sensor group is headed by the driver's own name and a monitor by its EDID
-  code, which is what both were before the tables were read at all
-- power-profiles-daemon, optional, for profile switching
-- polkit, optional, for the privileged controls
+  Compatibility-sensitive interfaces outside Cinnamon itself are visible in
+  the source too: `Gio.File.load_contents_async`, which takes sensor reads off
+  the compositor's thread; `Gtk.IconTheme`'s `changed` signal;
+  `Pango.EllipsizeMode`, which lets a monitor name give way when its brightness
+  row is wider than the column; ATK roles, states and object descriptions for
+  headings, selectors and sliders; and CJS's standard `Intl.NumberFormat` for
+  locale-aware measurements.
+- The UPowerGlib introspection typelib, not the UPower daemon, is the second
+  load-critical requirement. The source imports `UPowerGlib` at module scope
+  for device enums and formatting, so graceful runtime handling of a missing
+  daemon cannot compensate for a missing typelib.
 
 ## Layout
 
@@ -458,16 +527,16 @@ cinnamon-powertoys@geraldo-netto/
 ├── po/                     the translation template and any translations
 └── icons/
 
-tests/                   harness, runner, the cases and a captured machine
-tools/                   the loader emulation, parse check, translations
+tests/                   harness, runner, the cases and captured machines
+tools/                   test/QA tooling and deployment lifecycle helpers
 polkit/                  the action for one prompt instead of one per change
+udev/                    the optional RAPL counter access rule
 ```
 
 ## Translating
 
-Every string in the applet and in its settings goes through gettext, and
-`cinnamon-powertoys@geraldo-netto/po/` holds the template they were extracted
-into.
+`cinnamon-powertoys@geraldo-netto/po/` holds the gettext template extracted
+from the strings marked for translation in the applet and its settings schema.
 
 To start a language, copy the template and fill it in:
 
@@ -497,17 +566,20 @@ while they are stale.
 
 ```sh
 make check            # parse check, tests, helper, JSON, policy, helper path
+make coverage         # tests plus the per-function coverage gate
 cjs tests/run.js      # tests only
 cjs tests/run.js io   # only cases whose name contains "io"
 ```
 
-On every push and pull request the same `make check` runs, then a staged
-install of the applet and of the polkit action, then a check that the
-translation template still matches the strings in the source — the template is
-regenerated and both sides are put through `msgcat --no-location
---sort-output`, so what is held to is the msgids, their plurals and flags and
-the comments that tell a translator what a string is for, and not the line
-numbers a refactor moves. See
+On every push and pull request the workflow runs `make check` and `make
+coverage`; every measured function must reach the Makefile's 80% default. It
+then stages installation and uninstallation of the applet, the polkit
+action/helper pair and the RAPL rule, preserving unrelated files around each
+target. Finally it checks that the translation template still matches the
+strings in the source — the template is regenerated and both sides are put
+through `msgcat --no-location --sort-output`, so what is held to is the msgids,
+their plurals and flags and the comments that tell a translator what a string
+is for, and not the line numbers a refactor moves. See
 [.github/workflows/check.yml](.github/workflows/check.yml). None of it needs
 Cinnamon, a session bus or real hardware, because the libraries take their
 file root, their D-Bus calls and their spawns as parameters. It does need one

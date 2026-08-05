@@ -253,7 +253,7 @@ cases["RAPL install describes live sensor discovery"] = function () {
     let readme = Harness.readFile(Harness.testsDir() + "/../README.md");
     Harness.ok(makefile.indexOf("open the applet menu to discover the counters now") >= 0,
                "the command names the immediate discovery path");
-    Harness.ok(readme.indexOf("periodic topology check finds them\nwithin one minute") >= 0,
+    Harness.ok(/periodic\s+topology\s+check\s+finds\s+them\s+within\s+one\s+minute/.test(readme),
                "the documentation names the background path");
     Harness.ok(makefile.indexOf("looks for these counters once") < 0 &&
                readme.indexOf("looks for\nthem once") < 0,
