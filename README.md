@@ -404,9 +404,10 @@ settings.
   did not use those names yet.
 - `ddcutil`, optional, only for external monitor brightness, and it needs a
   group of its own before it works — see
-  [External monitor brightness](#external-monitor-brightness). Never probed on
-  a machine that has a backlight of its own, and can be turned off entirely
-  with *Control external monitor brightness*
+  [External monitor brightness](#external-monitor-brightness). Never probed
+  while a built-in screen is usable; on a laptop, external monitors are probed
+  only while UPower reports the lid closed. It can be turned off entirely with
+  *Control external monitor brightness*
 - `hwdata`, optional, for `pci.ids` and `pnp.ids` — the tables that turn
   `03:00.0` into a graphics card and `DEL` into Dell. `pci.ids` alone is on
   almost every machine already, because `pciutils` and `ddcutil` both depend on
