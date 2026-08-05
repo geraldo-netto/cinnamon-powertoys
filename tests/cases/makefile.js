@@ -16,6 +16,130 @@ cases["the helper install destination is the runtime path"] = function () {
                "no independently assembled destination can drift from it");
 };
 
+cases["policy installation delegates the paired transition"] = function () {
+    let source = Harness.readFile(Harness.testsDir() + "/../Makefile");
+    Harness.ok(source.indexOf('sh "$(POLICY_TOOL)"') >= 0,
+               "the Make target has one owner for both publications");
+    Harness.ok(source.indexOf('install -m 0755 "$(UUID)/powertoys-helper"') < 0,
+               "the helper is not published independently in the recipe");
+    Harness.ok(source.indexOf('install -m 0644 "polkit/$(POLICY)"') < 0,
+               "nor is the action");
+};
+
+function policyInstall(options) {
+    let directory = GLib.dir_make_tmp("powertoys-policy-install-XXXXXX");
+    try {
+        let source = directory + "/source";
+        let helperSource = source + "/helper";
+        let policySource = source + "/action.policy";
+        let helper = directory + "/root/usr/local/lib/powertoys/helper";
+        let policy = directory + "/root/usr/share/polkit-1/actions/action.policy";
+        GLib.mkdir_with_parents(source, 0o755);
+        GLib.mkdir_with_parents(GLib.path_get_dirname(helper), 0o755);
+        GLib.mkdir_with_parents(GLib.path_get_dirname(policy), 0o755);
+        GLib.file_set_contents(helperSource, "new helper\n");
+        GLib.file_set_contents(policySource, "new policy\n");
+        if (options.existing) {
+            GLib.file_set_contents(helper, "old helper\n");
+            GLib.file_set_contents(policy, "old policy\n");
+        }
+
+        let path = GLib.getenv("PATH") || "/usr/bin:/bin";
+        if (options.failPolicyPublish || options.signalHelperPublish) {
+            let bin = directory + "/bin";
+            GLib.mkdir_with_parents(bin, 0o755);
+            let wrapper = "#!/bin/sh\n";
+            if (options.failPolicyPublish) {
+                wrapper +=
+                    "case \"$*\" in *'.powertoys-policy.new.'*) exit 17;; esac\n";
+            }
+            if (options.signalHelperPublish) {
+                wrapper +=
+                    "case \"$*\" in\n" +
+                    "  *'.powertoys-helper.new.'*)\n" +
+                    "    /bin/mv \"$@\" || exit $?\n" +
+                    "    kill -TERM \"$PPID\"\n" +
+                    "    exit 0;;\n" +
+                    "esac\n";
+            }
+            wrapper += "exec /bin/mv \"$@\"\n";
+            writeExecutable(bin + "/mv", wrapper);
+            path = bin + ":" + path;
+        }
+
+        let tool = Harness.testsDir() + "/../tools/install-policy.sh";
+        return Harness.settle(done => Privileged._spawn(
+            ["env", "PATH=" + path, "sh", tool,
+             helperSource, helper, policySource, policy],
+            (status, stderr) => done({
+                status: status,
+                stderr: stderr,
+                helper: GLib.file_test(helper, GLib.FileTest.EXISTS)
+                    ? Harness.readFile(helper).trim() : null,
+                policy: GLib.file_test(policy, GLib.FileTest.EXISTS)
+                    ? Harness.readFile(policy).trim() : null,
+                helperExecutable: GLib.file_test(helper, GLib.FileTest.IS_EXECUTABLE),
+            })), "the paired policy install");
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
+    }
+}
+
+cases["a failed policy publication restores the previous pair"] = function () {
+    let outcome = policyInstall({ existing: true, failPolicyPublish: true });
+    Harness.equal(outcome.status, 17, "the publication failure is preserved");
+    Harness.equal(outcome.helper, "old helper", "the old helper is restored");
+    Harness.equal(outcome.policy, "old policy", "the old action remains in force");
+};
+
+cases["a failed first policy install publishes neither file"] = function () {
+    let outcome = policyInstall({ failPolicyPublish: true });
+    Harness.equal(outcome.status, 17, "the publication failure is preserved");
+    Harness.equal(outcome.helper, null, "the uncommitted helper is removed");
+    Harness.equal(outcome.policy, null, "no partial action is visible");
+};
+
+cases["a policy transaction publishes the complete staged pair"] = function () {
+    let outcome = policyInstall({ existing: true });
+    Harness.equal(outcome.status, 0, "both publications committed");
+    Harness.equal(outcome.helper, "new helper", "the staged helper is live");
+    Harness.equal(outcome.policy, "new policy", "the staged action is live");
+    Harness.equal(outcome.helperExecutable, true, "the helper has its executable mode");
+};
+
+cases["a policy publish signal cannot expose half a transaction"] = function () {
+    let outcome = policyInstall({ existing: true, signalHelperPublish: true });
+    Harness.equal(outcome.status, 0,
+                  "the signal inside the protected publication is deferred");
+    Harness.equal(outcome.helper, "new helper", "the helper publication is recorded");
+    Harness.equal(outcome.policy, "new policy", "and the matching action is committed");
+};
+
+cases["the staged Make target publishes the runtime policy pair"] = function () {
+    let directory = GLib.dir_make_tmp("powertoys-policy-stage-XXXXXX");
+    try {
+        let outcome = Harness.settle(done => Privileged._spawn(
+            ["make", "-s", "install-policy", "DESTDIR=" + directory],
+            (status, stderr) => done({ status: status, stderr: stderr })),
+        "the staged policy Make target");
+        Harness.equal(outcome.status, 0, "the delegated Make target completes: " + outcome.stderr);
+        let helper = directory + "/usr/local/lib/cinnamon-powertoys/powertoys-helper";
+        let action = directory +
+            "/usr/share/polkit-1/actions/io.github.geraldo-netto.cinnamon-powertoys.policy";
+        Harness.equal(Harness.readFile(helper),
+                      Harness.readFile(Harness.xletDir() + "/powertoys-helper"),
+                      "the runtime helper path receives the shipped helper");
+        Harness.equal(Harness.readFile(action),
+                      Harness.readFile(Harness.testsDir() +
+                          "/../polkit/io.github.geraldo-netto.cinnamon-powertoys.policy"),
+                      "and the action is the shipped action");
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
+    }
+};
+
 cases["RAPL Make targets share one transition implementation"] = function () {
     let source = Harness.readFile(Harness.testsDir() + "/../Makefile");
     Harness.ok(source.indexOf('sh "$(RAPL_TOOL)" install') >= 0,

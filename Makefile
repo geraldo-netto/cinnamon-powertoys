@@ -20,6 +20,7 @@ POT_URL      = $(shell python3 -c "import json;print(json.load(open('$(METADATA)
 
 POLICY      := io.github.geraldo-netto.cinnamon-powertoys.policy
 POLICY_DIR  := $(DESTDIR)/usr/share/polkit-1/actions
+POLICY_TOOL := tools/install-policy.sh
 HELPER_PATH := /usr/local/lib/cinnamon-powertoys/powertoys-helper
 HELPER_DEST := $(DESTDIR)$(HELPER_PATH)
 HELPER_DIR  := $(dir $(HELPER_DEST))
@@ -80,10 +81,8 @@ uninstall:
 install-policy:
 	@[ -n "$(DESTDIR)" ] || [ "$$(id -u)" = 0 ] || \
 		{ echo "needs root: sudo make install-policy"; exit 1; }
-	@install -d "$(HELPER_DIR)"
-	@install -m 0755 "$(UUID)/powertoys-helper" "$(HELPER_DEST)"
-	@install -d "$(POLICY_DIR)"
-	@install -m 0644 "polkit/$(POLICY)" "$(POLICY_DIR)/$(POLICY)"
+	@sh "$(POLICY_TOOL)" "$(UUID)/powertoys-helper" "$(HELPER_DEST)" \
+		"polkit/$(POLICY)" "$(POLICY_DIR)/$(POLICY)"
 	@echo "installed $(HELPER_DEST)"
 	@echo "installed $(POLICY_DIR)/$(POLICY)"
 	@echo "re-run this after upgrading the applet, so the root owned copy of"
@@ -129,7 +128,7 @@ check:
 	@cjs tools/parse-check.js $(UUID)/applet.js $(UUID)/lib/*.js
 	@cjs tests/run.js
 	@sh -n $(UUID)/powertoys-helper install.sh tools/install-translations.sh \
-		tools/uninstall.sh tools/rapl-access.sh \
+		tools/uninstall.sh tools/rapl-access.sh tools/install-policy.sh \
 		&& echo "shell ok     helper and install scripts"
 	@python3 -c "import json; [json.load(open(f)) for f in ['$(UUID)/metadata.json','$(UUID)/settings-schema.json']]" \
 		&& echo "json ok      $(UUID)/metadata.json $(UUID)/settings-schema.json"

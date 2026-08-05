@@ -294,6 +294,10 @@ That installs two files:
 | `/usr/share/polkit-1/actions/io.github.geraldo-netto.cinnamon-powertoys.policy` | the action |
 | `/usr/local/lib/cinnamon-powertoys/powertoys-helper` | a root owned copy of the helper |
 
+Both copies are staged before either installed file changes. If publication is
+interrupted or the second copy fails, the installer restores the previous pair
+instead of leaving a new helper with an old or missing action.
+
 **What the action grants.** An administrator, logged in at the machine, may run
 that one helper as root, and the authorisation is remembered for a few minutes
 afterwards (`auth_admin_keep`) rather than for a single call. Anyone who is not
