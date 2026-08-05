@@ -36,6 +36,8 @@ function scratch(options, body) {
         GLib.file_set_contents(source + "/install.sh",
                                Harness.readFile(Harness.testsDir() + "/../install.sh"));
         GLib.chmod(source + "/install.sh", 0o700);
+        GLib.file_set_contents(tools + "/uninstall.sh",
+                               Harness.readFile(Harness.testsDir() + "/../tools/uninstall.sh"));
 
         for (let name of ["applet.js", "metadata.json", "settings-schema.json",
                           "powertoys-helper"])
@@ -50,7 +52,7 @@ function scratch(options, body) {
         GLib.chmod(tools + "/install-translations.sh", 0o700);
 
         let path = GLib.getenv("PATH") || "/usr/bin:/bin";
-        if (options.rmdirStatus || options.failedReload) {
+        if (options.rmdirStatus || options.failedReload || options.uninstallRuntime) {
             let bin = directory + "/bin";
             GLib.mkdir_with_parents(bin, 0o755);
             if (options.rmdirStatus) {
@@ -74,6 +76,22 @@ function scratch(options, body) {
                     "  *Eval*) echo \"(true, '')\";;\n" +
                     "esac\n");
                 GLib.chmod(bin + "/gdbus", 0o700);
+            }
+            if (options.uninstallRuntime) {
+                let disabled = directory + "/disabled";
+                let settings = directory + "/enabled-applets";
+                GLib.file_set_contents(bin + "/gsettings",
+                    "#!/bin/sh\n" +
+                    "if [ \"$1\" = get ]; then\n" +
+                    "  echo \"['panel1:left:0:" + UUID + ":7', 'panel1:right:0:menu@cinnamon.org:8']\"\n" +
+                    "else printf '%s' \"$4\" > '" + settings + "'; touch '" + disabled + "'; fi\n");
+                GLib.chmod(bin + "/gsettings", 0o700);
+                GLib.file_set_contents(bin + "/gdbus",
+                    "#!/bin/sh\n" +
+                    "if [ -f '" + disabled + "' ]; then echo '(@as [],)';\n" +
+                    "else echo \"(['" + UUID + "'],)\"; fi\n");
+                GLib.chmod(bin + "/gdbus", 0o700);
+                options.enabledState = settings;
             }
             path = bin + ":" + path;
         }
@@ -110,6 +128,18 @@ function temporaryEntries(tree) {
     }
     enumerator.close(null);
     return entries;
+}
+
+function uninstall(tree, live) {
+    let environment = ["env", "PATH=" + tree.path];
+    if (live)
+        environment.push("PREFIX=" + tree.stage + "/share");
+    else
+        environment.push("DESTDIR=" + tree.stage, "PREFIX=/share");
+    environment.push("sh", tree.source + "/tools/uninstall.sh");
+    return Harness.settle(done => Privileged._spawn(
+        environment, (status, stderr) => done({ status: status, stderr: stderr })),
+    live ? "the live uninstall" : "the staged uninstall");
 }
 
 var cases = {};
@@ -165,5 +195,18 @@ cases["a failed live reload restores and reactivates the previous applet"] = fun
         Harness.ok(outcome.stderr.indexOf("Restored and reloaded") >= 0,
                    "the prior runtime was reactivated: " + outcome.stderr);
         Harness.deepEqual(temporaryEntries(tree), [], "the rollback left no private trees");
+    });
+};
+
+cases["a live uninstall disables the applet before deleting it"] = function () {
+    let options = { uninstallRuntime: true };
+    scratch(options, tree => {
+        let outcome = uninstall(tree, true);
+        Harness.equal(outcome.status, 0, "the coordinated uninstall completed");
+        Harness.equal(GLib.file_test(tree.target, GLib.FileTest.EXISTS), false,
+                      "the source was removed after the runtime disappeared");
+        let enabled = read(options.enabledState);
+        Harness.equal(enabled.indexOf(UUID), -1, "the stale panel entry was removed");
+        Harness.ok(enabled.indexOf("menu@cinnamon.org") >= 0, "other applets were preserved");
     });
 };

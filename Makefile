@@ -71,9 +71,7 @@ install:
 	@PREFIX="$(PREFIX)" DESTDIR="$(DESTDIR)" ./install.sh
 
 uninstall:
-	@rm -rf -- "$(TARGET)"
-	@tools/install-translations.sh uninstall "$(DESTDIR)$(PREFIX)/locale"
-	@echo "removed $(TARGET)"
+	@PREFIX="$(PREFIX)" DESTDIR="$(DESTDIR)" sh tools/uninstall.sh
 
 # Installs a root owned copy of the helper and the action that names it. The
 # copy is the point: an authorisation that is kept for a few minutes must
@@ -139,7 +137,8 @@ check:
 	@command -v cjs >/dev/null 2>&1 || { echo "cjs not found, install the cjs package"; exit 1; }
 	@cjs tools/parse-check.js $(UUID)/applet.js $(UUID)/lib/*.js
 	@cjs tests/run.js
-	@sh -n $(UUID)/powertoys-helper && echo "helper ok    $(UUID)/powertoys-helper"
+	@sh -n $(UUID)/powertoys-helper install.sh tools/install-translations.sh \
+		tools/uninstall.sh && echo "shell ok     helper and install scripts"
 	@python3 -c "import json; [json.load(open(f)) for f in ['$(UUID)/metadata.json','$(UUID)/settings-schema.json']]" \
 		&& echo "json ok      $(UUID)/metadata.json $(UUID)/settings-schema.json"
 	@python3 -c "import xml.dom.minidom; xml.dom.minidom.parse('polkit/$(POLICY)')" \
