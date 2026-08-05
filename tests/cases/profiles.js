@@ -291,6 +291,37 @@ cases["setting a profile reports what the daemon answered"] = function () {
                   "the refusal reaches the caller, which is the whole reason Set is issued here");
 };
 
+cases["profile writes serialize and retain only the latest request"] = function () {
+    let system = bus({ [HADESS]: daemon() });
+    let pending = [];
+    system.setProperty = function (name, path, property, value, cancellable, onDone) {
+        system.writes.push([name, path, property, value]);
+        pending.push(onDone);
+    };
+    let client = new Profiles.PowerProfilesClient(null, system);
+    let outcomes = [];
+
+    client.setProfile("performance", error => outcomes.push(["performance", error]));
+    client.setProfile("balanced", error => outcomes.push(["balanced", error]));
+    client.setProfile("power-saver", error => outcomes.push(["power-saver", error]));
+
+    Harness.deepEqual(system.writes.map(write => write[3]), ["performance"],
+                      "only one D-Bus write is in flight");
+    Harness.equal(outcomes.length, 1, "the displaced waiting caller settles immediately");
+    Harness.equal(outcomes[0][0], "balanced", "the intermediate request was displaced");
+    Harness.ok(outcomes[0][1] instanceof Error, "and is told why it will not be written");
+
+    pending.shift()(null);
+    Harness.deepEqual(system.writes.map(write => write[3]),
+                      ["performance", "power-saver"],
+                      "the latest request follows the first one");
+    Harness.equal(outcomes[1][0], "performance", "the first caller settles from its reply");
+
+    pending.shift()(null);
+    Harness.equal(outcomes[2][0], "power-saver", "the latest caller settles too");
+    Harness.equal(outcomes[2][1], null, "with the daemon's successful result");
+};
+
 cases["setting a profile with no daemon answers rather than throwing"] = function () {
     let system = bus({});
     let client = new Profiles.PowerProfilesClient(null, system);

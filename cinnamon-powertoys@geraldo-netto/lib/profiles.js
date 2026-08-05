@@ -205,7 +205,8 @@ var PowerProfilesClient = class PowerProfilesClient {
         this._proxy = null;
         this._propSignalId = 0;
         this._watchIds = [];
-        this._setCalls = new Set();
+        this._setCall = null;
+        this._setQueued = null;
         this.busName = null;
         this.busPath = null;
         this.destroyed = false;
@@ -396,19 +397,57 @@ var PowerProfilesClient = class PowerProfilesClient {
             return false;
         }
 
-        let cancellable = this._bus.cancellable ? this._bus.cancellable() : null;
-        let call = { cancellable: cancellable };
-        this._setCalls.add(call);
+        let operation = { name: name, done: this._once(done), cancellable: null };
+        if (this._setCall) {
+            if (this._setQueued)
+                this._setQueued.done(new Error("profile request was superseded"));
+            this._setQueued = operation;
+            return true;
+        }
+        this._setQueued = operation;
+        return this._drainProfileWrites();
+    }
+
+    _once(callback) {
+        let called = false;
+        return error => {
+            if (called)
+                return;
+            called = true;
+            callback(error);
+        };
+    }
+
+    _drainProfileWrites() {
+        if (this.destroyed || this._setCall || !this._setQueued)
+            return false;
+
+        let call = this._setQueued;
+        this._setQueued = null;
+        if (!this._proxy) {
+            call.done(new Error("power-profiles-daemon is not available"));
+            return false;
+        }
+
+        call.cancellable = this._bus.cancellable ? this._bus.cancellable() : null;
+        this._setCall = call;
+        let busName = this.busName;
+        let busPath = this.busPath;
+        let finish = error => {
+            if (this._setCall !== call)
+                return;
+            this._setCall = null;
+            if (!this.destroyed)
+                call.done(error);
+            this._drainProfileWrites();
+        };
         try {
-            this._bus.setProperty(this.busName, this.busPath, "ActiveProfile", name,
-                                  cancellable, error => {
-                                      this._setCalls.delete(call);
-                                      if (!this.destroyed)
-                                          done(error);
-                                  });
+            this._bus.setProperty(busName, busPath, "ActiveProfile", call.name,
+                                  call.cancellable, finish);
         } catch (error) {
-            this._setCalls.delete(call);
-            done(error);
+            this._setCall = null;
+            call.done(error);
+            this._drainProfileWrites();
             return false;
         }
         return true;
@@ -422,16 +461,16 @@ var PowerProfilesClient = class PowerProfilesClient {
         /* A search may still be out on the bus; what it finds is no longer
          * wanted, the same way a probe in flight is disowned in lib/ddc.js. */
         this.destroyed = true;
-        for (let call of this._setCalls) {
-            if (call.cancellable) {
-                try {
-                    call.cancellable.cancel();
-                } catch (e) {
-                    /* already cancelled */
-                }
+        let call = this._setCall;
+        this._setCall = null;
+        this._setQueued = null;
+        if (call && call.cancellable) {
+            try {
+                call.cancellable.cancel();
+            } catch (e) {
+                /* already cancelled */
             }
         }
-        this._setCalls.clear();
         this._disconnectProxy();
         for (let id of this._watchIds) {
             try {
