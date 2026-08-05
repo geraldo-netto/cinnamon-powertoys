@@ -349,6 +349,7 @@ const NODE_KINDS = [
         measure: "temperature",
         list: "temperatures",
         pattern: /^temp(\d+)_input$/,
+        fault: true,
         /* The chip's own limit, which is what a reading gets flagged
          * against. Some drivers only publish the emergency one. */
         extra: function (base, index, readNumber) {
@@ -364,6 +365,7 @@ const NODE_KINDS = [
         measure: "fan",
         list: "fans",
         pattern: /^fan(\d+)_input$/,
+        fault: true,
     },
     {
         prefix: "power",
@@ -553,6 +555,8 @@ function _scanSensors(directories, readString, readLink) {
                     rawLabel: _label(base, nodeKind.prefix, index, readString),
                     path: base + "/" + node,
                 };
+                let faultPath = base + "/" + nodeKind.prefix + index + "_fault";
+                sensor.faultPath = nodeKind.fault && exists(faultPath) ? faultPath : null;
                 if (nodeKind.extra)
                     Object.assign(sensor, nodeKind.extra(base, index, readNumber));
 
@@ -1045,7 +1049,8 @@ var SensorSet = class SensorSet {
     }
 
     _temperature(sensor, readNumber) {
-        let raw = readNumber(sensor.path);
+        let fault = sensor.faultPath ? readNumber(sensor.faultPath) : 0;
+        let raw = fault !== null && fault > 0 ? null : readNumber(sensor.path);
         return {
             id: sensor.id,
             measure: sensor.measure,
@@ -1066,7 +1071,8 @@ var SensorSet = class SensorSet {
     }
 
     _fan(sensor, readNumber) {
-        let rpm = readNumber(sensor.path);
+        let fault = sensor.faultPath ? readNumber(sensor.faultPath) : 0;
+        let rpm = fault !== null && fault > 0 ? null : readNumber(sensor.path);
         if (rpm !== null && rpm > 0)
             sensor.hasRun = true;
         return {
@@ -1223,11 +1229,17 @@ var SensorSet = class SensorSet {
         let found = lists || this._lists();
         let paths = [];
         for (let sensor of found.temperatures)
-            if (keep(sensor))
+            if (keep(sensor)) {
                 paths.push(sensor.path);
+                if (sensor.faultPath)
+                    paths.push(sensor.faultPath);
+            }
         for (let sensor of found.fans)
-            if (keep(sensor))
+            if (keep(sensor)) {
                 paths.push(sensor.path);
+                if (sensor.faultPath)
+                    paths.push(sensor.faultPath);
+            }
         for (let meter of found.meters)
             if (keep(meter))
                 paths.push(meter.counter.path);

@@ -270,6 +270,25 @@ cases["a reading converts millidegrees and microwatts"] = function () {
     });
 };
 
+cases["faulted hwmon measurements are not trusted"] = function () {
+    on("machine", function () {
+        let set = new Sensors.SensorSet();
+        let temperature = byId(set.temperatureSensors, "hwmon:hwmon0:temp1");
+        let fan = byId(set.fanSensors, "hwmon:hwmon3:fan1");
+
+        Harness.ok(temperature.faultPath, "temperature fault node discovered");
+        Harness.ok(fan.faultPath, "fan fault node discovered");
+        let read = path => /_fault$/.test(path) ? 1 : 1000;
+        Harness.equal(set._temperature(temperature, read).celsius, null,
+                      "faulted temperature suppressed");
+        Harness.equal(set._fan(fan, read).rpm, null, "faulted fan suppressed");
+        Harness.equal(set._paths(() => true).indexOf(temperature.faultPath) >= 0, true,
+                      "asynchronous temperature read includes its fault flag");
+        Harness.equal(set._paths(() => true).indexOf(fan.faultPath) >= 0, true,
+                      "asynchronous fan read includes its fault flag");
+    });
+};
+
 cases["a reading carries what it measures"] = function () {
     on("machine", function () {
         let readings = new Sensors.SensorSet().read();
