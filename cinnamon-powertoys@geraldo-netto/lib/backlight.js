@@ -52,6 +52,7 @@ var SCREEN = "screen";
 var KEYBOARD = "keyboard";
 var RETRY_INITIAL_MS = 500;
 var RETRY_MAX_MS = 8000;
+var ABSENCE_CONFIRMATIONS = 3;
 
 /*
  * Whether DDC/CI is the right way to reach the visible screen.
@@ -156,6 +157,7 @@ var BacklightControl = class BacklightControl {
         this._ownerPresent = false;
         this._retryTimerId = 0;
         this._retryDelay = RETRY_INITIAL_MS;
+        this._absenceConfirmations = 0;
         this._failures = new Log.FailureLog();
         this._connecting = false;
         this._connectCancellable = null;
@@ -311,6 +313,7 @@ var BacklightControl = class BacklightControl {
         if (this.destroyed)
             return;
         this._ownerPresent = true;
+        this._absenceConfirmations = 0;
         this._cancelRetry();
         let before = this.available;
         this.refresh(() => {
@@ -324,6 +327,7 @@ var BacklightControl = class BacklightControl {
         if (this.destroyed)
             return;
         this._ownerPresent = false;
+        this._absenceConfirmations = 0;
         this._failures.clear();
         this._cancelRetry();
         let changed = this.available || this._proxy !== null;
@@ -368,9 +372,10 @@ var BacklightControl = class BacklightControl {
         this._retryDelay = RETRY_INITIAL_MS;
     }
 
-    /* Asks the daemon where the backlight is now. An error on the first read
-     * is the answer to "is there one"; an error after a confirmed value is a
-     * transient proxy loss and follows the bounded reconnect path. */
+    /* Asks the daemon where the backlight is now. An error after a confirmed
+     * value is a transient proxy loss. During owned startup, one failed read
+     * is ambiguous too: the daemon may still be settling, so hardware absence
+     * needs bounded confirmation before monitor probing is allowed. */
     refresh(onDone) {
         let done = onDone || function () {};
         if (this.destroyed) {
@@ -449,21 +454,28 @@ var BacklightControl = class BacklightControl {
         if (sameProxy && operation.valueGeneration === this._valueGeneration) {
             if (error || !result) {
                 let knownPresent = this.hardwareState === "present";
+                let confirmAbsence = false;
                 this.available = false;
                 this.percentage = null;
-                if (this.hardwareState === "unknown" ||
-                        this.hardwareState === "degraded")
+                if (!knownPresent && this._ownerPresent) {
+                    this._absenceConfirmations++;
+                    confirmAbsence = this._absenceConfirmations < ABSENCE_CONFIRMATIONS;
+                    this.hardwareState = confirmAbsence ? "degraded" : "absent";
+                } else if (!knownPresent) {
                     this.hardwareState = "absent";
-                this._cancelRetry();
+                }
                 /* A proxy tied to a vanished owner cannot recover its cached
                  * interface reliably. The next refresh builds a fresh one. */
                 this._dropProxy();
-                if (knownPresent)
+                if (knownPresent || confirmAbsence)
                     this._scheduleRetry();
+                else
+                    this._cancelRetry();
             } else {
                 this.available = true;
                 this.percentage = result[0];
                 this.hardwareState = "present";
+                this._absenceConfirmations = 0;
                 this._cancelRetry();
             }
         }

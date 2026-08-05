@@ -160,7 +160,7 @@ over I2C is not.
 | Batteries, line power and lid state | UPower manager, device and display-device property signals, and device-added/device-removed signals schedule a reading immediately. The regular reading also consumes the current proxy cache; it does not issue a second D-Bus request for every property. |
 | Bluetooth batteries | BlueZ interface-added, interface-removed and relevant device/battery property signals update the cache and schedule a reading. Invalidated or incomplete signal data is repaired with one coalesced snapshot after **250 ms**. |
 | Power profiles | Either supported daemon name appearing, disappearing or changing properties schedules a reading. The daemon snapshot is unpacked once and cached until one of those events. The firmware fallback samples `/sys/firmware/acpi/platform_profile` with each regular reading. |
-| Screen and keyboard brightness | `org.cinnamon.SettingsDaemon.Power` ownership and `Changed` signals refresh the affected cached percentage and slider. Opening the menu retries a backlight only when it currently has no valid value. |
+| Screen and keyboard brightness | `org.cinnamon.SettingsDaemon.Power` ownership and `Changed` signals refresh the affected cached percentage and slider. While the daemon is owned, three consecutive failed startup reads are required before hardware is classified absent; opening the menu also retries a backlight when it has no valid value. |
 | Sensor, CPU, charge-control and firmware-profile topology | Discovered at startup, whenever the menu opens, and on the first regular poll that reaches or passes **60 seconds** since the last discovery. Thus a 7-second refresh interval checks at 63 seconds, not in a separate exact-minute timer. Sensor discovery performs the full metadata sweep only when its cheap topology signature changed. |
 | Charge limit | The set of batteries and controls follows the topology discovery above. The current limit is sampled only while the menu is open; opening it first paints the last complete reading, then starts a fresh one. |
 | External DDC/CI monitors | Probed only when enabled and either no built-in backlight exists or UPower confirms that the laptop lid is closed. Eligibility starts with an immediate detection; a desktop `monitors-changed` event detects again, the first tooltip hover performs one prefetch, and an open menu probes immediately and then every **1 second** until it closes. DDC/CI is never part of the regular reading poll. |
@@ -178,7 +178,10 @@ Failure recovery has its own timings, none of which changes the selected
 refresh interval. Failed D-Bus owner-watch registration retries after 1 second
 and doubles to a 30-second ceiling. An owned UPower, profile, backlight or BlueZ
 backend that cannot connect or take its initial snapshot retries from 500 ms to
-an 8-second ceiling. If BlueZ cannot install all of its signal subscriptions,
+an 8-second ceiling. Backlight absence is confirmed on the third failed owned
+percentage read (after the 500 ms and 1-second retries), preventing one startup
+timeout from enabling DDC/CI probing. If BlueZ cannot install all of its signal
+subscriptions,
 its temporary snapshot poll backs off from 1 to 30 seconds while also trying
 to restore the signals. Asynchronous filesystem batches have a 5-second safety
 deadline, each `ddcutil` command an 8-second deadline, and the privileged

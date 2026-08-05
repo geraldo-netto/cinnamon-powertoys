@@ -481,6 +481,29 @@ cases["a failed first read rebuilds the proxy"] = function () {
     Harness.equal(screen.percentage, 58, "from the replacement proxy");
 };
 
+cases["one owned startup read failure does not claim hardware is absent"] = function () {
+    let owner = ownerWatcher();
+    let timers = retryTimers(owner);
+    let attempts = 0;
+    let ready = 0;
+    let screen = new Backlight.BacklightControl(
+        Backlight.SCREEN, null, () => ready++, (xml, onDone) => {
+            attempts++;
+            onDone(proxy({ GetPercentage: attempts === 1 ? null : 58 }), null);
+        }, owner);
+
+    Harness.equal(screen.hardwareState, "degraded",
+                  "a transient owned failure keeps monitor probing gated");
+    Harness.equal(ready, 1, "startup still settles while confirmation continues");
+    Harness.deepEqual(timers.delays, [Backlight.RETRY_INITIAL_MS],
+                      "confirmation starts with the bounded retry delay");
+    timers.fire();
+    Harness.equal(screen.hardwareState, "present", "the replacement read confirms hardware");
+    Harness.equal(screen.percentage, 58, "and publishes its value");
+    Harness.equal(attempts, 2, "one confirmation was enough to recover");
+    screen.destroy();
+};
+
 cases["a known backlight automatically reconnects after a read failure"] = function () {
     let owner = ownerWatcher();
     let timers = retryTimers(owner);
@@ -507,7 +530,7 @@ cases["a known backlight automatically reconnects after a read failure"] = funct
     screen.destroy();
 };
 
-cases["an unsupported backlight does not retry its first read"] = function () {
+cases["an unsupported backlight is confirmed before monitor probing"] = function () {
     let owner = ownerWatcher();
     let timers = retryTimers(owner);
     let attempts = 0;
@@ -517,9 +540,14 @@ cases["an unsupported backlight does not retry its first read"] = function () {
             onDone(proxy({ GetPercentage: null }), null);
         }, owner);
 
-    Harness.equal(screen.hardwareState, "absent", "the first reply confirms no hardware");
-    Harness.equal(Object.keys(timers.pending).length, 0, "unsupported hardware has no retry");
-    Harness.equal(attempts, 1, "the initial decision is not probed repeatedly");
+    Harness.equal(screen.hardwareState, "degraded", "one failure is not a hardware decision");
+    timers.fire();
+    Harness.equal(screen.hardwareState, "degraded", "the second failure remains provisional");
+    timers.fire();
+    Harness.equal(screen.hardwareState, "absent", "the bounded confirmation establishes absence");
+    Harness.equal(Object.keys(timers.pending).length, 0, "confirmed absence has no retry");
+    Harness.equal(attempts, Backlight.ABSENCE_CONFIRMATIONS,
+                  "the decision uses the declared confirmation bound");
     screen.destroy();
 };
 
