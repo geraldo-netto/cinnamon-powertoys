@@ -375,11 +375,11 @@ var BacklightControl = class BacklightControl {
 
     _once(callback) {
         let called = false;
-        return () => {
+        return (...args) => {
             if (called)
                 return;
             called = true;
-            callback();
+            callback(...args);
         };
     }
 
@@ -388,9 +388,9 @@ var BacklightControl = class BacklightControl {
         this._mutation = null;
         let queued = this._mutationQueue.splice(0);
         if (current)
-            current.settle();
+            current.settle(current.failureOutcome || { ok: false, cancelled: true });
         for (let operation of queued)
-            operation.settle();
+            operation.settle({ ok: false, cancelled: true });
     }
 
     _cancelReads() {
@@ -415,7 +415,7 @@ var BacklightControl = class BacklightControl {
     _enqueueMutation(operation) {
         operation.settle = this._once(operation.done);
         if (this.destroyed || !this._proxy) {
-            operation.settle();
+            operation.settle({ ok: false, unavailable: true });
             return;
         }
 
@@ -425,7 +425,7 @@ var BacklightControl = class BacklightControl {
 
         let last = this._mutationQueue[this._mutationQueue.length - 1];
         if (operation.type === "set" && last && last.type === "set") {
-            last.settle();
+            last.settle({ ok: false, superseded: true });
             this._mutationQueue[this._mutationQueue.length - 1] = operation;
         } else {
             this._mutationQueue.push(operation);
@@ -448,16 +448,43 @@ var BacklightControl = class BacklightControl {
             /* Owner loss and destroy settle and detach the operation first. A
              * late D-Bus reply is then only a second answer to the once guard. */
             if (this._mutation !== operation) {
-                operation.settle();
+                operation.settle({ ok: false, cancelled: true });
                 return;
             }
-            this._mutation = null;
-            if (!this.destroyed && generation === this._generation &&
-                proxy === this._proxy && valueGeneration === this._valueGeneration &&
-                !error && result)
+            let current = !this.destroyed && generation === this._generation &&
+                          proxy === this._proxy &&
+                          valueGeneration === this._valueGeneration;
+            if (current && !error && result) {
+                this._mutation = null;
                 this.percentage = result[0];
-            operation.settle();
-            this._drainMutations();
+                operation.settle({ ok: true, percentage: this.percentage });
+                this._drainMutations();
+                return;
+            }
+            if (!current) {
+                this._mutation = null;
+                operation.settle({ ok: false, cancelled: true });
+                this._drainMutations();
+                return;
+            }
+
+            let failure = error || new Error("the daemon returned no brightness value");
+            let outcome = { ok: false, error: failure };
+            operation.failureOutcome = outcome;
+            Log.error(this.kind + " backlight " + operation.type +
+                      " failed: " + (failure.message || String(failure)));
+            this.percentage = null;
+            /* The rejected mutation says nothing about the real value. Keep
+             * this operation as the queue owner until one fresh read either
+             * restores the cache or drops the broken proxy. */
+            this._readPercentage(() => {
+                if (this._mutation === operation)
+                    this._mutation = null;
+                operation.settle(outcome);
+                if (!this.destroyed)
+                    this._onChanged();
+                this._drainMutations();
+            });
         };
 
         try {
@@ -475,15 +502,18 @@ var BacklightControl = class BacklightControl {
 
     _runSteps(operation, proxy, generation, valueGeneration, finish) {
         let remaining = operation.count;
+        let latest = null;
         let call = operation.up ? proxy.StepUpRemote : proxy.StepDownRemote;
         let next = (result, error) => {
             if (result !== undefined && !this.destroyed &&
                 generation === this._generation && proxy === this._proxy &&
-                valueGeneration === this._valueGeneration && !error && result)
+                valueGeneration === this._valueGeneration && !error && result) {
                 this.percentage = result[0];
+                latest = result;
+            }
             if (error || this.destroyed || generation !== this._generation ||
                 proxy !== this._proxy || remaining === 0) {
-                finish(null, error);
+                finish(latest, error);
                 return;
             }
             remaining--;
@@ -521,7 +551,7 @@ var BacklightControl = class BacklightControl {
     toggle(onDone) {
         let done = onDone || function () {};
         if (!this._proxy || typeof this._proxy.ToggleRemote !== "function") {
-            done();
+            done({ ok: false, unavailable: true });
             return;
         }
         this._enqueueMutation({ type: "toggle", done: done });
@@ -540,8 +570,12 @@ var BacklightControl = class BacklightControl {
     stepBy(notches, onDone) {
         let done = onDone || function () {};
         let remaining = Math.abs(Math.round(notches));
-        if (!this._proxy || remaining === 0) {
-            done();
+        if (!this._proxy) {
+            done({ ok: false, unavailable: true });
+            return;
+        }
+        if (remaining === 0) {
+            done({ ok: true, noop: true, percentage: this.percentage });
             return;
         }
         this._enqueueMutation({ type: "step", up: notches > 0,

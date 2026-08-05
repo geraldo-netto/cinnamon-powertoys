@@ -399,8 +399,54 @@ cases["what the daemon set is what is kept, not what was asked for"] = function 
     /* Some panels have far fewer steps than a hundred, so the daemon answers
      * with where the backlight actually ended up. */
     let screen = control(Backlight.SCREEN, proxy({ GetPercentage: 40, SetPercentage: 33 }));
-    screen.setPercentage(37);
+    let outcome = null;
+    screen.setPercentage(37, value => { outcome = value; });
     Harness.equal(screen.percentage, 33, "the daemon's number, not the slider's");
+    Harness.deepEqual(outcome, { ok: true, percentage: 33 },
+                      "the caller receives the confirmed result");
+};
+
+cases["brightness mutation failures are reported and resampled consistently"] = function () {
+    let reads = [40, 35, 30];
+    let stub = proxy({
+        GetPercentage: () => reads.shift(),
+        SetPercentage: null,
+        StepUp: null,
+    });
+    let screen = control(Backlight.SCREEN, stub);
+    let keyboard = null;
+    let outcomes = [];
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    try {
+        screen.setPercentage(70, outcome => outcomes.push(outcome));
+        Harness.equal(outcomes[0].ok, false, "a refused absolute write reports failure");
+        Harness.ok(outcomes[0].error instanceof Error, "the D-Bus reason is retained");
+        Harness.equal(screen.percentage, 35, "the failure is replaced by a fresh daemon read");
+
+        screen.stepBy(1, outcome => outcomes.push(outcome));
+        Harness.equal(outcomes[1].ok, false, "a refused step uses the same outcome");
+        Harness.equal(screen.percentage, 30, "and the same resampling policy");
+        Harness.equal(lines.length, 2, "each rejected action has one diagnostic");
+        Harness.ok(lines[0].indexOf("set failed") >= 0, "the absolute action is named");
+        Harness.ok(lines[1].indexOf("step failed") >= 0, "the relative action is named");
+
+        let keyboardReads = [60, 50];
+        keyboard = control(Backlight.KEYBOARD, proxy({
+            GetPercentage: () => keyboardReads.shift(),
+            Toggle: null,
+        }));
+        keyboard.toggle(outcome => outcomes.push(outcome));
+        Harness.equal(outcomes[2].ok, false, "a refused toggle reports failure too");
+        Harness.equal(keyboard.percentage, 50, "toggle failure resamples the keyboard");
+        Harness.equal(lines.length, 3, "toggle refusal has the same one-line policy");
+        Harness.ok(lines[2].indexOf("toggle failed") >= 0, "the toggle action is named");
+    } finally {
+        Log.setSink(null);
+        screen.destroy();
+        if (keyboard)
+            keyboard.destroy();
+    }
 };
 
 cases["slider writes serialize and keep only the latest waiting value"] = function () {
@@ -782,8 +828,9 @@ cases["a write that answers with nothing leaves the value alone"] = function () 
     Harness.equal(screen.percentage, 40, "the same the other way, which is its own call");
 
     Harness.deepEqual(stub.calls.map(call => call[0]),
-                      ["GetPercentage", "SetPercentage", "StepUp", "StepDown"],
-                      "and every one of them was really made");
+                      ["GetPercentage", "SetPercentage", "GetPercentage",
+                       "StepUp", "GetPercentage", "StepDown", "GetPercentage"],
+                      "every failed mutation is followed by a real-state read");
 
     /* The keyboard's toggle is a fourth call with the same guard on its
      * reply, and the only one of them the screen does not have. */
