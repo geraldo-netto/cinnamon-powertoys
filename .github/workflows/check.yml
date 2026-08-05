@@ -46,6 +46,23 @@ jobs:
       - name: Check
         run: make check
 
+      - name: Coverage
+        id: coverage
+        run: make coverage
+
+      # Keep the measured sources, LCOV data, test output and per-function
+      # report together when the gate fails. The directory is hidden, so it
+      # must be opted in explicitly or the action uploads an empty artifact.
+      - name: Preserve coverage failure report
+        if: failure() && steps.coverage.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .coverage/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
       # A staged lifecycle, so packaging and every destructive counterpart are
       # exercised without any of it reaching the runner's own home directory.
       - name: Staged install and uninstall

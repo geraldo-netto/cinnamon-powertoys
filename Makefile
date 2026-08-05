@@ -158,7 +158,11 @@ coverage:
 		    --coverage-output=$(abspath $(COVERAGE_DIR)) \
 		    tests/run.js > $(COVERAGE_DIR)/run.log 2>&1 || \
 		{ cat $(COVERAGE_DIR)/run.log; exit 1; }
-	@cjs tools/coverage-report.js $(COVERAGE_DIR) --min $(COVERAGE_MIN)
+	@report_status=0; \
+		cjs tools/coverage-report.js $(COVERAGE_DIR) --min $(COVERAGE_MIN) \
+		    > $(COVERAGE_DIR)/report.log 2>&1 || report_status=$$?; \
+		cat $(COVERAGE_DIR)/report.log; \
+		exit $$report_status
 
 # Break the code on purpose and see whether the suite notices.
 #
