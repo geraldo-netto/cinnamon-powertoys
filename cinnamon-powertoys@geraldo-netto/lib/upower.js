@@ -193,13 +193,18 @@ function systemBus() {
         unwatch: function (id) {
             Gio.bus_unwatch_name(id);
         },
-        manager: function (onDone) {
-            new ManagerProxy(Gio.DBus.system, BUS_NAME, MANAGER_PATH,
-                             (proxy, error) => onDone(proxy, error));
+        cancellable: function () {
+            return new Gio.Cancellable();
         },
-        device: function (path, onDone) {
+        manager: function (onDone, cancellable) {
+            new ManagerProxy(Gio.DBus.system, BUS_NAME, MANAGER_PATH,
+                             (proxy, error) => onDone(proxy, error),
+                             cancellable || null);
+        },
+        device: function (path, onDone, cancellable) {
             new DeviceProxy(Gio.DBus.system, BUS_NAME, path,
-                            (proxy, error) => onDone(proxy, error));
+                            (proxy, error) => onDone(proxy, error),
+                            cancellable || null);
         },
     };
 }
@@ -227,6 +232,8 @@ var UPowerMonitor = class UPowerMonitor {
         this._watchId = 0;
         this._generation = 0;
         this._connecting = false;
+        this._managerRequest = null;
+        this._proxyRequests = new Set();
         this._readySent = false;
         this.available = false;
         this.destroyed = false;
@@ -256,19 +263,26 @@ var UPowerMonitor = class UPowerMonitor {
             return;
         this._connecting = true;
         let generation = ++this._generation;
+        let cancellable = this._bus.cancellable ? this._bus.cancellable() : null;
+        let operation = { generation: generation, cancellable: cancellable };
+        this._managerRequest = operation;
         try {
             this._bus.manager((proxy, error) =>
-                this._onManagerReady(proxy, error, generation));
+                this._onManagerReady(proxy, error, generation, operation), cancellable);
         } catch (e) {
-            if (generation !== this._generation)
+            if (this._managerRequest !== operation)
                 return;
+            this._managerRequest = null;
             this._connecting = false;
             Log.error("cannot reach UPower: " + e);
             this._settleReady();
         }
     }
 
-    _onManagerReady(proxy, error, generation) {
+    _onManagerReady(proxy, error, generation, operation) {
+        if (this._managerRequest !== operation)
+            return;
+        this._managerRequest = null;
         if (this.destroyed || generation !== this._generation)
             return;
         this._connecting = false;
@@ -369,16 +383,50 @@ var UPowerMonitor = class UPowerMonitor {
      * Turn both routes into the one exactly-once contract every caller uses. */
     _requestDevice(path, onDone) {
         let settled = false;
+        let cancellable = this._bus.cancellable ? this._bus.cancellable() : null;
+        let operation = { path: path, cancellable: cancellable, finish: null };
         let finish = (proxy, error) => {
-            if (settled)
+            if (settled || !this._proxyRequests.delete(operation))
                 return;
             settled = true;
             onDone(proxy, error);
         };
+        operation.finish = finish;
+        this._proxyRequests.add(operation);
         try {
-            this._bus.device(path, finish);
+            this._bus.device(path, finish, cancellable);
         } catch (error) {
             finish(null, error);
+        }
+    }
+
+    _cancelManagerRequest() {
+        let operation = this._managerRequest;
+        this._managerRequest = null;
+        this._connecting = false;
+        if (operation && operation.cancellable) {
+            try {
+                operation.cancellable.cancel();
+            } catch (e) {
+                /* already cancelled */
+            }
+        }
+    }
+
+    _cancelProxyRequests(path) {
+        let operations = Array.from(this._proxyRequests).filter(operation =>
+            path === undefined || operation.path === path);
+        for (let operation of operations) {
+            if (operation.cancellable) {
+                try {
+                    operation.cancellable.cancel();
+                } catch (e) {
+                    /* already cancelled */
+                }
+            }
+            /* Settle enumeration counters now; the real cancellation reply is
+             * ignored by the exactly-once guard when it eventually arrives. */
+            operation.finish(null, new Error("UPower proxy request cancelled"));
         }
     }
 
@@ -443,6 +491,7 @@ var UPowerMonitor = class UPowerMonitor {
      * the list of asks, or its answer arrives and puts it back. */
     _removeDevice(path) {
         this._adding.delete(path);
+        this._cancelProxyRequests(path);
         let proxy = this._devices.get(path);
         let signalId = this._deviceSignals.get(path);
         if (proxy && signalId) {
@@ -576,7 +625,8 @@ var UPowerMonitor = class UPowerMonitor {
 
     _disconnectManager() {
         ++this._generation;
-        this._connecting = false;
+        this._cancelManagerRequest();
+        this._cancelProxyRequests();
         this.available = false;
         if (this._manager) {
             for (let id of this._busSignalIds) {
