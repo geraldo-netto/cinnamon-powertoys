@@ -404,6 +404,35 @@ cases["BlueZ signal payloads update the cached tree without a round trip"] = fun
     control.destroy();
 };
 
+cases["invalidated displayed properties are repaired by one snapshot"] = function () {
+    let answer = tree({ [HEADSET]: device("BW01", "audio-headset", true, 90) });
+    let reads = 0;
+    let control = new Bluez.BluezBatteries(null,
+        (path, iface, method, onDone) => { reads++; onDone(cloneTree(answer)); });
+
+    control._propertiesChanged(HEADSET,
+        ["org.bluez.Device1", {}, ["Alias", "Connected"]]);
+    let repairTimer = control._refreshTimerId;
+    Harness.ok(repairTimer, "a watched invalidation schedules a repair snapshot");
+    Harness.equal(control.devices[0].model, "BW01",
+                  "the last complete row remains visible until repair");
+
+    control._propertiesChanged(HEADSET,
+        ["org.bluez.Battery1", {}, ["Percentage"]]);
+    Harness.equal(control._refreshTimerId, repairTimer,
+                  "several invalidations coalesce into the pending repair");
+    Harness.equal(reads, 1, "the repair waits for its settle window");
+
+    answer = tree({ [HEADSET]: device("Desk headset", "audio-headset", true, 72) });
+    GLib.source_remove(repairTimer);
+    control._refreshTimerId = 0;
+    control._refresh();
+    Harness.equal(reads, 2, "one complete snapshot repairs the invalid values");
+    Harness.equal(control.devices[0].model, "Desk headset", "the repaired alias is adopted");
+    Harness.equal(control.devices[0].percentage, 72, "the repaired charge is adopted");
+    control.destroy();
+};
+
 cases["a delta racing the initial snapshot requests one repair read"] = function () {
     let waiting = [];
     let control = new Bluez.BluezBatteries(null,
@@ -933,6 +962,7 @@ cases["fuzzed BlueZ deltas stay equivalent to a fresh tree parse"] = function ()
             [MOUSE]: device("Mouse", "input-mouse", true, 60),
         });
         let reads = 0;
+        let repairs = 0;
         let control = new Bluez.BluezBatteries(null,
             (path, iface, method, onDone) => { reads++; onDone(cloneTree(expected)); });
 
@@ -985,13 +1015,20 @@ cases["fuzzed BlueZ deltas stay equivalent to a fresh tree parse"] = function ()
                 delete deviceProps.Alias;
                 control._propertiesChanged(action.path,
                     ["org.bluez.Device1", {}, ["Alias"]]);
+                Harness.ok(control._refreshTimerId,
+                           "a fuzzed invalidation schedules its repair");
+                GLib.source_remove(control._refreshTimerId);
+                control._refreshTimerId = 0;
+                control._refresh();
+                repairs++;
             }
 
             Harness.deepEqual(control.devices.map(entry =>
                 [entry.path, entry.model, entry.kind, entry.percentage]), rowKeys(expected),
                 "the incremental rows equal a full parse after every mutation");
         }
-        Harness.equal(reads, 1, "valid deltas never fall back to a full-tree read");
+        Harness.equal(reads, 1 + repairs,
+                      "only invalidations fall back to a repair snapshot");
         control.destroy();
     });
 };

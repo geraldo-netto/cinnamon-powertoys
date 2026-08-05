@@ -502,13 +502,21 @@ var BluezBatteries = class BluezBatteries {
             return;
         }
         let properties = interfaces[iface];
+        let needsRepair = false;
         for (let property of watched) {
             if (Object.prototype.hasOwnProperty.call(changed, property))
                 properties[property] = changed[property];
             if (invalidated.indexOf(property) >= 0)
-                delete properties[property];
+                needsRepair = true;
         }
         this._settle(parseObjects(this._objects));
+        /* An invalidated value is not a deletion. BlueZ is saying that the
+         * value in this signal cannot be used and must be fetched again, so
+         * retain the last complete row until one coalesced snapshot repairs
+         * it. Deleting Connected or Percentage here can otherwise make a
+         * live battery disappear until an unrelated signal happens. */
+        if (needsRepair)
+            this._scheduleRefresh();
     }
 
     /*
