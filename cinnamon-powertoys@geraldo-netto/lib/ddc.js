@@ -574,6 +574,10 @@ var DdcBacklight = class DdcBacklight {
         this._missingSignature = null;
         this._missingConfirmations = 0;
         this._redetectPending = false;
+        /* The transport may already own one process, which is allowed to
+         * finish. Nothing still waiting has touched a bus yet, so settle those
+         * jobs now instead of running obsolete reads after DDC was disabled. */
+        this._cancelQueuedCommands();
         /* Emptying the list is a change like any other; see lib/bluez.js,
          * where the same silence kept dead rows in the menu. */
         this._onChanged();

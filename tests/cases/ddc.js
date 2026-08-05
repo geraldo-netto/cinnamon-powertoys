@@ -661,7 +661,7 @@ cases["a restart waits for the probe stop disowned"] = function () {
     Harness.equal(control.monitors.length, 1, "and that is the list that stands");
 };
 
-cases["a restart waits for reads whose monitors stop removed"] = function () {
+cases["a restart discards queued reads whose monitors stop removed"] = function () {
     let run = held();
     let control = new Ddc.DdcBacklight(null, run);
     control.start();
@@ -672,11 +672,9 @@ cases["a restart waits for reads whose monitors stop removed"] = function () {
     control.refresh();
     control.stop();
     control.start();
-    Harness.equal(run.waiting.length, 1, "one old read runs while the other remains queued");
+    Harness.equal(run.waiting.length, 1, "only the old read already on the bus is retained");
     run.answer("VCP 10 C 40 100\n", 0);
-    Harness.equal(run.waiting.length, 1, "one old read still owns its bus");
-    run.answer("VCP 10 C 40 100\n", 0);
-    Harness.equal(run.waiting.length, 1, "the new detect starts after the final read");
+    Harness.equal(run.waiting.length, 1, "the new detect starts after that active read");
     Harness.equal(run.waiting[0].argv, "ddcutil --brief detect", "and is the only new command");
 };
 
