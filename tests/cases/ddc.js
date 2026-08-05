@@ -452,7 +452,7 @@ function held() {
     return run;
 }
 
-cases["a re-detection asked for inside a probe is dropped, not queued"] = function () {
+cases["re-detections inside a probe coalesce into one follow-up"] = function () {
     /*
      * The reads a detect starts are part of the probe. Lowering the flag when
      * the detect answered left them out, so a caller asking every second sent
@@ -468,19 +468,19 @@ cases["a re-detection asked for inside a probe is dropped, not queued"] = functi
     Harness.equal(run.waiting.length, 2, "the detect is back and its two reads are out");
 
     control.redetect();
-    Harness.equal(run.waiting.length, 2, "so a re-detection now sends nothing");
+    control.redetect();
+    Harness.equal(run.waiting.length, 2, "no re-detection overlaps the active probe");
 
     run.answer("VCP 10 C 40 100\n", 0);
     control.redetect();
     Harness.equal(run.waiting.length, 1, "and one read still out is still a probe in flight");
 
     run.answer("VCP 10 C 40 100\n", 0);
-    Harness.equal(run.waiting.length, 0, "the probe is over");
-    control.redetect();
-    Harness.equal(run.waiting[0].argv, "ddcutil --brief detect", "and the next one goes out");
+    Harness.equal(run.waiting.length, 1, "the retained request starts when the probe ends");
+    Harness.equal(run.waiting[0].argv, "ddcutil --brief detect", "and it is one detection");
 };
 
-cases["a re-detection is dropped while a single monitor is being read"] = function () {
+cases["a re-detection waits for every monitor read"] = function () {
     /*
      * A detect walks every bus, so it collides with a conversation already on
      * one of them. The applet lines the two up as a matter of course: opening
@@ -506,12 +506,11 @@ cases["a re-detection is dropped while a single monitor is being read"] = functi
     Harness.equal(run.waiting.length, 1, "one monitor still reading is still busy");
 
     run.answer("VCP 10 C 40 100\n", 0);
-    Harness.equal(control.busy, false, "the bus is free");
-    control.redetect();
-    Harness.equal(run.waiting[0].argv, "ddcutil --brief detect", "and now the probe goes out");
+    Harness.equal(run.waiting.length, 1, "the retained probe starts after the final read");
+    Harness.equal(run.waiting[0].argv, "ddcutil --brief detect", "and no read is overlapped");
 };
 
-cases["a re-detection is dropped while a monitor is being written to"] = function () {
+cases["a re-detection waits for a monitor write"] = function () {
     /* The other half, which is a drag: a setvcp in flight, a tick, a detect. */
     let run = held();
     let control = new Ddc.DdcBacklight(null, run);
@@ -523,11 +522,11 @@ cases["a re-detection is dropped while a monitor is being written to"] = functio
     control.monitors[0].setPercentage(70);
     Harness.equal(control.busy, true, "the write is on the bus");
     control.redetect();
-    Harness.equal(run.waiting.length, 1, "the detect is dropped rather than sent behind it");
+    Harness.equal(run.waiting.length, 1, "the detect does not overlap the write");
 
     run.answer("", 0);
-    control.redetect();
-    Harness.equal(run.waiting[0].argv, "ddcutil --brief detect", "and goes out once it is done");
+    Harness.equal(run.waiting.length, 1, "the retained detect starts once the write ends");
+    Harness.equal(run.waiting[0].argv, "ddcutil --brief detect", "the hotplug request survives");
 };
 
 cases["a probe that finds nothing to read is over when the detect answers"] = function () {

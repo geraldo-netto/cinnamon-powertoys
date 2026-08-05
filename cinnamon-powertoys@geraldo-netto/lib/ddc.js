@@ -256,7 +256,7 @@ function _sameDisplay(first, second) {
  * know or care which kind of screen it is moving.
  */
 var DdcMonitor = class DdcMonitor {
-    constructor(display, run) {
+    constructor(display, run, onIdle) {
         this.id = display.bus || ("display:" + display.number);
         this.number = display.number;
         this.name = display.name;
@@ -269,6 +269,7 @@ var DdcMonitor = class DdcMonitor {
         this._identity = _displayIdentity(display);
 
         this._run = run;
+        this._onIdle = onIdle || function () {};
         /* One ddcutil at a time for this monitor, read or write. See refresh. */
         this._busy = false;
         /* The one value asked for while that was true. See setPercentage. */
@@ -354,6 +355,7 @@ var DdcMonitor = class DdcMonitor {
              */
             done();
             this._writeHeld();
+            this._notifyIdle();
         });
     }
 
@@ -428,6 +430,7 @@ var DdcMonitor = class DdcMonitor {
                           " to " + wanted + "% (exit " + status + ")");
             done();
             this._writeHeld();
+            this._notifyIdle();
         });
     }
 
@@ -440,6 +443,11 @@ var DdcMonitor = class DdcMonitor {
         let held = this._held;
         this._held = null;
         this.setPercentage(held.value, held.done);
+    }
+
+    _notifyIdle() {
+        if (!this.destroyed && !this._busy)
+            this._onIdle();
     }
 
     /*
@@ -518,6 +526,7 @@ var DdcBacklight = class DdcBacklight {
         this._detectFailures = 0;
         this._missingSignature = null;
         this._missingConfirmations = 0;
+        this._redetectPending = false;
     }
 
     /*
@@ -560,6 +569,7 @@ var DdcBacklight = class DdcBacklight {
         this._detectFailures = 0;
         this._missingSignature = null;
         this._missingConfirmations = 0;
+        this._redetectPending = false;
         /* Emptying the list is a change like any other; see lib/bluez.js,
          * where the same silence kept dead rows in the menu. */
         this._onChanged();
@@ -609,15 +619,26 @@ var DdcBacklight = class DdcBacklight {
      * also where the reason a hotplug event is not enough on its own is.
      */
     redetect() {
-        /* Dropped and not queued whenever ddcutil is already talking to this
-         * machine - a probe of its own, or a single monitor being read or
-         * written. See busy below, and _detect for the probe's half of it. */
-        if (this.destroyed || this.busy)
+        if (this.destroyed)
             return;
+        /* One request is retained while ddcutil is already talking to this
+         * machine. Repeated menu ticks coalesce into the same bit, while a
+         * one-shot hotplug signal is no longer lost behind a read or write. */
+        if (this.busy) {
+            this._redetectPending = true;
+            return;
+        }
         if (!this._started) {
             this.start();
             return;
         }
+        this._detect();
+    }
+
+    _drainRedetect() {
+        if (!this._redetectPending || this.destroyed || !this._started || this.busy)
+            return;
+        this._redetectPending = false;
         this._detect();
     }
 
@@ -637,13 +658,15 @@ var DdcBacklight = class DdcBacklight {
             let id = display.bus || ("display:" + display.number);
             let monitor = existing.get(id);
             if (!monitor)
-                return new DdcMonitor(display, this._run);
+                return new DdcMonitor(display, this._run,
+                                      () => this._drainRedetect());
             existing.delete(id);
             if (!monitor.adopt(display)) {
                 /* The socket survived but the monitor did not. None of the
                  * old scale, value or pending work belongs to its replacement. */
                 monitor.destroy();
-                return new DdcMonitor(display, this._run);
+                return new DdcMonitor(display, this._run,
+                                      () => this._drainRedetect());
             }
             return monitor;
         });
@@ -689,10 +712,9 @@ var DdcBacklight = class DdcBacklight {
      * one of them, and two ddcutil talking to one monitor is how ddcutil comes
      * back with nothing - the same collision PT-135 met from the other end.
      *
-     * So the flag covers the whole probe, and redetect drops what lands inside
-     * one rather than queueing it: whoever asked will ask again a second later,
-     * and a queue of probes against hardware that answers in tenths of a second
-     * never empties.
+     * So the flag covers the whole probe. redetect retains one request that
+     * lands inside it: recurring asks coalesce, while a connector signal that
+     * occurs only once is still acted on after the bus is free.
      *
      * Which probe is finishing has to be checked, because stop() disowns one
      * rather than waiting for it: switching the setting off and straight back
@@ -704,8 +726,10 @@ var DdcBacklight = class DdcBacklight {
         this._probe = probe;
         this._detecting = true;
         let settled = () => {
-            if (this._probe === probe)
+            if (this._probe === probe) {
                 this._detecting = false;
+                this._drainRedetect();
+            }
         };
 
         this._run(["ddcutil", "--brief", "detect"], (output, status) => {
@@ -876,6 +900,7 @@ var DdcBacklight = class DdcBacklight {
     destroy() {
         this.destroyed = true;
         this.available = false;
+        this._redetectPending = false;
         for (let monitor of this.monitors)
             monitor.destroy();
         this.monitors = [];
