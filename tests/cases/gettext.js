@@ -252,6 +252,25 @@ cases["named values are inserted after the complete message is translated"] = fu
                   "a catalogue typo remains visible instead of silently deleting text");
 };
 
+cases["dynamic name and value phrases use complete templates"] = function () {
+    let files = ["applet.js", "lib/alerts.js", "lib/device.js"];
+    let source = files.map(file => Harness.readFile(Harness.xletDir() + "/" + file)).join("\n");
+    for (let message of [
+        "%{source} - %{reading}",
+        "%{device}  %{charge}",
+        "%{kind} %{charge}",
+        "%{state} · %{remaining}",
+        "%{application} → %{profile}",
+    ]) {
+        Harness.ok(source.indexOf("_(\"" + message + "\")") >= 0,
+                   "the complete phrase is translatable: " + message);
+    }
+    Harness.equal(source.indexOf('application + " → "'), -1,
+                  "profile holds no longer fix the application before the profile");
+    Harness.equal(source.indexOf(' + " - " + '), -1,
+                  "alert punctuation is no longer outside gettext");
+};
+
 cases["asking for the translation of anything at all answers with text"] = function () {
     /*
      * Every label in this applet goes through here, including ones built from

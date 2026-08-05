@@ -33,6 +33,11 @@ const _ = Translate._;
  */
 var HYSTERESIS = 5;
 
+function readingText(source, reading) {
+    return Translate.interpolate(
+        _("%{source} - %{reading}"), { source: source, reading: reading });
+}
+
 /*
  * The critical level, kept under the low one.
  *
@@ -128,13 +133,13 @@ var AlertPolicy = class AlertPolicy {
         if (system && Device.chargeIsCritical(device, limits.criticalLevel)) {
             if (level !== "critical") {
                 if (this._deliver(true, _("Battery critically low"),
-                                  Format.deviceTitle(device) + " - " + charge.text))
+                                  readingText(Format.deviceTitle(device), charge.text)))
                     this._alerted.set(device.path, "critical");
             }
         } else if (Device.chargeIsLow(device, threshold)) {
             if (level === "") {
                 if (this._deliver(false, _("Battery low"),
-                                  Format.deviceTitle(device) + " - " + charge.text))
+                                  readingText(Format.deviceTitle(device), charge.text)))
                     this._alerted.set(device.path, "low");
             }
         } else if (Device.chargeRecovered(device, threshold, HYSTERESIS)) {
@@ -157,8 +162,8 @@ var AlertPolicy = class AlertPolicy {
             if (this._tempAlerted !== identity) {
                 let source = sensor.label || sensor.groupLabel || _("Temperature");
                 if (this._deliver(false, _("High temperature"),
-                                  source + " - " +
-                                  Format.temperature(celsius, limits.tempUnit, 1)))
+                                  readingText(source,
+                                      Format.temperature(celsius, limits.tempUnit, 1))))
                     this._tempAlerted = identity;
             }
         } else if (celsius < limits.highTempCelsius - HYSTERESIS) {

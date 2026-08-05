@@ -156,7 +156,8 @@ function emptyStatus(data) {
 function title(device) {
     let text = Format.deviceTitle(device);
     let charge = Format.batteryReading(device).text;
-    return charge ? text + "  " + charge : text;
+    return charge ? Translate.interpolate(
+        _("%{device}  %{charge}"), { device: text, charge: charge }) : text;
 }
 
 /*

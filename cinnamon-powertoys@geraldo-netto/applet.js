@@ -1510,12 +1510,15 @@ class MenuPresenter {
      */
     _updateSummary(data, options) {
         if (data.primary) {
-            this._summary.setLabel(Format.deviceKindName(data.primary.kind) + " " +
-                                   Format.batteryReading(data.primary).text);
+            let kind = Format.deviceKindName(data.primary.kind);
+            let charge = Format.batteryReading(data.primary).text;
+            this._summary.setLabel(charge ? Translate.interpolate(
+                _("%{kind} %{charge}"), { kind: kind, charge: charge }) : kind);
             let detail = Format.deviceStateName(data.primary.state);
             let remaining = Device.remainingText(data.primary);
             if (remaining)
-                detail += " · " + remaining;
+                detail = Translate.interpolate(
+                    _("%{state} · %{remaining}"), { state: detail, remaining: remaining });
             this._summary.setValue(detail);
         } else {
             this._summary.setLabel(PanelText.powerStatusLabel(data));
@@ -1545,7 +1548,11 @@ class MenuPresenter {
             notes.push(data.profile.degraded.replace(/-/g, " "));
         for (let hold of data.profile.holds) {
             let application = hold.application || _("an application");
-            notes.push(application + " → " + Format.profileLabel(hold.profile));
+            notes.push(Translate.interpolate(
+                _("%{application} → %{profile}"), {
+                    application: application,
+                    profile: Format.profileLabel(hold.profile),
+                }));
         }
         if (show && notes.length > 0) {
             this._degradedRow.setValue(notes.join(", "));
