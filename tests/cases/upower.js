@@ -450,12 +450,15 @@ cases["a bus that cannot be reached at all is logged, not thrown"] = function ()
     });
 };
 
-cases["a failed UPower owner watch leaves no false registration"] = function () {
-    let bus = busFor(null, {}, { watch: true });
+cases["a failed UPower owner watch falls back to direct discovery"] = function () {
+    let manager = managerFor([BAT0]);
+    let bus = busFor(manager, { [BAT0]: proxyFor() }, { watch: true });
     bus.watch = function () { throw new Error("owner watch failed"); };
     logging(function (lines) {
         let monitor = monitorOn(bus);
-        Harness.equal(monitor.counts.ready, 1, "watch failure is a settled unavailable state");
+        Harness.equal(monitor.available, true, "the usable manager is still discovered");
+        Harness.equal(monitor.snapshot().length, 1, "its devices remain available too");
+        Harness.equal(monitor.counts.ready, 1, "direct discovery settles readiness once");
         Harness.ok(lines.join("").indexOf("owner watch failed") >= 0,
                    "the setup failure retains its diagnostic");
         monitor.destroy();

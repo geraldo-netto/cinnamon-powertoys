@@ -244,7 +244,10 @@ var UPowerMonitor = class UPowerMonitor {
                                                 () => this._onNameVanished());
             } catch (e) {
                 Log.error("cannot watch UPower: " + e);
-                this._settleReady();
+                /* Ownership edges are optional for the initial state. Keep
+                 * the direct discovery path so a watcher setup failure does
+                 * not hide a perfectly usable daemon for this whole run. */
+                this._connect();
             }
         } else {
             this._connect();
