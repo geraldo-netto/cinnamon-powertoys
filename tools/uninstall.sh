@@ -10,6 +10,9 @@ SOURCE_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 LOCALE_DIR=${DESTDIR:-}$PREFIX/locale
 TARGET_PARENT=$(dirname "$TARGET_DIR")
 
+. "$SOURCE_ROOT/tools/deployment-lock.sh"
+acquire_deployment_lock "$TARGET_DIR"
+
 running_xlet() {
     output=$(gdbus call --session \
         --dest org.Cinnamon \

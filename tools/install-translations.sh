@@ -14,7 +14,8 @@ set -eu
 UUID=cinnamon-powertoys@geraldo-netto
 ACTION=${1:-install}
 LOCALE_DIR=${2:-${XDG_DATA_HOME:-$HOME/.local/share}/locale}
-PO_DIR=$(cd "$(dirname "$0")/.." && pwd)/$UUID/po
+SOURCE_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+PO_DIR=$SOURCE_ROOT/$UUID/po
 
 case "$ACTION" in
     install|uninstall) ;;
@@ -22,6 +23,14 @@ case "$ACTION" in
         echo "usage: install-translations.sh install|uninstall [locale-root]" >&2
         exit 2;;
 esac
+
+# A standalone catalogue update is the same deployment transaction as an
+# applet install. When called by install.sh or uninstall.sh this validates and
+# reuses their inherited lock; otherwise the locale root identifies the applet
+# target whose catalogues are being changed.
+. "$SOURCE_ROOT/tools/deployment-lock.sh"
+DEPLOYMENT_TARGET=$(dirname "$LOCALE_DIR")/cinnamon/applets/$UUID
+acquire_deployment_lock "$DEPLOYMENT_TARGET"
 
 if [ "$ACTION" = uninstall ]; then
     removed=0

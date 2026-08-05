@@ -19,6 +19,8 @@ LOCALE_DIR=${DESTDIR:-}$PREFIX/locale
 
 TARGET_PARENT=$(dirname "$TARGET_DIR")
 mkdir -p "$TARGET_PARENT"
+. "$(dirname "$0")/tools/deployment-lock.sh"
+acquire_deployment_lock "$TARGET_DIR"
 
 # Build the complete replacement beside the live applet. A failed or
 # interrupted copy can then touch only this private directory, not the version

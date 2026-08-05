@@ -41,6 +41,8 @@ function installedTree(msgfmt, body) {
         GLib.file_set_contents(script,
             Harness.readFile(Harness.testsDir() + "/../tools/install-translations.sh"));
         GLib.chmod(script, 0o700);
+        GLib.file_set_contents(tools + "/deployment-lock.sh",
+            Harness.readFile(Harness.testsDir() + "/../tools/deployment-lock.sh"));
         GLib.file_set_contents(bin + "/msgfmt", "#!/bin/sh\n" + msgfmt + "\n");
         GLib.chmod(bin + "/msgfmt", 0o700);
         return body({ directory: directory, script: script, po: po,

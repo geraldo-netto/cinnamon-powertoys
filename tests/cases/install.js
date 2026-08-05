@@ -38,6 +38,9 @@ function scratch(options, body) {
         GLib.chmod(source + "/install.sh", 0o700);
         GLib.file_set_contents(tools + "/uninstall.sh",
                                Harness.readFile(Harness.testsDir() + "/../tools/uninstall.sh"));
+        GLib.file_set_contents(tools + "/deployment-lock.sh",
+                               Harness.readFile(Harness.testsDir() +
+                                                "/../tools/deployment-lock.sh"));
 
         for (let name of ["applet.js", "metadata.json", "settings-schema.json",
                           "powertoys-helper"])
@@ -167,8 +170,10 @@ function temporaryEntries(tree) {
         imports.gi.Gio.FileQueryInfoFlags.NONE, null);
     let info;
     while ((info = enumerator.next_file(null)) !== null) {
-        if (info.get_name().indexOf("." + UUID + ".") === 0)
-            entries.push(info.get_name());
+        let name = info.get_name();
+        if (name.indexOf("." + UUID + ".") === 0 &&
+                name !== "." + UUID + ".deployment.lock")
+            entries.push(name);
     }
     enumerator.close(null);
     return entries;
@@ -187,6 +192,55 @@ function uninstall(tree, live) {
 }
 
 var cases = {};
+
+cases["deployment transactions exclude only the same target"] = function () {
+    let directory = GLib.dir_make_tmp("powertoys-lock-XXXXXX");
+    try {
+        let tool = Harness.testsDir() + "/../tools/deployment-lock.sh";
+        let target = directory + "/share/cinnamon/applets/" + UUID;
+        let ready = directory + "/ready";
+        let script = [
+            "set -eu",
+            "UUID=" + UUID,
+            ". \"$1\"",
+            "target=$2",
+            "ready=$3",
+            "( acquire_deployment_lock \"$target\"; : > \"$ready\"; sleep 1 ) &",
+            "holder=$!",
+            "attempts=0",
+            "while [ ! -f \"$ready\" ] && [ \"$attempts\" -lt 100 ]; do",
+            "  attempts=$((attempts + 1)); sleep 0.01",
+            "done",
+            "[ -f \"$ready\" ]",
+            "if ( acquire_deployment_lock \"$target\" ); then exit 7; fi",
+            "( acquire_deployment_lock \"$target.other\" )",
+            "wait \"$holder\"",
+        ].join("\n");
+        let outcome = Harness.settle(done => Privileged._spawn(
+            ["sh", "-c", script, "lock-test", tool, target, ready],
+            (status, stderr) => done({ status: status, stderr: stderr })),
+        "deployment lock contention");
+        Harness.equal(outcome.status, 0,
+                      "the same target was refused while an independent target proceeded");
+        Harness.ok(outcome.stderr.indexOf("another deployment operation owns") >= 0,
+                   "contention fails with an actionable diagnostic: " + outcome.stderr);
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
+    }
+};
+
+cases["every applet asset publisher acquires the deployment lock"] = function () {
+    let root = Harness.testsDir() + "/..";
+    for (let relative of ["install.sh", "tools/uninstall.sh",
+                           "tools/install-translations.sh"]) {
+        let source = Harness.readFile(root + "/" + relative);
+        Harness.ok(source.indexOf("deployment-lock.sh") >= 0,
+                   relative + " sources the shared lock");
+        Harness.ok(source.indexOf("acquire_deployment_lock") >= 0,
+                   relative + " acquires it before mutation");
+    }
+};
 
 cases["an incomplete staged applet leaves the live install untouched"] = function () {
     scratch({ incomplete: true }, tree => {
