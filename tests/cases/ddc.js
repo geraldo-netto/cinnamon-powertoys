@@ -56,6 +56,14 @@ const DETECT_ONE = [
     "",
 ].join("\n");
 
+const DETECT_REPLACEMENT = [
+    "Display 1",
+    "   I2C bus:          /dev/i2c-4",
+    "   DRM connector:    card1-DP-1",
+    "   Monitor:          SAM:ViewFinity S8:NEW001",
+    "",
+].join("\n");
+
 const DETECT_SECOND_ONLY = [
     "Display 1",
     "   I2C bus:          /dev/i2c-5",
@@ -280,6 +288,35 @@ cases["a monitor that survives a re-detection is the same control"] = function (
     Harness.equal(each.control.monitors[0], first,
                   "recognised by its bus, so its slider and a drag on it survive");
     Harness.equal(each.control.monitors[0].percentage, 40, "and it was re-read, not guessed");
+};
+
+cases["a different monitor on the same bus starts with clean state"] = function () {
+    let output = DETECT_ONE;
+    let brightness = "VCP 10 C 20 50\n";
+    let run = runner(function (argv) {
+        if (argv.indexOf("detect") >= 0)
+            return [output, 0];
+        if (argv.indexOf("getvcp") >= 0)
+            return [brightness, 0];
+        return ["", 0];
+    });
+    let control = new Ddc.DdcBacklight(null, run);
+    control.start();
+    let previous = control.monitors[0];
+    Harness.equal(previous.maximum, 50, "the old monitor's raw scale");
+    Harness.equal(previous.available, true, "and its last successful state");
+
+    output = DETECT_REPLACEMENT;
+    brightness = "VCP 10 ERR\n";
+    control.redetect();
+    let replacement = control.monitors[0];
+
+    Harness.ok(replacement !== previous, "different EDID means a different control");
+    Harness.equal(previous.destroyed, true, "the old control and queued work are retired");
+    Harness.equal(replacement.known, false, "a failed first read inherits no success");
+    Harness.equal(replacement.available, false, "no stale slider remains visible");
+    Harness.equal(replacement.percentage, null, "no stale brightness remains");
+    Harness.equal(replacement.maximum, null, "and writes cannot use the former raw scale");
 };
 
 cases["unplugging one renumbers the other rather than renaming it"] = function () {

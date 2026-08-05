@@ -229,6 +229,25 @@ function parseBrightness(output) {
     return reading ? reading.percentage : null;
 }
 
+/* EDID identity stays private: a serial belongs in a comparison, not in a
+ * menu or a screenshot. Missing fields are unknown rather than different,
+ * because a marginal DDC reply can omit one field for the same monitor. */
+function _displayIdentity(display) {
+    let clean = value => String(value || "").trim().toLowerCase();
+    return {
+        manufacturer: clean(display.manufacturer),
+        model: clean(display.model),
+        serial: clean(display.serial),
+    };
+}
+
+function _sameDisplay(first, second) {
+    for (let field of ["manufacturer", "model", "serial"])
+        if (first[field] && second[field] && first[field] !== second[field])
+            return false;
+    return true;
+}
+
 /*
  * One monitor.
  *
@@ -247,6 +266,7 @@ var DdcMonitor = class DdcMonitor {
         this.destroyed = false;
         /* Whether this monitor has ever answered. See refresh(). */
         this.known = false;
+        this._identity = _displayIdentity(display);
 
         this._run = run;
         /* One ddcutil at a time for this monitor, read or write. See refresh. */
@@ -266,13 +286,20 @@ var DdcMonitor = class DdcMonitor {
         return this._busy;
     }
 
-    /* Kept across a re-detection: the display number ddcutil hands out is a
-     * position in its own list and moves when something else is unplugged,
-     * and the name can change when a monitor is switched for another on the
-     * same socket. What does not change is the bus, which is the id. */
+    /* Kept across a re-detection when this is still the same physical monitor:
+     * the display number ddcutil hands out is a position in its own list and
+     * moves when something else is unplugged. The bus locates the socket; EDID
+     * fields decide whether the hardware occupying that socket also survived. */
     adopt(display) {
+        let identity = _displayIdentity(display);
+        if (!_sameDisplay(this._identity, identity))
+            return false;
+        for (let field of ["manufacturer", "model", "serial"])
+            if (identity[field])
+                this._identity[field] = identity[field];
         this.number = display.number;
         this.name = display.name;
+        return true;
     }
 
     /*
@@ -612,7 +639,12 @@ var DdcBacklight = class DdcBacklight {
             if (!monitor)
                 return new DdcMonitor(display, this._run);
             existing.delete(id);
-            monitor.adopt(display);
+            if (!monitor.adopt(display)) {
+                /* The socket survived but the monitor did not. None of the
+                 * old scale, value or pending work belongs to its replacement. */
+                monitor.destroy();
+                return new DdcMonitor(display, this._run);
+            }
             return monitor;
         });
         for (let gone of existing.values())
