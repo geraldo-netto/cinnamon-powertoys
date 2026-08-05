@@ -666,7 +666,8 @@ const RAPL_NAMES = [
 function _raplName(raw, packages) {
     let match = /^package-(\d+)$/i.exec(raw);
     if (match)
-        return packages > 1 ? _("Package") + " " + match[1] : _("Package");
+        return packages > 1 ? Translate.interpolate(
+            _("Package %{number}"), { number: match[1] }) : _("Package");
     for (let [pattern, name] of RAPL_NAMES) {
         if (pattern.test(raw))
             return name();

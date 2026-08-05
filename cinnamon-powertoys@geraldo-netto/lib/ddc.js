@@ -187,7 +187,7 @@ function nameDisplays(displays) {
     let named = displays.map(display => Object.assign({}, display, {
         name: Hardware.monitorName(display.manufacturer, display.model) ||
               _connectorName(display.connector) ||
-              _("Display") + " " + display.number,
+              Translate.interpolate(_("Display %{number}"), { number: display.number }),
     }));
 
     let counts = {};

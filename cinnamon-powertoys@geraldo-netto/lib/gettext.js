@@ -56,3 +56,18 @@ function _(text) {
         return translated;
     return Gettext.gettext(text);
 }
+
+/*
+ * Substitute named values only after gettext has translated the complete
+ * sentence. A translator can move a placeholder with its punctuation instead
+ * of being constrained by the English order of separately translated pieces.
+ */
+function interpolate(text, values) {
+    let fields = values || {};
+    return String(text).replace(/%\{([A-Za-z][A-Za-z0-9_]*)\}/g,
+        function (placeholder, name) {
+            if (!Object.prototype.hasOwnProperty.call(fields, name))
+                return placeholder;
+            return String(fields[name]);
+        });
+}

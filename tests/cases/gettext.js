@@ -238,6 +238,18 @@ cases["a string with no translation is the string"] = function () {
     Harness.equal(Translate._("Governor"), "Governor", "a word the shell also uses");
 };
 
+cases["named values are inserted after the complete message is translated"] = function () {
+    Harness.equal(Translate.interpolate("Could not switch to %{profile}: %{detail}", {
+        profile: "Power saver",
+        detail: "$& refused %{profile}",
+    }), "Could not switch to Power saver: $& refused %{profile}",
+    "replacement text is literal and is not recursively interpreted");
+    Harness.equal(Translate.interpolate("%{value} then %{value}", { value: 7 }),
+                  "7 then 7", "a translator can move or repeat a named value");
+    Harness.equal(Translate.interpolate("Keep %{missing}", {}), "Keep %{missing}",
+                  "a catalogue typo remains visible instead of silently deleting text");
+};
+
 cases["asking for the translation of anything at all answers with text"] = function () {
     /*
      * Every label in this applet goes through here, including ones built from

@@ -121,7 +121,8 @@ function describe(device) {
     if (device.voltage)
         parts.push(Format.volts(device.voltage));
     if (device.capacity && device.capacity < 100)
-        parts.push(_("health") + " " + Format.percent(device.capacity));
+        parts.push(Translate.interpolate(_("health %{percent}"),
+                                         { percent: Format.percent(device.capacity) }));
     if (device.cycles && device.cycles > 0)
         parts.push(device.cycles + " " + _("cycles"));
     if (device.energy && device.energyFull)

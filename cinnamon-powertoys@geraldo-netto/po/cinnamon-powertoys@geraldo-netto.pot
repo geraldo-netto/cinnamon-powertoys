@@ -16,108 +16,108 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: applet.js:834 applet.js:869 applet.js:1094
+#: applet.js:844 applet.js:879 applet.js:1104
 msgid "Brightness"
 msgstr ""
 
-#: applet.js:1071
+#: applet.js:1081
 msgid "System power settings"
 msgstr ""
 
-#: applet.js:1100
+#: applet.js:1110
 msgid "Screen"
 msgstr ""
 
-#: applet.js:1118 lib/format.js:108
+#: applet.js:1128 lib/format.js:108
 msgid "Keyboard"
 msgstr ""
 
-#: applet.js:1126 applet.js:3029
+#: applet.js:1136 applet.js:3065
 msgid "Power profile"
 msgstr ""
 
-#: applet.js:1135 lib/panel-text.js:224
+#: applet.js:1145 lib/panel-text.js:224
 msgid "Profile"
 msgstr ""
 
-#: applet.js:1139
+#: applet.js:1149
 msgid "Performance limited"
 msgstr ""
 
-#: applet.js:1165 lib/panel-text.js:212 lib/panel-text.js:236
+#: applet.js:1175 lib/panel-text.js:212 lib/panel-text.js:236
 #: lib/sensors.js:37
 msgid "Processor"
 msgstr ""
 
-#: applet.js:1170
+#: applet.js:1180
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1188 lib/panel-text.js:226 lib/reading.js:140
+#: applet.js:1198 lib/panel-text.js:226 lib/reading.js:140
 msgid "Governor"
 msgstr ""
 
-#: applet.js:1191 lib/reading.js:142
+#: applet.js:1201 lib/reading.js:142
 msgid "Energy preference"
 msgstr ""
 
-#: applet.js:1206 lib/panel-text.js:267
+#: applet.js:1216 lib/panel-text.js:267
 msgid "Devices"
 msgstr ""
 
-#: applet.js:1242 lib/reading.js:146
+#: applet.js:1252 lib/reading.js:146
 msgid "Charge limit"
 msgstr ""
 
-#: applet.js:1258
+#: applet.js:1268
 msgid "Sensors"
 msgstr ""
 
-#: applet.js:1371
+#: applet.js:1381
 #, javascript-format
 msgid "Only the first %d monitors have a slider"
 msgstr ""
 
-#: applet.js:1499
+#: applet.js:1509
 msgid "an application"
 msgstr ""
 
-#: applet.js:1518 lib/panel-text.js:251
+#: applet.js:1528 lib/panel-text.js:251
 msgid "Connected"
 msgstr ""
 
-#: applet.js:1518 lib/panel-text.js:251
+#: applet.js:1528 lib/panel-text.js:251
 msgid "Disconnected"
 msgstr ""
 
-#: applet.js:1571
-msgid "No sensor matches"
+#: applet.js:1582
+msgid "No sensor matches “%{sensor}”"
 msgstr ""
 
-#: applet.js:1593
+#: applet.js:1604
 msgid "The batteries have different limits; choosing one sets all batteries."
 msgstr ""
 
-#: applet.js:1594
+#: applet.js:1605
 msgid "The batteries have different charge limits."
 msgstr ""
 
-#: applet.js:1597
+#: applet.js:1608
 msgid ""
 "Some battery limits could not be read; choosing one sets all batteries."
 msgstr ""
 
-#: applet.js:1598
+#: applet.js:1609
 msgid "Some battery limits could not be read."
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:1918 applet.js:2962 applet.js:2971 applet.js:3028 applet.js:3090
-#: applet.js:3099 applet.js:3253
+#: applet.js:1925 applet.js:2991 applet.js:3005 applet.js:3064 applet.js:3126
+#: applet.js:3135 applet.js:3290
 msgid "Power Toys"
 msgstr ""
 
-#: applet.js:1919
+#: applet.js:1926
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "
@@ -125,104 +125,108 @@ msgid ""
 "shortcuts."
 msgstr ""
 
-#: applet.js:2911 applet.js:3058
+#: applet.js:2940 applet.js:3094
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2936
+#: applet.js:2965
 msgid "The requested value is not valid for this control."
 msgstr ""
 
-#: applet.js:2938
+#: applet.js:2967
 msgid "This control is not supported on this system."
 msgstr ""
 
-#: applet.js:2940
+#: applet.js:2969
 msgid "This control is currently unavailable."
 msgstr ""
 
-#: applet.js:2942
+#: applet.js:2971
 msgid "The system refused the requested change."
 msgstr ""
 
-#: applet.js:2944
+#: applet.js:2973
 msgid "The change failed; the previous settings were restored."
 msgstr ""
 
-#: applet.js:2946
+#: applet.js:2975
 msgid "The change failed and some previous settings could not be restored."
 msgstr ""
 
-#: applet.js:2948
+#: applet.js:2977
 msgid "The privileged helper could not be found."
 msgstr ""
 
-#: applet.js:2950 applet.js:2963
+#: applet.js:2979 applet.js:2992
 msgid ""
 "The installed privileged helper is outdated. Re-run the policy installation."
 msgstr ""
 
-#: applet.js:2952
+#: applet.js:2981
 msgid "The privileged helper is incompatible with this applet version."
 msgstr ""
 
-#: applet.js:2954
+#: applet.js:2983
 msgid "The change could not be applied."
 msgstr ""
 
-#: applet.js:2972
-msgid "Could not switch to"
+#: applet.js:3002
+msgid "Could not switch to %{profile}: %{detail}"
 msgstr ""
 
-#: applet.js:3254
-msgid "Shortcut is already in use"
+#: applet.js:3003
+msgid "Could not switch to %{profile}"
 msgstr ""
 
-#: lib/alerts.js:105
+#: applet.js:3291
+msgid "Shortcut is already in use: %{shortcut}"
+msgstr ""
+
+#: lib/alerts.js:130
 msgid "Battery critically low"
 msgstr ""
 
-#: lib/alerts.js:112
+#: lib/alerts.js:136
 msgid "Battery low"
 msgstr ""
 
-#: lib/alerts.js:135 lib/format.js:441 lib/panel-text.js:239
+#: lib/alerts.js:158 lib/format.js:441 lib/panel-text.js:239
 msgid "Temperature"
 msgstr ""
 
-#: lib/alerts.js:136
+#: lib/alerts.js:159
 msgid "High temperature"
 msgstr ""
 
 #: lib/ddc.js:190
-msgid "Display"
+msgid "Display %{number}"
 msgstr ""
 
-#: lib/device.js:75
+#: lib/device.js:97
 msgid "remaining"
 msgstr ""
 
-#: lib/device.js:77
+#: lib/device.js:99
 msgid "until full"
 msgstr ""
 
-#: lib/device.js:102
-msgid "health"
+#: lib/device.js:124
+msgid "health %{percent}"
 msgstr ""
 
-#: lib/device.js:104
+#: lib/device.js:127
 msgid "cycles"
 msgstr ""
 
-#: lib/device.js:121
+#: lib/device.js:144
 msgid "A battery is present, but its status is unavailable"
 msgstr ""
 
-#: lib/device.js:123
+#: lib/device.js:146
 msgid "Device status is unavailable"
 msgstr ""
 
-#: lib/device.js:124
+#: lib/device.js:147
 msgid "Nothing with a battery is connected"
 msgstr ""
 
@@ -595,7 +599,7 @@ msgstr ""
 msgid "No sensors found"
 msgstr ""
 
-#: lib/sensors.js:41 lib/sensors.js:675
+#: lib/sensors.js:41 lib/sensors.js:670
 msgid "Package"
 msgstr ""
 
@@ -635,7 +639,7 @@ msgstr ""
 msgid "Hotspot"
 msgstr ""
 
-#: lib/sensors.js:217 lib/sensors.js:668
+#: lib/sensors.js:217 lib/sensors.js:662
 msgid "Memory"
 msgstr ""
 
@@ -647,19 +651,23 @@ msgstr ""
 msgid "SoC voltage"
 msgstr ""
 
-#: lib/sensors.js:666
+#: lib/sensors.js:660
 msgid "Cores"
 msgstr ""
 
-#: lib/sensors.js:667
+#: lib/sensors.js:661
 msgid "Uncore"
 msgstr ""
 
-#: lib/sensors.js:669
+#: lib/sensors.js:663
 msgid "Whole board"
 msgstr ""
 
-#: lib/sensors.js:744
+#: lib/sensors.js:670
+msgid "Package %{number}"
+msgstr ""
+
+#: lib/sensors.js:739
 msgid "Total"
 msgstr ""
 

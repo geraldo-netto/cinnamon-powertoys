@@ -1578,7 +1578,8 @@ class MenuPresenter {
 
         this._hintRow.actor.visible = data.hintMatched === false;
         if (data.hintMatched === false)
-            this._hintRow.setLabel(_("No sensor matches") + " \u201c" + options.sensorHint + "\u201d");
+            this._hintRow.setLabel(Translate.interpolate(
+                _("No sensor matches \u201c%{sensor}\u201d"), { sensor: options.sensorHint }));
 
         /* Which readings get a row, what each is called and where the headings
          * fall is lib/sensor-rows.js; what is left here is handing the answer
@@ -2996,10 +2997,13 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _notifyProfileError(name, error) {
         let detail = error && error.message ? error.message : String(error);
         detail = detail.replace(/^GDBus\.Error:[^\s:]+:\s*/, "").trim();
+        let values = { profile: Format.profileLabel(name), detail: detail };
+        let message = detail ?
+            Translate.interpolate(_("Could not switch to %{profile}: %{detail}"), values) :
+            Translate.interpolate(_("Could not switch to %{profile}"), values);
         this._notifications.error(
             _("Power Toys"),
-            _("Could not switch to") + " " + Format.profileLabel(name) +
-            (detail ? ": " + detail : ""));
+            message);
     }
 
     /*
@@ -3283,7 +3287,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
             return;
         }
         this._notifications.error(
-            _("Power Toys"), _("Shortcut is already in use") + ": " + accelerator);
+            _("Power Toys"), Translate.interpolate(
+                _("Shortcut is already in use: %{shortcut}"), { shortcut: accelerator }));
     }
 
     _removeHotkeys() {
