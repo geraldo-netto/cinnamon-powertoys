@@ -33,6 +33,7 @@ const Tooltips = imports.ui.tooltips;
 const Alerts = require("./lib/alerts.js");
 const Backlight = require("./lib/backlight.js");
 const Bluez = require("./lib/bluez.js");
+const CinnamonPanel = require("./lib/cinnamon-panel.js");
 const Cpu = require("./lib/cpu.js");
 const Ddc = require("./lib/ddc.js");
 const Device = require("./lib/device.js");
@@ -228,57 +229,14 @@ const SETTINGS = [
  */
 class PanelPresenter {
     constructor(applet, iconDir, onTooltip) {
-        this._applet = applet;
         this._iconDir = iconDir;
         this._iconKey = null;
-        /* Whether the tooltip is on screen, which this is the only thing that
-         * knows; what the applet does with it is the applet's business. */
-        this._onTooltip = onTooltip || function () {};
-
-        /*
-         * Themes centre tooltips, which is right for the one-line label most
-         * applets have and wrong for a stack of "Governor: Performance"
-         * lines, where centring leaves every colon in a different place. An
-         * inline style beats the theme rule.
-         */
-        let tooltip = applet._applet_tooltip;
-        if (tooltip && tooltip._tooltip)
-            tooltip._tooltip.set_style("text-align: left;");
-
-        /*
-         * The tooltip is composed when it is about to be shown, not when the
-         * reading arrives.
-         *
-         * It is formatted text and it is the whole of what the
-         * panel costs per poll - and it can only be read with the pointer
-         * resting on the applet, which is a fraction of the time the applet
-         * exists. Cinnamon calls show() on the tooltip after its own delay,
-         * whatever brought the pointer there, so that is the moment to write
-         * it: no guessing from enter events, and nothing stale, because a
-         * tooltip already on screen is rewritten by the poll below.
-         */
         this._reading = null;
         this._readingOptions = null;
-        if (tooltip) {
-            let show = tooltip.show.bind(tooltip);
-            let hide = tooltip.hide.bind(tooltip);
-            tooltip.show = () => {
-                this._writeTooltip();
-                show();
-                /*
-                 * Whether it went up is read back rather than assumed.
-                 * Cinnamon's show() declines when there is no text yet or no
-                 * pointer position to draw at, and `visible` is where it says
-                 * so - taking the call for the fact would leave the applet
-                 * being told a tooltip is on screen when none is.
-                 */
-                this._onTooltip(!!tooltip.visible);
-            };
-            tooltip.hide = () => {
-                hide();
-                this._onTooltip(false);
-            };
-        }
+        this._shell = new CinnamonPanel.PanelAdapter(applet, {
+            beforeTooltip: () => this._writeTooltip(),
+            onTooltip: onTooltip,
+        });
     }
 
     /*
@@ -303,20 +261,18 @@ class PanelPresenter {
     update(data, options) {
         let profile = Reading.shownProfile(data, options);
         let source = PanelText.iconSource(data, options.iconSource, profile);
-        this._applet.set_applet_label(PanelText.labelText(data, options, source, profile));
+        this._shell.setLabel(PanelText.labelText(data, options, source, profile));
         this._updateIcon(data, source, profile);
 
         this._reading = data;
         this._readingOptions = options;
-        let tooltip = this._applet._applet_tooltip;
-        if (tooltip && tooltip.visible)
+        if (this._shell.tooltipVisible || !this._shell.hasTooltipLifecycle)
             this._writeTooltip();
     }
 
     _writeTooltip() {
         if (this._reading)
-            this._applet.set_applet_tooltip(PanelText.tooltipText(this._reading,
-                                                                  this._readingOptions));
+            this._shell.setTooltip(PanelText.tooltipText(this._reading, this._readingOptions));
     }
 
     _updateIcon(data, source, profile) {
@@ -326,9 +282,8 @@ class PanelPresenter {
             if (key === this._iconKey)
                 return;
             this._iconKey = key;
-            this._applet.set_applet_icon_symbolic_name(Format.batteryIconName());
-            if (icon)
-                this._applet._applet_icon.gicon = Gio.icon_new_for_string(icon);
+            this._shell.setBatteryIcon(Format.batteryIconName(),
+                                       icon ? Gio.icon_new_for_string(icon) : null);
             return;
         }
 
@@ -347,7 +302,7 @@ class PanelPresenter {
              * depends on the icon theme having noticed the applet's directory,
              * which it does not always do until something makes it rescan.
              */
-            this._applet.set_applet_icon_path(this._iconDir + "/" + profileIcon + ".svg");
+            this._shell.setIconPath(this._iconDir + "/" + profileIcon + ".svg");
             return;
         }
 
@@ -355,7 +310,13 @@ class PanelPresenter {
         if (key === this._iconKey)
             return;
         this._iconKey = key;
-        this._applet.set_applet_icon_symbolic_name(DEFAULT_ICON);
+        this._shell.setSymbolicIcon(DEFAULT_ICON);
+    }
+
+    destroy() {
+        this._shell.destroy();
+        this._reading = null;
+        this._readingOptions = null;
     }
 }
 
@@ -3172,6 +3133,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
     on_applet_removed_from_panel() {
         this._destroyed = true;
+        this._panel.destroy();
         this._stopPolling();
         this._stopProbingMonitors();
         this._cancelPendingScroll();
