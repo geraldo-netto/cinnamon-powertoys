@@ -378,6 +378,25 @@ const NODE_KINDS = [
 ];
 
 /*
+ * A channel that may stand for one whole graphics device.
+ *
+ * Several hwmon channels from one card are not necessarily additive: one can
+ * be the board and the others its rails. A driver's explicit total label is
+ * the contract; a lone unlabelled channel is the common power1 whole-device
+ * interface and has nothing beside it to double count. Anything else remains
+ * an individual tooltip reading only.
+ */
+const GPU_TOTAL_LABEL = /^(ppt|total(?: power)?|board power|gpu power|graphics power|package power)$/i;
+
+function gpuDeviceTotal(meters) {
+    if (meters.length === 1 && !meters[0].rawLabel)
+        return meters[0];
+    let explicit = meters.filter(meter => GPU_TOTAL_LABEL.test(
+        String(meter.rawLabel || "").trim().replace(/[_-]+/g, " ")));
+    return explicit.length === 1 ? explicit[0] : null;
+}
+
+/*
  * Discovers every temperature, fan and power meter exposed by hwmon plus any
  * thermal zone that hwmon does not already cover. Values are not read here,
  * only the paths to read later.
@@ -528,6 +547,12 @@ function _scanSensors(directories, readString) {
                 ofThisChip[nodeKind.list].push(sensor);
                 break;
             }
+        }
+
+        if (kind === "gpu") {
+            let total = gpuDeviceTotal(ofThisChip.powerMeters);
+            for (let meter of ofThisChip.powerMeters)
+                meter.deviceTotal = meter === total;
         }
 
         /* How many of its own kind this chip has, which decides whether an
@@ -968,6 +993,9 @@ var SensorSet = class SensorSet {
                 group: sensor.group,
                 groupLabel: sensor.groupLabel,
                 shortLabel: sensor.short,
+                /* Only this kind of channel may be aggregated across devices;
+                 * discovery leaves ambiguous rails false. */
+                deviceTotal: !!sensor.deviceTotal,
                 /* hwmon reports microwatts */
                 watts: raw / 1000000,
             });

@@ -225,10 +225,26 @@ cases["the package counter comes before the graphics card"] = function () {
 };
 
 cases["graphics cards are added together when there is nothing else"] = function () {
-    let powers = [{ kind: "gpu", watts: 30 }, { kind: "gpu", watts: 24 },
+    let powers = [{ id: "gpu0", group: "gpu0", kind: "gpu", deviceTotal: true, watts: 30 },
+                  { id: "gpu1", group: "gpu1", kind: "gpu", deviceTotal: true, watts: 24 },
                   { kind: "cpu", watts: 19 }];
     Harness.deepEqual(Reading.pickPower(null, null, powers), { watts: 54, source: "gpu" },
                       "both cards, and nothing that is not one");
+};
+
+cases["GPU rails are not added to their device total"] = function () {
+    let powers = [
+        { id: "total", group: "gpu0", kind: "gpu", deviceTotal: true, watts: 80 },
+        { id: "core", group: "gpu0", kind: "gpu", deviceTotal: false, watts: 45 },
+        { id: "memory", group: "gpu0", kind: "gpu", deviceTotal: false, watts: 20 },
+    ];
+    Harness.deepEqual(Reading.pickPower(null, null, powers), { watts: 80, source: "gpu" },
+                      "one whole-device figure, without the rails inside it");
+
+    for (let meter of powers)
+        meter.deviceTotal = false;
+    Harness.deepEqual(Reading.pickPower(null, null, powers), { watts: null, source: null },
+                      "ambiguous channels produce no fabricated panel total");
 };
 
 cases["a machine that measures no power says so rather than showing a zero"] = function () {
@@ -318,7 +334,10 @@ cases["the power figure always says which power it is"] = function () {
         },
         packageWatts: random.chance(2) ? null : random.between(0, 200),
         powers: [0, 1, 2].slice(0, random.below(3)).map(i => ({
+            id: "power:" + i,
+            group: "device:" + i,
             kind: random.pick(["gpu", "package", "battery"]),
+            deviceTotal: random.chance(2),
             watts: random.between(0, 200),
         })),
     }), input => {
@@ -373,12 +392,17 @@ cases["one graphics card on its own is still the machine's power figure"] = func
      * and RAPL counters this user cannot read, so what is left is whatever the
      * cards report. One card is a machine, not a special case.
      */
-    let one = Reading.pickPower(null, null, [{ kind: "gpu", watts: 54 }]);
+    let one = Reading.pickPower(null, null,
+                                [{ id: "gpu0", group: "gpu0", kind: "gpu",
+                                   deviceTotal: true, watts: 54 }]);
     Harness.equal(one.watts, 54, "the one card");
     Harness.equal(one.source, "gpu", "and it says so");
 
     let two = Reading.pickPower(null, null,
-                                [{ kind: "gpu", watts: 54 }, { kind: "gpu", watts: 20 }]);
+                                [{ id: "gpu0", group: "gpu0", kind: "gpu",
+                                   deviceTotal: true, watts: 54 },
+                                 { id: "gpu1", group: "gpu1", kind: "gpu",
+                                   deviceTotal: true, watts: 20 }]);
     Harness.equal(two.watts, 74, "two cards are added together");
 
     let none = Reading.pickPower(null, null, [{ kind: "battery", watts: 9 }]);

@@ -196,7 +196,9 @@ function pickTemperature(temperatures, hint) {
  * Which of several numbers counts as the machine's power draw.
  *
  * Battery drain is the honest number while on battery; otherwise the RAPL
- * package counter, and finally the GPU meters added together. The source is
+ * package counter, and finally one declared whole-device total per GPU. Raw
+ * hwmon channels are not added here: their relationship is driver-specific
+ * and may be a board total beside rails already included in it. The source is
  * reported alongside the value because these measure very different things -
  * see powerText, which is what says so to the user.
  */
@@ -205,8 +207,16 @@ function pickPower(primary, packageWatts, powers) {
         return { watts: primary.energyRate, source: "battery" };
     if (packageWatts !== null)
         return { watts: packageWatts, source: "package" };
-    let gpus = powers.filter(entry => entry.kind === "gpu");
-    if (gpus.length > 0)
-        return { watts: gpus.reduce((total, entry) => total + entry.watts, 0), source: "gpu" };
+    let gpus = new Map();
+    for (let entry of powers) {
+        if (entry.kind !== "gpu" || !entry.deviceTotal)
+            continue;
+        let group = entry.group || entry.id;
+        if (group && !gpus.has(group))
+            gpus.set(group, entry.watts);
+    }
+    if (gpus.size > 0)
+        return { watts: Array.from(gpus.values()).reduce((total, watts) => total + watts, 0),
+                 source: "gpu" };
     return { watts: null, source: null };
 }

@@ -231,6 +231,23 @@ cases["the averaged power node wins over the instantaneous one"] = function () {
     });
 };
 
+cases["only an unambiguous GPU total is aggregatable"] = function () {
+    let lone = { rawLabel: null };
+    Harness.equal(Sensors.gpuDeviceTotal([lone]), lone,
+                  "the common lone unlabelled device meter");
+
+    let total = { rawLabel: "PPT" };
+    let core = { rawLabel: "VDDGFX" };
+    let memory = { rawLabel: "Memory rail" };
+    Harness.equal(Sensors.gpuDeviceTotal([total, core, memory]), total,
+                  "an explicit whole-device channel is selected among rails");
+    Harness.equal(Sensors.gpuDeviceTotal([core, memory]), null,
+                  "rails with no declared total remain individual readings");
+    Harness.equal(Sensors.gpuDeviceTotal([{ rawLabel: "Total" },
+                                          { rawLabel: "Board power" }]), null,
+                  "two competing totals are ambiguous rather than additive");
+};
+
 cases["a sensor carries no field nothing reads"] = function () {
     on("machine", function () {
         let sensor = byId(Sensors.discoverSensors().powerMeters, "hwmon:hwmon3:power1");
