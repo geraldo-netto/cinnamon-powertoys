@@ -37,7 +37,8 @@ function scratch(batteries, body) {
         }
 
         let source = Harness.readFile(Harness.xletDir() + "/powertoys-helper")
-            .replace(/^POWER_SUPPLY_DIR=.*$/m, "POWER_SUPPLY_DIR=\"" + supply + "\"");
+            .replace(/^POWER_SUPPLY_DIR=.*$/m, "POWER_SUPPLY_DIR=\"" + supply + "\"")
+            .replace(/^LOCK_FILE=.*$/m, "LOCK_FILE=\"" + directory + "/lock\"");
         return body({ directory: directory, supply: supply, script: script,
                       source: source });
     } finally {
@@ -62,7 +63,8 @@ function cpuScratch(policies, body) {
                                    policies[name].governor + "\n");
         }
         let source = Harness.readFile(Harness.xletDir() + "/powertoys-helper")
-            .replace(/^CPU_DIR=.*$/m, "CPU_DIR=\"" + cpu + "\"");
+            .replace(/^CPU_DIR=.*$/m, "CPU_DIR=\"" + cpu + "\"")
+            .replace(/^LOCK_FILE=.*$/m, "LOCK_FILE=\"" + directory + "/lock\"");
         return body({ directory: directory, cpu: cpu, cpufreq: cpufreq,
                       script: script, source: source });
     } finally {
@@ -210,5 +212,37 @@ cases["a CPU policy transaction updates every policy"] = function () {
                       "the first policy");
         Harness.equal(contents(tree.cpufreq + "/policy1/scaling_governor"), "performance",
                       "the second policy");
+    });
+};
+
+cases["privileged helper mutations serialize across processes"] = function () {
+    cpuScratch({}, tree => {
+        let boost = tree.cpufreq + "/boost";
+        let log = tree.directory + "/order";
+        let runner = tree.directory + "/run-both";
+        GLib.file_set_contents(boost, "0\n");
+        let source = tree.source.replace("case \"$command\" in",
+            "printf 'start %s\\n' \"$argument\" >> \"" + log + "\"\n" +
+            "if [ \"$argument\" = 1 ]; then sleep 0.2; fi\n" +
+            "printf 'end %s\\n' \"$argument\" >> \"" + log + "\"\n\n" +
+            "case \"$command\" in");
+        GLib.file_set_contents(tree.script, source);
+        GLib.chmod(tree.script, 0o700);
+        GLib.file_set_contents(runner,
+            "#!/bin/sh\n" +
+            "\"" + tree.script + "\" boost 1 &\n" +
+            "first=$!\n" +
+            "while ! grep -q '^start 1$' \"" + log + "\" 2>/dev/null; do sleep 0.01; done\n" +
+            "\"" + tree.script + "\" boost 0 &\n" +
+            "second=$!\n" +
+            "wait \"$first\"\n" +
+            "wait \"$second\"\n");
+        GLib.chmod(runner, 0o700);
+
+        let [, , , status] = GLib.spawn_sync(null, [runner], null,
+                                             GLib.SpawnFlags.SEARCH_PATH, null);
+        Harness.equal(status, 0, "both helper processes finish");
+        Harness.equal(contents(log), "start 1\nend 1\nstart 0\nend 0",
+                      "the second transaction begins only after the first releases its lock");
     });
 };

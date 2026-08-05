@@ -6,6 +6,7 @@
  * what is handed to pkexec, and how each way the helper can end is reported.
  */
 
+const GLib = imports.gi.GLib;
 const Harness = imports.harness;
 
 const Privileged = Harness.requireXlet("./lib/privileged.js");
@@ -418,13 +419,23 @@ cases["the structured failure works when it is the only line"] = function () {
 };
 
 cases["the shipped helper emits the structured contract"] = function () {
-    let path = Harness.xletDir() + "/powertoys-helper";
-    let result = Harness.settle(done => Privileged._spawn(
-        [path, "boost", "not-a-switch"], (status, stderr) =>
-            done({ status: status, stderr: stderr })), "the real helper refusing a value");
-    Harness.equal(result.status, 1, "the value was refused");
-    Harness.ok(/^powertoys-helper-error invalid-value /.test(result.stderr),
-               "and the final line carries a stable code: " + result.stderr);
+    let directory = GLib.dir_make_tmp("powertoys-helper-contract-XXXXXX");
+    let path = directory + "/powertoys-helper";
+    try {
+        let source = Harness.readFile(Harness.xletDir() + "/powertoys-helper")
+            .replace(/^LOCK_FILE=.*$/m, "LOCK_FILE=\"" + directory + "/lock\"");
+        GLib.file_set_contents(path, source);
+        GLib.chmod(path, 0o700);
+        let result = Harness.settle(done => Privileged._spawn(
+            [path, "boost", "not-a-switch"], (status, stderr) =>
+                done({ status: status, stderr: stderr })), "the real helper refusing a value");
+        Harness.equal(result.status, 1, "the value was refused");
+        Harness.ok(/^powertoys-helper-error invalid-value /.test(result.stderr),
+                   "and the final line carries a stable code: " + result.stderr);
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
+    }
 };
 
 cases["the shipped helper identifies its protocol before authentication"] = function () {

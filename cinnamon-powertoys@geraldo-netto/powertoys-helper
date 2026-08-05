@@ -20,6 +20,7 @@ CPUFREQ_DIR=$CPU_DIR/cpufreq
 POWER_SUPPLY_DIR=/sys/class/power_supply
 PLATFORM_PROFILE=/sys/firmware/acpi/platform_profile
 PLATFORM_PROFILE_CHOICES=/sys/firmware/acpi/platform_profile_choices
+LOCK_FILE=/run/cinnamon-powertoys-helper.lock
 PROTOCOL_VERSION=2
 
 die() {
@@ -54,6 +55,17 @@ contains() {
         fi
     done
     return 1
+}
+
+# Hold one machine-wide transaction boundary. /run is root-owned, so an
+# unprivileged caller cannot redirect this fixed path before pkexec starts.
+acquire_lock() {
+    command -v flock >/dev/null 2>&1 ||
+        die unavailable "the flock command required for safe writes is unavailable"
+    if ! { exec 9>>"$LOCK_FILE"; } 2>/dev/null; then
+        die unavailable "cannot open the privileged transaction lock"
+    fi
+    flock -x 9 || die unavailable "cannot acquire the privileged transaction lock"
 }
 
 # write_node <file> <value> <what to say if it will not take it>
@@ -296,6 +308,8 @@ if [ "${1:-}" = protocol-version ]; then
 fi
 
 [ $# -ge 2 ] || usage
+
+acquire_lock
 
 command=$1
 argument=$2
