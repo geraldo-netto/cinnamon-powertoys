@@ -139,7 +139,10 @@ var BacklightControl = class BacklightControl {
         this._connecting = false;
         this._connectWaiters = [];
         this._generation = 0;
+        this._valueGeneration = 0;
         this._readySent = false;
+        this._read = null;
+        this._readQueue = [];
         this._mutation = null;
         this._mutationQueue = [];
 
@@ -198,7 +201,9 @@ var BacklightControl = class BacklightControl {
 
     _dropProxy() {
         ++this._generation;
+        ++this._valueGeneration;
         this._connecting = false;
+        this._cancelReads();
         this._cancelMutations();
         if (this._proxy && this._signalId) {
             try {
@@ -254,12 +259,62 @@ var BacklightControl = class BacklightControl {
     }
 
     _readPercentage(done) {
-        let generation = this._generation;
-        this._proxy.GetPercentageRemote((result, error) => {
-            if (this.destroyed || generation !== this._generation) {
-                done();
-                return;
-            }
+        let waiter = this._once(done);
+        if (this._read) {
+            /* A signal received after this call began means its reply may
+             * describe the state before that signal. Keep one follow-up read
+             * and let every caller settle from that newer snapshot. */
+            this._readQueue.push(waiter);
+            ++this._valueGeneration;
+            return;
+        }
+        this._startRead([waiter]);
+    }
+
+    _startRead(waiters) {
+        if (this.destroyed || !this._proxy) {
+            for (let waiter of waiters)
+                waiter();
+            return;
+        }
+
+        let operation = {
+            proxy: this._proxy,
+            proxyGeneration: this._generation,
+            valueGeneration: ++this._valueGeneration,
+            waiters: waiters,
+        };
+        this._read = operation;
+        let finish = (result, error) => this._finishRead(operation, result, error);
+        try {
+            operation.proxy.GetPercentageRemote(finish);
+        } catch (error) {
+            finish(null, error);
+        }
+    }
+
+    _finishRead(operation, result, error) {
+        if (this._read !== operation) {
+            for (let waiter of operation.waiters)
+                waiter();
+            return;
+        }
+
+        this._read = null;
+        let queued = this._readQueue.splice(0);
+        let sameProxy = !this.destroyed &&
+            operation.proxyGeneration === this._generation &&
+            operation.proxy === this._proxy;
+
+        /* Coalesced refreshes require a read that began after the latest
+         * request. Ignore this answer—even an error—and carry all waiters to
+         * the single follow-up read. */
+        if (queued.length > 0 && sameProxy) {
+            this._startRead(operation.waiters.concat(queued));
+            return;
+        }
+
+        if (sameProxy && operation.valueGeneration === this._valueGeneration) {
             if (error || !result) {
                 this.available = false;
                 this.percentage = null;
@@ -270,8 +325,9 @@ var BacklightControl = class BacklightControl {
                 this.available = true;
                 this.percentage = result[0];
             }
-            done();
-        });
+        }
+        for (let waiter of operation.waiters)
+            waiter();
     }
 
     _once(callback) {
@@ -294,6 +350,18 @@ var BacklightControl = class BacklightControl {
             operation.settle();
     }
 
+    _cancelReads() {
+        let current = this._read;
+        this._read = null;
+        let queued = this._readQueue.splice(0);
+        if (current) {
+            for (let waiter of current.waiters)
+                waiter();
+        }
+        for (let waiter of queued)
+            waiter();
+    }
+
     /*
      * One mutation reaches the daemon at a time. Slider motion is special: a
      * value still waiting behind another call is replaced by the latest one,
@@ -307,6 +375,10 @@ var BacklightControl = class BacklightControl {
             operation.settle();
             return;
         }
+
+        /* A later mutation owns the next visible value, including while an
+         * earlier read or mutation is still in flight. */
+        ++this._valueGeneration;
 
         let last = this._mutationQueue[this._mutationQueue.length - 1];
         if (operation.type === "set" && last && last.type === "set") {
@@ -326,6 +398,7 @@ var BacklightControl = class BacklightControl {
         let operation = this._mutationQueue.shift();
         let proxy = this._proxy;
         let generation = this._generation;
+        let valueGeneration = ++this._valueGeneration;
         this._mutation = operation;
 
         let finish = (result, error) => {
@@ -337,7 +410,8 @@ var BacklightControl = class BacklightControl {
             }
             this._mutation = null;
             if (!this.destroyed && generation === this._generation &&
-                proxy === this._proxy && !error && result)
+                proxy === this._proxy && valueGeneration === this._valueGeneration &&
+                !error && result)
                 this.percentage = result[0];
             operation.settle();
             this._drainMutations();
@@ -349,20 +423,20 @@ var BacklightControl = class BacklightControl {
             } else if (operation.type === "toggle") {
                 proxy.ToggleRemote(finish);
             } else {
-                this._runSteps(operation, proxy, generation, finish);
+                this._runSteps(operation, proxy, generation, valueGeneration, finish);
             }
         } catch (e) {
             finish(null, e);
         }
     }
 
-    _runSteps(operation, proxy, generation, finish) {
+    _runSteps(operation, proxy, generation, valueGeneration, finish) {
         let remaining = operation.count;
         let call = operation.up ? proxy.StepUpRemote : proxy.StepDownRemote;
         let next = (result, error) => {
             if (result !== undefined && !this.destroyed &&
                 generation === this._generation && proxy === this._proxy &&
-                !error && result)
+                valueGeneration === this._valueGeneration && !error && result)
                 this.percentage = result[0];
             if (error || this.destroyed || generation !== this._generation ||
                 proxy !== this._proxy || remaining === 0) {

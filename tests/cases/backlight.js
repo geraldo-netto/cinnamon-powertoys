@@ -333,6 +333,47 @@ cases["something else moving the backlight is read and reported"] = function () 
     Harness.equal(screen.changedCount(), 1, "and passed on once");
 };
 
+cases["overlapping refreshes coalesce behind the newest read"] = function () {
+    let answers = { GetPercentage: 40 };
+    let stub = proxy(answers, { deferred: ["GetPercentage"] });
+    let screen = control(Backlight.SCREEN, stub);
+    stub.pending.shift()();
+    stub.calls.length = 0;
+    let answered = 0;
+
+    screen.refresh(() => answered++);
+    screen.refresh(() => answered++);
+    Harness.equal(stub.pending.length, 1, "only one read is in flight");
+
+    answers.GetPercentage = null;
+    stub.pending.shift()();
+    Harness.equal(stub.pending.length, 1, "a newer request becomes one follow-up read");
+    Harness.equal(answered, 0, "both callers wait for the current snapshot");
+    Harness.equal(screen.available, true, "a superseded failure keeps the live proxy");
+
+    answers.GetPercentage = 72;
+    stub.pending.shift()();
+    Harness.equal(screen.percentage, 72, "the newest serialized read wins");
+    Harness.equal(answered, 2, "every coalesced caller settles once");
+};
+
+cases["a mutation invalidates an older percentage read"] = function () {
+    let answers = { GetPercentage: 40, SetPercentage: value => value };
+    let stub = proxy(answers, { deferred: ["GetPercentage", "SetPercentage"] });
+    let screen = control(Backlight.SCREEN, stub);
+    stub.pending.shift()();
+
+    screen.refresh();
+    screen.setPercentage(80);
+    let write = stub.pending.splice(1, 1)[0];
+    write();
+    Harness.equal(screen.percentage, 80, "the later mutation supplies the visible value");
+
+    answers.GetPercentage = 20;
+    stub.pending.shift()();
+    Harness.equal(screen.percentage, 80, "the older read cannot overwrite the mutation");
+};
+
 cases["a destroyed control lets go and stops answering"] = function () {
     let stub = proxy({ GetPercentage: 40 });
     let screen = control(Backlight.SCREEN, stub);
