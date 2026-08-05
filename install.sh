@@ -216,9 +216,15 @@ if [ -e "$TARGET_DIR" ] || [ -L "$TARGET_DIR" ]; then
     BACKUP_READY=yes
     trap 'exit 1' HUP INT TERM
 fi
+# Publishing the staged tree and recording that publication are one state
+# transition. In particular on a first install there is no backup to reveal
+# the rename to cleanup, so a signal between these commands must not leave an
+# uncommitted applet visible.
+trap '' HUP INT TERM
 mv -- "$STAGING" "$TARGET_DIR"
 STAGING=
 SWAPPED=yes
+trap 'exit 1' HUP INT TERM
 
 
 # A .po in po/ does nothing until it is compiled into the directory the applet

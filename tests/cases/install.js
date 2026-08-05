@@ -31,7 +31,7 @@ function scratch(options, body) {
     let target = parent + "/" + UUID;
     GLib.mkdir_with_parents(applet, 0o755);
     GLib.mkdir_with_parents(tools, 0o755);
-    GLib.mkdir_with_parents(target, 0o755);
+    GLib.mkdir_with_parents(options.firstInstall ? parent : target, 0o755);
     try {
         GLib.file_set_contents(source + "/install.sh",
                                Harness.readFile(Harness.testsDir() + "/../install.sh"));
@@ -46,8 +46,10 @@ function scratch(options, body) {
         if (!options.incomplete)
             GLib.mkdir_with_parents(applet + "/lib", 0o755);
 
-        GLib.file_set_contents(target + "/marker", "old\n");
-        GLib.file_set_contents(target + "/stylesheet.css", "old css\n");
+        if (!options.firstInstall) {
+            GLib.file_set_contents(target + "/marker", "old\n");
+            GLib.file_set_contents(target + "/stylesheet.css", "old css\n");
+        }
         GLib.file_set_contents(applet + "/stylesheet.css", "new css\n");
         let translationScript = "#!/bin/sh\n";
         if (options.translationMutation) {
@@ -73,7 +75,8 @@ function scratch(options, body) {
         GLib.chmod(tools + "/install-translations.sh", 0o700);
 
         let path = GLib.getenv("PATH") || "/usr/bin:/bin";
-        if (options.rmdirStatus || options.failedReload || options.runningQueryFailure ||
+        if (options.rmdirStatus || options.signalPublish || options.failedReload ||
+                options.runningQueryFailure ||
                 options.uninstallRuntime || options.uninstallQueryFailure) {
             let bin = directory + "/bin";
             GLib.mkdir_with_parents(bin, 0o755);
@@ -81,6 +84,11 @@ function scratch(options, body) {
                 GLib.file_set_contents(bin + "/rmdir",
                                        "#!/bin/sh\nexit " + options.rmdirStatus + "\n");
                 GLib.chmod(bin + "/rmdir", 0o700);
+            }
+            if (options.signalPublish) {
+                GLib.file_set_contents(bin + "/mv",
+                    "#!/bin/sh\n/bin/mv \"$@\"\nkill -TERM \"$PPID\"\n");
+                GLib.chmod(bin + "/mv", 0o700);
             }
             if (options.failedReload) {
                 let state = directory + "/reload-count";
@@ -234,6 +242,17 @@ cases["a complete staged applet replaces the previous tree"] = function () {
         Harness.equal(read(options.translationState), "new translation",
                       "the new catalogue is retained after commit");
         Harness.deepEqual(temporaryEntries(tree), [], "the backup was removed after commit");
+    });
+};
+
+cases["a first-install publish cannot be interrupted before it is recorded"] = function () {
+    scratch({ firstInstall: true, signalPublish: true }, tree => {
+        let outcome = install(tree);
+        Harness.equal(outcome.status, 0,
+                      "the signal in the protected publish transition is ignored");
+        Harness.equal(read(tree.target + "/applet.js"), "new applet.js",
+                      "the fully completed first install remains visible");
+        Harness.deepEqual(temporaryEntries(tree), [], "no transaction tree is stranded");
     });
 };
 
