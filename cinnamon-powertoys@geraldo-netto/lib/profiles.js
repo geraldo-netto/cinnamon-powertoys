@@ -20,6 +20,8 @@ const BACKENDS = [
  * distinct from both the pending initial edge (null) and confirmed absence
  * (false), so direct discovery can cover the missing observation. */
 const OWNER_WATCH_FAILED = "watch-failed";
+var RETRY_INITIAL_MS = 500;
+var RETRY_MAX_MS = 8000;
 
 function _interfaceXml(name) {
     return '<node>\
@@ -225,6 +227,8 @@ var PowerProfilesClient = class PowerProfilesClient {
         this._connecting = false;
         this._connectPending = false;
         this._connectCall = null;
+        this._retryTimerId = 0;
+        this._retryDelay = RETRY_INITIAL_MS;
         /* Built on demand and dropped whenever the daemon says anything has
          * changed - see snapshot(). */
         this._snapshot = null;
@@ -259,6 +263,7 @@ var PowerProfilesClient = class PowerProfilesClient {
             return;
         if (this._ownerAware)
             this._ownerStates[index] = present;
+        this._cancelRetry();
 
         let backend = BACKENDS[index];
         if (!present && this.busName === backend.name) {
@@ -320,17 +325,20 @@ var PowerProfilesClient = class PowerProfilesClient {
         this._tryBackend(0, this._ownedBackends());
     }
 
-    _finishConnectSearch() {
+    _finishConnectSearch(failed) {
         this._connecting = false;
         if (this._connectPending) {
             this._connectPending = false;
             this._connect();
+            return;
         }
+        if (failed)
+            this._scheduleRetry();
     }
 
     _tryBackend(index, candidates) {
         if (index >= candidates.length) {
-            this._finishConnectSearch();
+            this._finishConnectSearch(candidates.length > 0);
             return;
         }
 
@@ -362,6 +370,7 @@ var PowerProfilesClient = class PowerProfilesClient {
 
                 this._connecting = false;
                 this._connectPending = false;
+                this._cancelRetry();
                 this._proxy = proxy;
                 this.busName = backend.name;
                 this.busPath = backend.path;
@@ -390,6 +399,34 @@ var PowerProfilesClient = class PowerProfilesClient {
                 /* already cancelled */
             }
         }
+    }
+
+    _scheduleRetry() {
+        if (this.destroyed || !this._ownerAware || this._retryTimerId ||
+            this._ownedBackends().length === 0)
+            return;
+        let delay = this._retryDelay;
+        this._retryDelay = Math.min(delay * 2, RETRY_MAX_MS);
+        let callback = () => {
+            this._retryTimerId = 0;
+            if (!this.destroyed && this._ownedBackends().length > 0)
+                this._connect();
+            return GLib.SOURCE_REMOVE;
+        };
+        this._retryTimerId = this._bus.timeoutAdd
+            ? this._bus.timeoutAdd(delay, callback)
+            : GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback);
+    }
+
+    _cancelRetry() {
+        if (this._retryTimerId) {
+            if (this._bus.removeTimer)
+                this._bus.removeTimer(this._retryTimerId);
+            else
+                GLib.source_remove(this._retryTimerId);
+            this._retryTimerId = 0;
+        }
+        this._retryDelay = RETRY_INITIAL_MS;
     }
 
     _disconnectProxy(writeError) {
@@ -584,6 +621,7 @@ var PowerProfilesClient = class PowerProfilesClient {
          * wanted, the same way a probe in flight is disowned in lib/ddc.js. */
         this.destroyed = true;
         this._connectPending = false;
+        this._cancelRetry();
         this._cancelConnect();
         this._cancelProfileWrites(null, false);
         this._disconnectProxy();

@@ -131,6 +131,29 @@ function ownerBus(daemons) {
     return system;
 }
 
+function retryTimers(system) {
+    let timers = { next: 1, pending: {}, delays: [], removed: [] };
+    system.timeoutAdd = function (delay, callback) {
+        let id = timers.next++;
+        timers.pending[id] = callback;
+        timers.delays.push(delay);
+        return id;
+    };
+    system.removeTimer = function (id) {
+        timers.removed.push(id);
+        delete timers.pending[id];
+    };
+    timers.fire = function () {
+        let ids = Object.keys(timers.pending);
+        Harness.equal(ids.length, 1, "exactly one profile retry is pending");
+        let id = Number(ids[0]);
+        let callback = timers.pending[id];
+        delete timers.pending[id];
+        callback();
+    };
+    return timers;
+}
+
 var cases = {};
 
 cases["the daemon is found under either of the two names"] = function () {
@@ -174,6 +197,75 @@ cases["the highest-priority owned profile name wins"] = function () {
     system.watched.find(entry => entry.name === HADESS).appeared();
     Harness.equal(client.busName, HADESS, "a returning preferred owner replaces the fallback");
     client.destroy();
+};
+
+cases["owned profile discovery failures retry with capped backoff"] = function () {
+    let daemons = { [HADESS]: daemon() };
+    let system = ownerBus(daemons);
+    let timers = retryTimers(system);
+    let failures = 7;
+    let attempts = 0;
+    system.proxy = function (backend, onDone) {
+        system.asked.push(backend.name);
+        attempts++;
+        if (failures-- > 0)
+            onDone(null, new Error("proxy timeout"));
+        else
+            onDone(daemons[backend.name], null);
+    };
+    let client = new Profiles.PowerProfilesClient(null, system);
+
+    for (let i = 0; i < 6; i++)
+        timers.fire();
+    Harness.deepEqual(timers.delays, [500, 1000, 2000, 4000, 8000, 8000],
+                      "profile retry delay doubles only to its cap");
+    Harness.equal(attempts, 8, "the owned backend is retried until it recovers");
+    Harness.equal(client.busName, HADESS, "the recovered proxy is adopted");
+    Harness.equal(Object.keys(timers.pending).length, 0, "success leaves no retry armed");
+    Harness.equal(client._retryDelay, Profiles.RETRY_INITIAL_MS,
+                  "success resets backoff for another incident");
+    client.destroy();
+};
+
+cases["an owned profile proxy with no usable profiles is retried"] = function () {
+    let good = daemon();
+    let system = ownerBus({ [HADESS]: good });
+    let timers = retryTimers(system);
+    let attempts = 0;
+    system.proxy = function (backend, onDone) {
+        attempts++;
+        onDone(attempts <= 2 ? daemon({ profiles: [] }) : good, null);
+    };
+    let client = new Profiles.PowerProfilesClient(null, system);
+
+    Harness.equal(Object.keys(timers.pending).length, 1,
+                  "an unusable initial property set arms retry");
+    timers.fire();
+    Harness.equal(client.available, true, "a usable property set is adopted later");
+    Harness.equal(attempts, 3, "the still-owned name was probed again");
+    client.destroy();
+};
+
+cases["profile discovery retry is cancelled on owner changes and teardown"] = function () {
+    let daemons = { [HADESS]: daemon() };
+    let system = ownerBus(daemons);
+    let timers = retryTimers(system);
+    system.proxy = function (backend, onDone) {
+        onDone(null, new Error("proxy timeout"));
+    };
+    let client = new Profiles.PowerProfilesClient(null, system);
+    let hadessWatch = system.watched.find(entry => entry.name === HADESS);
+    Harness.equal(Object.keys(timers.pending).length, 1, "failure arms retry");
+
+    delete daemons[HADESS];
+    hadessWatch.vanished();
+    Harness.equal(Object.keys(timers.pending).length, 0, "owner loss cancels it");
+    daemons[HADESS] = daemon();
+    hadessWatch.appeared();
+    Harness.equal(Object.keys(timers.pending).length, 1,
+                  "the replacement owner has a fresh discovery incident");
+    client.destroy();
+    Harness.equal(Object.keys(timers.pending).length, 0, "teardown cancels that retry too");
 };
 
 cases["a name that offers no profiles is passed over"] = function () {
