@@ -381,6 +381,22 @@ cases["a counter that wraps does not read as a negative"] = function () {
     });
 };
 
+cases["a reset energy counter is rebaselined, not treated as a wrap"] = function () {
+    on("machine", function () {
+        let counter = byId(Sensors.discoverEnergyCounters(), "rapl:intel-rapl:0");
+        let meter = new Sensors.EnergyMeter(counter);
+        meter.sample(0);
+        meter._lastValue = counter.maxRange / 2;
+        meter.sample(1000000);
+        Harness.equal(meter.watts, null, "an ambiguous fall produces no power spike");
+        Harness.equal(meter._lastValue, 1000000, "the reset value becomes the new baseline");
+
+        meter._lastValue = counter.maxRange - 1000000;
+        meter.sample(2000000, () => 0);
+        Harness.equal(meter.watts, null, "an exact zero is a reset even near the range edge");
+    });
+};
+
 cases["no time between two readings gives no rate"] = function () {
     on("machine", function () {
         let meter = new Sensors.EnergyMeter(Sensors.discoverEnergyCounters()[0]);

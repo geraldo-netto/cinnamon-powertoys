@@ -871,9 +871,16 @@ var EnergyMeter = class EnergyMeter {
             this.watts = null;
         } else {
             let energy = value - this._lastValue;
-            /* The counter is a fixed width, so it wraps back to zero. */
-            if (energy < 0 && this.counter.maxRange)
-                energy += this.counter.maxRange;
+            if (energy < 0) {
+                /* A falling counter may have wrapped, or somebody may have
+                 * reset energy_uj to zero through the powercap ABI. Only
+                 * values on opposite edges of the range are evidence of a
+                 * wrap; every ambiguous fall is discarded and rebaselined. */
+                let range = this.counter.maxRange;
+                let wrapped = range && value > 0 &&
+                    this._lastValue >= range * 0.75 && value <= range * 0.25;
+                energy = wrapped ? energy + range : -1;
+            }
             let elapsed = taken - this._lastTime;
             /* microjoules per microsecond is watts */
             this.watts = (elapsed > 0 && energy >= 0) ? energy / elapsed : null;
