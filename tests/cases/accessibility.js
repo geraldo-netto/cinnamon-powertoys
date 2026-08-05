@@ -18,6 +18,21 @@ cases["slider descriptions avoid Atk.Action's method"] = function () {
                "Atk.Action.set_description needs an action index and text");
 };
 
+cases["slider range and step are complete localized accessibility text"] = function () {
+    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let start = source.indexOf("class BacklightSlider ");
+    let slider = source.slice(start, source.indexOf("\nclass PanelPresenter", start));
+    Harness.ok(start >= 0 && slider.length > 0, "the backlight slider is present");
+    Harness.ok(slider.indexOf(
+        '_("Brightness range: %{minimum} to %{maximum}; step: %{step}")') >= 0,
+        "range and step form one translatable description");
+    for (let value of ["0", "100", "BACKLIGHT_STEP"])
+        Harness.ok(slider.indexOf("Format.percent(" + value + ")") >= 0,
+                   value + " uses the shared localized percentage formatter");
+    Harness.equal(slider.indexOf('"0–100% · "'), -1,
+                  "the cryptic untranslated fragment is gone");
+};
+
 cases["one power profile is status rather than a control"] = function () {
     let source = Harness.readFile(Harness.xletDir() + "/applet.js");
     Harness.ok(source.indexOf("this._profileValueRow = new InfoRow") >= 0,

@@ -876,7 +876,12 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
          * takes an action index before the text. Name Atk.Object explicitly so
          * GJS cannot resolve the colliding interface method. */
         Atk.Object.prototype.set_description.call(
-            this._accessible, "0–100% · " + BACKLIGHT_STEP + "%");
+            this._accessible, Translate.interpolate(
+                _("Brightness range: %{minimum} to %{maximum}; step: %{step}"), {
+                    minimum: Format.percent(0),
+                    maximum: Format.percent(100),
+                    step: Format.percent(BACKLIGHT_STEP),
+                }));
 
         this.tooltip = new Tooltips.Tooltip(this.actor, label);
 
