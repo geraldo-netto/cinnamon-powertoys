@@ -16,6 +16,11 @@ const BACKENDS = [
     { name: "org.freedesktop.UPower.PowerProfiles", path: "/org/freedesktop/UPower/PowerProfiles" },
 ];
 
+/* A watcher setup failure means ownership is unknown, not absent. Keep it
+ * distinct from both the pending initial edge (null) and confirmed absence
+ * (false), so direct discovery can cover the missing observation. */
+const OWNER_WATCH_FAILED = "watch-failed";
+
 function _interfaceXml(name) {
     return '<node>\
 <interface name="' + name + '">\
@@ -238,7 +243,7 @@ var PowerProfilesClient = class PowerProfilesClient {
                  * prevent the current daemon from being used. The initial
                  * search below still supplies a complete present-time state. */
                 if (this._ownerAware)
-                    this._ownerStates[index] = false;
+                    this._ownerStates[index] = OWNER_WATCH_FAILED;
             }
         }
 
@@ -281,7 +286,8 @@ var PowerProfilesClient = class PowerProfilesClient {
             return BACKENDS;
         let result = [];
         for (let index = 0; index < BACKENDS.length; index++) {
-            if (this._ownerStates[index] === true)
+            if (this._ownerStates[index] === true ||
+                this._ownerStates[index] === OWNER_WATCH_FAILED)
                 result.push(BACKENDS[index]);
         }
         return result;
