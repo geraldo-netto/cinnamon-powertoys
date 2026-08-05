@@ -151,7 +151,10 @@ function defaultBackends() {
             asynchronous: true,
             onChanged: onChanged,
         }),
-        cpuControl: runner => new Cpu.CpuControl(runner),
+        cpuControl: (runner, onChanged) => new Cpu.CpuControl(runner, {
+            asynchronous: true,
+            onChanged: onChanged,
+        }),
         chargeControl: runner => PowerSupply.discoverChargeControl(runner),
         platformProfileClient: runner => new PowerSupply.PlatformProfileClient(runner),
         profilesClient: onChanged => new Profiles.PowerProfilesClient(onChanged),
@@ -1696,7 +1699,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * backend keeps its prior complete snapshot while doing that work and
          * asks for a new reading only after the replacement is ready. */
         this._sensors = this._backends.sensors(() => this._scheduleUpdate());
-        this._cpu = this._backends.cpuControl((args, onDone) => this._runHelper(args, onDone));
+        this._cpu = this._backends.cpuControl(
+            (args, onDone) => this._runHelper(args, onDone),
+            () => this._scheduleUpdate());
         this._chargeControl = null;
         this._rediscoverChargeControl();
 

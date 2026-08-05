@@ -59,12 +59,61 @@ function _agreed(paths, node) {
 }
 
 var CpuControl = class CpuControl {
-    constructor(runner) {
+    constructor(runner, options) {
+        let configuration = options || {};
         this._runner = runner || function () {};
+        this._asynchronous = !!configuration.asynchronous;
+        this._onChanged = configuration.onChanged || function () {};
+        this._refreshing = false;
+        this._refreshWaiters = [];
+        this._destroyed = false;
+
+        this.policies = [];
+        this.reference = null;
+        this.driver = null;
+        this.governors = [];
+        this.energyPolicies = [];
+        this.energyPreferences = [];
+        this.amdPstateStatus = null;
+        this.model = null;
+        this._maxFrequency = null;
+        this.boostPath = null;
+        this.boostInverted = false;
+        this._governor = null;
+        this._energyPreference = null;
+        this._boostEnabled = null;
+        this._averageFrequency = null;
+
         this.refresh();
     }
 
-    refresh() {
+    refresh(onDone) {
+        if (!this._asynchronous) {
+            this._refreshSync();
+            if (onDone)
+                onDone(true);
+            return;
+        }
+        if (this._destroyed)
+            return;
+        if (onDone)
+            this._refreshWaiters.push(onDone);
+        if (this._refreshing)
+            return;
+        this._refreshing = true;
+        this._discoverAsync(state => {
+            if (this._destroyed)
+                return;
+            this._adopt(state);
+            this._refreshing = false;
+            let waiters = this._refreshWaiters.splice(0);
+            for (let waiter of waiters)
+                waiter(true);
+            this._onChanged();
+        });
+    }
+
+    _refreshSync() {
         this.policies = IO.listDir(CPUFREQ_DIR)
             .filter(name => /^policy\d+$/.test(name))
             .map(name => CPUFREQ_DIR + "/" + name);
@@ -107,11 +156,144 @@ var CpuControl = class CpuControl {
         }
     }
 
+    /* One complete CPU snapshot, assembled after every asynchronous listing,
+     * value and existence query has answered. The live fields are untouched
+     * until onDone, so a menu open during this work keeps drawing the prior
+     * coherent machine rather than a half-refreshed one. */
+    _discoverAsync(onDone) {
+        IO.listDirAsync(CPUFREQ_DIR, entries => {
+            let policies = entries.filter(name => /^policy\d+$/.test(name))
+                .map(name => CPUFREQ_DIR + "/" + name);
+            let valuePaths = [CPU_DIR + "/amd_pstate/status",
+                              CPUFREQ_DIR + "/boost",
+                              CPU_DIR + "/intel_pstate/no_turbo"];
+            let existencePaths = [CPUFREQ_DIR + "/boost",
+                                  CPU_DIR + "/intel_pstate/no_turbo"];
+            for (let policy of policies) {
+                valuePaths.push(policy + "/scaling_driver",
+                                policy + "/scaling_available_governors",
+                                policy + "/scaling_governor",
+                                policy + "/energy_performance_preference",
+                                policy + "/energy_performance_available_preferences",
+                                policy + "/cpuinfo_max_freq",
+                                policy + "/cpuinfo_avg_freq",
+                                policy + "/scaling_cur_freq");
+                existencePaths.push(policy + "/energy_performance_preference");
+            }
+
+            let values = null;
+            let existence = null;
+            let names = null;
+            let finish = () => {
+                if (values === null || existence === null || names === null)
+                    return;
+                onDone(this._stateFrom(policies, values, existence, names.cpuName));
+            };
+            IO.readStringsAsync(valuePaths, answer => {
+                values = answer;
+                finish();
+            }, 32);
+            IO.pathsExistAsync(existencePaths, answer => {
+                existence = answer;
+                finish();
+            }, 32);
+            Hardware.machineNamesAsync([], answer => {
+                names = answer;
+                finish();
+            });
+        });
+    }
+
+    _stateFrom(policies, values, existence, model) {
+        let read = path => values[path] === undefined ? null : values[path];
+        let words = path => {
+            let raw = read(path);
+            return raw ? raw.split(/\s+/) : [];
+        };
+        let agreed = (targets, node) => {
+            if (targets.length === 0)
+                return null;
+            let answers = targets.map(path => read(path + "/" + node));
+            if (answers.some(value => value === null))
+                return null;
+            return answers.every(value => value === answers[0]) ? answers[0] : null;
+        };
+
+        let energyPolicies = policies.filter(policy =>
+            existence[policy + "/energy_performance_preference"]);
+        let maximum = null;
+        let total = 0;
+        let count = 0;
+        for (let policy of policies) {
+            let max = IO.toNumber(read(policy + "/cpuinfo_max_freq"));
+            if (max !== null && max > 0 && (maximum === null || max > maximum))
+                maximum = max;
+            let current = IO.toNumber(read(policy + "/cpuinfo_avg_freq"));
+            if (current === null)
+                current = IO.toNumber(read(policy + "/scaling_cur_freq"));
+            if (current !== null) {
+                total += current;
+                count++;
+            }
+        }
+
+        let boostPath = null;
+        let boostInverted = false;
+        if (existence[CPUFREQ_DIR + "/boost"])
+            boostPath = CPUFREQ_DIR + "/boost";
+        else if (existence[CPU_DIR + "/intel_pstate/no_turbo"]) {
+            boostPath = CPU_DIR + "/intel_pstate/no_turbo";
+            boostInverted = true;
+        }
+        let boostValue = boostPath ? IO.toNumber(read(boostPath)) : null;
+
+        return {
+            policies: policies,
+            reference: policies.length > 0 ? policies[0] : null,
+            driver: policies.length > 0 ? read(policies[0] + "/scaling_driver") : null,
+            governors: _intersection(policies.map(policy =>
+                words(policy + "/scaling_available_governors"))),
+            energyPolicies: energyPolicies,
+            energyPreferences: _intersection(energyPolicies.map(policy =>
+                words(policy + "/energy_performance_available_preferences"))),
+            amdPstateStatus: read(CPU_DIR + "/amd_pstate/status"),
+            model: model,
+            maxFrequency: maximum,
+            boostPath: boostPath,
+            boostInverted: boostInverted,
+            governor: agreed(policies, "scaling_governor"),
+            energyPreference: agreed(energyPolicies, "energy_performance_preference"),
+            boostEnabled: boostValue === null ? null
+                : (boostInverted ? boostValue === 0 : boostValue === 1),
+            averageFrequency: count > 0 ? (total / count) / 1000 : null,
+        };
+    }
+
+    _adopt(state) {
+        this.policies = state.policies;
+        this.reference = state.reference;
+        this.driver = state.driver;
+        this.governors = state.governors;
+        this.energyPolicies = state.energyPolicies;
+        this.energyPreferences = state.energyPreferences;
+        this.amdPstateStatus = state.amdPstateStatus;
+        this.model = state.model;
+        this._maxFrequency = state.maxFrequency;
+        this.boostPath = state.boostPath;
+        this.boostInverted = state.boostInverted;
+        this._governor = state.governor;
+        this._energyPreference = state.energyPreference;
+        this._boostEnabled = state.boostEnabled;
+        this._averageFrequency = state.averageFrequency;
+    }
+
     get available() {
         return this.policies.length > 0;
     }
 
     get governor() {
+        if (this._asynchronous)
+            return this._governor;
         return _agreed(this.policies, "scaling_governor");
     }
 
@@ -122,6 +304,8 @@ var CpuControl = class CpuControl {
     }
 
     get energyPreference() {
+        if (this._asynchronous)
+            return this._energyPreference;
         return _agreed(this.energyPolicies, "energy_performance_preference");
     }
 
@@ -134,6 +318,8 @@ var CpuControl = class CpuControl {
     }
 
     get boostEnabled() {
+        if (this._asynchronous)
+            return this._boostEnabled;
         if (!this.boostPath)
             return null;
         let value = IO.readNumber(this.boostPath);
@@ -150,6 +336,8 @@ var CpuControl = class CpuControl {
 
     /* Average of the current frequency of every policy, in MHz. */
     averageFrequency() {
+        if (this._asynchronous)
+            return this._averageFrequency;
         let total = 0;
         let count = 0;
         for (let policy of this.policies) {
@@ -190,6 +378,14 @@ var CpuControl = class CpuControl {
             model: this.model,
         };
 
+        if (this._asynchronous) {
+            reading.governor = this._governor;
+            reading.energyPreference = this._energyPreference;
+            reading.boostEnabled = this._boostEnabled;
+            reading.averageFrequency = this._averageFrequency;
+            return reading;
+        }
+
         /*
          * Everything above is already in hand. The four below each cost a
          * file read - the frequency one per policy, which is 32 of them on a
@@ -208,5 +404,10 @@ var CpuControl = class CpuControl {
         _lazy(reading, "boostEnabled", () => this.boostEnabled);
         _lazy(reading, "averageFrequency", () => this.averageFrequency());
         return reading;
+    }
+
+    destroy() {
+        this._destroyed = true;
+        this._refreshWaiters = [];
     }
 };

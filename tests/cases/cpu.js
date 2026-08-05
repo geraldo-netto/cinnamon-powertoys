@@ -392,6 +392,67 @@ cases["looking again picks up hardware that has changed underneath"] = function 
     }
 };
 
+cases["an asynchronous control adopts one complete CPU snapshot"] = function () {
+    try {
+        Hardware.forget();
+        IO.setRoot(Harness.fixture("machine"));
+        let before = null;
+        let cpu = Harness.settle(function (done) {
+            let created = new Cpu.CpuControl(() => {}, {
+                asynchronous: true,
+                onChanged: () => done(created),
+            });
+            before = created.snapshot();
+        }, "asynchronous CPU discovery");
+
+        Harness.equal(before.available, false, "construction exposes no partial policy list");
+        let after = cpu.snapshot();
+        Harness.equal(after.available, true, "the complete machine is adopted together");
+        Harness.deepEqual(after.governors, ["performance", "powersave"], "with its choices");
+        Harness.equal(after.governor, "powersave", "current values were loaded off-thread too");
+        Harness.near(after.averageFrequency, 3500, 0.001, "including every policy frequency");
+        cpu.destroy();
+    } finally {
+        release();
+    }
+};
+
+cases["an asynchronous CPU refresh performs no synchronous file access"] = function () {
+    try {
+        Hardware.forget();
+        IO.setRoot(Harness.fixture("machine"));
+        let cpu = Harness.settle(function (done) {
+            let created = new Cpu.CpuControl(() => {}, {
+                asynchronous: true,
+                onChanged: () => done(created),
+            });
+        }, "initial asynchronous CPU discovery");
+
+        let listDir = IO.listDir;
+        let readString = IO.readString;
+        let exists = IO.exists;
+        let model = Hardware.cpuModelName;
+        IO.listDir = () => { throw new Error("synchronous directory listing"); };
+        IO.readString = () => { throw new Error("synchronous value read"); };
+        IO.exists = () => { throw new Error("synchronous existence query"); };
+        Hardware.cpuModelName = () => { throw new Error("synchronous CPU name read"); };
+        try {
+            let after = Harness.settle(done => cpu.refresh(() => done(cpu.snapshot())),
+                                       "non-blocking CPU refresh");
+            Harness.equal(after.governor, "powersave", "the replacement snapshot is complete");
+            Harness.near(after.averageFrequency, 3500, 0.001, "and contains dynamic values");
+        } finally {
+            IO.listDir = listDir;
+            IO.readString = readString;
+            IO.exists = exists;
+            Hardware.cpuModelName = model;
+            cpu.destroy();
+        }
+    } finally {
+        release();
+    }
+};
+
 cases["one policy is a machine, not half of one"] = function () {
     /*
      * Plenty of machines expose a single cpufreq policy for every core - an
