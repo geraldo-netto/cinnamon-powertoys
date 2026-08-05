@@ -199,6 +199,28 @@ cases["a degraded inventory preserves its device alert latch"] = function () {
                   "a confirmed physical removal still rearms the alert");
 };
 
+cases["each degraded source preserves only the latches it owns"] = function () {
+    let bluetooth = policy();
+    bluetooth.alerts.check(reading([mouse(10)]), limits());
+    bluetooth.alerts.check(reading([], null, { bluezAvailable: false }), limits());
+    bluetooth.alerts.check(reading([mouse(10)]), limits());
+    Harness.equal(bluetooth.said.length, 1,
+                  "a failed BlueZ inventory does not reannounce its returning mouse");
+
+    let unknown = policy();
+    let unusual = battery(10, { path: "/vendor/power/BAT0" });
+    unknown.alerts.check(reading([unusual]), limits());
+    unknown.alerts.check(reading([], null, { upowerAvailable: false }), limits());
+    unknown.alerts.check(reading([unusual]), limits());
+    Harness.equal(unknown.said.length, 1,
+                  "an unclassified path is retained until every inventory is trustworthy");
+
+    unknown.alerts.check(reading([]), limits());
+    unknown.alerts.check(reading([unusual]), limits());
+    Harness.equal(unknown.said.length, 2,
+                  "complete inventories can confirm an unclassified device is absent");
+};
+
 cases["a peripheral is judged against its own limit"] = function () {
     /* A mouse at 18% wants new batteries this week; a laptop at 18% is about
      * to lose your work. */
