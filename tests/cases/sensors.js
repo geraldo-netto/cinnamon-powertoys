@@ -830,6 +830,31 @@ cases["destroyed sensor sets reject synchronous and asynchronous discovery"] = f
     Harness.deepEqual(set.temperatureSensors, [], "the destroyed snapshot remains empty");
 };
 
+cases["destroying sensor work settles every accepted caller once"] = function () {
+    let original = IO.listDirAsync;
+    let pending = [];
+    IO.listDirAsync = (path, done) => pending.push(() => done([]));
+    try {
+        let set = new Sensors.SensorSet();
+        set._asynchronous = true;
+        let answers = [];
+        set.discoverAsync(result => answers.push(["current", result]));
+        set.discoverAsync(result => answers.push(["replay", result]));
+        set.refresh(result => answers.push(["refresh", result]));
+
+        set.destroy();
+        set.destroy();
+        Harness.deepEqual(answers,
+                          [["current", false], ["replay", false], ["refresh", false]],
+                          "discovery generations and refresh all settle at teardown");
+        for (let answer of pending.splice(0))
+            answer();
+        Harness.equal(answers.length, 3, "cancelled filesystem replies cannot settle twice");
+    } finally {
+        IO.listDirAsync = original;
+    }
+};
+
 cases["overlapping sensor discoveries settle callers from their own generation"] = function () {
     let original = IO.listDirAsync;
     let pending = [];

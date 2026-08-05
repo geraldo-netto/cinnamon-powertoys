@@ -525,6 +525,29 @@ cases["overlapping CPU refreshes settle from a newer discovery"] = function () {
     }
 };
 
+cases["destroying a CPU refresh settles every accepted caller once"] = function () {
+    try {
+        let cpu = control("machine");
+        let discoveries = [];
+        let answers = [];
+        cpu._asynchronous = true;
+        cpu._discoverAsync = done => discoveries.push(done);
+
+        cpu.refresh(result => answers.push(result));
+        cpu.refresh(result => answers.push(result));
+        Harness.equal(discoveries.length, 1, "one discovery is in flight");
+        cpu.destroy();
+        cpu.destroy();
+        Harness.deepEqual(answers, [false, false],
+                          "both accepted refreshes receive teardown's unsuccessful answer");
+
+        discoveries.shift()("late state");
+        Harness.deepEqual(answers, [false, false], "the cancelled discovery cannot answer again");
+    } finally {
+        release();
+    }
+};
+
 cases["an asynchronous sample refreshes only live CPU values"] = function () {
     try {
         Hardware.forget();

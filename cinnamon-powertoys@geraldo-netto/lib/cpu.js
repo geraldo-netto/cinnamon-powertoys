@@ -502,10 +502,25 @@ var CpuControl = class CpuControl {
     }
 
     destroy() {
+        if (this._destroyed)
+            return;
         this._destroyed = true;
         this._ioScope.cancel();
         this._stateGeneration++;
         this._refreshPending = false;
-        this._refreshWaiters = [];
+        let waiters = this._refreshWaiters.splice(0);
+        /* Refresh was accepted while this backend still existed. Teardown is
+         * its final, unsuccessful answer; a cancelled filesystem callback is
+         * deliberately not required to arrive in order to release callers. */
+        let firstError = null;
+        for (let waiter of waiters) {
+            try {
+                waiter(false);
+            } catch (error) {
+                firstError = firstError || error;
+            }
+        }
+        if (firstError)
+            throw firstError;
     }
 };

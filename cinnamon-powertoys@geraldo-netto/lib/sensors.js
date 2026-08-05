@@ -1346,15 +1346,27 @@ var SensorSet = class SensorSet {
         this._onChanged = function () {};
         this._discovering = false;
         this._discoverAgain = false;
-        this._discoverWaiters = [];
-        this._discoverNextWaiters = [];
+        let waiters = this._discoverWaiters.splice(0)
+            .concat(this._discoverNextWaiters.splice(0), this._refreshWaiters.splice(0));
         this._refreshing = false;
         this._refreshPending = false;
         this._refreshChanged = false;
-        this._refreshWaiters = [];
+        /* Every callback above belongs to work accepted before destruction.
+         * Cancelled I/O may never reach its ordinary completion, so teardown
+         * itself is the one explicit unsuccessful completion. */
+        let firstError = null;
+        for (let waiter of waiters) {
+            try {
+                waiter(false);
+            } catch (error) {
+                firstError = firstError || error;
+            }
+        }
         this.temperatureSensors = [];
         this.fanSensors = [];
         this.powerSensors = [];
         this.energyMeters = [];
+        if (firstError)
+            throw firstError;
     }
 };
