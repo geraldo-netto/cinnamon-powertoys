@@ -47,8 +47,19 @@ function scratch(options, body) {
             GLib.mkdir_with_parents(applet + "/lib", 0o755);
 
         GLib.file_set_contents(target + "/marker", "old\n");
-        GLib.file_set_contents(tools + "/install-translations.sh",
-                               "#!/bin/sh\nexit " + (options.translationStatus || 0) + "\n");
+        GLib.file_set_contents(target + "/stylesheet.css", "old css\n");
+        GLib.file_set_contents(applet + "/stylesheet.css", "new css\n");
+        let translationScript = "#!/bin/sh\n";
+        if (options.translationMutation) {
+            let locale = stage + "/share/locale/fr/LC_MESSAGES";
+            GLib.mkdir_with_parents(locale, 0o755);
+            GLib.file_set_contents(locale + "/" + UUID + ".mo", "old translation\n");
+            translationScript += "mkdir -p \"$2/fr/LC_MESSAGES\"\n" +
+                "printf '%s\\n' 'new translation' > \"$2/fr/LC_MESSAGES/" + UUID + ".mo\"\n";
+            options.translationState = locale + "/" + UUID + ".mo";
+        }
+        translationScript += "exit " + (options.translationStatus || 0) + "\n";
+        GLib.file_set_contents(tools + "/install-translations.sh", translationScript);
         GLib.chmod(tools + "/install-translations.sh", 0o700);
 
         let path = GLib.getenv("PATH") || "/usr/bin:/bin";
@@ -63,7 +74,9 @@ function scratch(options, body) {
             }
             if (options.failedReload) {
                 let state = directory + "/reload-count";
+                let themeState = directory + "/theme-count";
                 GLib.file_set_contents(state, "0\n");
+                GLib.file_set_contents(themeState, "0\n");
                 GLib.file_set_contents(bin + "/gdbus",
                     "#!/bin/sh\n" +
                     "case \"$*\" in\n" +
@@ -74,9 +87,13 @@ function scratch(options, body) {
                     "  *ReloadXlet*)\n" +
                     "    count=$(cat '" + state + "')\n" +
                     "    echo $((count + 1)) > '" + state + "';;\n" +
-                    "  *Eval*) echo \"(true, '')\";;\n" +
+                    "  *Eval*)\n" +
+                    "    themes=$(cat '" + themeState + "')\n" +
+                    "    echo $((themes + 1)) > '" + themeState + "'\n" +
+                    "    echo \"(true, '')\";;\n" +
                     "esac\n");
                 GLib.chmod(bin + "/gdbus", 0o700);
+                options.themeState = themeState;
             }
             if (options.runningQueryFailure) {
                 GLib.file_set_contents(bin + "/gdbus", "#!/bin/sh\nexit 23\n");
@@ -191,7 +208,8 @@ cases["a failed backup reservation cannot replace the live applet"] = function (
 };
 
 cases["a complete staged applet replaces the previous tree"] = function () {
-    scratch({}, tree => {
+    let options = { translationMutation: true };
+    scratch(options, tree => {
         let outcome = install(tree);
         Harness.equal(outcome.status, 0, "the install completed");
         Harness.equal(read(tree.target + "/applet.js"), "new applet.js", "the new tree is live");
@@ -199,18 +217,25 @@ cases["a complete staged applet replaces the previous tree"] = function () {
         Harness.equal(GLib.file_test(tree.target + "/powertoys-helper",
                                     GLib.FileTest.IS_EXECUTABLE), true,
                       "the helper was validated and made executable before the swap");
+        Harness.equal(read(options.translationState), "new translation",
+                      "the new catalogue is retained after commit");
         Harness.deepEqual(temporaryEntries(tree), [], "the backup was removed after commit");
     });
 };
 
 cases["a failed live reload restores and reactivates the previous applet"] = function () {
-    scratch({ failedReload: true }, tree => {
+    let options = { failedReload: true, translationMutation: true };
+    scratch(options, tree => {
         let outcome = install(tree, true);
         Harness.ok(outcome.status !== 0, "a missing replacement instance fails the upgrade");
         Harness.equal(read(tree.target + "/marker"), "old", "the prior tree was restored");
         Harness.equal(read(tree.target + "/applet.js"), null, "the broken replacement was removed");
         Harness.ok(outcome.stderr.indexOf("Restored and reloaded") >= 0,
                    "the prior runtime was reactivated: " + outcome.stderr);
+        Harness.equal(read(options.translationState), "old translation",
+                      "the previous catalogue was restored before reactivation");
+        Harness.equal(read(options.themeState), "2",
+                      "the theme was loaded once forward and once after CSS rollback");
         Harness.deepEqual(temporaryEntries(tree), [], "the rollback left no private trees");
     });
 };

@@ -13,6 +13,7 @@ SOURCE_DIR=$(cd "$(dirname "$0")" && pwd)/$UUID
 # through rather than doing the copy a second time and drifting from this.
 PREFIX=${PREFIX:-${XDG_DATA_HOME:-$HOME/.local/share}}
 TARGET_DIR=${DESTDIR:-}$PREFIX/cinnamon/applets/$UUID
+LOCALE_DIR=${DESTDIR:-}$PREFIX/locale
 
 [ -d "$SOURCE_DIR" ] || { echo "missing $SOURCE_DIR" >&2; exit 1; }
 
@@ -28,6 +29,10 @@ BACKUP_READY=no
 SWAPPED=no
 COMMITTED=no
 ROLLBACK_RELOAD=no
+THEME_CHANGED=no
+TRANSLATION_BACKUP=
+TRANSLATION_BACKUP_READY=no
+TRANSLATION_BACKUP_RETAINED=no
 
 running_xlet() {
     output=$(gdbus call --session \
@@ -54,9 +59,45 @@ wait_for_running_xlet() {
     return 1
 }
 
+reload_theme() {
+    command -v gdbus >/dev/null 2>&1 || return 1
+    gdbus call --session \
+        --dest org.Cinnamon \
+        --object-path /org/Cinnamon \
+        --method org.Cinnamon.Eval \
+        'imports.ui.main.themeManager._changeTheme();' 2>/dev/null | grep -q '^(true,'
+}
+
+backup_translations() {
+    TRANSLATION_BACKUP=$(mktemp -d "$TARGET_PARENT/.${UUID}.locale.XXXXXX")
+    for mo in "$LOCALE_DIR"/*/LC_MESSAGES/"$UUID.mo"; do
+        [ -f "$mo" ] || continue
+        language=$(basename "$(dirname "$(dirname "$mo")")")
+        cp -f -- "$mo" "$TRANSLATION_BACKUP/$language.mo"
+    done
+    TRANSLATION_BACKUP_READY=yes
+}
+
+restore_translations() {
+    restored_status=0
+    for mo in "$LOCALE_DIR"/*/LC_MESSAGES/"$UUID.mo"; do
+        [ -f "$mo" ] || continue
+        rm -f -- "$mo" || restored_status=1
+    done
+    for old in "$TRANSLATION_BACKUP"/*.mo; do
+        [ -f "$old" ] || continue
+        language=$(basename "$old" .mo)
+        target="$LOCALE_DIR/$language/LC_MESSAGES"
+        mkdir -p "$target" || restored_status=1
+        cp -f -- "$old" "$target/$UUID.mo" || restored_status=1
+    done
+    return "$restored_status"
+}
+
 cleanup() {
     status=$?
     trap - EXIT HUP INT TERM
+    set +e
     restored=no
 
     if [ "$COMMITTED" != yes ]; then
@@ -75,7 +116,18 @@ cleanup() {
             restored=yes
         fi
     fi
+    if [ "$COMMITTED" != yes ] && [ "$TRANSLATION_BACKUP_READY" = yes ]; then
+        if ! restore_translations; then
+            echo "could not restore every previous translation; backup retained at $TRANSLATION_BACKUP" >&2
+            TRANSLATION_BACKUP_RETAINED=yes
+            status=1
+        fi
+    fi
     if [ "$ROLLBACK_RELOAD" = yes ] && [ "$restored" = yes ]; then
+        if [ "$THEME_CHANGED" = yes ] && ! reload_theme; then
+            echo "restored the previous stylesheet but could not reload the theme" >&2
+            status=1
+        fi
         if gdbus call --session \
                 --dest org.Cinnamon \
                 --object-path /org/Cinnamon \
@@ -99,6 +151,9 @@ cleanup() {
     if [ "$COMMITTED" = yes ] && [ "$BACKUP_READY" = yes ] && [ -n "$BACKUP" ] &&
             { [ -e "$BACKUP" ] || [ -L "$BACKUP" ]; }; then
         rm -rf -- "$BACKUP"
+    fi
+    if [ "$TRANSLATION_BACKUP_RETAINED" != yes ] && [ -n "$TRANSLATION_BACKUP" ]; then
+        rm -rf -- "$TRANSLATION_BACKUP"
     fi
     exit "$status"
 }
@@ -144,6 +199,11 @@ done
     exit 1
 }
 
+# The translation helper has its own transaction, but its successful commit
+# precedes runtime verification. Retain the outer operation's prior catalogue
+# set so a later applet/theme failure can roll source, CSS and text back as one.
+backup_translations
+
 if [ -e "$TARGET_DIR" ] || [ -L "$TARGET_DIR" ]; then
     # A signal trap can run between any two commands. Ignore termination only
     # across the three-command rename window, so cleanup can never mistake the
@@ -163,7 +223,7 @@ SWAPPED=yes
 
 # A .po in po/ does nothing until it is compiled into the directory the applet
 # binds its text domain to.
-"$(dirname "$0")/tools/install-translations.sh" install "${DESTDIR:-}$PREFIX/locale"
+"$(dirname "$0")/tools/install-translations.sh" install "$LOCALE_DIR"
 
 # A staged install is for building a package, not for using: it must not reach
 # into the running session.
@@ -174,6 +234,9 @@ if [ -n "${DESTDIR:-}" ]; then
         BACKUP=
         BACKUP_READY=no
     fi
+    rm -rf -- "$TRANSLATION_BACKUP"
+    TRANSLATION_BACKUP=
+    TRANSLATION_BACKUP_READY=no
     trap - EXIT HUP INT TERM
     echo "Installed to $TARGET_DIR"
     exit 0
@@ -186,16 +249,11 @@ fi
 # up and leave it off the panel altogether. The files are already in place by
 # now, so the theme reload sees the new stylesheet either way.
 themed=no
-if command -v gdbus > /dev/null 2>&1; then
-    # Eval is refused unless the session has debugging enabled, hence the note
-    # further down when this does not work.
-    if gdbus call --session \
-            --dest org.Cinnamon \
-            --object-path /org/Cinnamon \
-            --method org.Cinnamon.Eval \
-            'imports.ui.main.themeManager._changeTheme();' 2>/dev/null | grep -q '^(true,'; then
-        themed=yes
-    fi
+# Eval is refused unless the session has debugging enabled, hence the note
+# further down when this does not work.
+if reload_theme; then
+    themed=yes
+    THEME_CHANGED=yes
 fi
 
 # Reloading only works once the applet is enabled on a panel; on a first
@@ -226,6 +284,9 @@ if [ "$BACKUP_READY" = yes ] && [ -n "$BACKUP" ]; then
     BACKUP=
     BACKUP_READY=no
 fi
+rm -rf -- "$TRANSLATION_BACKUP"
+TRANSLATION_BACKUP=
+TRANSLATION_BACKUP_READY=no
 trap - EXIT HUP INT TERM
 
 echo "Installed to $TARGET_DIR"
