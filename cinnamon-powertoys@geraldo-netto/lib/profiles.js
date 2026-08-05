@@ -301,6 +301,8 @@ var PowerProfilesClient = class PowerProfilesClient {
         this._cancelRetry();
 
         let backend = BACKENDS[index];
+        if (!present)
+            this._failures.recover("backend:" + backend.name);
         if (!present && this.busName === backend.name) {
             this._disconnectProxy(new Error("power-profiles-daemon stopped"));
             this._invalidate();
@@ -371,6 +373,25 @@ var PowerProfilesClient = class PowerProfilesClient {
             this._scheduleRetry();
     }
 
+    _backendIsOwned(backend) {
+        if (!this._ownerAware)
+            return false;
+        let index = BACKENDS.indexOf(backend);
+        return index >= 0 && this._ownerStates[index] === true;
+    }
+
+    _reportBackendFailure(backend, reason) {
+        if (!this._backendIsOwned(backend))
+            return;
+        this._failures.report(
+            "backend:" + backend.name,
+            "cannot use owned power profile backend " + backend.name + ": " + reason);
+    }
+
+    _recoverBackend(backend) {
+        this._failures.recover("backend:" + backend.name);
+    }
+
     _tryBackend(index, candidates) {
         if (index >= candidates.length) {
             this._finishConnectSearch(candidates.length > 0);
@@ -393,12 +414,24 @@ var PowerProfilesClient = class PowerProfilesClient {
                     this._connectPending = false;
                     return;
                 }
-                /*
-                 * Nobody owns the name, or something owns it and has nothing
-                 * on it. Neither is a daemon this applet can use, and neither
-                 * is a reason to stop looking at the other name.
-                 */
-                if (error || !proxy || _profileNames(proxy).length === 0) {
+                /* An absent or unusable candidate is not a reason to stop
+                 * looking at the other name. Only a watcher-confirmed owner
+                 * makes that failed candidate a diagnostic incident. */
+                let reason = error || null;
+                let names = [];
+                if (!reason && !proxy)
+                    reason = new Error("proxy construction returned no proxy");
+                if (!reason) {
+                    try {
+                        names = _profileNames(proxy);
+                    } catch (profileError) {
+                        reason = profileError;
+                    }
+                }
+                if (!reason && names.length === 0)
+                    reason = new Error("daemon reported no usable profiles");
+                if (reason) {
+                    this._reportBackendFailure(backend, reason);
                     next();
                     return;
                 }
@@ -408,14 +441,19 @@ var PowerProfilesClient = class PowerProfilesClient {
                     signalId = proxy.connect("g-properties-changed",
                                              () => this._invalidate());
                 } catch (e) {
+                    this._reportBackendFailure(
+                        backend, "property change subscription failed: " + e);
                     next();
                     return;
                 }
                 if (!signalId) {
+                    this._reportBackendFailure(
+                        backend, "property change subscription returned no id");
                     next();
                     return;
                 }
 
+                this._recoverBackend(backend);
                 this._connecting = false;
                 this._connectPending = false;
                 this._cancelRetry();
@@ -429,7 +467,7 @@ var PowerProfilesClient = class PowerProfilesClient {
             if (this._connectCall !== operation)
                 return;
             this._connectCall = null;
-            /* daemon not running under this name */
+            this._reportBackendFailure(backend, e);
             next();
         }
     }

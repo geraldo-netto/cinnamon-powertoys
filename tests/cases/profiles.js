@@ -214,18 +214,27 @@ cases["owned profile discovery failures retry with capped backoff"] = function (
         else
             onDone(daemons[backend.name], null);
     };
-    let client = new Profiles.PowerProfilesClient(null, system);
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    try {
+        let client = new Profiles.PowerProfilesClient(null, system);
 
-    for (let i = 0; i < 6; i++)
-        timers.fire();
-    Harness.deepEqual(timers.delays, [500, 1000, 2000, 4000, 8000, 8000],
-                      "profile retry delay doubles only to its cap");
-    Harness.equal(attempts, 8, "the owned backend is retried until it recovers");
-    Harness.equal(client.busName, HADESS, "the recovered proxy is adopted");
-    Harness.equal(Object.keys(timers.pending).length, 0, "success leaves no retry armed");
-    Harness.equal(client._retryDelay, Profiles.RETRY_INITIAL_MS,
-                  "success resets backoff for another incident");
-    client.destroy();
+        for (let i = 0; i < 6; i++)
+            timers.fire();
+        Harness.deepEqual(timers.delays, [500, 1000, 2000, 4000, 8000, 8000],
+                          "profile retry delay doubles only to its cap");
+        Harness.equal(attempts, 8, "the owned backend is retried until it recovers");
+        Harness.equal(client.busName, HADESS, "the recovered proxy is adopted");
+        Harness.equal(Object.keys(timers.pending).length, 0, "success leaves no retry armed");
+        Harness.equal(client._retryDelay, Profiles.RETRY_INITIAL_MS,
+                      "success resets backoff for another incident");
+        Harness.equal(lines.length, 1, "one continuous owned backend failure is logged once");
+        Harness.ok(lines[0].indexOf("proxy timeout") >= 0,
+                   "the original proxy failure is retained");
+        client.destroy();
+    } finally {
+        Log.setSink(null);
+    }
 };
 
 cases["an owned profile proxy with no usable profiles is retried"] = function () {
@@ -237,14 +246,23 @@ cases["an owned profile proxy with no usable profiles is retried"] = function ()
         attempts++;
         onDone(attempts <= 2 ? daemon({ profiles: [] }) : good, null);
     };
-    let client = new Profiles.PowerProfilesClient(null, system);
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    try {
+        let client = new Profiles.PowerProfilesClient(null, system);
 
-    Harness.equal(Object.keys(timers.pending).length, 1,
-                  "an unusable initial property set arms retry");
-    timers.fire();
-    Harness.equal(client.available, true, "a usable property set is adopted later");
-    Harness.equal(attempts, 3, "the still-owned name was probed again");
-    client.destroy();
+        Harness.equal(Object.keys(timers.pending).length, 1,
+                      "an unusable initial property set arms retry");
+        timers.fire();
+        Harness.equal(client.available, true, "a usable property set is adopted later");
+        Harness.equal(attempts, 3, "the still-owned name was probed again");
+        Harness.equal(lines.length, 1, "the unusable owned property set is diagnosed once");
+        Harness.ok(lines[0].indexOf("no usable profiles") >= 0,
+                   "the profile-list failure is named");
+        client.destroy();
+    } finally {
+        Log.setSink(null);
+    }
 };
 
 cases["profile discovery retry is cancelled on owner changes and teardown"] = function () {
@@ -294,6 +312,26 @@ cases["an unwired profile proxy is passed over transactionally"] = function () {
     Harness.equal(client.active, "performance", "only the wired proxy is published");
     Harness.equal(client._proxy, fallback, "the failed candidate never becomes available");
     client.destroy();
+};
+
+cases["an owned unwired profile proxy preserves its failure reason"] = function () {
+    let broken = daemon();
+    broken.connect = () => { throw new Error("property subscription failed"); };
+    let system = ownerBus({ [HADESS]: broken });
+    let timers = retryTimers(system);
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    try {
+        let client = new Profiles.PowerProfilesClient(null, system);
+        Harness.equal(client.available, false, "the unwired owned proxy is not published");
+        Harness.equal(Object.keys(timers.pending).length, 1, "the owned backend is retried");
+        Harness.equal(lines.length, 1, "the property wiring incident is logged once");
+        Harness.ok(lines[0].indexOf("property subscription failed") >= 0,
+                   "the property-signal reason is preserved");
+        client.destroy();
+    } finally {
+        Log.setSink(null);
+    }
 };
 
 cases["the caller is told once the daemon has answered"] = function () {

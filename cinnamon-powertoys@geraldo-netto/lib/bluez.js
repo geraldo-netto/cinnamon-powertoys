@@ -270,8 +270,9 @@ var BluezBatteries = class BluezBatteries {
      * is called from the constructor, so the throw would have come up through
      * the applet's constructor and left nothing on the panel at all.
      *
-     * No bus reads as no bluetoothd, which this module already treats as an
-     * ordinary state of a desktop with no radio in it.
+     * Both routes preserve the error beside the empty result. The ownership-
+     * aware caller can then diagnose a broken owned daemon without mistaking
+     * an ordinary desktop with no bluetoothd for a fault.
      */
     _dbusCall(path, iface, method, onDone, cancellable) {
         try {
@@ -281,13 +282,11 @@ var BluezBatteries = class BluezBatteries {
                                      try {
                                          onDone(connection.call_finish(result).deepUnpack()[0]);
                                      } catch (error) {
-                                         /* bluetoothd is not running, which is
-                                          * ordinary on a desktop without a radio. */
-                                         onDone(null);
+                                         onDone(null, error);
                                      }
                                  });
         } catch (error) {
-            onDone(null);
+            onDone(null, error);
         }
     }
 
@@ -325,7 +324,7 @@ var BluezBatteries = class BluezBatteries {
         }
         let operation = { epoch: this._ownerEpoch, cancellable: cancellable };
         this._read = operation;
-        let finish = objects => {
+        let finish = (objects, error) => {
             if (this._read !== operation)
                 return;
             this._read = null;
@@ -339,10 +338,17 @@ var BluezBatteries = class BluezBatteries {
                 this._objects = valid ? objects : {};
                 this._cacheReady = !!valid;
                 this._settle(valid ? parseObjects(this._objects) : []);
-                if (valid)
+                if (valid) {
+                    this._failures.recover("snapshot");
                     this._cancelRetry();
-                else
+                } else {
+                    if (this._ownerPresent === true) {
+                        this._failures.report(
+                            "snapshot", "cannot read BlueZ object tree: " +
+                            (error || "invalid reply"));
+                    }
                     failed = true;
+                }
             }
             let again = this._readAgain;
             this._readAgain = false;
@@ -355,7 +361,7 @@ var BluezBatteries = class BluezBatteries {
             this._call("/", "org.freedesktop.DBus.ObjectManager",
                        "GetManagedObjects", finish, cancellable);
         } catch (error) {
-            finish(null);
+            finish(null, error);
         }
     }
 

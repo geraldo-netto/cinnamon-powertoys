@@ -462,25 +462,53 @@ cases["owned BlueZ snapshot failures retry with capped backoff"] = function () {
     let timers = fakeTimers();
     let failures = 6;
     let reads = 0;
-    let control = new Bluez.BluezBatteries(null,
-        (path, iface, method, onDone) => {
-            reads++;
-            onDone(failures-- > 0 ? null
-                                  : tree({ [HEADSET]: device("BW01", "audio-headset", true, 64) }));
-        }, watcher.watch, signalBus(), timers);
+    let lines = [];
+    let control;
+    Log.setSink(line => lines.push(line));
+    try {
+        control = new Bluez.BluezBatteries(null,
+            (path, iface, method, onDone) => {
+                reads++;
+                if (failures-- > 0)
+                    onDone(null, new Error("GetManagedObjects timed out"));
+                else
+                    onDone(tree({ [HEADSET]: device("BW01", "audio-headset", true, 64) }));
+            }, watcher.watch, signalBus(), timers);
 
-    Harness.equal(control.available, false, "the failed startup read is unavailable");
-    for (let i = 0; i < 6; i++)
-        timers.fire();
-    Harness.deepEqual(timers.delays, [500, 1000, 2000, 4000, 8000, 8000],
-                      "retry delay doubles only up to its upper bound");
-    Harness.equal(reads, 7, "the owned daemon is retried until it recovers");
-    Harness.equal(control.devices[0].percentage, 64, "the recovery snapshot is adopted");
-    Harness.equal(Object.keys(timers.pending).length, 0,
-                  "success leaves no redundant retry armed");
-    Harness.equal(control._retryDelay, Bluez.RETRY_INITIAL_MS,
-                  "success resets backoff for a future incident");
-    control.destroy();
+        Harness.equal(control.available, false, "the failed startup read is unavailable");
+        for (let i = 0; i < 6; i++)
+            timers.fire();
+        Harness.deepEqual(timers.delays, [500, 1000, 2000, 4000, 8000, 8000],
+                          "retry delay doubles only up to its upper bound");
+        Harness.equal(reads, 7, "the owned daemon is retried until it recovers");
+        Harness.equal(control.devices[0].percentage, 64, "the recovery snapshot is adopted");
+        Harness.equal(Object.keys(timers.pending).length, 0,
+                      "success leaves no redundant retry armed");
+        Harness.equal(control._retryDelay, Bluez.RETRY_INITIAL_MS,
+                      "success resets backoff for a future incident");
+        Harness.equal(lines.length, 1, "one continuous owned failure is diagnosed once");
+        Harness.ok(lines[0].indexOf("GetManagedObjects timed out") >= 0,
+                   "the original D-Bus reason is retained");
+    } finally {
+        Log.setSink(null);
+        if (control)
+            control.destroy();
+    }
+};
+
+cases["an unowned BlueZ snapshot failure stays quiet"] = function () {
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    try {
+        let control = new Bluez.BluezBatteries(null,
+            (path, iface, method, onDone) =>
+                onDone(null, new Error("BlueZ has no owner")));
+        Harness.equal(control.available, false, "the absent service remains unavailable");
+        Harness.deepEqual(lines, [], "ordinary unowned BlueZ emits no backend failure");
+        control.destroy();
+    } finally {
+        Log.setSink(null);
+    }
 };
 
 cases["BlueZ retry is cancelled on owner loss and teardown"] = function () {
