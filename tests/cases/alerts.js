@@ -58,15 +58,17 @@ function mouse(percentage, overrides) {
     }, overrides || {});
 }
 
-function reading(devices, celsius) {
-    return {
+function reading(devices, celsius, overrides) {
+    return Object.assign({
         devices: devices,
+        upowerAvailable: true,
+        bluezAvailable: true,
         selectedTemperature: celsius === undefined || celsius === null ? null : {
             id: "cpu-temperature",
             label: "Processor",
             celsius: celsius,
         },
-    };
+    }, overrides || {});
 }
 
 /* A policy plus the notifications it produced, in order. */
@@ -175,9 +177,26 @@ cases["a device that goes away while low is forgotten"] = function () {
     each.alerts.check(reading([mouse(10)]), limits());
     Harness.equal(each.said.length, 1, "reported while it was there");
 
-    each.alerts.check(reading([]), limits());
+    each.alerts.check(reading([], null, { upowerAvailable: false }), limits());
     each.alerts.check(reading([mouse(10)]), limits());
-    Harness.equal(each.said.length, 2, "and again when it came back still low");
+    Harness.equal(each.said.length, 2,
+                  "BlueZ-confirmed absence is enough despite an unrelated UPower outage");
+};
+
+cases["a degraded inventory preserves its device alert latch"] = function () {
+    let each = policy();
+    each.alerts.check(reading([battery(10)]), limits());
+    Harness.equal(each.said.length, 1, "the initial low battery is reported");
+
+    each.alerts.check(reading([], null, { upowerAvailable: false }), limits());
+    each.alerts.check(reading([battery(10)]), limits());
+    Harness.equal(each.said.length, 1,
+                  "a UPower outage and recovery do not repeat the same alert");
+
+    each.alerts.check(reading([]), limits());
+    each.alerts.check(reading([battery(10)]), limits());
+    Harness.equal(each.said.length, 2,
+                  "a confirmed physical removal still rearms the alert");
 };
 
 cases["a peripheral is judged against its own limit"] = function () {

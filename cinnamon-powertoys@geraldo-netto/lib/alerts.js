@@ -76,7 +76,7 @@ var AlertPolicy = class AlertPolicy {
     check(data, limits) {
         for (let device of data.devices)
             this._checkDevice(device, limits);
-        this._forgetAbsent(data.devices);
+        this._forgetAbsent(data.devices, data);
         this._checkTemperature(data.selectedTemperature, limits);
     }
 
@@ -86,11 +86,27 @@ var AlertPolicy = class AlertPolicy {
      * limit. A headset switched off while low never got that far, so it kept
      * its entry for the session - and came back at the same level to silence.
      */
-    _forgetAbsent(devices) {
+    _forgetAbsent(devices, readiness) {
         let present = new Set(devices.map(device => device.path));
         for (let path of Array.from(this._alerted.keys())) {
-            if (!present.has(path))
-                this._alerted.delete(path);
+            if (present.has(path))
+                continue;
+
+            /* Absence is evidence only from the inventory that owns the path.
+             * Preserve its latch while that source is degraded, but do not let
+             * an unrelated source outage hide a confirmed disconnect. Unknown
+             * paths are retained unless the complete combined inventory is
+             * trustworthy. */
+            let upowerPath = path.indexOf("/org/freedesktop/UPower/") === 0;
+            let bluezPath = path.indexOf("/org/bluez/") === 0;
+            if (upowerPath && readiness.upowerAvailable !== true)
+                continue;
+            if (bluezPath && readiness.bluezAvailable !== true)
+                continue;
+            if (!upowerPath && !bluezPath &&
+                    (readiness.upowerAvailable !== true || readiness.bluezAvailable !== true))
+                continue;
+            this._alerted.delete(path);
         }
     }
 
