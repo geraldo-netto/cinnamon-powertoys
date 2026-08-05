@@ -128,6 +128,15 @@ cases["charge writes update every battery as one transaction"] = function () {
     });
 };
 
+cases["extra arguments are rejected before the transaction lock"] = function () {
+    cpuScratch({}, tree => {
+        let outcome = run(tree, ["boost", 1, "unexpected"]);
+        Harness.equal(outcome.code, "invalid-invocation", "the malformed call is rejected");
+        Harness.equal(GLib.file_test(tree.directory + "/lock", GLib.FileTest.EXISTS), false,
+                      "validation happens before the machine-wide lock is opened");
+    });
+};
+
 cases["charge writes target only supplies declared as batteries"] = function () {
     scratch({
         BAT0: { type: "Battery", start: 70, end: 80 },

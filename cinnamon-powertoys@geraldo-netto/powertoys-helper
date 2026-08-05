@@ -307,7 +307,7 @@ if [ "${1:-}" = protocol-version ]; then
     exit 0
 fi
 
-[ $# -ge 2 ] || usage
+[ "$#" -eq 2 ] || usage
 
 acquire_lock
 
