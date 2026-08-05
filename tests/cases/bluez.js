@@ -160,6 +160,29 @@ function initialNameWatcher() {
     return watcher;
 }
 
+function fakeTimers() {
+    let timers = { next: 1, pending: {}, delays: [], removed: [] };
+    timers.timeout_add = function (priority, delay, callback) {
+        let id = timers.next++;
+        timers.pending[id] = callback;
+        timers.delays.push(delay);
+        return id;
+    };
+    timers.source_remove = function (id) {
+        timers.removed.push(id);
+        delete timers.pending[id];
+    };
+    timers.fire = function () {
+        let ids = Object.keys(timers.pending);
+        Harness.equal(ids.length, 1, "exactly one timer is pending");
+        let id = Number(ids[0]);
+        let callback = timers.pending[id];
+        delete timers.pending[id];
+        callback();
+    };
+    return timers;
+}
+
 cases["a connected device with a battery is reported"] = function () {
     let found = Bluez.parseObjects(tree({
         [HEADSET]: device("BW01", "audio-headset", true, 90),
@@ -349,6 +372,54 @@ cases["the owner watch performs the only production startup read"] = function ()
     Harness.equal(reads, 1,
                   "subscription and current ownership produce one GetManagedObjects call");
     control.destroy();
+};
+
+cases["owned BlueZ snapshot failures retry with capped backoff"] = function () {
+    let watcher = initialNameWatcher();
+    let timers = fakeTimers();
+    let failures = 6;
+    let reads = 0;
+    let control = new Bluez.BluezBatteries(null,
+        (path, iface, method, onDone) => {
+            reads++;
+            onDone(failures-- > 0 ? null
+                                  : tree({ [HEADSET]: device("BW01", "audio-headset", true, 64) }));
+        }, watcher.watch, signalBus(), timers);
+
+    Harness.equal(control.available, false, "the failed startup read is unavailable");
+    for (let i = 0; i < 6; i++)
+        timers.fire();
+    Harness.deepEqual(timers.delays, [500, 1000, 2000, 4000, 8000, 8000],
+                      "retry delay doubles only up to its upper bound");
+    Harness.equal(reads, 7, "the owned daemon is retried until it recovers");
+    Harness.equal(control.devices[0].percentage, 64, "the recovery snapshot is adopted");
+    Harness.equal(Object.keys(timers.pending).length, 0,
+                  "success leaves no redundant retry armed");
+    Harness.equal(control._retryDelay, Bluez.RETRY_INITIAL_MS,
+                  "success resets backoff for a future incident");
+    control.destroy();
+};
+
+cases["BlueZ retry is cancelled on owner loss and teardown"] = function () {
+    let watcher = initialNameWatcher();
+    let timers = fakeTimers();
+    let reads = 0;
+    let control = new Bluez.BluezBatteries(null,
+        (path, iface, method, onDone) => { reads++; onDone(null); },
+        watcher.watch, signalBus(), timers);
+
+    Harness.equal(Object.keys(timers.pending).length, 1, "failure arms a retry");
+    watcher.vanished();
+    Harness.equal(Object.keys(timers.pending).length, 0, "owner loss cancels it");
+    Harness.equal(control._retryDelay, Bluez.RETRY_INITIAL_MS,
+                  "owner loss resets the incident backoff");
+
+    watcher.appeared();
+    Harness.equal(Object.keys(timers.pending).length, 1,
+                  "a failed read for the new owner has its own retry");
+    control.destroy();
+    Harness.equal(Object.keys(timers.pending).length, 0, "teardown cancels that retry too");
+    Harness.equal(reads, 2, "no cancelled timer performed another read");
 };
 
 cases["owner loss cancels the obsolete object-tree read"] = function () {

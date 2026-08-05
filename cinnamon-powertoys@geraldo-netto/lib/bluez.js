@@ -46,6 +46,8 @@ const WATCHED_PROPERTIES = {
  * watching the menu sees the wait.
  */
 var REFRESH_SETTLE_MS = 250;
+var RETRY_INITIAL_MS = 500;
+var RETRY_MAX_MS = 8000;
 
 const UPDeviceKind = UPowerGlib.DeviceKind;
 const UPDeviceState = UPowerGlib.DeviceState;
@@ -191,7 +193,7 @@ systemNameWatcher.reportsInitialState = true;
  * BlueZ emits as devices come, go and change, so a poll costs nothing.
  */
 var BluezBatteries = class BluezBatteries {
-    constructor(onChanged, call, watchName, signalBus) {
+    constructor(onChanged, call, watchName, signalBus, timers) {
         this.available = false;
         this.destroyed = false;
         this.devices = [];
@@ -204,9 +206,12 @@ var BluezBatteries = class BluezBatteries {
         this._watchName = watchName === undefined
             ? (call ? null : systemNameWatcher) : watchName;
         this._signalBus = signalBus || null;
+        this._timers = timers || GLib;
         this._unwatchName = null;
         this._signalIds = [];
         this._refreshTimerId = 0;
+        this._retryTimerId = 0;
+        this._retryDelay = RETRY_INITIAL_MS;
         /* The last complete object tree is the base to which signal deltas
          * are applied. Before it arrives, a relevant signal requests one
          * follow-up snapshot so no startup race can leave the cache stale. */
@@ -216,6 +221,9 @@ var BluezBatteries = class BluezBatteries {
         this._readAgain = false;
         /* Invalidates an answer that crossed a daemon stop or restart. */
         this._ownerEpoch = 0;
+        /* Only a positive ownership edge authorizes automatic retries. A
+         * custom transport without a watcher retains its one direct read. */
+        this._ownerPresent = null;
 
         this._watch();
         let ownerDriven = this._watchName &&
@@ -300,17 +308,25 @@ var BluezBatteries = class BluezBatteries {
             this._read = null;
             if (this.destroyed)
                 return;
+            let failed = false;
             if (operation.epoch === this._ownerEpoch) {
-                let valid = objects && typeof objects === "object";
+                let valid = objects && typeof objects === "object" &&
+                            !Array.isArray(objects);
                 this.available = !!valid;
                 this._objects = valid ? objects : {};
                 this._cacheReady = !!valid;
                 this._settle(valid ? parseObjects(this._objects) : []);
+                if (valid)
+                    this._cancelRetry();
+                else
+                    failed = true;
             }
             let again = this._readAgain;
             this._readAgain = false;
             if (again)
                 this._refresh();
+            else if (failed)
+                this._scheduleRetry();
         };
         try {
             this._call("/", "org.freedesktop.DBus.ObjectManager",
@@ -383,8 +399,10 @@ var BluezBatteries = class BluezBatteries {
     _ownerAppeared() {
         if (this.destroyed)
             return;
+        this._ownerPresent = true;
         this._ownerEpoch++;
         this._cancelRead();
+        this._cancelRetry();
         this._objects = {};
         this._cacheReady = false;
         this._refresh();
@@ -393,13 +411,15 @@ var BluezBatteries = class BluezBatteries {
     _ownerVanished() {
         if (this.destroyed)
             return;
+        this._ownerPresent = false;
         this._ownerEpoch++;
         this._cancelRead();
+        this._cancelRetry();
         this.available = false;
         this._objects = {};
         this._cacheReady = false;
         if (this._refreshTimerId) {
-            GLib.source_remove(this._refreshTimerId);
+            this._timers.source_remove(this._refreshTimerId);
             this._refreshTimerId = 0;
         }
         this._settle([]);
@@ -527,12 +547,38 @@ var BluezBatteries = class BluezBatteries {
     _scheduleRefresh() {
         if (this.destroyed || this._refreshTimerId)
             return;
-        this._refreshTimerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, REFRESH_SETTLE_MS, () => {
+        this._refreshTimerId = this._timers.timeout_add(
+            GLib.PRIORITY_DEFAULT, REFRESH_SETTLE_MS, () => {
             this._refreshTimerId = 0;
             if (!this.destroyed)
                 this._refresh();
             return GLib.SOURCE_REMOVE;
         });
+    }
+
+    /* Retry a transient GetManagedObjects failure only while the ownership
+     * watcher still says this daemon exists. The delay is capped so recovery
+     * remains possible without turning an unhealthy bus into a tight loop. */
+    _scheduleRetry() {
+        if (this.destroyed || this._ownerPresent !== true || this._retryTimerId)
+            return;
+        let delay = this._retryDelay;
+        this._retryDelay = Math.min(delay * 2, RETRY_MAX_MS);
+        this._retryTimerId = this._timers.timeout_add(
+            GLib.PRIORITY_DEFAULT, delay, () => {
+                this._retryTimerId = 0;
+                if (!this.destroyed && this._ownerPresent === true)
+                    this._refresh();
+                return GLib.SOURCE_REMOVE;
+            });
+    }
+
+    _cancelRetry() {
+        if (this._retryTimerId) {
+            this._timers.source_remove(this._retryTimerId);
+            this._retryTimerId = 0;
+        }
+        this._retryDelay = RETRY_INITIAL_MS;
     }
 
     /*
@@ -553,8 +599,9 @@ var BluezBatteries = class BluezBatteries {
     destroy() {
         this.destroyed = true;
         this._cancelRead();
+        this._cancelRetry();
         if (this._refreshTimerId) {
-            GLib.source_remove(this._refreshTimerId);
+            this._timers.source_remove(this._refreshTimerId);
             this._refreshTimerId = 0;
         }
         if (this._unwatchName) {
