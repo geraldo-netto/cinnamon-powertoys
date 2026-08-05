@@ -877,6 +877,18 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
         this._control.setPercentage(wanted, () => this._showValue());
     }
 
+    /* A DDC bus is the stable identity of a row, but the monitor on that bus
+     * and the control object describing it are not. KeyedList keeps the row
+     * in that case, so refresh everything the constructor derived from the
+     * entry before drawing its latest value. */
+    adopt(label, control) {
+        this._control = control;
+        this._name = label;
+        this._label.set_text(label);
+        this.actor.set_accessible_name(_("Brightness") + ": " + label);
+        this._showValue();
+    }
+
     /*
      * Called when the control has news: the daemon has answered, or something
      * else has moved this backlight - a function key, the settings daemon
@@ -1113,8 +1125,10 @@ class MenuPresenter {
                 ? this._createNote(entry.label)
                 : new BacklightSlider(entry.label, "display-brightness", entry.control),
             (row, entry) => {
-                if (!entry.note)
+                if (!entry.note) {
+                    row.adopt(entry.label, entry.control);
                     row.sync();
+                }
             });
 
         if (backlights.keyboard)
