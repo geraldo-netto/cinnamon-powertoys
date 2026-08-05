@@ -119,10 +119,14 @@ var AlertPolicy = class AlertPolicy {
     }
 
     _checkTemperature(celsius, limits) {
-        if (!limits.highTemp || celsius === null) {
+        if (!limits.highTemp) {
             this._tempAlerted = false;
             return;
         }
+        /* No sample says nothing about recovery. Clearing here rearmed the
+         * notification while the machine could still be above the threshold. */
+        if (celsius === null)
+            return;
         if (celsius >= limits.highTempCelsius) {
             if (!this._tempAlerted) {
                 this._tempAlerted = true;

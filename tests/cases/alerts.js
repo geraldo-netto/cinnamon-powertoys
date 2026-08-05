@@ -242,6 +242,21 @@ cases["a machine that reports no temperature is not warned about"] = function ()
     Harness.equal(each.said.length, 0, "nothing to compare");
 };
 
+cases["a missing temperature sample does not rearm a hot alert"] = function () {
+    let each = policy();
+    let enabled = limits();
+
+    each.alerts.check(reading([], 90), enabled);
+    each.alerts.check(reading([], null), enabled);
+    each.alerts.check(reading([], 91), enabled);
+    Harness.equal(each.said.length, 1,
+                  "an unreadable poll is not evidence that the machine recovered");
+
+    each.alerts.check(reading([], 70), enabled);
+    each.alerts.check(reading([], 90), enabled);
+    Harness.equal(each.said.length, 2, "a confirmed recovery still rearms it");
+};
+
 cases["a level that never bound is left alone rather than clamped"] = function () {
     /*
      * A key missing from the schema binds to nothing and leaves its property
