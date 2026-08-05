@@ -68,6 +68,9 @@ cases["a machine that reports nothing readable says so"] = function () {
     let entries = SensorRows.rows(reading(), options());
     Harness.equal(entries.length, 1, "one row");
     Harness.equal(entries[0].key, "empty", "the one that says there is nothing");
+    Harness.equal(entries[0].label, "No primary sensors found", "the filtered claim");
+    Harness.ok(entries[0].value.indexOf("disk, network and board") >= 0,
+               "and where the other sensors can be enabled");
 };
 
 cases["a reading that cannot be read is not a row"] = function () {
@@ -84,6 +87,7 @@ cases["a reading that cannot be read is not a row"] = function () {
 
     Harness.equal(entries.length, 1, "nothing was readable");
     Harness.equal(entries[0].key, "empty", "so the list says so");
+    Harness.equal(entries[0].label, "No sensors found", "all kinds were considered");
 };
 
 cases["a known fan remains visible while stopped"] = function () {

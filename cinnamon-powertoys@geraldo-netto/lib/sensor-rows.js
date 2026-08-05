@@ -205,8 +205,13 @@ function rows(data, options) {
 
     let leadIn = cpuReadingRows(data);
 
-    if (entries.length === 0 && (!leadIn || leadIn.rows.length === 0))
+    if (entries.length === 0 && (!leadIn || leadIn.rows.length === 0)) {
+        if (!all)
+            return [{ key: "empty", label: _("No primary sensors found"),
+                      value: _("Enable disk, network and board sensors in settings"),
+                      warning: false }];
         return [{ key: "empty", label: _("No sensors found"), value: "", warning: false }];
+    }
 
     entries.sort(Sensors.bySensorOrder);
     return withHeadings(entries, leadIn);
