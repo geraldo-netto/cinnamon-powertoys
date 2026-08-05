@@ -51,6 +51,18 @@ function nameWatcher() {
     return watcher;
 }
 
+function initialNameWatcher() {
+    let watcher = nameWatcher();
+    let install = watcher.watch;
+    watcher.watch = function (appeared, vanished) {
+        let remove = install(appeared, vanished);
+        appeared();
+        return remove;
+    };
+    watcher.watch.reportsInitialState = true;
+    return watcher;
+}
+
 cases["a connected device with a battery is reported"] = function () {
     let found = Bluez.parseObjects(tree({
         [HEADSET]: device("BW01", "audio-headset", true, 90),
@@ -119,6 +131,20 @@ cases["BlueZ's icon names map onto UPower's kinds"] = function () {
         [HEADSET]: device("C", "something-new", true, 70),
     }));
     Harness.equal(odd[0].kind, Kind.BLUETOOTH_GENERIC, "an icon we do not know");
+};
+
+cases["Bluetooth rows are sorted by their displayed names"] = function () {
+    let found = Bluez.parseObjects(tree({
+        [HEADSET]: device("Alpha", "audio-headset", true, 50),
+        [MOUSE]: device("Bravo", "input-mouse", true, 60),
+        "/org/bluez/hci0/dev_00_00_00_00_00_03":
+            device("Delta", "input-keyboard", true, 70),
+        "/org/bluez/hci0/dev_00_00_00_00_00_04":
+            device("Charlie", "phone", true, 80),
+    }));
+    Harness.deepEqual(found.map(entry => entry.model),
+                      ["Alpha", "Bravo", "Charlie", "Delta"],
+                      "a late descending pair cannot survive insertion order");
 };
 
 cases["a device is recognised across the two naming schemes"] = function () {
@@ -203,6 +229,88 @@ cases["bluetoothd going away empties the list and says so"] = function () {
     Harness.equal(watcher.unwatched, 1, "the ownership watch is released");
 };
 
+cases["the owner watch performs the only production startup read"] = function () {
+    let reads = 0;
+    let watcher = initialNameWatcher();
+    let control = new Bluez.BluezBatteries(null,
+        (path, iface, method, onDone) => { reads++; onDone(tree()); }, watcher.watch);
+
+    Harness.equal(reads, 1,
+                  "subscription and current ownership produce one GetManagedObjects call");
+    control.destroy();
+};
+
+cases["owner loss cancels the obsolete object-tree read"] = function () {
+    let waiting = [];
+    let watcher = nameWatcher();
+    let control = new Bluez.BluezBatteries(null,
+        (path, iface, method, onDone, cancellable) =>
+            waiting.push({ done: onDone, cancellable: cancellable }), watcher.watch);
+
+    Harness.equal(waiting.length, 1, "one startup read is in flight");
+    watcher.vanished();
+    Harness.equal(waiting[0].cancellable.is_cancelled(), true,
+                  "the old daemon's work is stopped immediately");
+
+    watcher.appeared();
+    Harness.equal(waiting.length, 2, "the replacement daemon gets an independent read");
+    waiting[0].done(tree({ [HEADSET]: device("stale", "audio-headset", true, 10) }));
+    Harness.deepEqual(control.devices, [], "the cancelled answer cannot repopulate the cache");
+    waiting[1].done(tree({ [MOUSE]: device("live", "input-mouse", true, 80) }));
+    Harness.equal(control.devices[0].model, "live", "the replacement answer is adopted");
+    control.destroy();
+};
+
+cases["BlueZ signal payloads update the cached tree without a round trip"] = function () {
+    let objects = tree({ [HEADSET]: device("BW01", "audio-headset", true, 90) });
+    let reads = 0;
+    let changes = 0;
+    let control = new Bluez.BluezBatteries(() => changes++,
+        (path, iface, method, onDone) => { reads++; onDone(objects); });
+    let initialChanges = changes;
+
+    control._propertiesChanged(HEADSET,
+        ["org.bluez.Device1", { RSSI: -48 }, []]);
+    Harness.equal(reads, 1, "an irrelevant high-frequency property is ignored");
+    Harness.equal(changes, initialChanges, "RSSI cannot alter a displayed row");
+
+    control._propertiesChanged(HEADSET,
+        ["org.bluez.Battery1", { Percentage: 75 }, []]);
+    Harness.equal(control.devices[0].percentage, 75, "battery charge is applied directly");
+    Harness.equal(reads, 1, "without GetManagedObjects");
+
+    control._propertiesChanged(HEADSET,
+        ["org.bluez.Device1", { Alias: "Desk headset" }, []]);
+    Harness.equal(control.devices[0].model, "Desk headset", "a rename is applied too");
+    Harness.equal(reads, 1, "and still costs no full-tree read");
+
+    control._interfacesRemoved([HEADSET, ["org.bluez.Battery1"]]);
+    Harness.deepEqual(control.devices, [], "removing the battery interface removes the row");
+    control._interfacesAdded([HEADSET,
+        { "org.bluez.Battery1": { Percentage: 66 } }]);
+    Harness.equal(control.devices[0].percentage, 66, "adding it back restores the row");
+    Harness.equal(reads, 1, "interface deltas also stay local");
+    control.destroy();
+};
+
+cases["a delta racing the initial snapshot requests one repair read"] = function () {
+    let waiting = [];
+    let control = new Bluez.BluezBatteries(null,
+        (path, iface, method, onDone) => waiting.push(onDone));
+
+    control._propertiesChanged(HEADSET,
+        ["org.bluez.Battery1", { Percentage: 25 }, []]);
+    control._propertiesChanged(HEADSET,
+        ["org.bluez.Battery1", { Percentage: 20 }, []]);
+    Harness.equal(waiting.length, 1, "deltas do not overlap the initial snapshot");
+
+    waiting.shift()(tree({ [HEADSET]: device("BW01", "audio-headset", true, 30) }));
+    Harness.equal(waiting.length, 1, "the whole race coalesces into one repair snapshot");
+    waiting.shift()(tree({ [HEADSET]: device("BW01", "audio-headset", true, 20) }));
+    Harness.equal(control.devices[0].percentage, 20, "the post-race state wins");
+    control.destroy();
+};
+
 cases["a reply from before bluetoothd vanished cannot restore stale devices"] = function () {
     let first = true;
     let waiting = [];
@@ -240,10 +348,8 @@ cases["a daemon that was never there is not a change"] = function () {
 
 cases["a burst of signals is one read of the tree"] = function () {
     /*
-     * What BlueZ does while an adapter is discovering: RSSI republished
-     * several times a second per device, each of which used to be a
-     * GetManagedObjects of its own for a value that cannot move a battery
-     * percentage.
+     * Unexpected or malformed relevant signals fall back to a snapshot. A
+     * burst of those still coalesces rather than multiplying full-tree reads.
      */
     let objects = tree({ [HEADSET]: device("BW01", "audio-headset", true, 90) });
     let reads = 0;
@@ -576,6 +682,21 @@ function fuzzTree(random) {
     return objects;
 }
 
+function cloneTree(objects) {
+    let copy = {};
+    for (let path in objects) {
+        copy[path] = {};
+        for (let iface in objects[path])
+            copy[path][iface] = Object.assign({}, objects[path][iface]);
+    }
+    return copy;
+}
+
+function rowKeys(objects) {
+    return Bluez.parseObjects(objects).map(entry =>
+        [entry.path, entry.model, entry.kind, entry.percentage]);
+}
+
 cases["whatever BlueZ has in memory becomes rows or nothing"] = function () {
     Fuzz.forAll({ what: "the tree parsing", runs: 400 }, fuzzTree, function (objects) {
         let found = Fuzz.answers(() => Bluez.parseObjects(objects));
@@ -618,6 +739,89 @@ cases["a list that follows a fuzzed tree only reports what changed"] = function 
 
         Harness.equal(changes > told, first !== second,
                       "told exactly when the rows would be drawn differently");
+        control.destroy();
+    });
+};
+
+cases["fuzzed BlueZ deltas stay equivalent to a fresh tree parse"] = function () {
+    Fuzz.forAll({ what: "incremental BlueZ mutations", runs: 160 }, function (random) {
+        let actions = [];
+        let count = random.between(1, 25);
+        for (let i = 0; i < count; i++) {
+            actions.push({
+                type: random.between(0, 7),
+                path: random.chance(2) ? HEADSET : MOUSE,
+                number: random.between(0, 100),
+                text: Fuzz.text(random, 3),
+                flag: random.chance(2),
+            });
+        }
+        return actions;
+    }, function (actions) {
+        let expected = tree({
+            [HEADSET]: device("Headset", "audio-headset", true, 90),
+            [MOUSE]: device("Mouse", "input-mouse", true, 60),
+        });
+        let reads = 0;
+        let control = new Bluez.BluezBatteries(null,
+            (path, iface, method, onDone) => { reads++; onDone(cloneTree(expected)); });
+
+        for (let action of actions) {
+            let interfaces = expected[action.path] || (expected[action.path] = {});
+            let deviceProps = interfaces["org.bluez.Device1"];
+            let batteryProps = interfaces["org.bluez.Battery1"];
+            if (action.type === 0) {
+                if (!batteryProps) {
+                    batteryProps = { Percentage: action.number };
+                    interfaces["org.bluez.Battery1"] = batteryProps;
+                    control._interfacesAdded([action.path,
+                        { "org.bluez.Battery1": Object.assign({}, batteryProps) }]);
+                } else {
+                    batteryProps.Percentage = action.number;
+                    control._propertiesChanged(action.path,
+                        ["org.bluez.Battery1", { Percentage: action.number }, []]);
+                }
+            } else if (action.type >= 1 && action.type <= 4) {
+                if (!deviceProps) {
+                    deviceProps = { Alias: action.text, Name: "Device",
+                                    Icon: "audio-headset", Connected: true };
+                    interfaces["org.bluez.Device1"] = deviceProps;
+                    control._interfacesAdded([action.path,
+                        { "org.bluez.Device1": Object.assign({}, deviceProps) }]);
+                } else if (action.type === 1) {
+                    deviceProps.Alias = action.text;
+                    control._propertiesChanged(action.path,
+                        ["org.bluez.Device1", { Alias: action.text }, []]);
+                } else if (action.type === 2) {
+                    deviceProps.Connected = action.flag;
+                    control._propertiesChanged(action.path,
+                        ["org.bluez.Device1", { Connected: action.flag }, []]);
+                } else if (action.type === 3) {
+                    deviceProps.Icon = action.flag ? "input-mouse" : "audio-headset";
+                    control._propertiesChanged(action.path,
+                        ["org.bluez.Device1", { Icon: deviceProps.Icon }, []]);
+                } else {
+                    deviceProps.RSSI = -action.number;
+                    control._propertiesChanged(action.path,
+                        ["org.bluez.Device1", { RSSI: deviceProps.RSSI }, []]);
+                }
+            } else if (action.type === 5) {
+                delete interfaces["org.bluez.Battery1"];
+                control._interfacesRemoved([action.path, ["org.bluez.Battery1"]]);
+            } else if (action.type === 6) {
+                delete interfaces["org.bluez.Device1"];
+                control._interfacesRemoved([action.path, ["org.bluez.Device1"]]);
+            } else if (deviceProps) {
+                delete deviceProps.Alias;
+                control._propertiesChanged(action.path,
+                    ["org.bluez.Device1", {}, ["Alias"]]);
+            }
+
+            Harness.deepEqual(control.devices.map(entry =>
+                [entry.path, entry.model, entry.kind, entry.percentage]), rowKeys(expected),
+                "the incremental rows equal a full parse after every mutation");
+        }
+        Harness.equal(reads, 1, "valid deltas never fall back to a full-tree read");
         control.destroy();
     });
 };
