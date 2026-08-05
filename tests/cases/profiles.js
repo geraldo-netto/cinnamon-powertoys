@@ -521,7 +521,18 @@ cases["profile writes serialize and retain only the latest request"] = function 
                       "only one D-Bus write is in flight");
     Harness.equal(outcomes.length, 1, "the displaced waiting caller settles immediately");
     Harness.equal(outcomes[0][0], "balanced", "the intermediate request was displaced");
-    Harness.ok(outcomes[0][1] instanceof Error, "and is told why it will not be written");
+    Harness.equal(outcomes[0][1], Profiles.PROFILE_SUPERSEDED,
+                  "with the distinct superseded outcome");
+    Harness.ok(!(outcomes[0][1] instanceof Error),
+               "intentional coalescing is not reported as a failure");
+    Harness.equal(Profiles.profileWriteError(outcomes[0][1]), null,
+                  "so presentation code has no error to announce");
+
+    let refusal = new Error("daemon refused the change");
+    Harness.equal(Profiles.profileWriteError(refusal), refusal,
+                  "real failures remain reportable");
+    Harness.equal(Profiles.profileWriteError(null), null,
+                  "and success remains success");
 
     pending.shift()(null);
     Harness.deepEqual(system.writes.map(write => write[3]),

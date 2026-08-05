@@ -23,6 +23,22 @@ const OWNER_WATCH_FAILED = "watch-failed";
 var RETRY_INITIAL_MS = 500;
 var RETRY_MAX_MS = 8000;
 
+/* A queued write that is replaced by a newer choice was not refused and did
+ * not reach the daemon. Keep that normal coalescing outcome out of Error so a
+ * caller can settle its state without presenting a failure to the user. */
+var PROFILE_SUPERSEDED = Object.freeze({ status: "superseded" });
+
+function isProfileSuperseded(outcome) {
+    return outcome === PROFILE_SUPERSEDED;
+}
+
+/* The transport still reports null or an Error. The queue adds the one
+ * non-error outcome above; this boundary keeps presentation code from having
+ * to mistake a deliberately discarded intermediate choice for a failure. */
+function profileWriteError(outcome) {
+    return isProfileSuperseded(outcome) ? null : (outcome || null);
+}
+
 function _interfaceXml(name) {
     return '<node>\
 <interface name="' + name + '">\
@@ -547,7 +563,8 @@ var PowerProfilesClient = class PowerProfilesClient {
      * know the profile, it went away between the click and the call - never
      * reaches the caller and the menu silently keeps its old selection.
      * Issuing Set here keeps hold of the reply. onResult is called with null
-     * when the daemon accepted the change, and with the error when it did not.
+     * when the daemon accepted the change, with an Error when it did not, and
+     * with PROFILE_SUPERSEDED when a newer queued choice replaces this one.
      */
     setProfile(name, onResult) {
         let done = onResult || function () {};
@@ -559,7 +576,7 @@ var PowerProfilesClient = class PowerProfilesClient {
         let operation = { name: name, done: this._once(done), cancellable: null };
         if (this._setCall) {
             if (this._setQueued)
-                this._setQueued.done(new Error("profile request was superseded"));
+                this._setQueued.done(PROFILE_SUPERSEDED);
             this._setQueued = operation;
             return true;
         }
@@ -569,11 +586,11 @@ var PowerProfilesClient = class PowerProfilesClient {
 
     _once(callback) {
         let called = false;
-        return error => {
+        return outcome => {
             if (called)
                 return;
             called = true;
-            callback(error);
+            callback(outcome);
         };
     }
 

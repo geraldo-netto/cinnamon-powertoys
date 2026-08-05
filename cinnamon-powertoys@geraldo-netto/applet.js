@@ -2765,7 +2765,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
         if (name === shown)
             return false;
         let accepted = this._pending.request(name,
-            done => this._profileBackend.setProfile(name, done), error => {
+            done => this._profileBackend.setProfile(name, done), outcome => {
+                let error = Profiles.profileWriteError(outcome);
                 if (error) {
                     /* Cancelling a password dialog is not news; the user did it. */
                     if (error.message !== "cancelled")

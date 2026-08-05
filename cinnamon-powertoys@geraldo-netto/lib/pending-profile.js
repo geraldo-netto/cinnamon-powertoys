@@ -80,15 +80,19 @@ var PendingProfile = class PendingProfile {
 
         let report = onResult || function () {};
         let answered = false;
-        let done = error => {
+        let done = outcome => {
             if (answered)
                 return;
             answered = true;
-            if (error)
+            /* A truthy outcome is not necessarily an Error: the daemon client
+             * also reports an intentionally superseded queued write. It was
+             * not written either way, and the name guard keeps an obsolete
+             * answer from disturbing the newer request that replaced it. */
+            if (outcome)
                 this.failed(name);
             else
                 this.written(name);
-            report(error || null);
+            report(outcome || null);
         };
 
         let accepted;

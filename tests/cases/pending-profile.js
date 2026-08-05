@@ -126,6 +126,27 @@ cases["an older call's refusal does not clear a newer request"] = function () {
                   "and the older call cannot start its clock either");
 };
 
+cases["a superseded non-error outcome preserves its replacement"] = function () {
+    let profile = pending();
+    let finish = null;
+    let reported = null;
+    profile.request("balanced", done => {
+        finish = done;
+        return true;
+    }, outcome => { reported = outcome; });
+    profile.ask("performance");
+
+    let superseded = { status: "superseded" };
+    finish(superseded);
+    Harness.equal(reported, superseded, "the non-error outcome reaches its caller intact");
+    Harness.equal(profile.value, "performance",
+                  "and cannot clear or mark the newer request as written");
+
+    waitOut(profile, "balanced");
+    Harness.equal(profile.value, "performance",
+                  "the discarded request did not start the replacement's lapse clock");
+};
+
 cases["a write nobody has taken waits indefinitely"] = function () {
     /* A pkexec dialog can be on screen for as long as the user leaves it
      * there, and until it is answered nothing has happened yet. */
