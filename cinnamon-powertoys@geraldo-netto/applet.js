@@ -2402,6 +2402,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         let upower = this._upower.read();
         /* Anything with a charge that UPower did not mention. */
         let devices = upower.devices.concat(this._bluetooth.missingFrom(upower.devices));
+        devices = Device.withPrimary(devices, upower.primary);
 
         let temperatures = readings.temperatures.concat(upower.temperatures);
         let powers = readings.powers.concat(upower.powers);

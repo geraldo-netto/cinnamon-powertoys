@@ -15,6 +15,28 @@ const Translate = require("./lib/gettext.js");
 const _ = Translate._;
 
 const UPDeviceState = UPowerGlib.DeviceState;
+const UPDeviceKind = UPowerGlib.DeviceKind;
+
+function isSystemPowerDevice(device) {
+    return device && device.powerSupply === true &&
+           (device.kind === UPDeviceKind.BATTERY || device.kind === UPDeviceKind.UPS);
+}
+
+/*
+ * Rows shared by the Devices group and alert policy. UPower's DisplayDevice
+ * normally duplicates one or more physical batteries, so it stays out while
+ * any physical system supply is known. During an incomplete enumeration it
+ * is the only coherent system-battery snapshot left and must stand in for the
+ * missing row instead of leaving the menu and policy blind.
+ */
+function withPrimary(devices, primary) {
+    let rows = (devices || []).slice();
+    if (!primary || rows.some(device => device.path === primary.path) ||
+            rows.some(isSystemPowerDevice))
+        return rows;
+    rows.unshift(primary);
+    return rows;
+}
 
 /*
  * Whether the device is spending its charge rather than taking it in.

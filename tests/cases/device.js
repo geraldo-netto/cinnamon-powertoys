@@ -168,6 +168,24 @@ cases["an empty device group distinguishes absence from unavailable status"] = f
     }), "", "a row leaves no empty-state message beside it");
 };
 
+cases["the composite battery fills only a missing system-device row"] = function () {
+    let display = battery({ path: "/org/freedesktop/UPower/devices/DisplayDevice",
+                            model: "DisplayDevice" });
+    let peripheral = mouse();
+    let physical = battery();
+
+    Harness.deepEqual(Device.withPrimary([], display), [display],
+                      "the composite is the fallback for an empty enumeration");
+    Harness.deepEqual(Device.withPrimary([peripheral], display), [display, peripheral],
+                      "peripherals do not hide the system battery");
+    Harness.deepEqual(Device.withPrimary([physical, peripheral], display),
+                      [physical, peripheral], "a physical system supply prevents duplication");
+    Harness.deepEqual(Device.withPrimary([display, peripheral], display),
+                      [display, peripheral], "an existing composite path is not duplicated");
+    Harness.deepEqual(Device.withPrimary([peripheral], null), [peripheral],
+                      "no primary leaves a fresh copy of the rows alone");
+};
+
 /* ---------------------------------------------------------------- */
 /* what a row is told to show                                        */
 
