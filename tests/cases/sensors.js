@@ -704,14 +704,24 @@ cases["asynchronous topology checks never use synchronous filesystem calls"] = f
     });
 };
 
-cases["concurrent asynchronous refreshes share one topology check"] = function () {
+cases["overlapping asynchronous refreshes settle after a newer topology check"] = function () {
     on("machine", function () {
         let set = Harness.settle(function (done) {
             let created = new Sensors.SensorSet({ asynchronous: true, onChanged: () => done(created) });
         }, "initial sensor discovery");
         let real = IO.listDirAsync;
         let held = [];
-        IO.listDirAsync = (path, done) => held.push(() => real(path, done));
+        let holding = true;
+        let rootListings = 0;
+        IO.listDirAsync = function (path, done) {
+            if (path === Sensors.HWMON_DIR || path === Sensors.THERMAL_DIR ||
+                    path === Sensors.POWERCAP_DIR)
+                rootListings++;
+            if (holding)
+                held.push(() => real(path, done));
+            else
+                real(path, done);
+        };
         try {
             let answers = Harness.settle(done => {
                 let results = [];
@@ -723,11 +733,12 @@ cases["concurrent asynchronous refreshes share one topology check"] = function (
                 set.refresh(finish);
                 set.refresh(finish);
                 Harness.equal(held.length, 3, "one listing of the three topology roots");
-                IO.listDirAsync = real;
+                holding = false;
                 for (let start of held)
                     start();
-            }, "coalesced topology checks");
-            Harness.deepEqual(answers, [false, false], "both callers receive the shared answer");
+            }, "replayed topology checks");
+            Harness.equal(rootListings, 6, "the overlapping request gets one newer inventory");
+            Harness.deepEqual(answers, [false, false], "both callers receive the replayed answer");
         } finally {
             IO.listDirAsync = real;
         }

@@ -882,6 +882,7 @@ var SensorSet = class SensorSet {
         this._discoverWaiters = [];
         this._refreshing = false;
         this._refreshPending = false;
+        this._refreshChanged = false;
         this._refreshWaiters = [];
 
         if (this._asynchronous)
@@ -968,8 +969,12 @@ var SensorSet = class SensorSet {
 
         if (onDone)
             this._refreshWaiters.push(onDone);
-        if (this._refreshing)
+        if (this._refreshing) {
+            /* The inventory in flight may have begun before this request.
+             * One later check is enough to cover every overlapping caller. */
+            this._refreshPending = true;
             return true;
+        }
         if (this._discovering) {
             this._refreshPending = true;
             return true;
@@ -990,10 +995,18 @@ var SensorSet = class SensorSet {
     }
 
     _finishRefresh(changed) {
+        this._refreshChanged = this._refreshChanged || changed;
+        if (this._refreshPending) {
+            this._refreshPending = false;
+            this._startRefresh();
+            return;
+        }
         this._refreshing = false;
+        let result = this._refreshChanged;
+        this._refreshChanged = false;
         let waiters = this._refreshWaiters.splice(0);
         for (let waiter of waiters)
-            waiter(changed);
+            waiter(result);
     }
 
     _temperature(sensor, readNumber) {
