@@ -261,6 +261,12 @@ cases["GPU rails are not added to their device total"] = function () {
 cases["a machine that measures no power says so rather than showing a zero"] = function () {
     Harness.deepEqual(Reading.pickPower(null, null, []), { watts: null, source: null },
                       "nothing measured is not nought watts");
+    for (let watts of [null, undefined, NaN, Infinity, -Infinity]) {
+        Harness.deepEqual(Reading.pickPower(null, null, [
+            { id: "gpu0", group: "gpu0", kind: "gpu", deviceTotal: true, watts: watts },
+        ]), { watts: null, source: null },
+        "an unreadable GPU total is absent, not coerced to zero: " + String(watts));
+    }
 };
 
 /* ---------------------------------------------------------------- */
@@ -349,7 +355,8 @@ cases["the power figure always says which power it is"] = function () {
             group: "device:" + i,
             kind: random.pick(["gpu", "package", "battery"]),
             deviceTotal: random.chance(2),
-            watts: random.between(0, 200),
+            watts: random.chance(4) ? random.between(0, 200)
+                                    : random.pick([null, undefined, NaN, Infinity, -Infinity]),
         })),
     }), input => {
         let power = Fuzz.answers(() =>

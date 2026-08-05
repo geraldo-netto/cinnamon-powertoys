@@ -214,7 +214,7 @@ function pickPower(primary, packageWatts, powers) {
         return { watts: packageWatts, source: "package" };
     let gpus = new Map();
     for (let entry of powers) {
-        if (entry.kind !== "gpu" || !entry.deviceTotal)
+        if (entry.kind !== "gpu" || !entry.deviceTotal || !Number.isFinite(entry.watts))
             continue;
         let group = entry.group || entry.id;
         if (group && !gpus.has(group))
