@@ -695,6 +695,25 @@ cases["a destroyed control lets go and stops answering"] = function () {
                       "and nothing reaches a daemon on behalf of an applet that has left");
 };
 
+cases["a destroyed control rejects refresh without reconnecting"] = function () {
+    let attempts = 0;
+    let screen = new Backlight.BacklightControl(
+        Backlight.SCREEN, null, null, (xml, onDone) => {
+            attempts++;
+            onDone(proxy({ GetPercentage: 40 }), null);
+        });
+    screen.destroy();
+    let answered = 0;
+
+    Harness.equal(screen.refresh(() => answered++), false,
+                  "post-teardown refresh is rejected");
+    Harness.equal(answered, 1, "the rejected caller is settled once");
+    Harness.equal(attempts, 1, "no replacement proxy is constructed");
+    screen._ensureProxy(() => answered++);
+    Harness.equal(answered, 2, "the lower connection boundary also settles rejection");
+    Harness.equal(attempts, 1, "the lower boundary cannot revive the control either");
+};
+
 cases["every call answers its caller, even where there is nothing to call"] = function () {
     /*
      * The contract this class shares with lib/ddc.js, which counts callbacks

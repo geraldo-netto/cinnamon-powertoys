@@ -189,13 +189,17 @@ var BacklightControl = class BacklightControl {
     }
 
     _ensureProxy(onDone) {
+        if (this.destroyed) {
+            onDone(false);
+            return false;
+        }
         if (this._proxy) {
             onDone(true);
-            return;
+            return true;
         }
         this._connectWaiters.push(onDone);
         if (this._connecting)
-            return;
+            return true;
 
         this._connecting = true;
         let generation = ++this._generation;
@@ -231,6 +235,7 @@ var BacklightControl = class BacklightControl {
             for (let waiter of waiters)
                 waiter(this._proxy !== null);
         }, cancellable);
+        return true;
     }
 
     _dropProxy() {
@@ -289,6 +294,10 @@ var BacklightControl = class BacklightControl {
      * answer to "is there one", not a failure worth reporting. */
     refresh(onDone) {
         let done = onDone || function () {};
+        if (this.destroyed) {
+            done();
+            return false;
+        }
         if (!this._proxy) {
             this._ensureProxy(connected => {
                 if (!connected)
@@ -296,9 +305,10 @@ var BacklightControl = class BacklightControl {
                 else
                     this._readPercentage(done);
             });
-            return;
+            return true;
         }
         this._readPercentage(done);
+        return true;
     }
 
     _readPercentage(done) {
