@@ -718,7 +718,8 @@ cases["an enumeration that fails still says the answer is in"] = function () {
     logging(function (lines) {
         let monitor = monitorOn(busFor(managerFor([], { enumerateError: true }), {}));
 
-        Harness.equal(monitor.available, true, "the manager is there");
+        Harness.equal(monitor.managerAvailable, true, "the manager is connected");
+        Harness.equal(monitor.available, false, "failed inventory is not reported as empty");
         Harness.deepEqual(monitor.snapshot(), [], "with no devices under it");
         Harness.equal(monitor.counts.ready, 1, "and the caller is told, once");
         Harness.ok(lines.join("").indexOf("EnumerateDevices failed") >= 0,
@@ -778,13 +779,15 @@ cases["a device that cannot be proxied is passed over, not waited for"] = functi
 
     Harness.deepEqual(monitor.snapshot().map(entry => entry.path), [BAT0],
                       "the one that answered");
+    Harness.equal(monitor.available, false, "the incomplete inventory is marked unavailable");
     Harness.equal(monitor.counts.ready, 1, "and the answer is in, rather than still pending");
 };
 
 cases["a synchronous device proxy failure still settles enumeration"] = function () {
     let monitor = monitorOn(busFor(managerFor([BAT0, MOUSE]), {}, { throwDevices: true }));
 
-    Harness.equal(monitor.available, true, "the manager remains usable");
+    Harness.equal(monitor.managerAvailable, true, "the manager remains connected");
+    Harness.equal(monitor.available, false, "failed paths make the inventory incomplete");
     Harness.deepEqual(monitor.snapshot(), [], "failed device proxies are passed over");
     Harness.equal(monitor._adding.size, 0, "every failed path leaves the in-flight set");
     Harness.equal(monitor.counts.ready, 1, "the enumeration count still reaches zero");

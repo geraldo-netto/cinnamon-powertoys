@@ -240,6 +240,7 @@ var UPowerMonitor = class UPowerMonitor {
         this._retryTimerId = 0;
         this._retryDelay = RETRY_INITIAL_MS;
         this._readySent = false;
+        this.managerAvailable = false;
         this.available = false;
         this.destroyed = false;
         this._ownerPresent = this._bus.watch ? null : true;
@@ -348,7 +349,8 @@ var UPowerMonitor = class UPowerMonitor {
         this._manager = proxy;
         this._busSignalIds = busSignalIds;
         this._propSignalId = propSignalId;
-        this.available = true;
+        this.managerAvailable = true;
+        this.available = false;
         let initialPending = 2;
         let initialFailed = false;
         let initialized = success => {
@@ -406,6 +408,7 @@ var UPowerMonitor = class UPowerMonitor {
                 return;
             let paths = result && Array.isArray(result[0]) ? result[0] : null;
             if (enumError || !paths) {
+                this.available = false;
                 Log.error("EnumerateDevices failed: " +
                           (enumError ? enumError.message : "invalid reply"));
                 this._settleReady();
@@ -415,6 +418,7 @@ var UPowerMonitor = class UPowerMonitor {
             }
             let pending = paths.length;
             if (pending === 0) {
+                this.available = true;
                 this._settleReady();
                 this._onChanged();
                 initialized(true);
@@ -433,6 +437,7 @@ var UPowerMonitor = class UPowerMonitor {
                      * down. Every other guard in here says the same. */
                     if (this.destroyed || generation !== this._generation)
                         return;
+                    this.available = !failed;
                     this._settleReady();
                     this._onChanged();
                     initialized(!failed);
@@ -599,8 +604,11 @@ var UPowerMonitor = class UPowerMonitor {
                 return;
             }
             if (error || !proxy) {
-                if (!done)
+                if (!done) {
+                    this.available = false;
+                    this._onChanged();
                     this._scheduleRetry();
+                }
                 settle(false);
                 return;
             }
@@ -609,8 +617,11 @@ var UPowerMonitor = class UPowerMonitor {
             try {
                 signalId = proxy.connect("g-properties-changed", changed);
             } catch (error) {
-                if (!done)
+                if (!done) {
+                    this.available = false;
+                    this._onChanged();
                     this._scheduleRetry();
+                }
                 settle(false);
                 return;
             }
@@ -765,6 +776,7 @@ var UPowerMonitor = class UPowerMonitor {
         ++this._generation;
         this._cancelManagerRequest();
         this._cancelProxyRequests();
+        this.managerAvailable = false;
         this.available = false;
         if (this._manager) {
             for (let id of this._busSignalIds) {
