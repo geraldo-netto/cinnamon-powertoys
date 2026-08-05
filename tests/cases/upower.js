@@ -242,6 +242,8 @@ function managerFor(paths, options) {
         propertyHandlers: [],
         disconnected: [],
         OnBattery: settings.onBattery === true,
+        LidIsPresent: settings.lidPresent === true,
+        LidIsClosed: settings.lidClosed === true,
         connectSignal: function (name, handler) {
             stub.signals[name] = handler;
             return Object.keys(stub.signals).length;
@@ -398,6 +400,26 @@ cases["UPower ownership drives availability and reconnection"] = function () {
 
     monitor.destroy();
     Harness.deepEqual(bus.unwatched, [27], "the owner watch goes with the monitor");
+};
+
+cases["the manager reports a closed laptop lid live"] = function () {
+    let manager = managerFor([], { lidPresent: true, lidClosed: true });
+    let monitor = monitorOn(busFor(manager, {}));
+
+    Harness.equal(monitor.lidIsClosed, true, "both manager properties say closed");
+    let changes = monitor.counts.changed;
+    manager.LidIsClosed = false;
+    manager.propertyHandlers[0]();
+    Harness.equal(monitor.lidIsClosed, false, "the cached state follows the property signal");
+    Harness.equal(monitor.counts.changed, changes + 1, "the applet is told to reconsider");
+    monitor.destroy();
+};
+
+cases["a closed flag without a lid is not a closed laptop"] = function () {
+    let monitor = monitorOn(busFor(managerFor([], { lidClosed: true }), {}));
+    Harness.equal(monitor.lidIsClosed, false,
+                  "missing LidIsPresent keeps the conservative topology");
+    monitor.destroy();
 };
 
 cases["a bus that cannot be reached at all is logged, not thrown"] = function () {

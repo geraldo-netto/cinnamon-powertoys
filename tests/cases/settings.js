@@ -120,3 +120,13 @@ cases["the primary sensor documentation names every primary kind"] = function ()
     Harness.ok(readme.indexOf("CPU, GPU, processor-package and battery sensors") >= 0,
                "the README names the complete primary set");
 };
+
+cases["external monitor documentation includes closed laptops"] = function () {
+    let schema = JSON.parse(readFile(Harness.xletDir() + "/settings-schema.json"));
+    let tooltip = schema["monitor-brightness"].tooltip;
+    let readme = readFile(Harness.testsDir() + "/../README.md");
+    Harness.ok(tooltip.indexOf("UPower reports the lid closed") >= 0,
+               "the setting names the live topology exception");
+    Harness.ok(readme.indexOf("while UPower reports its lid closed") >= 0,
+               "the README promises the same closed-lid behavior");
+};

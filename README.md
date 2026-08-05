@@ -50,20 +50,23 @@ in words rather than being empty.
 of the first column where the profile and the processor leave the room free,
 driven through `org.cinnamon.SettingsDaemon.Power.Screen` and `.Keyboard`, so
 the wheel over one moves in the same steps the brightness keys do. A machine
-with no backlight of its own — a desktop, or a laptop with the lid shut on an
-external screen — gets one slider per monitor instead, over DDC/CI through
-`ddcutil`, each named after the monitor it moves: make and model out of the
-EDID, the socket appended where two monitors are the same model. Up to ten,
-and past that a line saying so rather than nothing. Monitors are looked for
+with no backlight of its own — normally a desktop — gets one slider per monitor
+instead, over DDC/CI through `ddcutil`. A laptop switches to those external
+monitor sliders while UPower reports its lid closed, hides the unusable built-in
+screen slider, and switches back when the lid opens. Each monitor is named for
+the one it moves: make and model out of the EDID, the socket appended where two
+monitors are the same model. Up to ten, and past that a line saying so rather
+than nothing. Monitors are looked for
 when the desktop says a connector changed, and once a second while you are
 actually looking at the applet — the menu open, or the pointer resting on the
 icon — because a monitor that was asleep, switched on without a hotplug event
 or slow to answer produces no signal at all and would otherwise have no slider
 for the rest of the session. Never on the poll, never while nobody is looking,
-and never on a machine that has a backlight of its own: probing spawns
-`ddcutil`, talks to every display on the I2C bus and wakes a sleeping one. The
-wheel over the panel icon has no monitor in mind and so still moves all of them
-together. Each slider is hidden where there is nothing behind it.
+and never while a laptop's built-in screen is usable: probing spawns `ddcutil`,
+talks to every display on the I2C bus and wakes a sleeping one. If UPower cannot
+report a closed lid, the applet keeps the conservative built-in-screen path.
+The wheel over the panel icon has no monitor in mind and so still moves all of
+them together. Each slider is hidden where there is nothing behind it.
 
 **Power profiles.** Reads and switches profiles through power-profiles-daemon
 (both the `net.hadess.PowerProfiles` and `org.freedesktop.UPower.PowerProfiles`

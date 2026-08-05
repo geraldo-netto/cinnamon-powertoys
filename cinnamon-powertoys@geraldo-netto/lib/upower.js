@@ -27,6 +27,8 @@ const MANAGER_XML = '<node>\
     <signal name="DeviceAdded"><arg type="o" name="device"/></signal>\
     <signal name="DeviceRemoved"><arg type="o" name="device"/></signal>\
     <property name="OnBattery" type="b" access="read"/>\
+    <property name="LidIsClosed" type="b" access="read"/>\
+    <property name="LidIsPresent" type="b" access="read"/>\
 </interface>\
 </node>';
 
@@ -434,6 +436,15 @@ var UPowerMonitor = class UPowerMonitor {
 
     get onBattery() {
         return this._manager ? this._manager.OnBattery === true : false;
+    }
+
+    /* UPower says both whether this machine has a lid and whether that lid is
+     * closed. Requiring both keeps a missing property, an old daemon or a
+     * desktop at the conservative answer: do not reinterpret a built-in
+     * backlight as an external-only display topology. */
+    get lidIsClosed() {
+        return this._manager ? this._manager.LidIsPresent === true &&
+                               this._manager.LidIsClosed === true : false;
     }
 
     _describe(proxy, path) {

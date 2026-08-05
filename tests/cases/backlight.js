@@ -82,6 +82,33 @@ function control(kind, stub, error) {
 
 var cases = {};
 
+cases["monitor brightness follows the visible display topology"] = function () {
+    Harness.equal(Backlight.shouldUseMonitorBacklight(false, false, false), false,
+                  "the setting keeps every DDC probe off");
+    Harness.equal(Backlight.shouldUseMonitorBacklight(true, false, false), true,
+                  "a desktop with no kernel backlight needs DDC");
+    Harness.equal(Backlight.shouldUseMonitorBacklight(true, true, false), false,
+                  "an open laptop keeps using its built-in panel");
+    Harness.equal(Backlight.shouldUseMonitorBacklight(true, true, true), true,
+                  "a closed laptop gives its external monitors the controls");
+};
+
+cases["the brightness wheel follows the visible screen"] = function () {
+    let screen = { available: true };
+    let monitor = { available: true };
+    Harness.equal(Backlight.visibleBacklightControl(screen, monitor, false), screen,
+                  "an open laptop uses its panel");
+    Harness.equal(Backlight.visibleBacklightControl(screen, monitor, true), monitor,
+                  "a closed laptop uses its external monitor");
+    monitor.available = false;
+    Harness.equal(Backlight.visibleBacklightControl(screen, monitor, true), null,
+                  "a closed panel is not changed when DDC has no answer");
+    screen.available = false;
+    monitor.available = true;
+    Harness.equal(Backlight.visibleBacklightControl(screen, monitor, false), monitor,
+                  "a desktop uses its external monitor");
+};
+
 cases["a backlight answers with what the daemon reports"] = function () {
     let screen = control(Backlight.SCREEN, proxy({ GetPercentage: 42 }));
     Harness.equal(screen.available, true, "the daemon answered, so there is one");

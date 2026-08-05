@@ -18,4 +18,3 @@ primary category even where the impact crosses categories.
 
 | id | category | status | effort | severity | description |
 | --- | --- | --- | --- | --- | --- |
-| PT-174 | Documentation | open | M | medium | The README promises lid-closed DDC behavior that the implementation forbids. `README.md:53-64` says a laptop with its lid shut gets external-monitor sliders, while `settings-schema.json:114-118` and `applet.js:1811-1816,1915-1916` disable DDC on every machine that has a built-in backlight, regardless of lid/output state. Either detect the active output/lid topology and support the promise, or remove the promise and document the actual limitation consistently. |

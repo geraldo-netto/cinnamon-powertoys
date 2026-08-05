@@ -1117,12 +1117,14 @@ class MenuPresenter {
      */
     _buildBrightness(backlights) {
         this._backlightSliders = [];
+        this._screenBacklightSlider = null;
         this._brightnessGroup = this._performanceColumn.group(_("Brightness"),
                                                               { spaced: true });
         this._brightness = this._brightnessGroup.menu;
 
         if (backlights.screen)
-            this._addBacklight(_("Screen"), "display-brightness", backlights.screen);
+            this._screenBacklightSlider = this._addBacklight(
+                _("Screen"), "display-brightness", backlights.screen);
 
         this._monitors = backlights.monitor || null;
         let monitorSection = new PopupMenu.PopupMenuSection();
@@ -1329,9 +1331,14 @@ class MenuPresenter {
      * processor, and the control already knows its own new value, so there is
      * nothing to go and read.
      */
-    syncBacklights() {
+    syncBacklights(externalDisplayMode) {
         for (let slider of this._backlightSliders)
             slider.sync();
+        /* A closed laptop panel still has a working kernel backlight, but it
+         * is not a screen the user can see. Its row gives way to the external
+         * monitor rows until the lid opens again. */
+        if (this._screenBacklightSlider && externalDisplayMode)
+            this._screenBacklightSlider.actor.hide();
         this._syncMonitors();
 
         /* A heading over nothing on a machine with no backlight and no monitor
@@ -1406,6 +1413,7 @@ class MenuPresenter {
         let slider = new BacklightSlider(label, iconName, control);
         this._brightness.addMenuItem(slider);
         this._backlightSliders.push(slider);
+        return slider;
     }
 
     /*
@@ -1448,7 +1456,7 @@ class MenuPresenter {
     }
 
     update(data, options) {
-        this.syncBacklights();
+        this.syncBacklights(options.externalDisplayMode);
         this._updateSummary(data, options);
         this._updateProfiles(data, options);
         this._updateDevices(data, options);
@@ -1645,6 +1653,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * empty means nobody is looking at the applet; see _watchMonitors. */
         this._probeReasons = new Set();
         this._probeTimerId = 0;
+        /* UPower owns the live lid state. False is deliberately conservative
+         * until its manager proxy says otherwise. */
+        this._lidClosed = false;
         /* Whether this machine has a backlight of its own, as the settings
          * daemon answered it. False until it has; see _onScreenBacklightKnown,
          * which is also where the difference between this and the control's own
@@ -1733,8 +1744,11 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._platformProfiles = this._backends.platformProfileClient(
             (args, onDone) => this._runHelperQuietly(args, onDone));
         this._chooseProfileBackend();
-        this._upower = this._backends.upowerMonitor(() => this._scheduleUpdate(),
-                                                    () => this._scheduleUpdate());
+        this._upower = this._backends.upowerMonitor(() => this._onUPowerChanged(),
+                                                    () => this._onUPowerChanged());
+        /* A stubbed backend can answer inside its own constructor, before the
+         * assignment above exists. Read it once after assignment as well. */
+        this._syncLidState();
 
         this.menuManager = new PopupMenu.PopupMenuManager(this);
         this._createMenu(orientation);
@@ -1918,6 +1932,29 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._onBacklightChanged();
     }
 
+    /* UPower manager properties include both the power source and the laptop
+     * lid. Most changes only redraw the reading; a lid transition also changes
+     * which brightness backend and which slider belong on screen. */
+    _onUPowerChanged() {
+        if (this._destroyed)
+            return;
+        this._syncLidState();
+        this._scheduleUpdate();
+    }
+
+    _syncLidState() {
+        let closed = !!(this._upower && this._upower.lidIsClosed);
+        if (closed === this._lidClosed)
+            return;
+        this._lidClosed = closed;
+        this._considerMonitorBacklight();
+        this._onBacklightChanged();
+    }
+
+    _externalDisplayMode() {
+        return this._hasKernelBacklight && this._lidClosed;
+    }
+
     /*
      * Whether to go looking for a monitor on a cable, asked both when the
      * settings daemon answers and whenever the setting is switched.
@@ -1937,7 +1974,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * off will look at is whether the sliders went.
      */
     _considerMonitorBacklight() {
-        if (!this.monitorBrightness || this._hasKernelBacklight)
+        if (!this._canProbeMonitors())
             this._backlights.monitor.stop();
         else
             this._backlights.monitor.start();
@@ -2040,10 +2077,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
     /*
      * Whether looking for a monitor could find one worth having.
      *
-     * The setting says whether this is wanted at all, and anything the settings
-     * daemon can drive has a kernel backlight and is not this applet's to find.
-     * Neither is about the moment - they are about the machine - which is why
-     * this decides whether the timer exists rather than what each tick does.
+     * The setting says whether this is wanted at all. A usable built-in panel
+     * keeps DDC off the machine; when UPower says its lid is closed, that panel
+     * is no longer the visible screen and the external monitors become the
+     * controls worth finding.
      *
      * The second half used to be asked of the screen control's `available`,
      * which is about the moment and about nothing else: it is lowered by any
@@ -2051,7 +2088,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * moment it answers; see _onScreenBacklightKnown.
      */
     _canProbeMonitors() {
-        return !!this.monitorBrightness && !this._hasKernelBacklight;
+        return Backlight.shouldUseMonitorBacklight(
+            this.monitorBrightness, this._hasKernelBacklight, this._lidClosed);
     }
 
     _stopProbingMonitors() {
@@ -2082,7 +2120,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
      */
     _onBacklightChanged() {
         if (!this._destroyed && this._menuPresenter)
-            this._menuPresenter.syncBacklights();
+            this._menuPresenter.syncBacklights(this._externalDisplayMode());
     }
 
     /*
@@ -2205,6 +2243,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             sensorHint: (this.cpuSensorHint || "").trim(),
             /* a change the machine has not confirmed yet */
             pendingProfile: this._pending.value,
+            externalDisplayMode: this._externalDisplayMode(),
             busy: this._helper.busy,
         };
     }
@@ -3016,14 +3055,13 @@ class PowerToysApplet extends Applet.TextIconApplet {
             control.stepBy(notches, () => this._onBacklightChanged());
     }
 
-    /* Whichever screen this machine actually has: its own panel, or a
-     * monitor on a cable. */
+    /* Whichever screen this machine actually has: its own visible panel, or a
+     * monitor on a cable. A closed panel can still report a working kernel
+     * backlight, so topology takes precedence over availability here. */
     _brightnessControl() {
-        if (this._backlights.screen.available)
-            return this._backlights.screen;
-        if (this._backlights.monitor && this._backlights.monitor.available)
-            return this._backlights.monitor;
-        return null;
+        return Backlight.visibleBacklightControl(
+            this._backlights.screen, this._backlights.monitor,
+            this._externalDisplayMode());
     }
 
     /*

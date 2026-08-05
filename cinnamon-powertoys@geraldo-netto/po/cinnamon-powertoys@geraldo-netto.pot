@@ -16,100 +16,100 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: applet.js:861 applet.js:892 applet.js:1116
+#: applet.js:861 applet.js:896 applet.js:1121
 msgid "Brightness"
 msgstr ""
 
-#: applet.js:1094
+#: applet.js:1098
 msgid "System power settings"
 msgstr ""
 
-#: applet.js:1121
+#: applet.js:1127
 msgid "Screen"
 msgstr ""
 
-#: applet.js:1139 lib/format.js:108
+#: applet.js:1145 lib/format.js:108
 msgid "Keyboard"
 msgstr ""
 
-#: applet.js:1147 applet.js:2851
+#: applet.js:1153 applet.js:2894
 msgid "Power profile"
 msgstr ""
 
-#: applet.js:1153
+#: applet.js:1159
 msgid "Performance limited"
 msgstr ""
 
-#: applet.js:1179 lib/panel-text.js:210 lib/panel-text.js:234
+#: applet.js:1185 lib/panel-text.js:210 lib/panel-text.js:234
 #: lib/sensors.js:37
 msgid "Processor"
 msgstr ""
 
-#: applet.js:1184
+#: applet.js:1190
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1202 lib/panel-text.js:224 lib/reading.js:139
+#: applet.js:1208 lib/panel-text.js:224 lib/reading.js:139
 msgid "Governor"
 msgstr ""
 
-#: applet.js:1205 lib/reading.js:141
+#: applet.js:1211 lib/reading.js:141
 msgid "Energy preference"
 msgstr ""
 
-#: applet.js:1220 lib/panel-text.js:261
+#: applet.js:1226 lib/panel-text.js:261
 msgid "Devices"
 msgstr ""
 
-#: applet.js:1241
+#: applet.js:1247
 msgid "Nothing with a battery is connected"
 msgstr ""
 
-#: applet.js:1259 lib/reading.js:145
+#: applet.js:1265 lib/reading.js:145
 msgid "Charge limit"
 msgstr ""
 
-#: applet.js:1274
+#: applet.js:1280
 msgid "Sensors"
 msgstr ""
 
-#: applet.js:1381
+#: applet.js:1392
 #, javascript-format
 msgid "Only the first %d monitors have a slider"
 msgstr ""
 
-#: applet.js:1502
+#: applet.js:1514
 msgid "an application"
 msgstr ""
 
-#: applet.js:1521 lib/panel-text.js:247
+#: applet.js:1533 lib/panel-text.js:247
 msgid "Connected"
 msgstr ""
 
-#: applet.js:1521 lib/panel-text.js:247
+#: applet.js:1533 lib/panel-text.js:247
 msgid "Disconnected"
 msgstr ""
 
-#: applet.js:1572
+#: applet.js:1584
 msgid "No sensor matches"
 msgstr ""
 
-#: applet.js:1591
+#: applet.js:1603
 msgid "The batteries have different limits; choosing one sets all batteries."
 msgstr ""
 
-#: applet.js:1593
+#: applet.js:1605
 msgid ""
 "Some battery limits could not be read; choosing one sets all batteries."
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:1859 applet.js:2797 applet.js:2851 applet.js:2909 applet.js:2918
-#: applet.js:3073
+#: applet.js:1877 applet.js:2840 applet.js:2894 applet.js:2952 applet.js:2961
+#: applet.js:3115
 msgid "Power Toys"
 msgstr ""
 
-#: applet.js:1860
+#: applet.js:1878
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "
@@ -117,47 +117,47 @@ msgid ""
 "shortcuts."
 msgstr ""
 
-#: applet.js:2750 applet.js:2878
+#: applet.js:2793 applet.js:2921
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2774
+#: applet.js:2817
 msgid "The requested value is not valid for this control."
 msgstr ""
 
-#: applet.js:2776
+#: applet.js:2819
 msgid "This control is not supported on this system."
 msgstr ""
 
-#: applet.js:2778
+#: applet.js:2821
 msgid "This control is currently unavailable."
 msgstr ""
 
-#: applet.js:2780
+#: applet.js:2823
 msgid "The system refused the requested change."
 msgstr ""
 
-#: applet.js:2782
+#: applet.js:2825
 msgid "The change failed; the previous settings were restored."
 msgstr ""
 
-#: applet.js:2784
+#: applet.js:2827
 msgid "The change failed and some previous settings could not be restored."
 msgstr ""
 
-#: applet.js:2786
+#: applet.js:2829
 msgid "The privileged helper could not be found."
 msgstr ""
 
-#: applet.js:2788
+#: applet.js:2831
 msgid "The change could not be applied."
 msgstr ""
 
-#: applet.js:2798
+#: applet.js:2841
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:3074
+#: applet.js:3116
 msgid "Shortcut is already in use"
 msgstr ""
 
@@ -767,8 +767,8 @@ msgstr ""
 #. settings-schema.json->monitor-brightness->tooltip
 msgid ""
 "For monitors on a cable, which have no kernel backlight. Needs ddcutil "
-"installed and permission on /dev/i2c-*, and is only used on machines with no"
-" built-in backlight of their own."
+"installed and permission on /dev/i2c-*. Used on machines with no built-in "
+"backlight and on laptops while UPower reports the lid closed."
 msgstr ""
 
 #. settings-schema.json->control-section->description

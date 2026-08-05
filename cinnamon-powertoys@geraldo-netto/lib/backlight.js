@@ -47,6 +47,30 @@ const KEYBOARD_XML = '<node>\
 var SCREEN = "screen";
 var KEYBOARD = "keyboard";
 
+/*
+ * Whether DDC/CI is the right way to reach the visible screen.
+ *
+ * A kernel backlight normally means the built-in panel is available and keeps
+ * the I2C probe off the machine. Closing a laptop lid changes that topology:
+ * the panel can no longer be seen, so an external monitor is the screen worth
+ * controlling. Kept as a plain function because the policy is independent of
+ * either D-Bus backend and needs to be checked without a laptop underneath.
+ */
+function shouldUseMonitorBacklight(enabled, hasKernelBacklight, lidIsClosed) {
+    return !!enabled && (!hasKernelBacklight || !!lidIsClosed);
+}
+
+/* The panel wheel has no row to identify its target, so it must follow the
+ * display topology as strictly as the menu does. In closed-lid mode, no DDC
+ * answer means no brightness control—not a silent write to the hidden panel. */
+function visibleBacklightControl(screen, monitor, externalDisplayMode) {
+    if (externalDisplayMode)
+        return monitor && monitor.available ? monitor : null;
+    if (screen && screen.available)
+        return screen;
+    return monitor && monitor.available ? monitor : null;
+}
+
 const INTERFACES = {};
 INTERFACES[SCREEN] = SCREEN_XML;
 INTERFACES[KEYBOARD] = KEYBOARD_XML;
