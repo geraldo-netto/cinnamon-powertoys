@@ -15,7 +15,8 @@
 #
 #   sudo make install-rapl                     - group adm
 #   sudo make install-rapl RAPL_GROUP=powermon - some group of your own
-#   sudo make uninstall-rapl                   - root only again, at once
+#   sudo make uninstall-rapl                   - remove this access rule and
+#                                                 reapply remaining udev policy
 #
 # %p is the device's path under /sys, so this names the counter of whichever
 # domain the event was for: the package, and each of the domains inside it.

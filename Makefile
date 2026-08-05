@@ -121,10 +121,15 @@ uninstall-rapl:
 		{ echo "needs root: sudo make uninstall-rapl"; exit 1; }
 	@rm -f -- "$(RAPL_DIR)/$(RAPL_RULE)"
 	@[ -n "$(DESTDIR)" ] || udevadm control --reload
+	# Remove the access this rule granted, then replay the remaining udev
+	# policy. The reset supplies the kernel's conservative default where no
+	# other rule exists; triggering last lets an administrator, distribution or
+	# another application have the final say instead of being overwritten here.
 	@[ -n "$(DESTDIR)" ] || for f in /sys/class/powercap/*-rapl:*/energy_uj; do \
 		[ -e "$$f" ] || continue; chgrp root "$$f"; chmod 0400 "$$f"; done
+	@[ -n "$(DESTDIR)" ] || udevadm trigger --subsystem-match=powercap
 	@echo "removed $(RAPL_DIR)/$(RAPL_RULE)"
-	@echo "the counters are root only again, now and after the next boot"
+	@echo "reapplied the remaining udev policy (root only when no other rule grants access)"
 
 check:
 	@command -v cjs >/dev/null 2>&1 || { echo "cjs not found, install the cjs package"; exit 1; }
