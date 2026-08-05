@@ -302,6 +302,30 @@ cases["owned degraded backlight discovery retries until recovery"] = function ()
     screen.destroy();
 };
 
+cases["retry cancellation releases injected and fallback timers"] = function () {
+    let owner = ownerWatcher();
+    let timers = retryTimers(owner);
+    let injected = new Backlight.BacklightControl(
+        Backlight.SCREEN, null, null,
+        (xml, onDone) => onDone(null, new Error("proxy unavailable")), owner);
+    Harness.equal(Object.keys(timers.pending).length, 1, "the owner timer is armed");
+
+    owner.vanished();
+    Harness.deepEqual(timers.removed, [1], "owner loss releases the injected timer");
+    Harness.equal(injected._retryTimerId, 0, "and clears its token");
+    Harness.equal(injected._retryDelay, Backlight.RETRY_INITIAL_MS,
+                  "cancellation resets backoff for a future owner");
+    injected.destroy();
+
+    let fallbackOwner = ownerWatcher();
+    let fallback = new Backlight.BacklightControl(
+        Backlight.SCREEN, null, null,
+        (xml, onDone) => onDone(null, new Error("proxy unavailable")), fallbackOwner);
+    Harness.ok(fallback._retryTimerId !== 0, "the GLib fallback timer is armed");
+    fallback.destroy();
+    Harness.equal(fallback._retryTimerId, 0, "teardown removes the GLib timer too");
+};
+
 cases["a failed connection is retried on refresh"] = function () {
     let attempts = 0;
     let recovered = proxy({ GetPercentage: 64 });
