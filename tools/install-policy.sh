@@ -1,32 +1,72 @@
 #!/bin/sh
-# Publish the root-owned helper and the polkit action as one recoverable pair.
+# Install or remove the root-owned helper and polkit action under one lock.
 
 set -eu
 
-HELPER_SOURCE=${1:-}
-HELPER_DESTINATION=${2:-}
-POLICY_SOURCE=${3:-}
-POLICY_DESTINATION=${4:-}
+ACTION=${1:-}
+HELPER_SOURCE=${2:-}
+HELPER_DESTINATION=${3:-}
+POLICY_SOURCE=${4:-}
+POLICY_DESTINATION=${5:-}
+LOCK_TARGET=${6:-}
 
-[ "$#" -eq 4 ] && [ -n "$HELPER_DESTINATION" ] && [ -n "$POLICY_DESTINATION" ] || {
-    echo "usage: install-policy.sh HELPER_SOURCE HELPER_DEST POLICY_SOURCE POLICY_DEST" >&2
+[ "$#" -eq 6 ] && [ -n "$HELPER_DESTINATION" ] &&
+        [ -n "$POLICY_DESTINATION" ] && [ -n "$LOCK_TARGET" ] || {
+    echo "usage: install-policy.sh install|uninstall HELPER_SOURCE HELPER_DEST POLICY_SOURCE POLICY_DEST LOCK" >&2
     exit 2
 }
+case "$ACTION" in
+    install|uninstall) ;;
+    *) echo "unknown policy transition: $ACTION" >&2; exit 2;;
+esac
 [ "$HELPER_DESTINATION" != "$POLICY_DESTINATION" ] || {
     echo "helper and policy destinations must be different" >&2
     exit 2
 }
-[ -f "$HELPER_SOURCE" ] || {
-    echo "missing policy helper source: $HELPER_SOURCE" >&2
+if [ "$ACTION" = install ]; then
+    [ -f "$HELPER_SOURCE" ] || {
+        echo "missing policy helper source: $HELPER_SOURCE" >&2
+        exit 1
+    }
+    [ -f "$POLICY_SOURCE" ] || {
+        echo "missing polkit action source: $POLICY_SOURCE" >&2
+        exit 1
+    }
+fi
+
+command -v flock >/dev/null 2>&1 || {
+    echo "the flock command required for policy transitions is unavailable" >&2
     exit 1
 }
-[ -f "$POLICY_SOURCE" ] || {
-    echo "missing polkit action source: $POLICY_SOURCE" >&2
+if [ -d "$LOCK_TARGET" ]; then
+    exec 9<"$LOCK_TARGET" || {
+        echo "cannot open policy transition lock: $LOCK_TARGET" >&2
+        exit 1
+    }
+else
+    lock_directory=$(dirname "$LOCK_TARGET")
+    [ -d "$lock_directory" ] || install -d -m 0755 "$lock_directory"
+    umask 022
+    exec 9>>"$LOCK_TARGET" || {
+        echo "cannot open policy transition lock: $LOCK_TARGET" >&2
+        exit 1
+    }
+fi
+flock -x 9 || {
+    echo "cannot acquire policy transition lock: $LOCK_TARGET" >&2
     exit 1
 }
 
 helper_directory=$(dirname "$HELPER_DESTINATION")
 policy_directory=$(dirname "$POLICY_DESTINATION")
+
+if [ "$ACTION" = uninstall ]; then
+    rm -f -- "$POLICY_DESTINATION"
+    rm -f -- "$HELPER_DESTINATION"
+    rmdir "$helper_directory" 2>/dev/null || true
+    exit 0
+fi
+
 helper_directory_existed=no
 policy_directory_existed=no
 [ -d "$helper_directory" ] && helper_directory_existed=yes

@@ -24,6 +24,10 @@ cases["policy installation delegates the paired transition"] = function () {
                "the helper is not published independently in the recipe");
     Harness.ok(source.indexOf('install -m 0644 "polkit/$(POLICY)"') < 0,
                "nor is the action");
+    Harness.ok(source.indexOf('sh "$(POLICY_TOOL)" uninstall') >= 0,
+               "uninstall uses the same transition owner");
+    Harness.equal((source.match(/"\$\(POLICY_LOCK\)"/g) || []).length, 2,
+                  "install and uninstall pass the same lock target");
 };
 
 function policyInstall(options) {
@@ -70,7 +74,7 @@ function policyInstall(options) {
         let tool = Harness.testsDir() + "/../tools/install-policy.sh";
         return Harness.settle(done => Privileged._spawn(
             ["env", "PATH=" + path, "sh", tool,
-             helperSource, helper, policySource, policy],
+             "install", helperSource, helper, policySource, policy, directory],
             (status, stderr) => done({
                 status: status,
                 stderr: stderr,
@@ -91,6 +95,59 @@ cases["a failed policy publication restores the previous pair"] = function () {
     Harness.equal(outcome.status, 17, "the publication failure is preserved");
     Harness.equal(outcome.helper, "old helper", "the old helper is restored");
     Harness.equal(outcome.policy, "old policy", "the old action remains in force");
+};
+
+cases["policy uninstall waits for an in-flight installation"] = function () {
+    let directory = GLib.dir_make_tmp("powertoys-policy-lock-XXXXXX");
+    try {
+        let bin = directory + "/bin";
+        let helperSource = directory + "/helper.source";
+        let policySource = directory + "/policy.source";
+        let helper = directory + "/live/helper";
+        let policy = directory + "/live/action.policy";
+        let started = directory + "/helper-published";
+        let runner = directory + "/run-race";
+        let tool = Harness.testsDir() + "/../tools/install-policy.sh";
+        GLib.mkdir_with_parents(bin, 0o755);
+        GLib.mkdir_with_parents(GLib.path_get_dirname(helper), 0o755);
+        GLib.file_set_contents(helperSource, "new helper\n");
+        GLib.file_set_contents(policySource, "new policy\n");
+        writeExecutable(bin + "/mv",
+            "#!/bin/sh\n" +
+            "case \"$*\" in\n" +
+            "  *'.powertoys-helper.new.'*)\n" +
+            "    /bin/mv \"$@\" || exit $?\n" +
+            "    touch \"" + started + "\"\n" +
+            "    sleep 0.2\n" +
+            "    exit 0;;\n" +
+            "esac\n" +
+            "exec /bin/mv \"$@\"\n");
+        writeExecutable(runner,
+            "#!/bin/sh\n" +
+            "PATH=\"" + bin + ":$PATH\" sh \"" + tool + "\" install " +
+                "\"" + helperSource + "\" \"" + helper + "\" " +
+                "\"" + policySource + "\" \"" + policy + "\" \"" + directory + "\" &\n" +
+            "installer=$!\n" +
+            "while [ ! -f \"" + started + "\" ]; do sleep 0.01; done\n" +
+            "sh \"" + tool + "\" uninstall \"" + helperSource + "\" " +
+                "\"" + helper + "\" \"" + policySource + "\" " +
+                "\"" + policy + "\" \"" + directory + "\" &\n" +
+            "uninstaller=$!\n" +
+            "wait \"$installer\"\n" +
+            "wait \"$uninstaller\"\n");
+
+        let outcome = Harness.settle(done => Privileged._spawn(
+            [runner], (status, stderr) => done({ status: status, stderr: stderr })),
+            "concurrent policy transitions");
+        Harness.equal(outcome.status, 0, "both transitions complete: " + outcome.stderr);
+        Harness.equal(GLib.file_test(helper, GLib.FileTest.EXISTS), false,
+                      "the later uninstall removes the committed helper");
+        Harness.equal(GLib.file_test(policy, GLib.FileTest.EXISTS), false,
+                      "and cannot race into an orphan action");
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
+    }
 };
 
 cases["a failed first policy install publishes neither file"] = function () {

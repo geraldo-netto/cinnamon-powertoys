@@ -21,6 +21,7 @@ POT_URL      = $(shell python3 -c "import json;print(json.load(open('$(METADATA)
 POLICY      := io.github.geraldo-netto.cinnamon-powertoys.policy
 POLICY_DIR  := $(DESTDIR)/usr/share/polkit-1/actions
 POLICY_TOOL := tools/install-policy.sh
+POLICY_LOCK := $(if $(DESTDIR),$(DESTDIR),/run/cinnamon-powertoys-policy.lock)
 HELPER_PATH := /usr/local/lib/cinnamon-powertoys/powertoys-helper
 HELPER_DEST := $(DESTDIR)$(HELPER_PATH)
 HELPER_DIR  := $(dir $(HELPER_DEST))
@@ -81,8 +82,8 @@ uninstall:
 install-policy:
 	@[ -n "$(DESTDIR)" ] || [ "$$(id -u)" = 0 ] || \
 		{ echo "needs root: sudo make install-policy"; exit 1; }
-	@sh "$(POLICY_TOOL)" "$(UUID)/powertoys-helper" "$(HELPER_DEST)" \
-		"polkit/$(POLICY)" "$(POLICY_DIR)/$(POLICY)"
+	@sh "$(POLICY_TOOL)" install "$(UUID)/powertoys-helper" "$(HELPER_DEST)" \
+		"polkit/$(POLICY)" "$(POLICY_DIR)/$(POLICY)" "$(POLICY_LOCK)"
 	@echo "installed $(HELPER_DEST)"
 	@echo "installed $(POLICY_DIR)/$(POLICY)"
 	@echo "re-run this after upgrading the applet, so the root owned copy of"
@@ -91,9 +92,8 @@ install-policy:
 uninstall-policy:
 	@[ -n "$(DESTDIR)" ] || [ "$$(id -u)" = 0 ] || \
 		{ echo "needs root: sudo make uninstall-policy"; exit 1; }
-	@rm -f -- "$(POLICY_DIR)/$(POLICY)"
-	@rm -f -- "$(HELPER_DEST)"
-	@rmdir "$(HELPER_DIR)" 2>/dev/null || true
+	@sh "$(POLICY_TOOL)" uninstall "$(UUID)/powertoys-helper" "$(HELPER_DEST)" \
+		"polkit/$(POLICY)" "$(POLICY_DIR)/$(POLICY)" "$(POLICY_LOCK)"
 	@echo "removed the action and the root owned helper"
 	@echo "monitoring still works; privileged changes are disabled"
 

@@ -380,7 +380,9 @@ That installs two files:
 
 Both copies are staged before either installed file changes. If publication is
 interrupted or the second copy fails, the installer restores the previous pair
-instead of leaving a new helper with an old or missing action.
+instead of leaving a new helper with an old or missing action. Install and
+uninstall hold the same root-owned transition lock through publication,
+rollback and cleanup, so concurrent commands cannot interleave the pair.
 
 **What the action grants.** An administrator, logged in at the machine, may run
 that one helper as root, and the authorisation is remembered for a few minutes
