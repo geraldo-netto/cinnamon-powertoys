@@ -74,6 +74,20 @@ cases["a peripheral has its own low level"] = function () {
     Harness.equal(Device.lowThreshold(mouse(), 20, 15), 15, "peripheral");
 };
 
+cases["warning recovery respects precise hysteresis and coarse levels"] = function () {
+    Harness.equal(Device.chargeRecovered(battery({ percentage: 24 }), 20, 5), false,
+                  "a precise battery inside the hysteresis remains warned");
+    Harness.equal(Device.chargeRecovered(battery({ percentage: 26 }), 20, 5), true,
+                  "a precise battery clears beyond the hysteresis");
+    Harness.equal(Device.chargeRecovered(battery({ percentage: 0, batteryLevel: Level.LOW }),
+                                         20, 5), false,
+                  "a coarse low state remains warned");
+    for (let level of [Level.NORMAL, Level.HIGH, Level.FULL])
+        Harness.equal(Device.chargeRecovered(battery({ percentage: 0, batteryLevel: level }),
+                                             20, 5), true,
+                      "coarse recovery level " + level + " clears the warning");
+};
+
 /* ---------------------------------------------------------------- */
 /* time remaining                                                    */
 

@@ -74,7 +74,7 @@ function readNumber(path) {
  * is missing, root-only or busy is an ordinary state here and not a failure.
  * It is called exactly once, including for an empty list.
  */
-function readStringsAsync(paths, onDone, concurrency) {
+function readStringsAsync(paths, onDone, concurrency, fileFactory) {
     let values = {};
     let outstanding = paths.length;
     let nextPath = 0;
@@ -106,7 +106,9 @@ function readStringsAsync(paths, onDone, concurrency) {
         };
 
         try {
-            Gio.File.new_for_path(resolve(path)).load_contents_async(null, (file, result) => {
+            let file = fileFactory ? fileFactory(resolve(path))
+                                   : Gio.File.new_for_path(resolve(path));
+            file.load_contents_async(null, (file, result) => {
                 try {
                     let [ok, contents] = file.load_contents_finish(result);
                     settle(ok ? _decode(contents).trim() : null);
@@ -149,7 +151,7 @@ function readLink(path) {
 /* Symlink targets in one bounded asynchronous batch. query_info_async keeps
  * resolving a sysfs class link off Cinnamon's main thread just as
  * readStringsAsync does for node contents. */
-function readLinksAsync(paths, onDone, concurrency) {
+function readLinksAsync(paths, onDone, concurrency, fileFactory) {
     let values = {};
     let unique = Array.from(new Set(paths));
     let outstanding = unique.length;
@@ -182,7 +184,9 @@ function readLinksAsync(paths, onDone, concurrency) {
         };
 
         try {
-            Gio.File.new_for_path(resolve(path)).query_info_async(
+            let file = fileFactory ? fileFactory(resolve(path))
+                                   : Gio.File.new_for_path(resolve(path));
+            file.query_info_async(
                 "standard::is-symlink,standard::symlink-target",
                 Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS,
                 GLib.PRIORITY_DEFAULT, null, (file, result) => {
@@ -202,7 +206,7 @@ function readLinksAsync(paths, onDone, concurrency) {
 
 /* Existence for a bounded batch, without opening any of the nodes and without
  * making the shell thread wait on sysfs metadata. */
-function pathsExistAsync(paths, onDone, concurrency) {
+function pathsExistAsync(paths, onDone, concurrency, fileFactory) {
     let values = {};
     let unique = Array.from(new Set(paths));
     let outstanding = unique.length;
@@ -233,7 +237,9 @@ function pathsExistAsync(paths, onDone, concurrency) {
                 start();
         };
         try {
-            Gio.File.new_for_path(resolve(path)).query_info_async(
+            let file = fileFactory ? fileFactory(resolve(path))
+                                   : Gio.File.new_for_path(resolve(path));
+            file.query_info_async(
                 "standard::type", Gio.FileQueryInfoFlags.NONE,
                 GLib.PRIORITY_DEFAULT, null, (file, result) => {
                     try {
@@ -340,9 +346,8 @@ function listDir(path) {
  * filesystem. Entries arrive in bounded batches: a machine with a crowded
  * hwmon tree yields between batches instead of monopolising the compositor.
  */
-function listDirAsync(path, onDone) {
+function listDirAsync(path, onDone, fileFactory) {
     let names = [];
-    let directory = Gio.File.new_for_path(resolve(path));
 
     let finish = () => onDone(names.sort(naturalCompare));
     let close = enumerator => {
@@ -361,6 +366,8 @@ function listDirAsync(path, onDone) {
     };
 
     try {
+        let directory = fileFactory ? fileFactory(resolve(path))
+                                    : Gio.File.new_for_path(resolve(path));
         directory.enumerate_children_async(
             "standard::name", Gio.FileQueryInfoFlags.NONE,
             GLib.PRIORITY_DEFAULT, null, (source, result) => {

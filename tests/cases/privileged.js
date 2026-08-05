@@ -388,6 +388,22 @@ cases["the shipped helper identifies its protocol before authentication"] = func
     Harness.equal(compatible.diagnostic, "", "with no compatibility warning");
 };
 
+cases["a successful executable with no helper protocol is rejected"] = function () {
+    let answer = Harness.settle(done => Privileged._probeHelper(
+        "/bin/true", (compatible, diagnostic) =>
+            done({ compatible: compatible, diagnostic: diagnostic })),
+        "an executable that is not the helper");
+    Harness.equal(answer.compatible, false, "exit success alone is not compatibility");
+    Harness.equal(answer.diagnostic, "reported no protocol", "the missing handshake is explicit");
+
+    let failed = Harness.settle(done => Privileged._probeHelper(
+        "/bin/false", (compatible, diagnostic) =>
+            done({ compatible: compatible, diagnostic: diagnostic })),
+        "an executable that rejects the probe");
+    Harness.equal(failed.compatible, false, "a failed probe is incompatible");
+    Harness.ok(failed.diagnostic.indexOf("status") >= 0, "its exit status is retained");
+};
+
 cases["a refusal is written to the log with its status and its reason"] = function () {
     /*
      * The only trace a refused change leaves. The applet turns the outcome

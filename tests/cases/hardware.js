@@ -83,6 +83,31 @@ cases["an address with no entry is left unnamed"] = function () {
     });
 };
 
+cases["a PCI cache identity exists only for complete device IDs"] = function () {
+    Harness.equal(Hardware._pciIdentity(null), null, "no device has no cache identity");
+    Harness.equal(Hardware._pciIdentity({ vendor: "1002", device: "73ff",
+                                         subVendor: null, subDevice: null }),
+                  "1002:73ff::", "optional subsystem IDs have stable empty slots");
+};
+
+cases["asynchronous machine naming handles present and absent PCI slots together"] = function () {
+    on("machine", function () {
+        let answer = Harness.settle(done => Hardware.machineNamesAsync(
+            ["0000:03:00.0", "0000:99:00.0", "0000:03:00.0", null], done),
+            "asynchronous hardware names");
+        Harness.equal(answer.cpuName, "AMD Ryzen 7 5800X", "the processor is named too");
+        Harness.equal(answer.pciNames["0000:03:00.0"],
+                      "Radeon RX 6600/6600 XT/6600M", "the populated slot is named");
+        Harness.equal(answer.pciNames["0000:99:00.0"], undefined,
+                      "the empty slot is omitted");
+
+        let cached = Harness.settle(done => Hardware.machineNamesAsync(
+            ["0000:03:00.0"], done), "cached asynchronous hardware name");
+        Harness.equal(cached.pciNames["0000:03:00.0"], answer.pciNames["0000:03:00.0"],
+                      "the matching cached identity is reused");
+    });
+};
+
 cases["a chip with only a codename gets its vendor in front of it"] = function () {
     Harness.equal(Hardware.deviceDisplayName("Raphael", "Advanced Micro Devices, Inc. [AMD/ATI]"),
                   "AMD Raphael", "a codename alone says nothing about whose it is");

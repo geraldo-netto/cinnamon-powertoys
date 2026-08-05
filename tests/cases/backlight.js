@@ -110,6 +110,30 @@ function ownerWatcher() {
 
 var cases = {};
 
+cases["the production ownership adapter preserves both callbacks"] = function () {
+    let watched = null;
+    let removed = [];
+    let bus = {
+        bus_watch_name: function (type, name, flags, appeared, vanished) {
+            watched = { type: type, name: name, flags: flags,
+                        appeared: appeared, vanished: vanished };
+            return 73;
+        },
+        bus_unwatch_name: id => removed.push(id),
+    };
+    let events = [];
+    let id = Backlight.watchOwner(() => events.push("appeared"),
+                                  () => events.push("vanished"), bus);
+
+    Harness.equal(id, 73, "the watch token is passed through");
+    Harness.equal(watched.name, Backlight.BUS_NAME, "the settings daemon is watched");
+    watched.appeared();
+    watched.vanished();
+    Harness.deepEqual(events, ["appeared", "vanished"], "both owner edges survive the adapter");
+    Backlight.unwatchOwner(id, bus);
+    Harness.deepEqual(removed, [73], "the same token is released");
+};
+
 cases["monitor brightness follows the visible display topology"] = function () {
     Harness.equal(Backlight.shouldUseMonitorBacklight(false, false, false), false,
                   "the setting keeps every DDC probe off");
@@ -135,6 +159,9 @@ cases["the brightness wheel follows the visible screen"] = function () {
     monitor.available = true;
     Harness.equal(Backlight.visibleBacklightControl(screen, monitor, false), monitor,
                   "a desktop uses its external monitor");
+    monitor.available = false;
+    Harness.equal(Backlight.visibleBacklightControl(screen, monitor, false), null,
+                  "no available screen means no control");
 };
 
 cases["a backlight answers with what the daemon reports"] = function () {
@@ -142,6 +169,8 @@ cases["a backlight answers with what the daemon reports"] = function () {
     Harness.equal(screen.available, true, "the daemon answered, so there is one");
     Harness.equal(screen.percentage, 42, "and this is where it is");
     Harness.equal(screen.readyCount(), 1, "ready is said once, when the answer is in");
+    Harness.equal(screen._valueGeneration, 1,
+                  "the first read advances once from the initial generation");
 };
 
 cases["the owner watch performs the only production startup read"] = function () {
@@ -233,6 +262,48 @@ cases["a failed connection is retried on refresh"] = function () {
     Harness.equal(attempts, 2, "refresh reconnects rather than keeping no proxy forever");
     Harness.equal(screen.available, true, "and adopts the recovered backend");
     Harness.equal(screen.percentage, 64, "with its current value");
+};
+
+cases["overlapping refreshes share one proxy initialization"] = function () {
+    let finish = null;
+    let attempts = 0;
+    let screen = new Backlight.BacklightControl(
+        Backlight.SCREEN, null, null, (xml, onDone) => {
+            attempts++;
+            finish = onDone;
+        });
+    let answered = 0;
+    screen.refresh(() => answered++);
+    screen.refresh(() => answered++);
+
+    Harness.equal(attempts, 1, "one connection attempt is in flight");
+    finish(proxy({ GetPercentage: 51 }), null);
+    Harness.equal(screen.percentage, 51, "the shared proxy supplies the value");
+    Harness.equal(answered, 2, "both overlapping callers settle");
+    screen.destroy();
+};
+
+cases["a synchronous percentage-call failure settles the read"] = function () {
+    let stub = proxy({ GetPercentage: 50 });
+    let screen = control(Backlight.SCREEN, stub);
+    stub.GetPercentageRemote = function () { throw new Error("call setup failed"); };
+    let answered = 0;
+
+    screen.refresh(() => answered++);
+    Harness.equal(answered, 1, "the caller is answered");
+    Harness.equal(screen.available, false, "the failed proxy is dropped");
+    Harness.equal(screen.percentage, null, "and no stale value is retained");
+    screen.destroy();
+};
+
+cases["a read rejected before it starts settles every waiter"] = function () {
+    let screen = control(Backlight.SCREEN, proxy({ GetPercentage: 50 }));
+    screen.destroy();
+    let answered = 0;
+    screen._startRead([() => answered++, () => answered++]);
+    Harness.equal(answered, 2, "every accepted waiter is released");
+    screen._onOwnerAppeared();
+    Harness.equal(answered, 2, "a destroyed owner callback does nothing");
 };
 
 cases["a failed first read rebuilds the proxy"] = function () {

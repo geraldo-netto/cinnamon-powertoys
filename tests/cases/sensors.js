@@ -818,6 +818,72 @@ cases["destroyed sensor discovery cannot publish its late answer"] = function ()
     }
 };
 
+cases["destroyed sensor sets reject synchronous and asynchronous discovery"] = function () {
+    let set = new Sensors.SensorSet();
+    set.destroy();
+    let answered = 0;
+    set.discover();
+    set.discoverAsync(() => answered++);
+    set._startRefresh();
+    Harness.equal(answered, 0, "no work or callbacks begin after teardown");
+    Harness.equal(set._refreshing, false, "no topology check begins after teardown");
+    Harness.deepEqual(set.temperatureSensors, [], "the destroyed snapshot remains empty");
+};
+
+cases["overlapping sensor discoveries replay once and settle every waiter"] = function () {
+    let original = IO.listDirAsync;
+    let pending = [];
+    IO.listDirAsync = (path, done) => pending.push(() => done([]));
+    IO.setRoot("/definitely/not/here");
+    try {
+        let set = new Sensors.SensorSet();
+        set._asynchronous = true;
+        let answers = [];
+        let changes = 0;
+        Harness.settle(done => {
+            set._onChanged = () => {
+                changes++;
+                if (changes === 1)
+                    done();
+            };
+            set.discoverAsync(result => answers.push(result));
+            set.discoverAsync(result => answers.push(result));
+            Harness.equal(pending.length, 3, "one discovery owns the three roots");
+            for (let answer of pending.splice(0))
+                answer();
+        }, "the first overlapping sensor discovery");
+        Harness.equal(pending.length, 3, "the overlap becomes one replay");
+        Harness.settle(done => {
+            set._onChanged = () => {
+                changes++;
+                done();
+            };
+            for (let answer of pending.splice(0))
+                answer();
+        }, "the replayed sensor discovery");
+        Harness.deepEqual(answers, [true, true], "both callers settle from completed discovery");
+        Harness.equal(changes, 2, "each completed coherent snapshot is announced");
+        set.destroy();
+    } finally {
+        IO.listDirAsync = original;
+        IO.setRoot("");
+    }
+};
+
+cases["an asynchronous topology change completes through rediscovery"] = function () {
+    on("machine", function () {
+        let set = Harness.settle(function (done) {
+            let created = new Sensors.SensorSet({ asynchronous: true,
+                                                  onChanged: () => done(created) });
+        }, "initial sensor discovery");
+        IO.setRoot(Harness.fixture("inverted-boost"));
+        let changed = Harness.settle(done => set.refresh(done), "changed asynchronous topology");
+        Harness.equal(changed, true, "the refresh reports the rediscovery");
+        Harness.deepEqual(set.temperatureSensors, [], "the replacement snapshot is adopted");
+        set.destroy();
+    });
+};
+
 cases["an asynchronous directory listing matches the synchronous one"] = function () {
     on("machine", function () {
         let expected = IO.listDir("/sys/class/hwmon");
@@ -865,6 +931,27 @@ cases["an asynchronous reading with nothing to read still answers"] = function (
         Harness.equal(readings.powers.length, 0, "powers");
         Harness.equal(readings.packageWatts, null, "and no package total");
     });
+};
+
+cases["destroyed sensor reads do not publish new or late results"] = function () {
+    let set = new Sensors.SensorSet();
+    set.destroy();
+    let answered = 0;
+    set.readAsync(null, () => answered++);
+    Harness.equal(answered, 0, "new reads are rejected after teardown");
+
+    set = new Sensors.SensorSet();
+    let original = IO.readStringsAsync;
+    let finish = null;
+    IO.readStringsAsync = (paths, done) => { finish = done; };
+    try {
+        set.readAsync(null, () => answered++);
+        set.destroy();
+        finish({});
+        Harness.equal(answered, 0, "an in-flight read cannot publish after teardown");
+    } finally {
+        IO.readStringsAsync = original;
+    }
 };
 
 cases["a machine whose nodes cannot be read answers with nulls"] = function () {

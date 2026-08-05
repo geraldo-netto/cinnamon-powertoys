@@ -258,6 +258,135 @@ cases["several nodes at once answer once, with a value each"] = function () {
     });
 };
 
+cases["asynchronous file setup failures retain the batch contract"] = function () {
+    let fail = () => { throw new Error("file setup failed"); };
+    let strings = Harness.settle(done =>
+        IO.readStringsAsync(["/one", "/two"], done, 1, fail), "failed string batch");
+    Harness.deepEqual(strings, { "/one": null, "/two": null },
+                      "each unreadable node is represented");
+
+    let links = Harness.settle(done =>
+        IO.readLinksAsync(["/one", "/two"], done, 1, fail), "failed link batch");
+    Harness.deepEqual(links, { "/one": null, "/two": null },
+                      "each unreadable link is represented");
+
+    let existing = Harness.settle(done =>
+        IO.pathsExistAsync(["/one", "/two"], done, 1, fail), "failed metadata batch");
+    Harness.deepEqual(existing, { "/one": false, "/two": false },
+                      "each failed metadata query is false");
+};
+
+cases["asynchronous existence checks are unique and complete"] = function () {
+    scratch(function (directory) {
+        write(directory, "present", "x");
+        rooted(directory, function () {
+            let values = Harness.settle(done =>
+                IO.pathsExistAsync(["/present", "/missing", "/present"], done, 1),
+                "existence batch");
+            Harness.deepEqual(values, { "/present": true, "/missing": false },
+                              "one result per distinct path");
+            let empty = Harness.settle(done => IO.pathsExistAsync([], done), "empty metadata batch");
+            Harness.deepEqual(empty, {}, "an empty batch still settles");
+        });
+    });
+};
+
+cases["asynchronous metadata batches obey their concurrency limit"] = function () {
+    let pending = [];
+    let active = 0;
+    let maximum = 0;
+    let factory = path => ({
+        query_info_async: function (attributes, flags, priority, cancellable, onDone) {
+            active++;
+            maximum = Math.max(maximum, active);
+            pending.push(() => { active--; onDone(this, {}); });
+        },
+        query_info_finish: () => ({}),
+    });
+    let answer = null;
+    IO.pathsExistAsync(["/a", "/b", "/c"], values => { answer = values; }, 1, factory);
+    Harness.equal(pending.length, 1, "only the permitted query starts");
+    while (pending.length > 0)
+        pending.shift()();
+    Harness.equal(maximum, 1, "the limit is never exceeded at its boundary");
+    Harness.deepEqual(answer, { "/a": true, "/b": true, "/c": true },
+                      "the queued paths still all settle");
+};
+
+cases["readability metadata is queried without reading contents"] = function () {
+    scratch(function (directory) {
+        write(directory, "present", "x");
+        rooted(directory, function () {
+            Harness.equal(IO.canRead("/present"), true, "a readable node");
+            Harness.equal(IO.canRead("/missing"), false, "a missing node");
+        });
+    });
+};
+
+function asyncDirectory(options) {
+    let settings = options || {};
+    let batches = (settings.batches || [[]]).slice();
+    let enumerator = {
+        next_files_async: function (count, priority, cancellable, onDone) {
+            if (settings.throwNext)
+                throw new Error("cannot ask for entries");
+            onDone(this, {});
+        },
+        next_files_finish: function () {
+            if (settings.failNextFinish)
+                throw new Error("cannot finish entries");
+            let names = batches.shift() || [];
+            return names.map(name => ({ get_name: () => name }));
+        },
+        close_async: function (priority, cancellable, onDone) {
+            if (settings.throwClose)
+                throw new Error("cannot start close");
+            onDone(this, {});
+        },
+        close_finish: function () {
+            if (settings.failCloseFinish)
+                throw new Error("cannot finish close");
+        },
+    };
+    return {
+        enumerate_children_async: function (attributes, flags, priority, cancellable, onDone) {
+            if (settings.throwEnumerate)
+                throw new Error("cannot enumerate");
+            onDone(this, {});
+        },
+        enumerate_children_finish: function () {
+            if (settings.failEnumerateFinish)
+                throw new Error("cannot finish enumeration");
+            return enumerator;
+        },
+    };
+}
+
+cases["asynchronous listings settle across every filesystem failure boundary"] = function () {
+    function listing(settings, label) {
+        return Harness.settle(done => IO.listDirAsync("/ignored", done,
+            () => asyncDirectory(settings)), label);
+    }
+
+    Harness.deepEqual(listing({ batches: [["hwmon10", "hwmon2"], []] }, "complete listing"),
+                      ["hwmon2", "hwmon10"], "successful batches are naturally sorted");
+    Harness.deepEqual(listing({ throwEnumerate: true }, "enumeration setup failure"), [],
+                      "a synchronous enumeration failure settles");
+    Harness.deepEqual(listing({ failEnumerateFinish: true }, "enumeration reply failure"), [],
+                      "a failed enumeration reply settles");
+    Harness.deepEqual(listing({ throwNext: true }, "entry setup failure"), [],
+                      "a synchronous entry failure closes and settles");
+    Harness.deepEqual(listing({ failNextFinish: true }, "entry reply failure"), [],
+                      "a failed entry reply closes and settles");
+    Harness.deepEqual(listing({ throwClose: true }, "close setup failure"), [],
+                      "a synchronous close failure still settles");
+    Harness.deepEqual(listing({ failCloseFinish: true }, "close reply failure"), [],
+                      "a failed close reply retains the listing");
+    Harness.deepEqual(Harness.settle(done => IO.listDirAsync("/ignored", done,
+        () => { throw new Error("no directory"); }), "file factory failure"), [],
+                      "a directory factory failure settles too");
+};
+
 cases["asking for no nodes at all still answers"] = function () {
     /* A machine with every sensor filtered out asks for nothing, and a caller
      * that is never answered is a poll that never finishes. */

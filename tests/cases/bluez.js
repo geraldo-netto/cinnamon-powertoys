@@ -41,6 +41,103 @@ function device(name, icon, connected, percentage) {
 
 var cases = {};
 
+cases["the production owner adapter preserves edges and cleanup"] = function () {
+    let watched = null;
+    let removed = [];
+    let bus = {
+        bus_watch_name: function (type, name, flags, appeared, vanished) {
+            watched = { name: name, appeared: appeared, vanished: vanished };
+            return 29;
+        },
+        bus_unwatch_name: id => removed.push(id),
+    };
+    let events = [];
+    let unwatch = Bluez.systemNameWatcher(() => events.push("appeared"),
+                                          () => events.push("vanished"), bus);
+    Harness.equal(watched.name, Bluez.BUS_NAME, "BlueZ is the watched owner");
+    watched.appeared();
+    watched.vanished();
+    Harness.deepEqual(events, ["appeared", "vanished"], "both edges are forwarded");
+    unwatch();
+    Harness.deepEqual(removed, [29], "the returned cleanup releases the watch");
+
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    try {
+        Harness.equal(Bluez.systemNameWatcher(() => {}, () => {}, {
+            bus_watch_name: () => { throw new Error("watch failed"); },
+        }), null, "a failed watch has no cleanup token");
+    } finally {
+        Log.setSink(null);
+    }
+    Harness.equal(lines.length, 1, "the setup failure is recorded");
+    Harness.ok(lines[0].indexOf("watch failed") >= 0, "the original failure is retained");
+};
+
+function signalBus() {
+    let bus = { subscriptions: [], removed: [] };
+    bus.signal_subscribe = function (name, iface, member, path, arg0, flags, callback) {
+        let entry = { id: bus.subscriptions.length + 1, iface: iface, member: member,
+                      arg0: arg0, callback: callback };
+        bus.subscriptions.push(entry);
+        return entry.id;
+    };
+    bus.signal_unsubscribe = id => bus.removed.push(id);
+    return bus;
+}
+
+cases["the injected signal transport drives every BlueZ delta"] = function () {
+    let bus = signalBus();
+    let reads = 0;
+    let control = new Bluez.BluezBatteries(null,
+        (path, iface, method, onDone) => { reads++; onDone(tree()); }, null, bus);
+    Harness.equal(bus.subscriptions.length, 4, "the two object and two property edges are wired");
+
+    let added = bus.subscriptions.find(entry => entry.member === "InterfacesAdded");
+    added.callback(null, null, HEADSET, null, null, { deepUnpack: () => [HEADSET,
+        device("BW01", "audio-headset", true, 90)] });
+    Harness.equal(control.devices.length, 1, "an unpacked add reaches the cache");
+
+    let battery = bus.subscriptions.find(entry => entry.member === "PropertiesChanged" &&
+                                                  entry.arg0 === "org.bluez.Battery1");
+    battery.callback(null, null, HEADSET, null, null,
+                     ["org.bluez.Battery1", { Percentage: 72 }, []]);
+    Harness.equal(control.devices[0].percentage, 72, "a plain-array property delta reaches it too");
+
+    let removed = bus.subscriptions.find(entry => entry.member === "InterfacesRemoved");
+    removed.callback(null, null, HEADSET, null, null,
+                     { deepUnpack: () => [HEADSET, ["org.bluez.Battery1"]] });
+    Harness.deepEqual(control.devices, [], "a remove reaches the cache");
+
+    battery.callback(null, null, HEADSET, null, null, {
+        deepUnpack: () => { throw new Error("malformed signal"); },
+    });
+    Harness.ok(control._refreshTimerId, "an undecodable watched signal schedules repair");
+    control.destroy();
+    Harness.deepEqual(bus.removed, [1, 2, 3, 4], "every injected subscription is released");
+    added.callback(null, null, HEADSET, null, null, []);
+    Harness.equal(reads, 1, "a late signal does not read after teardown");
+};
+
+cases["a failed injected signal subscription is contained"] = function () {
+    let lines = [];
+    let bus = {
+        signal_subscribe: () => { throw new Error("subscription failed"); },
+        signal_unsubscribe: () => {},
+    };
+    Log.setSink(line => lines.push(line));
+    let control;
+    try {
+        control = new Bluez.BluezBatteries(null,
+            (path, iface, method, onDone) => onDone(tree()), null, bus);
+    } finally {
+        Log.setSink(null);
+    }
+    Harness.equal(lines.length, 4, "each unavailable edge is named once");
+    Harness.equal(control.available, true, "the initial snapshot remains usable");
+    control.destroy();
+};
+
 function nameWatcher() {
     let watcher = { appeared: null, vanished: null, unwatched: 0 };
     watcher.watch = function (appeared, vanished) {
@@ -229,6 +326,20 @@ cases["bluetoothd going away empties the list and says so"] = function () {
     Harness.equal(watcher.unwatched, 1, "the ownership watch is released");
 };
 
+cases["owner loss cancels pending repair and ignores later owner edges"] = function () {
+    let watcher = nameWatcher();
+    let control = new Bluez.BluezBatteries(null,
+        (path, iface, method, onDone) => onDone(tree()), watcher.watch);
+    control._scheduleRefresh();
+    Harness.ok(control._refreshTimerId, "a repair timer is pending");
+    watcher.vanished();
+    Harness.equal(control._refreshTimerId, 0, "owner loss removes the obsolete timer");
+    control.destroy();
+    watcher.vanished();
+    watcher.appeared();
+    Harness.equal(control.available, false, "late owner edges cannot revive a destroyed client");
+};
+
 cases["the owner watch performs the only production startup read"] = function () {
     let reads = 0;
     let watcher = initialNameWatcher();
@@ -308,6 +419,65 @@ cases["a delta racing the initial snapshot requests one repair read"] = function
     Harness.equal(waiting.length, 1, "the whole race coalesces into one repair snapshot");
     waiting.shift()(tree({ [HEADSET]: device("BW01", "audio-headset", true, 20) }));
     Harness.equal(control.devices[0].percentage, 20, "the post-race state wins");
+    control.destroy();
+};
+
+cases["a cacheless delta after a failed snapshot starts a repair"] = function () {
+    let answers = [null, tree({ [HEADSET]: device("BW01", "audio-headset", true, 44) })];
+    let reads = 0;
+    let control = new Bluez.BluezBatteries(null, (path, iface, method, onDone) => {
+        reads++;
+        onDone(answers.shift());
+    });
+    control._interfacesAdded([HEADSET, { "org.bluez.Battery1": { Percentage: 44 } }]);
+    Harness.equal(reads, 2, "the delta triggers a repair when no read is in flight");
+    Harness.equal(control.devices[0].percentage, 44, "the repair supplies the complete device");
+    control.destroy();
+};
+
+cases["malformed and irrelevant interface additions are ignored safely"] = function () {
+    let control = new Bluez.BluezBatteries(null,
+        (path, iface, method, onDone) => onDone(tree()));
+    for (let args of [[], [42, {}], [HEADSET, null],
+                      [HEADSET, { "org.bluez.Adapter1": { Powered: true } }]])
+        control._interfacesAdded(args);
+    Harness.deepEqual(control.devices, [], "none can create a battery row");
+    control.destroy();
+};
+
+cases["malformed and irrelevant interface removals are ignored safely"] = function () {
+    let control = new Bluez.BluezBatteries(null,
+        (path, iface, method, onDone) => onDone(tree()));
+    for (let args of [[], [42, []], [HEADSET, null],
+                      [HEADSET, ["org.bluez.Adapter1"]]])
+        control._interfacesRemoved(args);
+    Harness.deepEqual(control.devices, [], "none can remove or create a battery row");
+    control.destroy();
+};
+
+cases["a throwing object-tree transport settles as unavailable"] = function () {
+    let control = new Bluez.BluezBatteries(null, () => { throw new Error("call failed"); });
+    Harness.equal(control.available, false, "the failed snapshot is contained");
+    Harness.deepEqual(control.devices, [], "with no stale devices");
+    control.destroy();
+};
+
+cases["a throwing name watcher falls back to the initial snapshot"] = function () {
+    let reads = 0;
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    let control;
+    try {
+        control = new Bluez.BluezBatteries(null,
+            (path, iface, method, onDone) => { reads++; onDone(tree()); },
+            () => { throw new Error("watch failed"); });
+    } finally {
+        Log.setSink(null);
+    }
+    Harness.equal(reads, 1, "the snapshot still runs");
+    Harness.equal(lines.length, 1, "the watch failure is logged");
+    Harness.ok(lines[0].indexOf("watch failed") >= 0,
+               "the owner-watch diagnostic retains the original error");
     control.destroy();
 };
 

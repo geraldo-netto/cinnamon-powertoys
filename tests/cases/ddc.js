@@ -150,6 +150,45 @@ function started(output, status, brightness) {
 
 var cases = {};
 
+cases["a monitor exposes whether its own bus call is in flight"] = function () {
+    let finish = null;
+    let monitor = new Ddc.DdcMonitor(
+        { number: "1", bus: "/dev/i2c-4", name: "Monitor" },
+        (argv, onDone) => { finish = onDone; });
+    Harness.equal(monitor.busy, false, "idle before a read");
+    monitor.refresh();
+    Harness.equal(monitor.busy, true, "busy while ddcutil owns the monitor");
+    finish("VCP 10 C 40 100\n", 0);
+    Harness.equal(monitor.busy, false, "idle after the reply");
+};
+
+cases["the shared DDC command boundary settles throws and duplicate replies"] = function () {
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    try {
+        let failed = new Ddc.DdcBacklight(null, () => { throw new Error("spawn failed"); });
+        let outcome = null;
+        failed._invoke(["ddcutil"], (output, status) => {
+            outcome = { output: output, status: status };
+        });
+        Harness.deepEqual(outcome, { output: "", status: -1 }, "a thrown runner is an answer");
+        Harness.equal(failed.busy, false, "its command count is released");
+
+        let reply = null;
+        let control = new Ddc.DdcBacklight(null, (argv, onDone) => { reply = onDone; });
+        let answers = 0;
+        control._invoke(["ddcutil"], () => answers++);
+        Harness.equal(control.busy, true, "the held command is counted");
+        reply("", 0);
+        reply("", 0);
+        Harness.equal(answers, 1, "a duplicate transport callback is ignored");
+        Harness.equal(control.busy, false, "and cannot decrement the count twice");
+    } finally {
+        Log.setSink(null);
+    }
+    Harness.equal(lines.length, 1, "the runner failure is logged once");
+};
+
 cases["what detect says about each display is picked out of it"] = function () {
     let displays = Ddc.parseDisplays(DETECT_TWO);
     Harness.equal(displays.length, 2, "two monitors");

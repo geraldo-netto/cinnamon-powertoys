@@ -166,13 +166,14 @@ function parseObjects(objects) {
 /* Watches ownership rather than any one BlueZ object. Object/property signals
  * cannot report an abrupt daemon exit, because the process that would emit
  * them has already gone. The returned function releases the watch. */
-function systemNameWatcher(onAppeared, onVanished) {
+function systemNameWatcher(onAppeared, onVanished, bus) {
     try {
-        let id = Gio.bus_watch_name(
+        let adapter = bus || Gio;
+        let id = adapter.bus_watch_name(
             Gio.BusType.SYSTEM, BUS_NAME, Gio.BusNameWatcherFlags.NONE,
             () => onAppeared(), () => onVanished());
         return function () {
-            Gio.bus_unwatch_name(id);
+            adapter.bus_unwatch_name(id);
         };
     } catch (error) {
         Log.error("cannot watch ownership of BlueZ: " + error);
@@ -190,7 +191,7 @@ systemNameWatcher.reportsInitialState = true;
  * BlueZ emits as devices come, go and change, so a poll costs nothing.
  */
 var BluezBatteries = class BluezBatteries {
-    constructor(onChanged, call, watchName) {
+    constructor(onChanged, call, watchName, signalBus) {
         this.available = false;
         this.destroyed = false;
         this.devices = [];
@@ -202,6 +203,7 @@ var BluezBatteries = class BluezBatteries {
          * matching name watcher too. Production supplies neither. */
         this._watchName = watchName === undefined
             ? (call ? null : systemNameWatcher) : watchName;
+        this._signalBus = signalBus || null;
         this._unwatchName = null;
         this._signalIds = [];
         this._refreshTimerId = 0;
@@ -405,7 +407,8 @@ var BluezBatteries = class BluezBatteries {
 
     _subscribe(iface, member, arg0, onSignal) {
         try {
-            this._signalIds.push(Gio.DBus.system.signal_subscribe(
+            let connection = this._signalBus || Gio.DBus.system;
+            this._signalIds.push(connection.signal_subscribe(
                 BUS_NAME, iface, member, null, arg0,
                 Gio.DBusSignalFlags.NONE,
                 (connection, sender, path, signalIface, signal, parameters) => {
@@ -556,7 +559,8 @@ var BluezBatteries = class BluezBatteries {
         }
         for (let id of this._signalIds) {
             try {
-                Gio.DBus.system.signal_unsubscribe(id);
+                let connection = this._signalBus || Gio.DBus.system;
+                connection.signal_unsubscribe(id);
             } catch (error) {
                 /* already gone */
             }

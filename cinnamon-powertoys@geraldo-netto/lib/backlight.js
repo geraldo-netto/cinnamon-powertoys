@@ -99,14 +99,15 @@ function connectProxy(xml, onDone, cancellable) {
     }
 }
 
-function watchOwner(onAppeared, onVanished) {
-    return Gio.bus_watch_name(Gio.BusType.SESSION, BUS_NAME,
-                              Gio.BusNameWatcherFlags.NONE,
-                              onAppeared, onVanished);
+function watchOwner(onAppeared, onVanished, bus) {
+    let adapter = bus || Gio;
+    return adapter.bus_watch_name(Gio.BusType.SESSION, BUS_NAME,
+                                  Gio.BusNameWatcherFlags.NONE,
+                                  onAppeared, onVanished);
 }
 
-function unwatchOwner(id) {
-    Gio.bus_unwatch_name(id);
+function unwatchOwner(id, bus) {
+    (bus || Gio).bus_unwatch_name(id);
 }
 
 var BacklightControl = class BacklightControl {

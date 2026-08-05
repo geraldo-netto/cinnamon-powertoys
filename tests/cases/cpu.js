@@ -546,8 +546,48 @@ cases["an asynchronous sample refreshes only live CPU values"] = function () {
                           "the scaling topology was not rediscovered");
             Harness.equal(sampled.some(path => /cpuinfo_max_freq$/.test(path)), false,
                           "the fixed ceiling was not reread");
+            Harness.equal(cpu.governor, "performance", "the asynchronous getter uses the sample");
+            Harness.equal(cpu.energyPreference, "performance",
+                          "as does the asynchronous EPP getter");
         } finally {
             IO.readStringsAsync = readStrings;
+            cpu.destroy();
+        }
+    } finally {
+        release();
+    }
+};
+
+cases["CPU sampling settles synchronous, destroyed, and stale requests"] = function () {
+    try {
+        let cpu = control("machine");
+        let sync = null;
+        cpu.sample(result => { sync = result; });
+        Harness.equal(sync, true, "a synchronous control already has its live values");
+
+        cpu._asynchronous = true;
+        cpu.destroy();
+        let destroyed = null;
+        cpu.sample(result => { destroyed = result; });
+        Harness.equal(destroyed, false, "a destroyed control rejects new sampling work");
+    } finally {
+        release();
+    }
+
+    try {
+        let cpu = control("machine");
+        cpu._asynchronous = true;
+        let real = IO.readStringsAsync;
+        let finish = null;
+        IO.readStringsAsync = (paths, done) => { finish = done; };
+        try {
+            let outcome = null;
+            cpu.sample(result => { outcome = result; });
+            cpu._stateGeneration++;
+            finish({});
+            Harness.equal(outcome, false, "a sample from an obsolete topology is discarded");
+        } finally {
+            IO.readStringsAsync = real;
             cpu.destroy();
         }
     } finally {
