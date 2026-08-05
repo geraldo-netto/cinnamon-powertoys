@@ -103,14 +103,17 @@ var CpuControl = class CpuControl {
     }
 
     refresh(onDone) {
+        if (this._destroyed) {
+            if (onDone)
+                onDone(false);
+            return false;
+        }
         if (!this._asynchronous) {
             this._refreshSync();
             if (onDone)
                 onDone(true);
-            return;
+            return true;
         }
-        if (this._destroyed)
-            return;
         if (onDone)
             this._refreshWaiters.push(onDone);
         if (this._refreshing) {
@@ -118,9 +121,10 @@ var CpuControl = class CpuControl {
              * therefore cannot prove what is true after it. Keep one replay;
              * any number of overlapping requests need only one newer sweep. */
             this._refreshPending = true;
-            return;
+            return true;
         }
         this._startRefresh();
+        return true;
     }
 
     _startRefresh() {

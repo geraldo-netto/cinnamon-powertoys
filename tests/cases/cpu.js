@@ -548,6 +548,23 @@ cases["destroying a CPU refresh settles every accepted caller once"] = function 
     }
 };
 
+cases["a destroyed synchronous CPU control cannot be refreshed"] = function () {
+    try {
+        let cpu = control("machine");
+        let refreshed = 0;
+        cpu.destroy();
+        cpu._refreshSync = () => refreshed++;
+        let answer = null;
+
+        Harness.equal(cpu.refresh(result => { answer = result; }), false,
+                      "terminal controls reject refresh");
+        Harness.equal(answer, false, "the rejected caller is settled");
+        Harness.equal(refreshed, 0, "no machine state is read after teardown");
+    } finally {
+        release();
+    }
+};
+
 cases["an asynchronous sample refreshes only live CPU values"] = function () {
     try {
         Hardware.forget();
