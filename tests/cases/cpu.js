@@ -98,6 +98,45 @@ cases["a machine with no cpufreq at all offers nothing"] = function () {
     });
 };
 
+cases["heterogeneous policies expose only shared choices and agreed values"] = function () {
+    scratch({
+        "/sys/devices/system/cpu/cpufreq/policy0/scaling_available_governors":
+            "performance powersave schedutil\n",
+        "/sys/devices/system/cpu/cpufreq/policy0/scaling_governor": "powersave\n",
+        "/sys/devices/system/cpu/cpufreq/policy0/energy_performance_available_preferences":
+            "default performance power\n",
+        "/sys/devices/system/cpu/cpufreq/policy0/energy_performance_preference": "power\n",
+        "/sys/devices/system/cpu/cpufreq/policy1/scaling_available_governors":
+            "performance powersave\n",
+        "/sys/devices/system/cpu/cpufreq/policy1/scaling_governor": "performance\n",
+        "/sys/devices/system/cpu/cpufreq/policy1/energy_performance_available_preferences":
+            "default balance_performance\n",
+        "/sys/devices/system/cpu/cpufreq/policy1/energy_performance_preference": "default\n",
+    }, function () {
+        let cpu = new Cpu.CpuControl(() => {});
+        Harness.deepEqual(cpu.governors, ["performance", "powersave"],
+                          "only governors every policy accepts");
+        Harness.equal(cpu.governor, null, "different current governors do not become one claim");
+        Harness.deepEqual(cpu.energyPreferences, ["default"],
+                          "only preferences every EPP policy accepts");
+        Harness.equal(cpu.energyPreference, null,
+                      "different current preferences do not become one claim");
+    });
+};
+
+cases["a policy that cannot describe its governors prevents unsafe choices"] = function () {
+    scratch({
+        "/sys/devices/system/cpu/cpufreq/policy0/scaling_available_governors":
+            "performance powersave\n",
+        "/sys/devices/system/cpu/cpufreq/policy0/scaling_governor": "powersave\n",
+        "/sys/devices/system/cpu/cpufreq/policy1/scaling_governor": "powersave\n",
+    }, function () {
+        let cpu = new Cpu.CpuControl(() => {});
+        Harness.deepEqual(cpu.governors, [], "no choice is guessed from the first policy");
+        Harness.equal(cpu.governor, "powersave", "agreement is still reported independently");
+    });
+};
+
 cases["the frequency is the average across every policy"] = function () {
     /* One number stands for a processor whose cores are all at different
      * speeds, and it is read from all of them rather than from the first. */

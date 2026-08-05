@@ -1,9 +1,10 @@
 /*
  * cinnamon-powertoys - CPU scaling interface.
  *
- * cpufreq exposes one policy directory per core group. The settings that are
- * uniform across them - driver, governor, energy preference, boost - are read
- * from the first policy; current and maximum frequencies use all of them.
+ * cpufreq exposes one policy directory per core group. Governors and energy
+ * preferences are per-policy: only choices shared by every target are safe to
+ * offer, and a current value exists only while all of those targets agree.
+ * Current and maximum frequencies likewise use every policy.
  *
  * All of those nodes are owned by root, so writing one is not something this
  * module can do on its own. It takes a runner - in the applet, the pkexec
@@ -40,6 +41,23 @@ function _lazy(object, name, produce) {
     return object;
 }
 
+function _intersection(lists) {
+    if (lists.length === 0)
+        return [];
+    return lists[0].filter((value, index) =>
+        lists[0].indexOf(value) === index &&
+        lists.every(list => list.indexOf(value) >= 0));
+}
+
+function _agreed(paths, node) {
+    if (paths.length === 0)
+        return null;
+    let values = paths.map(path => IO.readString(path + "/" + node));
+    if (values.some(value => value === null))
+        return null;
+    return values.every(value => value === values[0]) ? values[0] : null;
+}
+
 var CpuControl = class CpuControl {
     constructor(runner) {
         this._runner = runner || function () {};
@@ -53,9 +71,12 @@ var CpuControl = class CpuControl {
         this.reference = this.policies.length > 0 ? this.policies[0] : null;
 
         this.driver = this.reference ? IO.readString(this.reference + "/scaling_driver") : null;
-        this.governors = this.reference ? IO.readWords(this.reference + "/scaling_available_governors") : [];
-        this.energyPreferences = this.reference
-            ? IO.readWords(this.reference + "/energy_performance_available_preferences") : [];
+        this.governors = _intersection(this.policies.map(policy =>
+            IO.readWords(policy + "/scaling_available_governors")));
+        this.energyPolicies = this.policies.filter(policy =>
+            IO.exists(policy + "/energy_performance_preference"));
+        this.energyPreferences = _intersection(this.energyPolicies.map(policy =>
+            IO.readWords(policy + "/energy_performance_available_preferences")));
         this.amdPstateStatus = IO.readString(CPU_DIR + "/amd_pstate/status");
 
         /* What the chip is called, so a reading can be filed under the same
@@ -91,7 +112,7 @@ var CpuControl = class CpuControl {
     }
 
     get governor() {
-        return this.reference ? IO.readString(this.reference + "/scaling_governor") : null;
+        return _agreed(this.policies, "scaling_governor");
     }
 
     /* The names below are the helper's vocabulary, and the only place in the
@@ -101,7 +122,7 @@ var CpuControl = class CpuControl {
     }
 
     get energyPreference() {
-        return this.reference ? IO.readString(this.reference + "/energy_performance_preference") : null;
+        return _agreed(this.energyPolicies, "energy_performance_preference");
     }
 
     setEnergyPreference(name, onDone) {

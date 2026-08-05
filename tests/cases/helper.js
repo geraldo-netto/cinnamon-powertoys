@@ -44,7 +44,32 @@ function scratch(batteries, body) {
     }
 }
 
-function run(tree, value, refusals) {
+function cpuScratch(policies, body) {
+    let directory = GLib.dir_make_tmp("powertoys-helper-cpu-XXXXXX");
+    let cpu = directory + "/cpu";
+    let cpufreq = cpu + "/cpufreq";
+    let script = directory + "/powertoys-helper";
+    GLib.mkdir_with_parents(cpufreq, 0o755);
+    try {
+        for (let name in policies) {
+            let policy = cpufreq + "/" + name;
+            GLib.mkdir_with_parents(policy, 0o755);
+            GLib.file_set_contents(policy + "/scaling_available_governors",
+                                   policies[name].governors + "\n");
+            GLib.file_set_contents(policy + "/scaling_governor",
+                                   policies[name].governor + "\n");
+        }
+        let source = Harness.readFile(Harness.xletDir() + "/powertoys-helper")
+            .replace(/^CPU_DIR=.*$/m, "CPU_DIR=\"" + cpu + "\"");
+        return body({ directory: directory, cpu: cpu, cpufreq: cpufreq,
+                      script: script, source: source });
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
+    }
+}
+
+function run(tree, args, refusals) {
     let source = tree.source;
     if (refusals && refusals.length > 0) {
         let conditions = refusals.map(refusal =>
@@ -67,7 +92,7 @@ function run(tree, value, refusals) {
     let helper = new Privileged.PrivilegedHelper(
         [tree.script], () => true, () => {},
         (argv, done) => Privileged._spawn(argv.slice(1), done));
-    return Harness.settle(done => helper.run(["charge-threshold", String(value)], done),
+    return Harness.settle(done => helper.run(args.map(value => String(value)), done),
                           "the helper transaction");
 }
 
@@ -75,7 +100,7 @@ var cases = {};
 
 cases["charge writes begin only after every battery passes preflight"] = function () {
     scratch({ BAT0: { start: 70, end: 80 }, BAT1: { start: 40, end: "asleep" } }, tree => {
-        let outcome = run(tree, 60);
+        let outcome = run(tree, ["charge-threshold", 60]);
         Harness.equal(outcome.code, "unavailable", "the unreadable topology is reported");
         Harness.equal(contents(tree.supply + "/BAT0/charge_control_start_threshold"), "70",
                       "the first start was not lowered");
@@ -86,7 +111,7 @@ cases["charge writes begin only after every battery passes preflight"] = functio
 
 cases["charge writes update every battery as one transaction"] = function () {
     scratch({ BAT0: { start: 70, end: 80 }, BAT1: { start: 40, end: 90 } }, tree => {
-        let outcome = run(tree, 60);
+        let outcome = run(tree, ["charge-threshold", 60]);
         Harness.equal(outcome.applied, true, "the set applied");
         Harness.equal(contents(tree.supply + "/BAT0/charge_control_start_threshold"), "55",
                       "a start that would block the end is lowered first");
@@ -102,7 +127,8 @@ cases["charge writes update every battery as one transaction"] = function () {
 cases["a refused charge write restores every completed write"] = function () {
     scratch({ BAT0: { start: 70, end: 80 }, BAT1: { start: 40, end: 90 } }, tree => {
         let refused = tree.supply + "/BAT1/charge_control_end_threshold";
-        let outcome = run(tree, 60, [{ path: refused, value: "60" }]);
+        let outcome = run(tree, ["charge-threshold", 60],
+                          [{ path: refused, value: "60" }]);
         Harness.equal(outcome.code, "change-failed-restored", "restoration is explicit");
         Harness.equal(contents(tree.supply + "/BAT0/charge_control_start_threshold"), "70",
                       "the adjusted start was restored");
@@ -117,11 +143,55 @@ cases["a refused charge rollback is reported separately"] = function () {
     scratch({ BAT0: { start: 70, end: 80 }, BAT1: { start: 40, end: 90 } }, tree => {
         let first = tree.supply + "/BAT0/charge_control_end_threshold";
         let second = tree.supply + "/BAT1/charge_control_end_threshold";
-        let outcome = run(tree, 60, [
+        let outcome = run(tree, ["charge-threshold", 60], [
             { path: second, value: "60" },
             { path: first, value: "80" },
         ]);
         Harness.equal(outcome.code, "rollback-failed", "the partial restoration is visible");
         Harness.equal(contents(first), "60", "the node whose restoration failed stays changed");
+    });
+};
+
+cases["CPU policy writes begin only after every policy accepts the value"] = function () {
+    cpuScratch({
+        policy0: { governors: "performance powersave", governor: "powersave" },
+        policy1: { governors: "powersave", governor: "powersave" },
+    }, tree => {
+        let outcome = run(tree, ["governor", "performance"]);
+        Harness.equal(outcome.code, "invalid-value", "the incompatible policy is named before writes");
+        Harness.equal(contents(tree.cpufreq + "/policy0/scaling_governor"), "powersave",
+                      "the compatible policy was not changed first");
+        Harness.equal(contents(tree.cpufreq + "/policy1/scaling_governor"), "powersave",
+                      "the incompatible policy remains unchanged");
+    });
+};
+
+cases["a refused CPU policy write restores earlier policies"] = function () {
+    cpuScratch({
+        policy0: { governors: "performance powersave", governor: "powersave" },
+        policy1: { governors: "performance powersave", governor: "powersave" },
+    }, tree => {
+        let refused = tree.cpufreq + "/policy1/scaling_governor";
+        let outcome = run(tree, ["governor", "performance"],
+                          [{ path: refused, value: "performance" }]);
+        Harness.equal(outcome.code, "change-failed-restored", "restoration is reported");
+        Harness.equal(contents(tree.cpufreq + "/policy0/scaling_governor"), "powersave",
+                      "the earlier policy was restored");
+        Harness.equal(contents(tree.cpufreq + "/policy1/scaling_governor"), "powersave",
+                      "the refused policy remains original");
+    });
+};
+
+cases["a CPU policy transaction updates every policy"] = function () {
+    cpuScratch({
+        policy0: { governors: "performance powersave", governor: "powersave" },
+        policy1: { governors: "powersave performance", governor: "powersave" },
+    }, tree => {
+        let outcome = run(tree, ["governor", "performance"]);
+        Harness.equal(outcome.applied, true, "the transaction applied");
+        Harness.equal(contents(tree.cpufreq + "/policy0/scaling_governor"), "performance",
+                      "the first policy");
+        Harness.equal(contents(tree.cpufreq + "/policy1/scaling_governor"), "performance",
+                      "the second policy");
     });
 };

@@ -55,16 +55,6 @@ contains() {
     return 1
 }
 
-first_policy() {
-    for policy in "$CPUFREQ_DIR"/policy*; do
-        if [ -d "$policy" ]; then
-            echo "$policy"
-            return 0
-        fi
-    done
-    return 1
-}
-
 # write_node <file> <value> <what to say if it will not take it>
 #
 # A redirect the kernel refuses ends this script under `set -e` with whatever
@@ -89,47 +79,107 @@ try_write() {
     ( printf '%s\n' "$write_value" > "$write_target" ) 2>/dev/null
 }
 
-# write_policies <node name> <value>
-write_policies() {
-    node=$1
-    value=$2
-    targets=0
-    written=0
-    failed=
-    for policy in "$CPUFREQ_DIR"/policy*; do
-        if [ -f "$policy/$node" ]; then
-            targets=$((targets + 1))
-            # the subshell keeps a failed redirect quiet
-            if ( printf '%s\n' "$value" > "$policy/$node" ) 2>/dev/null; then
-                written=$((written + 1))
-            else
-                failed="${failed}${failed:+, }$policy/$node"
+# apply_transaction <newline separated node<TAB>old<TAB>new records>
+#
+# The plan has already been completely validated. Remember successful writes
+# in reverse order, restore them after the first refusal, and tell the caller
+# whether that restoration itself completed.
+apply_transaction() {
+    transaction_plan=$1
+    transaction_applied=
+    transaction_failed=
+    transaction_tab=$(printf '\t')
+    while IFS="$transaction_tab" read -r transaction_node transaction_old transaction_new; do
+        [ "$transaction_old" = "$transaction_new" ] && continue
+        if try_write "$transaction_node" "$transaction_new"; then
+            transaction_record="$transaction_node	$transaction_old"
+            transaction_applied="$transaction_record${transaction_applied:+
+$transaction_applied}"
+        else
+            transaction_failed=$transaction_node
+            break
+        fi
+    done <<EOF
+$transaction_plan
+EOF
+
+    [ -z "$transaction_failed" ] && return 0
+
+    transaction_rollback_failed=
+    if [ -n "$transaction_applied" ]; then
+        while IFS="$transaction_tab" read -r transaction_node transaction_old; do
+            if ! try_write "$transaction_node" "$transaction_old"; then
+                transaction_rollback_failed="${transaction_rollback_failed}${transaction_rollback_failed:+, }$transaction_node"
             fi
+        done <<EOF
+$transaction_applied
+EOF
+    fi
+
+    if [ -n "$transaction_rollback_failed" ]; then
+        die rollback-failed "write refused: $transaction_failed; restoration refused: $transaction_rollback_failed"
+    fi
+    die change-failed-restored "write refused: $transaction_failed; previous settings restored"
+}
+
+# write_policies <node name> <choices node> <value> <all|exposed>
+write_policies() {
+    policy_node_name=$1
+    policy_choices_name=$2
+    policy_value=$3
+    policy_scope=$4
+    policy_count=0
+    policy_targets=0
+    policy_plan=
+
+    for policy_path in "$CPUFREQ_DIR"/policy*; do
+        [ -d "$policy_path" ] || continue
+        policy_count=$((policy_count + 1))
+        policy_node="$policy_path/$policy_node_name"
+        policy_choices="$policy_path/$policy_choices_name"
+
+        if [ ! -f "$policy_node" ]; then
+            if [ "$policy_scope" = all ]; then
+                die unsupported "cpufreq policy does not expose $policy_node_name: $policy_path"
+            fi
+            continue
+        fi
+        [ -f "$policy_choices" ] ||
+            die unsupported "cpufreq policy does not expose $policy_choices_name: $policy_path"
+        if [ ! -r "$policy_node" ] || [ ! -w "$policy_node" ] || [ ! -r "$policy_choices" ]; then
+            die unavailable "cpufreq policy is not readable and writable: $policy_path"
+        fi
+
+        policy_old=$(cat "$policy_node" 2>/dev/null || echo "")
+        policy_available=$(cat "$policy_choices" 2>/dev/null || echo "")
+        if [ -z "$policy_old" ] || [ -z "$policy_available" ]; then
+            die unavailable "cpufreq policy did not answer: $policy_path"
+        fi
+        # shellcheck disable=SC2086
+        contains "$policy_value" $policy_available ||
+            die invalid-value "$policy_node_name=$policy_value is unavailable on $policy_path"
+
+        policy_targets=$((policy_targets + 1))
+        policy_record="$policy_node	$policy_old	$policy_value"
+        if [ -n "$policy_plan" ]; then
+            policy_plan="$policy_plan
+$policy_record"
+        else
+            policy_plan=$policy_record
         fi
     done
-    [ "$targets" -gt 0 ] || die unsupported "no cpufreq policy exposes $node"
-    [ "$written" -eq "$targets" ] ||
-        die write-failed "only $written of $targets policies accepted $node=$value; refused: $failed"
+    [ "$policy_count" -gt 0 ] || die unavailable "no cpufreq policy found"
+    [ "$policy_targets" -gt 0 ] || die unsupported "no cpufreq policy exposes $policy_node_name"
+    apply_transaction "$policy_plan"
 }
 
 set_governor() {
-    value=$1
-    policy=$(first_policy) || die unavailable "no cpufreq policy found"
-    available=$(cat "$policy/scaling_available_governors" 2>/dev/null || echo "")
-    [ -n "$available" ] || die unsupported "the scaling driver does not expose governors"
-    # shellcheck disable=SC2086
-    contains "$value" $available || die invalid-value "unknown governor: $value"
-    write_policies scaling_governor "$value"
+    write_policies scaling_governor scaling_available_governors "$1" all
 }
 
 set_energy_preference() {
-    value=$1
-    policy=$(first_policy) || die unavailable "no cpufreq policy found"
-    available=$(cat "$policy/energy_performance_available_preferences" 2>/dev/null || echo "")
-    [ -n "$available" ] || die unsupported "the scaling driver does not expose energy preferences"
-    # shellcheck disable=SC2086
-    contains "$value" $available || die invalid-value "unknown energy preference: $value"
-    write_policies energy_performance_preference "$value"
+    write_policies energy_performance_preference \
+        energy_performance_available_preferences "$1" exposed
 }
 
 set_boost() {
@@ -211,7 +261,16 @@ set_charge_threshold() {
             start=-
         fi
 
-        record="$end	$old_end	$start	$old_start	$new_start"
+        if [ "$start" != - ] && [ "$new_start" != "$old_start" ]; then
+            record="$start	$old_start	$new_start"
+            if [ -n "$plan" ]; then
+                plan="$plan
+$record"
+            else
+                plan=$record
+            fi
+        fi
+        record="$end	$old_end	$value"
         if [ -n "$plan" ]; then
             plan="$plan
 $record"
@@ -221,54 +280,7 @@ $record"
     done
     [ "$targets" -gt 0 ] || die unsupported "no battery exposes a charge threshold"
 
-    # Apply only after every node has been read and validated. Each completed
-    # write is prepended to `applied`, so rollback naturally runs in reverse:
-    # an end threshold is restored before the start threshold lowered for it.
-    applied=
-    failed=
-    tab=$(printf '\t')
-    while IFS="$tab" read -r end old_end start old_start new_start; do
-        if [ "$start" != - ] && [ "$new_start" != "$old_start" ]; then
-            if try_write "$start" "$new_start"; then
-                record="$start	$old_start"
-                applied="$record${applied:+
-$applied}"
-            else
-                failed="$start"
-                break
-            fi
-        fi
-        if [ "$old_end" != "$value" ]; then
-            if try_write "$end" "$value"; then
-                record="$end	$old_end"
-                applied="$record${applied:+
-$applied}"
-            else
-                failed="$end"
-                break
-            fi
-        fi
-    done <<EOF
-$plan
-EOF
-
-    [ -z "$failed" ] && return 0
-
-    rollback_failed=
-    if [ -n "$applied" ]; then
-        while IFS="$tab" read -r node original; do
-            if ! try_write "$node" "$original"; then
-                rollback_failed="${rollback_failed}${rollback_failed:+, }$node"
-            fi
-        done <<EOF
-$applied
-EOF
-    fi
-
-    if [ -n "$rollback_failed" ]; then
-        die rollback-failed "write refused: $failed; restoration refused: $rollback_failed"
-    fi
-    die change-failed-restored "write refused: $failed; previous thresholds restored"
+    apply_transaction "$plan"
 }
 
 [ $# -ge 2 ] || usage
