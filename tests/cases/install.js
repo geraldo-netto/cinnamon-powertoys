@@ -58,13 +58,23 @@ function scratch(options, body) {
                 "printf '%s\\n' 'new translation' > \"$2/fr/LC_MESSAGES/" + UUID + ".mo\"\n";
             options.translationState = locale + "/" + UUID + ".mo";
         }
+        if (options.uninstallTranslationFailure) {
+            let locale = stage + "/share/locale/fr/LC_MESSAGES";
+            GLib.mkdir_with_parents(locale, 0o755);
+            GLib.file_set_contents(locale + "/" + UUID + ".mo", "old translation\n");
+            translationScript += "if [ \"$1\" = uninstall ]; then\n" +
+                "  rm -f \"$2/fr/LC_MESSAGES/" + UUID + ".mo\"\n" +
+                "  exit 7\n" +
+                "fi\n";
+            options.uninstallTranslationState = locale + "/" + UUID + ".mo";
+        }
         translationScript += "exit " + (options.translationStatus || 0) + "\n";
         GLib.file_set_contents(tools + "/install-translations.sh", translationScript);
         GLib.chmod(tools + "/install-translations.sh", 0o700);
 
         let path = GLib.getenv("PATH") || "/usr/bin:/bin";
         if (options.rmdirStatus || options.failedReload || options.runningQueryFailure ||
-                options.uninstallRuntime) {
+                options.uninstallRuntime || options.uninstallQueryFailure) {
             let bin = directory + "/bin";
             GLib.mkdir_with_parents(bin, 0o755);
             if (options.rmdirStatus) {
@@ -114,6 +124,10 @@ function scratch(options, body) {
                     "else echo \"(['" + UUID + "'],)\"; fi\n");
                 GLib.chmod(bin + "/gdbus", 0o700);
                 options.enabledState = settings;
+            }
+            if (options.uninstallQueryFailure) {
+                GLib.file_set_contents(bin + "/gdbus", "#!/bin/sh\nexit 23\n");
+                GLib.chmod(bin + "/gdbus", 0o700);
             }
             path = bin + ":" + path;
         }
@@ -244,11 +258,39 @@ cases["a live uninstall disables the applet before deleting it"] = function () {
     let options = { uninstallRuntime: true };
     scratch(options, tree => {
         let outcome = uninstall(tree, true);
-        Harness.equal(outcome.status, 0, "the coordinated uninstall completed");
+        Harness.equal(outcome.status, 0,
+                      "the coordinated uninstall completed: " + outcome.stderr);
         Harness.equal(GLib.file_test(tree.target, GLib.FileTest.EXISTS), false,
                       "the source was removed after the runtime disappeared");
         let enabled = read(options.enabledState);
         Harness.equal(enabled.indexOf(UUID), -1, "the stale panel entry was removed");
         Harness.ok(enabled.indexOf("menu@cinnamon.org") >= 0, "other applets were preserved");
+    });
+};
+
+cases["an uninstall observation failure changes nothing"] = function () {
+    let options = { uninstallRuntime: true, uninstallQueryFailure: true };
+    scratch(options, tree => {
+        let outcome = uninstall(tree, true);
+        Harness.ok(outcome.status !== 0, "an unknown live state aborts the uninstall");
+        Harness.equal(read(tree.target + "/marker"), "old", "the source remains installed");
+        Harness.equal(read(options.enabledState), null, "the panel setting was never changed");
+        Harness.ok(outcome.stderr.indexOf("could not determine whether") >= 0,
+                   "the observation failure is explicit: " + outcome.stderr);
+    });
+};
+
+cases["a failed uninstall restores assets before the panel setting"] = function () {
+    let options = { uninstallRuntime: true, uninstallTranslationFailure: true };
+    scratch(options, tree => {
+        let outcome = uninstall(tree, true);
+        Harness.equal(outcome.status, 7,
+                      "the translation failure is preserved: " + outcome.stderr);
+        Harness.equal(read(tree.target + "/marker"), "old", "the source tree was restored");
+        Harness.equal(read(options.uninstallTranslationState), "old translation",
+                      "the removed catalogue was restored");
+        Harness.ok(read(options.enabledState).indexOf(UUID) >= 0,
+                   "the original enabled-applets value was restored after the assets");
+        Harness.deepEqual(temporaryEntries(tree), [], "the source backup was not stranded");
     });
 };
