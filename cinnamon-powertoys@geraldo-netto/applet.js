@@ -2307,6 +2307,13 @@ class PowerToysApplet extends Applet.TextIconApplet {
         let finish = () => {
             if (!sensorsReady || !cpuReady)
                 return;
+            /* Teardown destroys the backends after a read has started. A
+             * backend still settles its callback so the collection can let
+             * go, but there is no machine left to assemble for this applet. */
+            if (this._destroyed) {
+                onDone(null);
+                return;
+            }
             let data = null;
             try {
                 data = this._assemble(readings);

@@ -168,3 +168,44 @@ cases["partial applet construction owns its rollback"] = function () {
     Harness.ok(source.indexOf("on_applet_removed_from_panel() {\n        this._teardown();") >= 0,
                "normal removal uses the same teardown path");
 };
+
+cases["a late collection stops when its applet is destroyed"] = function () {
+    /* applet.js needs Cinnamon's UI modules and cannot be loaded by the
+     * shell-free runner. Exercise its collection method with only the two
+     * asynchronous backend contracts it uses. */
+    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let match = /    _collect\(onDone\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* The sensor readings/.exec(source);
+    Harness.ok(match, "the collection method can be isolated");
+
+    let logged = [];
+    let collect = Function("Log", "return function (onDone) {" + match[1] + "\n};")({
+        error: message => logged.push(message),
+    });
+    let sensorDone = null;
+    let cpuDone = null;
+    let assembled = 0;
+    let answers = [];
+    let applet = {
+        _destroyed: false,
+        _sensorFilter: () => function () { return true; },
+        _sensors: {
+            readAsync: (wanted, onDone) => { sensorDone = onDone; },
+        },
+        _cpu: {
+            sample: onDone => { cpuDone = onDone; },
+        },
+        _assemble: readings => {
+            assembled++;
+            return readings;
+        },
+    };
+
+    collect.call(applet, answer => answers.push(answer));
+    sensorDone({ temperatures: [] });
+    applet._destroyed = true;
+    cpuDone(false);
+
+    Harness.equal(assembled, 0, "destroyed backends are not read while assembling");
+    Harness.deepEqual(answers, [null], "the abandoned collection still settles exactly once");
+    Harness.deepEqual(logged, [], "ordinary teardown is not reported as a collection error");
+};
