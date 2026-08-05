@@ -315,6 +315,10 @@ var UPowerMonitor = class UPowerMonitor {
                 if (generation === this._generation)
                     this._onChanged();
             });
+            /* Enumeration can finish first and publish a physical battery as
+             * the panel's fallback. Adopting the composite device changes
+             * that answer just as surely as one of its properties changing. */
+            this._onChanged();
         });
 
         proxy.EnumerateDevicesRemote((result, enumError) => {

@@ -651,6 +651,25 @@ cases["the composite battery is what the panel speaks for"] = function () {
     monitor.destroy();
 };
 
+cases["initial composite battery adoption redraws the panel"] = function () {
+    let display = proxyFor({ Model: "DisplayDevice", Percentage: 55 });
+    let bus = busFor(managerFor([BAT0]), {
+        [DISPLAY]: display,
+        [BAT0]: proxyFor({ Percentage: 62 }),
+    }, { holdDevices: true });
+    let monitor = monitorOn(bus);
+
+    /* Let enumeration publish its fallback before the independently requested
+     * display proxy arrives. */
+    bus.waiting.splice(1, 1)[0]();
+    Harness.equal(monitor.read().primary.path, BAT0, "the physical battery is the fallback");
+    let changes = monitor.counts.changed;
+
+    bus.answer();
+    Harness.equal(monitor.counts.changed, changes + 1, "adoption is announced immediately");
+    Harness.equal(monitor.read().primary.path, DISPLAY, "the redraw sees the composite battery");
+};
+
 cases["a reading describes each device once, whatever it is asked for"] = function () {
     /*
      * A description is nineteen properties, and every property on a proxy is a
