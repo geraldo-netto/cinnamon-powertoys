@@ -29,6 +29,16 @@ for (let name of MODULES) {
     };
 }
 
+cases["runtime D-Bus constructors forward lifecycle cancellables"] = function () {
+    let expected = { bluez: 1, backlight: 1, profiles: 1, upower: 2 };
+    for (let name in expected) {
+        let source = Harness.readFile(Harness.xletDir() + "/lib/" + name + ".js");
+        let forwards = source.match(/cancellable \|\| null/g) || [];
+        Harness.equal(forwards.length, expected[name],
+                      name + " forwards every owned cancellable to Gio");
+    }
+};
+
 /*
  * Every name any source file reaches for on a library, found by reading the
  * sources rather than by keeping a list.
@@ -221,4 +231,10 @@ cases["slow rediscovery includes CPU topology"] = function () {
     Harness.ok(opened, "the menu-open method can be isolated");
     Harness.equal(opened[1].indexOf("this._cpu.refresh()"), -1,
                   "menu opening reuses the shared rediscovery path");
+    Harness.ok(opened[1].indexOf('["screen", "keyboard"]') >= 0,
+               "only the signal-backed kernel controls are considered for a retry");
+    Harness.ok(opened[1].indexOf("!control.available") >= 0,
+               "an available D-Bus backlight keeps its cached signal-driven value");
+    Harness.equal(opened[1].indexOf("for (let name in this._backlights)"), -1,
+                  "external monitors stay on their separate DDC probe lifecycle");
 };
