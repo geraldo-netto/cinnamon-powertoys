@@ -112,14 +112,29 @@ var PanelAdapter = class PanelAdapter {
             typeof actor.disconnect !== "function")
             return false;
 
+        let signals = [];
+        try {
+            let enter = actor.connect("enter-event", () => {
+                this._beforeTooltip();
+                this._publishTooltip(true);
+            });
+            if (!enter)
+                throw new Error("enter-event did not return a signal id");
+            signals.push(enter);
+            let leave = actor.connect("leave-event", () => {
+                this._publishTooltip(false);
+            });
+            if (!leave)
+                throw new Error("leave-event did not return a signal id");
+            signals.push(leave);
+        } catch (error) {
+            for (let id of signals) {
+                try { actor.disconnect(id); } catch (ignored) {}
+            }
+            return false;
+        }
         this._hoverActor = actor;
-        this._hoverSignals.push(actor.connect("enter-event", () => {
-            this._beforeTooltip();
-            this._publishTooltip(true);
-        }));
-        this._hoverSignals.push(actor.connect("leave-event", () => {
-            this._publishTooltip(false);
-        }));
+        this._hoverSignals = signals;
         return true;
     }
 
@@ -189,14 +204,27 @@ var PanelAdapter = class PanelAdapter {
         this._destroyed = true;
 
         if (this._tooltip) {
-            if (this._tooltip.show === this._wrappedShow)
-                this._tooltip.show = this._originalShow;
-            if (this._tooltip.hide === this._wrappedHide)
-                this._tooltip.hide = this._originalHide;
+            try {
+                if (this._tooltip.show === this._wrappedShow)
+                    this._tooltip.show = this._originalShow;
+            } catch (e) {
+                /* Cinnamon may freeze a private member before teardown. */
+            }
+            try {
+                if (this._tooltip.hide === this._wrappedHide)
+                    this._tooltip.hide = this._originalHide;
+            } catch (e) {
+                /* Restore every independent hook best-effort. */
+            }
         }
         if (this._changedTooltipStyle && this._tooltipActor &&
-            typeof this._tooltipActor.set_style === "function")
-            this._tooltipActor.set_style(this._originalTooltipStyle);
+            typeof this._tooltipActor.set_style === "function") {
+            try {
+                this._tooltipActor.set_style(this._originalTooltipStyle);
+            } catch (e) {
+                /* The actor may already be final. */
+            }
+        }
 
         if (this._hoverActor) {
             for (let id of this._hoverSignals) {

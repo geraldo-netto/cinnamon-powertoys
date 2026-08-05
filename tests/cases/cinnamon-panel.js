@@ -200,6 +200,62 @@ cases["public hover events are the fallback and disconnect cleanly"] = function 
     Harness.deepEqual(disconnected.sort(), [1, 2], "both hover hooks disconnected");
 };
 
+cases["partial hover fallback wiring is rolled back"] = function () {
+    for (let second of [0, "throw"]) {
+        let disconnected = [];
+        let calls = 0;
+        let actor = {
+            connect: function () {
+                calls++;
+                if (calls === 1)
+                    return 41;
+                if (second === "throw")
+                    throw new Error("leave-event unavailable");
+                return second;
+            },
+            disconnect: id => disconnected.push(id),
+        };
+        let panel = new CinnamonPanel.PanelAdapter(publicApplet([], actor));
+        Harness.ok(!panel.hasTooltipLifecycle, "partial wiring is not published");
+        Harness.deepEqual(disconnected, [41], "the first signal is released immediately");
+        panel.destroy();
+        Harness.deepEqual(disconnected, [41], "teardown does not own rolled-back wiring");
+    }
+};
+
+cases["tooltip teardown continues after a private restoration failure"] = function () {
+    let originalShow = function () {};
+    let originalHide = function () {};
+    let show = originalShow;
+    let showWrites = 0;
+    let style = "padding: 2px;";
+    let tooltip = {
+        visible: false,
+        hide: originalHide,
+        _tooltip: {
+            get_style: () => style,
+            set_style: value => { style = value; },
+        },
+    };
+    Object.defineProperty(tooltip, "show", {
+        configurable: true,
+        get: () => show,
+        set: value => {
+            showWrites++;
+            if (showWrites > 1)
+                throw new Error("show became read-only");
+            show = value;
+        },
+    });
+    let applet = publicApplet([], null);
+    applet._applet_tooltip = tooltip;
+    let panel = new CinnamonPanel.PanelAdapter(applet);
+
+    panel.destroy();
+    Harness.equal(tooltip.hide, originalHide, "the independent hide hook is restored");
+    Harness.equal(style, "padding: 2px;", "tooltip styling is still restored");
+};
+
 cases["missing shell capabilities degrade without throwing"] = function () {
     let panel = new CinnamonPanel.PanelAdapter({});
     Harness.ok(!panel.hasTooltipLifecycle, "no lifecycle invented");
