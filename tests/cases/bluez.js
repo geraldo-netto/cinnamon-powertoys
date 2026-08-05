@@ -121,6 +121,7 @@ cases["the injected signal transport drives every BlueZ delta"] = function () {
 
 cases["a failed injected signal subscription is contained"] = function () {
     let lines = [];
+    let timers = fakeTimers();
     let bus = {
         signal_subscribe: () => { throw new Error("subscription failed"); },
         signal_unsubscribe: () => {},
@@ -129,13 +130,97 @@ cases["a failed injected signal subscription is contained"] = function () {
     let control;
     try {
         control = new Bluez.BluezBatteries(null,
-            (path, iface, method, onDone) => onDone(tree()), null, bus);
+            (path, iface, method, onDone) => onDone(tree()), null, bus, timers);
     } finally {
         Log.setSink(null);
     }
     Harness.equal(lines.length, 4, "each unavailable edge is named once");
     Harness.equal(control.available, true, "the initial snapshot remains usable");
+    Harness.equal(Object.keys(timers.pending).length, 1,
+                  "incomplete signal wiring enables degraded polling");
+    control._scheduleDegradedPoll();
+    Harness.equal(timers.delays.length, 1, "a second degraded timer cannot overlap it");
     control.destroy();
+    Harness.equal(Object.keys(timers.pending).length, 0,
+                  "teardown cancels the degraded poll");
+    control._scheduleDegradedPoll();
+    Harness.equal(Object.keys(timers.pending).length, 0,
+                  "a destroyed backend cannot restart degraded polling");
+};
+
+cases["incomplete BlueZ signals poll with capped backoff until restored"] = function () {
+    let bus = signalBus();
+    let subscribe = bus.signal_subscribe;
+    let recover = false;
+    bus.signal_subscribe = function (name, iface, member, path, arg0, flags, callback) {
+        if (member === "PropertiesChanged" && arg0 === "org.bluez.Battery1" && !recover)
+            throw new Error("battery signal unavailable");
+        return subscribe(name, iface, member, path, arg0, flags, callback);
+    };
+    let watcher = initialNameWatcher();
+    let timers = fakeTimers();
+    let answer = tree({ [HEADSET]: device("BW01", "audio-headset", true, 90) });
+    let reads = 0;
+    let control;
+    Log.setSink(() => {});
+    try {
+        control = new Bluez.BluezBatteries(null,
+            (path, iface, method, onDone) => { reads++; onDone(cloneTree(answer)); },
+            watcher.watch, bus, timers);
+        answer = tree({ [HEADSET]: device("BW01", "audio-headset", true, 37) });
+        for (let i = 0; i < 6; i++)
+            timers.fire();
+
+        Harness.deepEqual(timers.delays, [1000, 2000, 4000, 8000, 16000, 30000, 30000],
+                          "degraded polling backs off only to its ceiling");
+        Harness.equal(control.devices[0].percentage, 37,
+                      "polling repairs state while the signal remains missing");
+
+        recover = true;
+        timers.fire();
+        Harness.equal(bus.subscriptions.length, 4, "the missing subscription is restored once");
+        Harness.equal(Object.keys(timers.pending).length, 0,
+                      "complete signal and owner wiring stops degraded polling");
+        Harness.equal(reads, 8, "each degraded interval takes one bounded snapshot");
+    } finally {
+        Log.setSink(null);
+        if (control)
+            control.destroy();
+    }
+};
+
+cases["a failed BlueZ owner watcher is retried until wiring is complete"] = function () {
+    let attempts = 0;
+    let unwatched = 0;
+    let watcher = function (appeared) {
+        attempts++;
+        if (attempts === 1)
+            throw new Error("owner watcher unavailable");
+        appeared();
+        return () => unwatched++;
+    };
+    watcher.reportsInitialState = true;
+    let timers = fakeTimers();
+    let reads = 0;
+    let control;
+    Log.setSink(() => {});
+    try {
+        control = new Bluez.BluezBatteries(null,
+            (path, iface, method, onDone) => { reads++; onDone(tree()); },
+            watcher, signalBus(), timers);
+        Harness.equal(Object.keys(timers.pending).length, 1,
+                      "the missing owner edge enables degraded polling");
+        timers.fire();
+        Harness.equal(attempts, 2, "the owner watcher is installed on the next interval");
+        Harness.equal(Object.keys(timers.pending).length, 0,
+                      "full wiring stops owner-degraded polling");
+        Harness.ok(reads >= 2, "restoration also refreshes the object snapshot");
+    } finally {
+        Log.setSink(null);
+        if (control)
+            control.destroy();
+    }
+    Harness.equal(unwatched, 1, "the recovered watcher is released at teardown");
 };
 
 function nameWatcher() {

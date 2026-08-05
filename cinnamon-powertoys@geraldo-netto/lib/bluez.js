@@ -48,6 +48,8 @@ const WATCHED_PROPERTIES = {
 var REFRESH_SETTLE_MS = 250;
 var RETRY_INITIAL_MS = 500;
 var RETRY_MAX_MS = 8000;
+var DEGRADED_INITIAL_MS = 1000;
+var DEGRADED_MAX_MS = 30000;
 
 const UPDeviceKind = UPowerGlib.DeviceKind;
 const UPDeviceState = UPowerGlib.DeviceState;
@@ -209,9 +211,12 @@ var BluezBatteries = class BluezBatteries {
         this._timers = timers || GLib;
         this._unwatchName = null;
         this._signalIds = [];
+        this._signalKeys = new Set();
         this._refreshTimerId = 0;
         this._retryTimerId = 0;
         this._retryDelay = RETRY_INITIAL_MS;
+        this._degradedTimerId = 0;
+        this._degradedDelay = DEGRADED_INITIAL_MS;
         /* The last complete object tree is the base to which signal deltas
          * are applied. Before it arrives, a relevant signal requests one
          * follow-up snapshot so no startup race can leave the cache stale. */
@@ -225,7 +230,7 @@ var BluezBatteries = class BluezBatteries {
          * custom transport without a watcher retains its one direct read. */
         this._ownerPresent = null;
 
-        this._watch();
+        let signalsReady = this._watch();
         let ownerDriven = this._watchName &&
                           this._watchName.reportsInitialState === true;
         let watching = this._watchOwner();
@@ -234,6 +239,8 @@ var BluezBatteries = class BluezBatteries {
          * startup path expected by integrations and tests. */
         if (!ownerDriven || !watching)
             this._refresh();
+        if (!signalsReady || (this._watchName && !watching))
+            this._scheduleDegradedPoll();
     }
 
     /*
@@ -374,18 +381,25 @@ var BluezBatteries = class BluezBatteries {
      * tree in place; unrelated interfaces and properties never reach a read.
      */
     _watch() {
-        this._subscribe("org.freedesktop.DBus.ObjectManager", "InterfacesAdded", null,
-                        (path, args) => this._interfacesAdded(args));
-        this._subscribe("org.freedesktop.DBus.ObjectManager", "InterfacesRemoved", null,
-                        (path, args) => this._interfacesRemoved(args));
+        let complete = true;
+        complete = this._subscribe(
+            "org.freedesktop.DBus.ObjectManager", "InterfacesAdded", null,
+            (path, args) => this._interfacesAdded(args)) && complete;
+        complete = this._subscribe(
+            "org.freedesktop.DBus.ObjectManager", "InterfacesRemoved", null,
+            (path, args) => this._interfacesRemoved(args)) && complete;
         for (let iface of WATCHED_INTERFACES)
-            this._subscribe("org.freedesktop.DBus.Properties", "PropertiesChanged", iface,
-                            (path, args) => this._propertiesChanged(path, args));
+            complete = this._subscribe(
+                "org.freedesktop.DBus.Properties", "PropertiesChanged", iface,
+                (path, args) => this._propertiesChanged(path, args)) && complete;
+        return complete;
     }
 
     _watchOwner() {
         if (!this._watchName)
             return false;
+        if (this._unwatchName)
+            return true;
         try {
             this._unwatchName = this._watchName(
                 () => this._ownerAppeared(), () => this._ownerVanished());
@@ -426,9 +440,12 @@ var BluezBatteries = class BluezBatteries {
     }
 
     _subscribe(iface, member, arg0, onSignal) {
+        let key = iface + "|" + member + "|" + (arg0 || "");
+        if (this._signalKeys.has(key))
+            return true;
         try {
             let connection = this._signalBus || Gio.DBus.system;
-            this._signalIds.push(connection.signal_subscribe(
+            let id = connection.signal_subscribe(
                 BUS_NAME, iface, member, null, arg0,
                 Gio.DBusSignalFlags.NONE,
                 (connection, sender, path, signalIface, signal, parameters) => {
@@ -444,10 +461,16 @@ var BluezBatteries = class BluezBatteries {
                          * cache permanently stale. One snapshot repairs it. */
                         this._scheduleRefresh();
                     }
-                }));
+                });
+            if (!id)
+                throw new Error("subscription returned no id");
+            this._signalIds.push(id);
+            this._signalKeys.add(key);
+            return true;
         } catch (error) {
             Log.error("cannot watch BlueZ for " + member +
                       (arg0 ? " on " + arg0 : "") + ": " + error);
+            return false;
         }
     }
 
@@ -581,6 +604,47 @@ var BluezBatteries = class BluezBatteries {
         this._retryDelay = RETRY_INITIAL_MS;
     }
 
+    _repairWiring() {
+        let signalsReady = this._watch();
+        let ownerReady = !this._watchName || this._watchOwner();
+        return signalsReady && ownerReady;
+    }
+
+    /* Missing signal or ownership edges turn the cache into a polled one until
+     * those registrations can be restored. The interval backs off to a fixed
+     * ceiling: enough to avoid hammering a broken bus, never long enough to
+     * leave a changed device stale for the rest of the session. */
+    _scheduleDegradedPoll() {
+        if (this.destroyed || this._degradedTimerId)
+            return;
+        this._cancelRetry();
+        let delay = this._degradedDelay;
+        this._degradedDelay = Math.min(delay * 2, DEGRADED_MAX_MS);
+        this._degradedTimerId = this._timers.timeout_add(
+            GLib.PRIORITY_DEFAULT, delay, () => {
+                this._degradedTimerId = 0;
+                let repaired = this._repairWiring();
+                /* With a working owner watcher, absence is already known and
+                 * there is no daemon to poll. An unknown owner still needs the
+                 * conservative snapshot attempt. */
+                if (this._ownerPresent !== false)
+                    this._refresh();
+                if (repaired)
+                    this._degradedDelay = DEGRADED_INITIAL_MS;
+                else
+                    this._scheduleDegradedPoll();
+                return GLib.SOURCE_REMOVE;
+            });
+    }
+
+    _cancelDegradedPoll() {
+        if (this._degradedTimerId) {
+            this._timers.source_remove(this._degradedTimerId);
+            this._degradedTimerId = 0;
+        }
+        this._degradedDelay = DEGRADED_INITIAL_MS;
+    }
+
     /*
      * The devices BlueZ knows about that the given list does not already
      * cover. UPower's entry for a device is the better one where it exists -
@@ -600,6 +664,7 @@ var BluezBatteries = class BluezBatteries {
         this.destroyed = true;
         this._cancelRead();
         this._cancelRetry();
+        this._cancelDegradedPoll();
         if (this._refreshTimerId) {
             this._timers.source_remove(this._refreshTimerId);
             this._refreshTimerId = 0;
@@ -621,6 +686,7 @@ var BluezBatteries = class BluezBatteries {
             }
         }
         this._signalIds = [];
+        this._signalKeys.clear();
         this._objects = {};
         this._cacheReady = false;
         this.devices = [];
