@@ -368,8 +368,9 @@ var BacklightControl = class BacklightControl {
         this._retryDelay = RETRY_INITIAL_MS;
     }
 
-    /* Asks the daemon where the backlight is now. An error here is the
-     * answer to "is there one", not a failure worth reporting. */
+    /* Asks the daemon where the backlight is now. An error on the first read
+     * is the answer to "is there one"; an error after a confirmed value is a
+     * transient proxy loss and follows the bounded reconnect path. */
     refresh(onDone) {
         let done = onDone || function () {};
         if (this.destroyed) {
@@ -447,6 +448,7 @@ var BacklightControl = class BacklightControl {
 
         if (sameProxy && operation.valueGeneration === this._valueGeneration) {
             if (error || !result) {
+                let knownPresent = this.hardwareState === "present";
                 this.available = false;
                 this.percentage = null;
                 if (this.hardwareState === "unknown" ||
@@ -456,6 +458,8 @@ var BacklightControl = class BacklightControl {
                 /* A proxy tied to a vanished owner cannot recover its cached
                  * interface reliably. The next refresh builds a fresh one. */
                 this._dropProxy();
+                if (knownPresent)
+                    this._scheduleRetry();
             } else {
                 this.available = true;
                 this.percentage = result[0];

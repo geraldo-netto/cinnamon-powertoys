@@ -467,6 +467,48 @@ cases["a failed first read rebuilds the proxy"] = function () {
     Harness.equal(screen.percentage, 58, "from the replacement proxy");
 };
 
+cases["a known backlight automatically reconnects after a read failure"] = function () {
+    let owner = ownerWatcher();
+    let timers = retryTimers(owner);
+    let readings = [40, null];
+    let first = proxy({ GetPercentage: () => readings.shift() });
+    let recovered = proxy({ GetPercentage: 58 });
+    let attempts = 0;
+    let screen = new Backlight.BacklightControl(
+        Backlight.SCREEN, null, null, (xml, onDone) => {
+            attempts++;
+            onDone(attempts === 1 ? first : recovered, null);
+        }, owner);
+
+    Harness.equal(screen.hardwareState, "present", "the initial value confirms hardware");
+    screen.refresh();
+    Harness.equal(screen.available, false, "the failed live read lowers availability");
+    Harness.equal(screen.hardwareState, "present", "known hardware is not reclassified absent");
+    Harness.equal(Object.keys(timers.pending).length, 1, "the reconnect is scheduled");
+    timers.fire();
+    Harness.equal(attempts, 2, "the retry builds a fresh proxy");
+    Harness.equal(screen.available, true, "the replacement proxy restores availability");
+    Harness.equal(screen.percentage, 58, "and publishes its current value");
+    Harness.equal(Object.keys(timers.pending).length, 0, "recovery leaves no timer");
+    screen.destroy();
+};
+
+cases["an unsupported backlight does not retry its first read"] = function () {
+    let owner = ownerWatcher();
+    let timers = retryTimers(owner);
+    let attempts = 0;
+    let screen = new Backlight.BacklightControl(
+        Backlight.SCREEN, null, null, (xml, onDone) => {
+            attempts++;
+            onDone(proxy({ GetPercentage: null }), null);
+        }, owner);
+
+    Harness.equal(screen.hardwareState, "absent", "the first reply confirms no hardware");
+    Harness.equal(Object.keys(timers.pending).length, 0, "unsupported hardware has no retry");
+    Harness.equal(attempts, 1, "the initial decision is not probed repeatedly");
+    screen.destroy();
+};
+
 cases["a kind this module does not know is ready at once"] = function () {
     let odd = control("fingerprint-reader", proxy({ GetPercentage: 50 }));
     Harness.equal(odd.available, false, "there is no interface for it");
