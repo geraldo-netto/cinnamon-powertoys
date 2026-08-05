@@ -145,6 +145,10 @@ function _unpackVariantDict(entry) {
  */
 function systemBus() {
     return {
+        /* Gio invokes exactly one of appeared/vanished with the current state
+         * after each watch is installed. This lets the client avoid probing
+         * names the bus has already said nobody owns. */
+        watchReportsInitialState: true,
         /*
          * Asynchronous, like every other proxy this applet builds.
          *
@@ -160,10 +164,10 @@ function systemBus() {
          * and lib/ddc.js opens by saying that nothing in it is synchronous and
          * nothing blocks the shell. This was the one place that did.
          */
-        proxy: function (backend, onDone) {
+        proxy: function (backend, onDone, cancellable) {
             let wrapper = Gio.DBusProxy.makeProxyWrapper(_interfaceXml(backend.name));
             new wrapper(Gio.DBus.system, backend.name, backend.path,
-                        (proxy, error) => onDone(proxy, error));
+                        (proxy, error) => onDone(proxy, error), cancellable || null);
         },
         watch: function (name, onAppeared, onVanished) {
             return Gio.bus_watch_name(Gio.BusType.SYSTEM, name,
@@ -205,6 +209,8 @@ var PowerProfilesClient = class PowerProfilesClient {
         this._proxy = null;
         this._propSignalId = 0;
         this._watchIds = [];
+        this._ownerAware = this._bus.watchReportsInitialState === true;
+        this._ownerStates = BACKENDS.map(() => null);
         this._setCall = null;
         this._setQueued = null;
         this.busName = null;
@@ -213,37 +219,72 @@ var PowerProfilesClient = class PowerProfilesClient {
         /* A search for the daemon is under way; see _connect. */
         this._connecting = false;
         this._connectPending = false;
+        this._connectCall = null;
         /* Built on demand and dropped whenever the daemon says anything has
          * changed - see snapshot(). */
         this._snapshot = null;
 
-        for (let backend of BACKENDS) {
+        for (let index = 0; index < BACKENDS.length; index++) {
+            let backend = BACKENDS[index];
             try {
                 let id = this._bus.watch(
                     backend.name,
-                    /* Connecting says so itself when it finds something, and a
-                     * name appearing that turns out to offer no profiles has
-                     * changed nothing worth redrawing. */
-                    () => this._connect(),
-                    () => {
-                        if (this.busName === backend.name) {
-                            this._disconnectProxy();
-                            this._invalidate();
-                            this._connect();
-                        }
-                    });
+                    () => this._ownerChanged(index, true),
+                    () => this._ownerChanged(index, false));
                 if (id)
                     this._watchIds.push(id);
             } catch (e) {
                 /* One unavailable watcher must not discard an earlier one or
                  * prevent the current daemon from being used. The initial
                  * search below still supplies a complete present-time state. */
+                if (this._ownerAware)
+                    this._ownerStates[index] = false;
             }
         }
 
         /* Install every viable edge listener before taking the initial state,
-         * so a daemon cannot change in the gap between discovery and watches. */
+         * so a daemon cannot change in the gap between discovery and watches.
+         * A production watch supplies that state itself; injected buses which
+         * do not promise it retain the legacy probing fallback. */
         this._connect();
+    }
+
+    _ownerChanged(index, present) {
+        if (this.destroyed)
+            return;
+        if (this._ownerAware)
+            this._ownerStates[index] = present;
+
+        let backend = BACKENDS[index];
+        if (!present && this.busName === backend.name) {
+            this._disconnectProxy(new Error("power-profiles-daemon stopped"));
+            this._invalidate();
+        }
+
+        if (this._ownerAware && this._ownerStates.every(state => state !== null)) {
+            let wanted = this._ownedBackends()[0] || null;
+            /* A newly available higher-priority name replaces the fallback;
+             * an in-flight search for a name no longer selected is obsolete. */
+            if (this._proxy && (!wanted || this.busName !== wanted.name)) {
+                this._disconnectProxy(new Error("power profile backend changed"));
+                this._invalidate();
+            }
+            if (this._connectCall &&
+                (!wanted || this._connectCall.backend.name !== wanted.name))
+                this._cancelConnect();
+        }
+        this._connect();
+    }
+
+    _ownedBackends() {
+        if (!this._ownerAware)
+            return BACKENDS;
+        let result = [];
+        for (let index = 0; index < BACKENDS.length; index++) {
+            if (this._ownerStates[index] === true)
+                result.push(BACKENDS[index]);
+        }
+        return result;
     }
 
     /*
@@ -259,6 +300,8 @@ var PowerProfilesClient = class PowerProfilesClient {
     _connect() {
         if (this.destroyed || this._proxy)
             return;
+        if (this._ownerAware && this._ownerStates.some(state => state === null))
+            return;
         if (this._connecting) {
             /* Name watches are edges, not a state that will be repeated. If
              * one fires while another backend is being tried, remember it so
@@ -268,7 +311,7 @@ var PowerProfilesClient = class PowerProfilesClient {
         }
         this._connectPending = false;
         this._connecting = true;
-        this._tryBackend(0);
+        this._tryBackend(0, this._ownedBackends());
     }
 
     _finishConnectSearch() {
@@ -279,17 +322,23 @@ var PowerProfilesClient = class PowerProfilesClient {
         }
     }
 
-    _tryBackend(index) {
-        if (index >= BACKENDS.length) {
+    _tryBackend(index, candidates) {
+        if (index >= candidates.length) {
             this._finishConnectSearch();
             return;
         }
 
-        let backend = BACKENDS[index];
-        let next = () => this._tryBackend(index + 1);
+        let backend = candidates[index];
+        let next = () => this._tryBackend(index + 1, candidates);
+        let cancellable = this._bus.cancellable ? this._bus.cancellable() : null;
+        let operation = { backend: backend, cancellable: cancellable };
+        this._connectCall = operation;
 
         try {
             this._bus.proxy(backend, (proxy, error) => {
+                if (this._connectCall !== operation)
+                    return;
+                this._connectCall = null;
                 if (this.destroyed) {
                     this._connecting = false;
                     this._connectPending = false;
@@ -313,14 +362,32 @@ var PowerProfilesClient = class PowerProfilesClient {
                 this._propSignalId = proxy.connect("g-properties-changed",
                                                    () => this._invalidate());
                 this._invalidate();
-            });
+            }, cancellable);
         } catch (e) {
+            if (this._connectCall !== operation)
+                return;
+            this._connectCall = null;
             /* daemon not running under this name */
             next();
         }
     }
 
-    _disconnectProxy() {
+    _cancelConnect() {
+        let operation = this._connectCall;
+        this._connectCall = null;
+        this._connecting = false;
+        this._connectPending = false;
+        if (operation && operation.cancellable) {
+            try {
+                operation.cancellable.cancel();
+            } catch (e) {
+                /* already cancelled */
+            }
+        }
+    }
+
+    _disconnectProxy(writeError) {
+        this._cancelProfileWrites(writeError, !!writeError);
         if (this._proxy && this._propSignalId) {
             try {
                 this._proxy.disconnect(this._propSignalId);
@@ -333,6 +400,26 @@ var PowerProfilesClient = class PowerProfilesClient {
         this.busName = null;
         this.busPath = null;
         this._snapshot = null;
+    }
+
+    _cancelProfileWrites(error, notify) {
+        let current = this._setCall;
+        let queued = this._setQueued;
+        this._setCall = null;
+        this._setQueued = null;
+        if (current && current.cancellable) {
+            try {
+                current.cancellable.cancel();
+            } catch (e) {
+                /* already cancelled */
+            }
+        }
+        if (notify) {
+            if (current)
+                current.done(error);
+            if (queued)
+                queued.done(error);
+        }
     }
 
     /* The daemon has spoken, so what was worked out from it is stale. */
@@ -491,16 +578,8 @@ var PowerProfilesClient = class PowerProfilesClient {
          * wanted, the same way a probe in flight is disowned in lib/ddc.js. */
         this.destroyed = true;
         this._connectPending = false;
-        let call = this._setCall;
-        this._setCall = null;
-        this._setQueued = null;
-        if (call && call.cancellable) {
-            try {
-                call.cancellable.cancel();
-            } catch (e) {
-                /* already cancelled */
-            }
-        }
+        this._cancelConnect();
+        this._cancelProfileWrites(null, false);
         this._disconnectProxy();
         for (let id of this._watchIds) {
             try {
