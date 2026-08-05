@@ -194,6 +194,8 @@ function consumptionEntries(data) {
     let entries = [];
     if (data.systemWattsSource === "battery" && data.systemWatts !== null)
         entries.push(_("Whole system (battery)") + ": " + Format.watts(data.systemWatts));
+    if (data.systemWattsSource === "platform" && data.systemWatts !== null)
+        entries.push(_("Platform total (DTPM)") + ": " + Format.watts(data.systemWatts));
     if (data.packageWatts !== undefined && data.packageWatts !== null)
         entries.push(_("Processor package total") + ": " + Format.watts(data.packageWatts));
 

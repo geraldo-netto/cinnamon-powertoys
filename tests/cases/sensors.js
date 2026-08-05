@@ -304,7 +304,8 @@ cases["an unlabelled fan stays known after it has run"] = function () {
         let sensor = set.fanSensors[0];
         sensor.rawLabel = null;
 
-        Harness.equal(set._fan(sensor, () => 1200).inUse, true, "known while turning");
+        Harness.equal(set._fan(sensor, path => path === sensor.path ? 1200 : 0).inUse,
+                      true, "known while turning");
         let stopped = set._fan(sensor, () => 0);
         Harness.equal(stopped.inUse, true, "still known after stopping");
         Harness.equal(stopped.rpm, 0, "zero is preserved as the reading");
@@ -317,12 +318,13 @@ cases["an unlabelled fan stays known after it has run"] = function () {
 cases["only the top level RAPL domains may be summed"] = function () {
     on("machine", function () {
         let counters = Sensors.discoverEnergyCounters();
-        Harness.equal(counters.length, 4, "two packages, a sub-domain and a dtpm node");
+        Harness.equal(counters.length, 3, "two packages and a sub-domain");
         Harness.equal(byId(counters, "rapl:intel-rapl:0").topLevel, true, "a package");
         Harness.equal(byId(counters, "rapl:intel-rapl:1").topLevel, true, "the other package");
         Harness.equal(byId(counters, "rapl:intel-rapl:0:0").topLevel, false,
                       "inside the first package, so adding it would count twice");
-        Harness.equal(byId(counters, "rapl:dtpm:0").topLevel, false, "not a RAPL package at all");
+        Harness.equal(byId(counters, "rapl:dtpm:0"), null,
+                      "a native DTPM power value is not duplicated as an energy meter");
     });
 };
 
@@ -334,8 +336,20 @@ cases["a RAPL domain is named after what it measures"] = function () {
         Harness.equal(byId(counters, "rapl:intel-rapl:1").label, "Package 1", "the other");
         Harness.equal(byId(counters, "rapl:intel-rapl:0:0").label, "Cores",
                       "the cores inside the first");
-        Harness.equal(byId(counters, "rapl:dtpm:0").label, "dtpm:0",
-                      "a name nothing knows is left as it was found");
+    });
+};
+
+cases["DTPM uses its direct platform power interface"] = function () {
+    on("machine", function () {
+        let set = new Sensors.SensorSet();
+        let sensor = byId(set.powerSensors, "dtpm-power:dtpm:0");
+        let child = byId(set.powerSensors, "dtpm-power:dtpm:0:0");
+        Harness.ok(sensor, "the DTPM root is discovered from power_uw");
+        Harness.equal(sensor.platformTotal, true, "the root is the aggregate");
+        Harness.equal(child.platformTotal, false, "a child remains an individual reading");
+        let reading = byId(set.read().powers, sensor.id);
+        Harness.near(reading.watts, 42, 0.001, "microwatts converted to watts");
+        Harness.equal(reading.platformTotal, true, "aggregation identity reaches the picker");
     });
 };
 
@@ -714,7 +728,7 @@ cases["an asynchronous sensor set keeps an atomic snapshot"] = function () {
         Harness.equal(before, 0, "construction does not block to populate a partial snapshot");
         Harness.equal(set.temperatureSensors.length, 8, "the complete snapshot is adopted together");
         Harness.equal(set.fanSensors.length, 1, "including fans");
-        Harness.equal(set.powerSensors.length, 3, "and power meters");
+        Harness.equal(set.powerSensors.length, 5, "including DTPM root and child meters");
         let changed = Harness.settle(done => set.refresh(done), "asynchronous topology check");
         Harness.equal(changed, false, "the asynchronous topology signature is current");
     });

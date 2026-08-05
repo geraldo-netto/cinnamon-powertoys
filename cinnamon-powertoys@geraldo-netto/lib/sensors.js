@@ -493,7 +493,7 @@ function _metadataPaths(directories) {
         if (!/^(intel-rapl|amd-rapl|dtpm)/.test(entry))
             continue;
         let base = POWERCAP_DIR + "/" + entry;
-        paths.push(base + "/energy_uj", base + "/name",
+        paths.push(base + "/energy_uj", base + "/power_uw", base + "/name",
                    base + "/max_energy_range_uj");
     }
     return Array.from(new Set(paths));
@@ -694,6 +694,10 @@ function _energyCounters(entries, readString) {
             continue;
         let base = POWERCAP_DIR + "/" + entry;
         let energyPath = base + "/energy_uj";
+        /* DTPM's native interface is an instantaneous power value. Prefer it
+         * when present rather than exposing the same domain twice. */
+        if (/^dtpm/.test(entry) && readString(base + "/power_uw") !== null)
+            continue;
         if (readString(energyPath) === null)
             continue;
         found.push({
@@ -723,6 +727,43 @@ function _energyCounters(entries, readString) {
     }));
 }
 
+/* DTPM domains expose instantaneous microwatts rather than an energy counter.
+ * Only a root domain is a platform aggregate; its children remain individual
+ * rows and are never added to it. */
+function _directPowercapSensors(entries, readString) {
+    let found = [];
+    for (let entry of entries) {
+        if (!/^dtpm(?::\d+)+$/.test(entry))
+            continue;
+        let base = POWERCAP_DIR + "/" + entry;
+        let path = base + "/power_uw";
+        if (readString(path) === null)
+            continue;
+        let topLevel = /^dtpm:\d+$/.test(entry);
+        let raw = readString(base + "/name") || entry;
+        let label = topLevel ? _("Total") : Format.capitalize(raw);
+        found.push({
+            id: "dtpm-power:" + entry,
+            measure: "power",
+            source: "powercap",
+            kind: topLevel ? "package" : "other",
+            group: "dtpm",
+            groupLabel: "DTPM",
+            rawLabel: raw,
+            label: label,
+            display: label,
+            short: label,
+            path: path,
+            platformTotal: topLevel,
+        });
+    }
+    return found;
+}
+
+function discoverDirectPowercapSensors() {
+    return _directPowercapSensors(IO.listDir(POWERCAP_DIR), IO.readString);
+}
+
 function discoverEnergyCounters() {
     return _energyCounters(IO.listDir(POWERCAP_DIR), IO.readString);
 }
@@ -731,8 +772,13 @@ function _powercapTopology(entries, readable) {
     return entries.map(entry => {
         if (!/^(intel-rapl|amd-rapl|dtpm)/.test(entry))
             return entry;
-        let path = POWERCAP_DIR + "/" + entry + "/energy_uj";
-        return entry + ":" + (readable(path) ? "readable" : "restricted");
+        let base = POWERCAP_DIR + "/" + entry;
+        let interfaces = [];
+        if (readable(base + "/energy_uj"))
+            interfaces.push("energy");
+        if (readable(base + "/power_uw"))
+            interfaces.push("power");
+        return entry + ":" + (interfaces.join("+") || "restricted");
     }).join(",");
 }
 
@@ -748,7 +794,7 @@ function _topologyFromInventory(directories, readString, readLink) {
     let metadata = _metadataPaths(directories)
         /* The counter value moves continuously; only whether it can be read
          * is topology, and that is represented by _powercapTopology. */
-        .filter(path => !/\/energy_uj$/.test(path))
+        .filter(path => !/\/(?:energy_uj|power_uw)$/.test(path))
         .map(path => [path, readString(path)]);
     let links = _linkPaths(directories).map(path => [path, readLink(path)]);
     return JSON.stringify([
@@ -805,6 +851,8 @@ function discoverSnapshotAsync(onDone) {
                 onDone({
                     sensors: _finishSensors(scanned, labels),
                     counters: _energyCounters(directories[POWERCAP_DIR] || [], read),
+                    directPowers: _directPowercapSensors(
+                        directories[POWERCAP_DIR] || [], read),
                     topology: _topologyFromInventory(directories, read, readLink),
                 });
             });
@@ -928,7 +976,8 @@ var SensorSet = class SensorSet {
         if (this._destroyed)
             return;
         let found = discoverSensors();
-        this._adopt(found, discoverEnergyCounters(), this._topologyKey());
+        this._adopt(found, discoverEnergyCounters(), this._topologyKey(),
+                    discoverDirectPowercapSensors());
     }
 
     discoverAsync(onDone) {
@@ -945,7 +994,8 @@ var SensorSet = class SensorSet {
             if (this._destroyed)
                 return;
             this._discovering = false;
-            this._adopt(snapshot.sensors, snapshot.counters, snapshot.topology);
+            this._adopt(snapshot.sensors, snapshot.counters, snapshot.topology,
+                        snapshot.directPowers);
             let waiters = this._discoverWaiters.splice(0);
             for (let waiter of waiters)
                 waiter(true);
@@ -964,12 +1014,12 @@ var SensorSet = class SensorSet {
         });
     }
 
-    _adopt(found, counters, topology) {
+    _adopt(found, counters, topology, directPowers) {
         /* One assignment boundary: a reading sees the complete old machine or
          * the complete new one, never half of each. */
         this.temperatureSensors = found.temperatures;
         this.fanSensors = found.fans;
-        this.powerSensors = found.powerMeters;
+        this.powerSensors = found.powerMeters.concat(directPowers || []);
         /* The meters keep the previous counter value between polls, so they
          * outlive a reading and are only rebuilt by a rediscovery. */
         this.energyMeters = counters.map(counter => new EnergyMeter(counter));
@@ -1144,6 +1194,8 @@ var SensorSet = class SensorSet {
                 /* Only this kind of channel may be aggregated across devices;
                  * discovery leaves ambiguous rails false. */
                 deviceTotal: !!sensor.deviceTotal,
+                /* A DTPM root is the aggregate for the platform subtree. */
+                platformTotal: !!sensor.platformTotal,
                 /* hwmon reports microwatts */
                 watts: raw / 1000000,
             });

@@ -321,6 +321,17 @@ cases["consumption names system processor and graphics readings separately"] = f
                       "none is promoted to an unnamed whole-machine total");
 };
 
+cases["consumption identifies a DTPM platform total"] = function () {
+    let data = reading({
+        systemWatts: 72,
+        systemWattsSource: "platform",
+        powers: [{ id: "dtpm-root", platformTotal: true, watts: 72 }],
+    });
+    let lines = PanelText.tooltipText(data, options()).split("\n");
+    Harness.equal(lines.indexOf("  Platform total (DTPM): 72 W") >= 0, true,
+                  "a platform aggregate is not called processor-package power");
+};
+
 cases["the tooltip draws the profile that was asked for"] = function () {
     /* The same value the panel gauge and the filled segment use, so a change
      * that is still in flight reads the same wherever it is shown. */

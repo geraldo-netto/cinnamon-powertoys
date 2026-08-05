@@ -219,6 +219,17 @@ cases["a battery on the cable is not a draw"] = function () {
                       "45 W into the battery is not 45 W out of the machine");
 };
 
+cases["a DTPM platform total comes before component totals"] = function () {
+    let powers = [
+        { id: "dtpm-root", platformTotal: true, watts: 72 },
+        { id: "dtpm-child", platformTotal: false, watts: 20 },
+        { id: "gpu", kind: "gpu", deviceTotal: true, watts: 30 },
+    ];
+    Harness.deepEqual(Reading.pickPower(null, 54, powers),
+                      { watts: 72, source: "platform" },
+                      "the root wins without adding its children or RAPL");
+};
+
 cases["the package counter comes before the graphics card"] = function () {
     Harness.deepEqual(Reading.pickPower(null, 54, [{ kind: "gpu", watts: 30 }]),
                       { watts: 54, source: "package" }, "RAPL where it can be read");

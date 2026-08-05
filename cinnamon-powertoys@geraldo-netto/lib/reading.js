@@ -195,16 +195,21 @@ function pickTemperature(temperatures, hint) {
 /*
  * Which of several numbers counts as the machine's power draw.
  *
- * Battery drain is the honest number while on battery; otherwise the RAPL
- * package counter, and finally one declared whole-device total per GPU. Raw
- * hwmon channels are not added here: their relationship is driver-specific
- * and may be a board total beside rails already included in it. The source is
- * reported alongside the value because these measure very different things -
- * see powerText, which is what says so to the user.
+ * Battery drain is the honest number while on battery; otherwise a DTPM
+ * platform aggregate, the RAPL package counter, and finally one declared
+ * whole-device total per GPU. Raw hwmon channels and DTPM children are not
+ * added here: their relationship is driver-specific or already represented
+ * by a parent. The source is reported alongside the value because these
+ * measure very different things - see powerText, which is what says so to the
+ * user.
  */
 function pickPower(primary, packageWatts, powers) {
     if (primary && primary.state === UPDeviceState.DISCHARGING && primary.energyRate)
         return { watts: primary.energyRate, source: "battery" };
+    let platform = powers.filter(entry => entry.platformTotal && entry.watts !== null);
+    if (platform.length > 0)
+        return { watts: platform.reduce((total, entry) => total + entry.watts, 0),
+                 source: "platform" };
     if (packageWatts !== null)
         return { watts: packageWatts, source: "package" };
     let gpus = new Map();

@@ -32,11 +32,11 @@ msgstr ""
 msgid "Keyboard"
 msgstr ""
 
-#: applet.js:1121 applet.js:2925
+#: applet.js:1121 applet.js:2949
 msgid "Power profile"
 msgstr ""
 
-#: applet.js:1130 lib/panel-text.js:222
+#: applet.js:1130 lib/panel-text.js:224
 msgid "Profile"
 msgstr ""
 
@@ -44,7 +44,7 @@ msgstr ""
 msgid "Performance limited"
 msgstr ""
 
-#: applet.js:1160 lib/panel-text.js:210 lib/panel-text.js:234
+#: applet.js:1160 lib/panel-text.js:212 lib/panel-text.js:236
 #: lib/sensors.js:37
 msgid "Processor"
 msgstr ""
@@ -53,7 +53,7 @@ msgstr ""
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1183 lib/panel-text.js:224 lib/reading.js:139
+#: applet.js:1183 lib/panel-text.js:226 lib/reading.js:139
 msgid "Governor"
 msgstr ""
 
@@ -61,7 +61,7 @@ msgstr ""
 msgid "Energy preference"
 msgstr ""
 
-#: applet.js:1201 lib/panel-text.js:261
+#: applet.js:1201 lib/panel-text.js:265
 msgid "Devices"
 msgstr ""
 
@@ -86,11 +86,11 @@ msgstr ""
 msgid "an application"
 msgstr ""
 
-#: applet.js:1513 lib/panel-text.js:247
+#: applet.js:1513 lib/panel-text.js:251
 msgid "Connected"
 msgstr ""
 
-#: applet.js:1513 lib/panel-text.js:247
+#: applet.js:1513 lib/panel-text.js:251
 msgid "Disconnected"
 msgstr ""
 
@@ -116,8 +116,8 @@ msgid "Some battery limits could not be read."
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:1904 applet.js:2862 applet.js:2871 applet.js:2925 applet.js:2984
-#: applet.js:2993 applet.js:3147
+#: applet.js:1904 applet.js:2886 applet.js:2895 applet.js:2949 applet.js:3008
+#: applet.js:3017 applet.js:3171
 msgid "Power Toys"
 msgstr ""
 
@@ -129,56 +129,56 @@ msgid ""
 "shortcuts."
 msgstr ""
 
-#: applet.js:2811 applet.js:2952
+#: applet.js:2835 applet.js:2976
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2836
+#: applet.js:2860
 msgid "The requested value is not valid for this control."
 msgstr ""
 
-#: applet.js:2838
+#: applet.js:2862
 msgid "This control is not supported on this system."
 msgstr ""
 
-#: applet.js:2840
+#: applet.js:2864
 msgid "This control is currently unavailable."
 msgstr ""
 
-#: applet.js:2842
+#: applet.js:2866
 msgid "The system refused the requested change."
 msgstr ""
 
-#: applet.js:2844
+#: applet.js:2868
 msgid "The change failed; the previous settings were restored."
 msgstr ""
 
-#: applet.js:2846
+#: applet.js:2870
 msgid "The change failed and some previous settings could not be restored."
 msgstr ""
 
-#: applet.js:2848
+#: applet.js:2872
 msgid "The privileged helper could not be found."
 msgstr ""
 
-#: applet.js:2850 applet.js:2863
+#: applet.js:2874 applet.js:2887
 msgid ""
 "The installed privileged helper is outdated. Re-run the policy installation."
 msgstr ""
 
-#: applet.js:2852
+#: applet.js:2876
 msgid "The privileged helper is incompatible with this applet version."
 msgstr ""
 
-#: applet.js:2854
+#: applet.js:2878
 msgid "The change could not be applied."
 msgstr ""
 
-#: applet.js:2872
+#: applet.js:2896
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:3148
+#: applet.js:3172
 msgid "Shortcut is already in use"
 msgstr ""
 
@@ -190,7 +190,11 @@ msgstr ""
 msgid "Battery low"
 msgstr ""
 
-#: lib/alerts.js:133
+#: lib/alerts.js:135 lib/format.js:441 lib/panel-text.js:239
+msgid "Temperature"
+msgstr ""
+
+#: lib/alerts.js:136
 msgid "High temperature"
 msgstr ""
 
@@ -386,7 +390,7 @@ msgstr ""
 msgid "Balanced performance"
 msgstr ""
 
-#: lib/format.js:289 lib/format.js:399 lib/format.js:417 lib/panel-text.js:260
+#: lib/format.js:289 lib/format.js:399 lib/format.js:417 lib/panel-text.js:264
 msgid "Performance"
 msgstr ""
 
@@ -486,10 +490,6 @@ msgstr ""
 msgid "Power saving"
 msgstr ""
 
-#: lib/format.js:441 lib/panel-text.js:236
-msgid "Temperature"
-msgstr ""
-
 #: lib/format.js:442
 msgid "Fan"
 msgstr ""
@@ -519,19 +519,23 @@ msgid "Whole system (battery)"
 msgstr ""
 
 #: lib/panel-text.js:198
+msgid "Platform total (DTPM)"
+msgstr ""
+
+#: lib/panel-text.js:200
 msgid "Processor package total"
 msgstr ""
 
-#: lib/panel-text.js:210 lib/sensors.js:39
+#: lib/panel-text.js:212 lib/sensors.js:39
 msgid "Graphics"
 msgstr ""
 
-#: lib/panel-text.js:232
+#: lib/panel-text.js:234
 #, javascript-format
 msgid "maximum %s"
 msgstr ""
 
-#: lib/panel-text.js:259
+#: lib/panel-text.js:263
 msgid "Consumption"
 msgstr ""
 
@@ -563,11 +567,19 @@ msgstr ""
 msgid "Scaling driver"
 msgstr ""
 
-#: lib/sensor-rows.js:209
+#: lib/sensor-rows.js:210
+msgid "No primary sensors found"
+msgstr ""
+
+#: lib/sensor-rows.js:211
+msgid "Enable disk, network and board sensors in settings"
+msgstr ""
+
+#: lib/sensor-rows.js:213
 msgid "No sensors found"
 msgstr ""
 
-#: lib/sensors.js:41 lib/sensors.js:671
+#: lib/sensors.js:41 lib/sensors.js:675
 msgid "Package"
 msgstr ""
 
@@ -607,7 +619,7 @@ msgstr ""
 msgid "Hotspot"
 msgstr ""
 
-#: lib/sensors.js:217 lib/sensors.js:664
+#: lib/sensors.js:217 lib/sensors.js:668
 msgid "Memory"
 msgstr ""
 
@@ -619,16 +631,20 @@ msgstr ""
 msgid "SoC voltage"
 msgstr ""
 
-#: lib/sensors.js:662
+#: lib/sensors.js:666
 msgid "Cores"
 msgstr ""
 
-#: lib/sensors.js:663
+#: lib/sensors.js:667
 msgid "Uncore"
 msgstr ""
 
-#: lib/sensors.js:665
+#: lib/sensors.js:669
 msgid "Whole board"
+msgstr ""
+
+#: lib/sensors.js:744
+msgid "Total"
 msgstr ""
 
 #. metadata.json->description
