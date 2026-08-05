@@ -89,10 +89,11 @@ INTERFACES[KEYBOARD] = KEYBOARD_XML;
  * connect is, since to everything above they mean the same thing: there is no
  * backlight to be had here.
  */
-function connectProxy(xml, onDone) {
+function connectProxy(xml, onDone, cancellable) {
     try {
         let wrapper = Gio.DBusProxy.makeProxyWrapper(xml);
-        new wrapper(Gio.DBus.session, BUS_NAME, OBJECT_PATH, onDone);
+        new wrapper(Gio.DBus.session, BUS_NAME, OBJECT_PATH, onDone,
+                    cancellable || null);
     } catch (error) {
         onDone(null, error);
     }
@@ -123,7 +124,7 @@ var BacklightControl = class BacklightControl {
      * the field is the difference between "there is no backlight here" and a
      * TypeError in whoever is building these.
      */
-    constructor(kind, onChanged, onReady, connect) {
+    constructor(kind, onChanged, onReady, connect, owner) {
         this.kind = kind;
         this.available = false;
         this.percentage = null;
@@ -132,11 +133,13 @@ var BacklightControl = class BacklightControl {
         this._onChanged = onChanged || function () {};
         this._onReady = onReady || function () {};
         this._connect = connect || connectProxy;
+        this._owner = owner || null;
         this._xml = INTERFACES[kind] || null;
         this._proxy = null;
         this._signalId = 0;
         this._watchId = 0;
         this._connecting = false;
+        this._connectCancellable = null;
         this._connectWaiters = [];
         this._generation = 0;
         this._valueGeneration = 0;
@@ -154,16 +157,25 @@ var BacklightControl = class BacklightControl {
         /* Test connectors are deliberately self-contained. The runtime
          * connector also watches the daemon name so a failed startup is not a
          * permanent hardware decision. */
-        if (!connect) {
+        let watching = false;
+        if (!connect || owner) {
             try {
-                this._watchId = watchOwner(() => this._onOwnerAppeared(),
-                                           () => this._onOwnerVanished());
+                let install = owner ? owner.watch : watchOwner;
+                this._watchId = install(() => this._onOwnerAppeared(),
+                                        () => this._onOwnerVanished());
+                watching = !!this._watchId;
             } catch (e) {
-                /* The immediate connection below still gets one chance. */
+                /* The direct connection below still gets one chance. */
             }
         }
 
-        this.refresh(() => this._settleReady());
+        /* Gio's owner watch always reports the current state. Let its initial
+         * appeared callback perform the only production GetPercentage read.
+         * A custom connector, a custom watcher without that contract, or a
+         * failed watch retains the direct startup path. */
+        let ownerDriven = owner ? owner.reportsInitialState === true : !connect;
+        if (!watching || !ownerDriven)
+            this.refresh(() => this._settleReady());
     }
 
     _settleReady() {
@@ -184,9 +196,17 @@ var BacklightControl = class BacklightControl {
 
         this._connecting = true;
         let generation = ++this._generation;
+        let cancellable = null;
+        try {
+            cancellable = new Gio.Cancellable();
+        } catch (e) {
+            /* Generation guards retain correctness without cancellation. */
+        }
+        this._connectCancellable = cancellable;
         this._connect(this._xml, (proxy, error) => {
             if (this.destroyed || generation !== this._generation)
                 return;
+            this._connectCancellable = null;
             this._connecting = false;
             if (!error && proxy) {
                 this._proxy = proxy;
@@ -196,15 +216,24 @@ var BacklightControl = class BacklightControl {
             let waiters = this._connectWaiters.splice(0);
             for (let waiter of waiters)
                 waiter(this._proxy !== null);
-        });
+        }, cancellable);
     }
 
     _dropProxy() {
+        let cancellable = this._connectCancellable;
+        this._connectCancellable = null;
         ++this._generation;
         ++this._valueGeneration;
         this._connecting = false;
         this._cancelReads();
         this._cancelMutations();
+        if (cancellable) {
+            try {
+                cancellable.cancel();
+            } catch (e) {
+                /* already cancelled */
+            }
+        }
         if (this._proxy && this._signalId) {
             try {
                 this._proxy.disconnectSignal(this._signalId);
@@ -514,7 +543,10 @@ var BacklightControl = class BacklightControl {
         this.destroyed = true;
         if (this._watchId) {
             try {
-                unwatchOwner(this._watchId);
+                if (this._owner && this._owner.unwatch)
+                    this._owner.unwatch(this._watchId);
+                else
+                    unwatchOwner(this._watchId);
             } catch (e) {
                 /* already unwatched */
             }
