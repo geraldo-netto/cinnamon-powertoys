@@ -129,9 +129,14 @@ var PanelAdapter = class PanelAdapter {
             this._applet.set_applet_icon_path(path);
     }
 
-    /* A named icon is the public fallback when the private icon actor moved. */
-    setBatteryIcon(fallbackName, icon) {
-        this.setSymbolicIcon(fallbackName);
+    /* A named icon is the public fallback when the private icon actor moved.
+     * UPower already supplied the exact battery state as an icon name; the
+     * public symbolic setter wants that name without the suffix it adds. */
+    setBatteryIcon(fallbackName, icon, sourceName) {
+        let named = typeof sourceName === "string" &&
+                    /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(sourceName)
+            ? sourceName.replace(/-symbolic$/, "") : "";
+        this.setSymbolicIcon(named || fallbackName);
         let actor = this._applet && this._applet._applet_icon;
         if (!actor || !icon)
             return false;

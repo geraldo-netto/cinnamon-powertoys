@@ -64,7 +64,8 @@ cases["private tooltip hooks report reality and are restored"] = function () {
     panel.setSymbolicIcon("powertoys");
     panel.setIconPath("/icons/balanced.svg");
     let gicon = {};
-    Harness.ok(panel.setBatteryIcon("battery-good", gicon), "Gio.Icon actor available");
+    Harness.ok(panel.setBatteryIcon("battery-full", gicon, "battery-good-symbolic"),
+               "Gio.Icon actor available");
     Harness.equal(iconActor.gicon, gicon, "Gio.Icon applied");
     Harness.deepEqual(calls, [
         ["label", "61%"],
@@ -111,9 +112,10 @@ cases["public hover events are the fallback and disconnect cleanly"] = function 
     handlers["leave-event"].callback();
     Harness.deepEqual(lifecycle, [true, false], "hover lifecycle announced");
 
-    Harness.ok(!panel.setBatteryIcon("battery-good", {}), "no private icon actor");
-    Harness.deepEqual(calls, [["symbolic", "battery-good"]],
-                      "named public icon remains available");
+    Harness.ok(!panel.setBatteryIcon("battery-full", {}, "battery-caution-symbolic"),
+               "no private icon actor");
+    Harness.deepEqual(calls, [["symbolic", "battery-caution"]],
+                      "the current UPower state remains available publicly");
     panel.destroy();
     Harness.deepEqual(disconnected.sort(), [1, 2], "both hover hooks disconnected");
 };
@@ -126,5 +128,6 @@ cases["missing shell capabilities degrade without throwing"] = function () {
     panel.setSymbolicIcon("icon");
     panel.setIconPath("/icon.svg");
     Harness.ok(!panel.setBatteryIcon("battery", {}), "no private icon actor invented");
+    panel.setBatteryIcon("battery-full", {}, "/not/an/icon");
     panel.destroy();
 };

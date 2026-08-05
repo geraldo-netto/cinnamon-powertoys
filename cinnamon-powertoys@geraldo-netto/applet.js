@@ -283,7 +283,8 @@ class PanelPresenter {
                 return;
             this._iconKey = key;
             this._shell.setBatteryIcon(Format.batteryIconName(),
-                                       icon ? Gio.icon_new_for_string(icon) : null);
+                                       icon ? Gio.icon_new_for_string(icon) : null,
+                                       icon);
             return;
         }
 
