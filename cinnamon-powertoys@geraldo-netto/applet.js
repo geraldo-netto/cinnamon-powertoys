@@ -1924,15 +1924,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
          *
          * `available` on a BacklightControl is about the last call it made:
          * refresh() lowers it whenever a GetPercentage comes back with an
-         * error, and the menu re-asks every backlight each time it opens, so
+         * error, and the menu retries an unavailable control when it opens, so
          * cinnamon-settings-daemon being restarted is enough to make a laptop
-         * with a perfectly good backlight say it has none. Read as "does this
-         * machine have a backlight of its own" - which is what decides whether
-         * to go anywhere near the I2C bus - that answer is wrong, and it is
-         * wrong in the expensive direction: redetect() starts a control that
-         * was never started, so the applet would begin spawning ddcutil across
-         * the buses of a machine that was deliberately kept off them, and grow
-         * sliders for whatever answered.
+         * with a perfectly good backlight temporarily say it has none. Read as
+         * "does this machine have a backlight of its own" - which is what
+         * decides whether to go anywhere near the I2C bus - that answer is
+         * wrong, and it is wrong in the expensive direction: redetect() starts
+         * a control that was never started, so the applet would begin spawning
+         * ddcutil across the buses of a machine that was deliberately kept off
+         * them, and grow sliders for whatever answered.
          *
          * This is the one moment the question is honestly answered: the daemon
          * has been asked and has replied. Which control the wheel moves is a
@@ -2211,14 +2211,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this.menu.connect("open-state-changed", (menu, open) => {
             if (open)
                 this._onMenuOpened();
-            /*
-             * Opening the menu already refreshes every backlight, but a
-             * refresh only re-reads the monitors already known and cannot find
-             * one that was not there before - which is why opening the menu
-             * did not fix a missing slider. The flag this handler carries is
-             * the whole of the menu's part in it: up while it is open, down
-             * when it shuts.
-             */
+            /* External monitors are not signal-backed, so the menu owns a
+             * separate bounded topology probe: up while open, down when shut.
+             * Kernel backlights use their daemon's Changed signal and are
+             * retried independently by _onMenuOpened only when unavailable. */
             this._watchMonitors("menu", open);
         });
 
@@ -2561,16 +2557,17 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * the menu wants what is true now. */
         this._rediscover();
         this._sinceRediscover = 0;
-        /*
-         * UPower is deliberately not asked to re-poll. Its properties arrive
-         * by signal and the proxies are already up to date; Refresh() makes it
-         * go and read the hardware, which on a laptop is a real battery poll
-         * every time the menu is opened, for values that were already current.
-         * Every other battery display on the desktop shows what UPower's own
-         * cadence has arrived at, and so does this one.
-         */
-        for (let name in this._backlights)
-            this._backlights[name].refresh(() => this._onBacklightChanged());
+        /* Screen and keyboard brightness arrive through Changed, just as
+         * battery properties arrive through UPower signals, so their cached
+         * values are already current. Retry only a control which has no valid
+         * value; this lets a transient daemon failure heal without issuing two
+         * unnecessary D-Bus reads on every menu open. External monitors have
+         * their own DDC topology probe in _watchMonitors. */
+        for (let name of ["screen", "keyboard"]) {
+            let control = this._backlights[name];
+            if (control && !control.available)
+                control.refresh(() => this._onBacklightChanged());
+        }
 
         /*
          * The menu is filled from the reading already in hand, and only then
