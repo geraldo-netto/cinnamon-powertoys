@@ -8,6 +8,14 @@ const Privileged = Harness.requireXlet("./lib/privileged.js");
 
 var cases = {};
 
+cases["the helper install destination is the runtime path"] = function () {
+    let source = Harness.readFile(Harness.testsDir() + "/../Makefile");
+    Harness.ok(source.indexOf("HELPER_DEST := $(DESTDIR)$(HELPER_PATH)") >= 0,
+               "the package root is applied directly to the checked runtime path");
+    Harness.ok(source.indexOf("HELPER_DEST := $(HELPER_DIR)/powertoys-helper") < 0,
+               "no independently assembled destination can drift from it");
+};
+
 cases["RAPL uninstall gives remaining udev rules the final say"] = function () {
     let source = Harness.readFile(Harness.testsDir() + "/../Makefile");
     let start = source.indexOf("uninstall-rapl:");

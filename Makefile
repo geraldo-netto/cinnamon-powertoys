@@ -21,8 +21,8 @@ POT_URL      = $(shell python3 -c "import json;print(json.load(open('$(METADATA)
 POLICY      := io.github.geraldo-netto.cinnamon-powertoys.policy
 POLICY_DIR  := $(DESTDIR)/usr/share/polkit-1/actions
 HELPER_PATH := /usr/local/lib/cinnamon-powertoys/powertoys-helper
-HELPER_DIR  := $(DESTDIR)/usr/local/lib/cinnamon-powertoys
-HELPER_DEST := $(HELPER_DIR)/powertoys-helper
+HELPER_DEST := $(DESTDIR)$(HELPER_PATH)
+HELPER_DIR  := $(dir $(HELPER_DEST))
 
 # The optional udev rule that makes the RAPL energy counters readable, and the
 # group it hands them to. adm is the default because a desktop user is already
