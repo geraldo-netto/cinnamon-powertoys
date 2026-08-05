@@ -49,8 +49,18 @@ function scratch(options, body) {
                                "#!/bin/sh\nexit " + (options.translationStatus || 0) + "\n");
         GLib.chmod(tools + "/install-translations.sh", 0o700);
 
+        let path = GLib.getenv("PATH") || "/usr/bin:/bin";
+        if (options.rmdirStatus) {
+            let bin = directory + "/bin";
+            GLib.mkdir_with_parents(bin, 0o755);
+            GLib.file_set_contents(bin + "/rmdir",
+                                   "#!/bin/sh\nexit " + options.rmdirStatus + "\n");
+            GLib.chmod(bin + "/rmdir", 0o700);
+            path = bin + ":" + path;
+        }
+
         return body({ directory: directory, source: source, stage: stage,
-                      parent: parent, target: target });
+                      parent: parent, target: target, path: path });
     } finally {
         GLib.spawn_sync(null, ["rm", "-rf", directory], null,
                         GLib.SpawnFlags.SEARCH_PATH, null);
@@ -59,7 +69,8 @@ function scratch(options, body) {
 
 function install(tree) {
     return Harness.settle(done => Privileged._spawn([
-        "env", "DESTDIR=" + tree.stage, "PREFIX=/share", tree.source + "/install.sh",
+        "env", "PATH=" + tree.path, "DESTDIR=" + tree.stage, "PREFIX=/share",
+        tree.source + "/install.sh",
     ], (status, stderr) => done({ status: status, stderr: stderr })), "the staged install");
 }
 
@@ -95,6 +106,16 @@ cases["a failure after the swap restores the previous applet"] = function () {
         Harness.equal(read(tree.target + "/marker"), "old", "the prior tree was restored");
         Harness.equal(read(tree.target + "/applet.js"), null, "the replacement was removed");
         Harness.deepEqual(temporaryEntries(tree), [], "neither staging nor backup was stranded");
+    });
+};
+
+cases["a failed backup reservation cannot replace the live applet"] = function () {
+    scratch({ rmdirStatus: 9 }, tree => {
+        let outcome = install(tree);
+        Harness.equal(outcome.status, 9, "the reservation failure is preserved");
+        Harness.equal(read(tree.target + "/marker"), "old", "the live tree was never moved");
+        Harness.equal(read(tree.target + "/applet.js"), null, "an empty backup was not restored");
+        Harness.deepEqual(temporaryEntries(tree), [], "the failed reservation was cleaned up");
     });
 };
 

@@ -24,6 +24,7 @@ mkdir -p "$TARGET_PARENT"
 # Cinnamon is currently loading.
 STAGING=$(mktemp -d "$TARGET_PARENT/.${UUID}.new.XXXXXX")
 BACKUP=
+BACKUP_READY=no
 SWAPPED=no
 COMMITTED=no
 
@@ -32,7 +33,8 @@ cleanup() {
     trap - EXIT HUP INT TERM
 
     if [ "$COMMITTED" != yes ]; then
-        if [ -n "$BACKUP" ] && { [ -e "$BACKUP" ] || [ -L "$BACKUP" ]; }; then
+        if [ "$BACKUP_READY" = yes ] && [ -n "$BACKUP" ] &&
+                { [ -e "$BACKUP" ] || [ -L "$BACKUP" ]; }; then
             rm -rf -- "$TARGET_DIR"
             mv -- "$BACKUP" "$TARGET_DIR" || {
                 echo "could not restore previous install from $BACKUP" >&2
@@ -45,7 +47,13 @@ cleanup() {
     if [ -n "$STAGING" ] && { [ -e "$STAGING" ] || [ -L "$STAGING" ]; }; then
         rm -rf -- "$STAGING"
     fi
-    if [ "$COMMITTED" = yes ] && [ -n "$BACKUP" ] &&
+    # A reservation that failed before the live tree was moved is not a
+    # backup and must never replace that tree.
+    if [ "$BACKUP_READY" != yes ] && [ -n "$BACKUP" ] &&
+            { [ -e "$BACKUP" ] || [ -L "$BACKUP" ]; }; then
+        rm -rf -- "$BACKUP"
+    fi
+    if [ "$COMMITTED" = yes ] && [ "$BACKUP_READY" = yes ] && [ -n "$BACKUP" ] &&
             { [ -e "$BACKUP" ] || [ -L "$BACKUP" ]; }; then
         rm -rf -- "$BACKUP"
     fi
@@ -72,9 +80,16 @@ done
 }
 
 if [ -e "$TARGET_DIR" ] || [ -L "$TARGET_DIR" ]; then
+    # A signal trap can run between any two commands. Ignore termination only
+    # across the three-command rename window, so cleanup can never mistake the
+    # empty mktemp reservation for a completed backup or miss the successful
+    # move before BACKUP_READY is recorded.
+    trap '' HUP INT TERM
     BACKUP=$(mktemp -d "$TARGET_PARENT/.${UUID}.old.XXXXXX")
     rmdir "$BACKUP"
     mv -- "$TARGET_DIR" "$BACKUP"
+    BACKUP_READY=yes
+    trap 'exit 1' HUP INT TERM
 fi
 mv -- "$STAGING" "$TARGET_DIR"
 STAGING=
@@ -89,9 +104,10 @@ SWAPPED=yes
 # succeeded is the prior applet discarded; until here the EXIT trap restores
 # it if anything fails.
 COMMITTED=yes
-if [ -n "$BACKUP" ]; then
+if [ "$BACKUP_READY" = yes ] && [ -n "$BACKUP" ]; then
     rm -rf -- "$BACKUP"
     BACKUP=
+    BACKUP_READY=no
 fi
 trap - EXIT HUP INT TERM
 
