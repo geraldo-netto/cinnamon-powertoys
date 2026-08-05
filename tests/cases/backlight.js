@@ -27,29 +27,40 @@ function proxy(answers, options) {
     let settings = options || {};
     let calls = [];
     let handlers = {};
+    let pending = [];
+
+    function answer(name, args, onDone) {
+        let value = answers[name];
+        if (typeof value === "function")
+            value = value.apply(null, args);
+        /* A call that answers with neither a reply nor a reason, which is
+         * what a method whose reply carries nothing looks like from
+         * here - and what a daemon that has been restarted under the
+         * proxy can answer with. */
+        if (settings.silent && settings.silent.indexOf(name) >= 0)
+            onDone(null, null);
+        else if (value === null || value === undefined)
+            onDone(null, new Error(name + " is not available"));
+        else
+            onDone([value], null);
+    }
 
     function remote(name) {
         return function () {
             let args = Array.prototype.slice.call(arguments);
             let onDone = args.pop();
             calls.push([name].concat(args));
-            let answer = answers[name];
-            /* A call that answers with neither a reply nor a reason, which is
-             * what a method whose reply carries nothing looks like from
-             * here - and what a daemon that has been restarted under the
-             * proxy can answer with. */
-            if (settings.silent && settings.silent.indexOf(name) >= 0)
-                onDone(null, null);
-            else if (answer === null || answer === undefined)
-                onDone(null, new Error(name + " is not available"));
+            if (settings.deferred && settings.deferred.indexOf(name) >= 0)
+                pending.push(() => answer(name, args, onDone));
             else
-                onDone([answer], null);
+                answer(name, args, onDone);
         };
     }
 
     let stub = {
         calls: calls,
         handlers: handlers,
+        pending: pending,
         GetPercentageRemote: remote("GetPercentage"),
         SetPercentageRemote: remote("SetPercentage"),
         StepUpRemote: remote("StepUp"),
@@ -215,6 +226,72 @@ cases["what the daemon set is what is kept, not what was asked for"] = function 
     let screen = control(Backlight.SCREEN, proxy({ GetPercentage: 40, SetPercentage: 33 }));
     screen.setPercentage(37);
     Harness.equal(screen.percentage, 33, "the daemon's number, not the slider's");
+};
+
+cases["slider writes serialize and keep only the latest waiting value"] = function () {
+    let stub = proxy({
+        GetPercentage: 40,
+        SetPercentage: value => value,
+    }, { deferred: ["SetPercentage"] });
+    let screen = control(Backlight.SCREEN, stub);
+    let answered = 0;
+
+    screen.setPercentage(30, () => answered++);
+    screen.setPercentage(60, () => answered++);
+    screen.setPercentage(90, () => answered++);
+    Harness.deepEqual(stub.calls.filter(call => call[0] === "SetPercentage"),
+                      [["SetPercentage", 30]], "only one write is in flight");
+    Harness.equal(answered, 1, "the superseded waiting value is answered immediately");
+
+    stub.pending.shift()();
+    Harness.deepEqual(stub.calls.filter(call => call[0] === "SetPercentage"),
+                      [["SetPercentage", 30], ["SetPercentage", 90]],
+                      "the drag's final value follows the first write");
+    Harness.equal(answered, 2, "the first write answered once");
+
+    stub.pending.shift()();
+    Harness.equal(answered, 3, "the final write answered once too");
+    Harness.equal(screen.percentage, 90, "and the latest daemon result wins");
+};
+
+cases["proxy loss settles every queued mutation"] = function () {
+    let stub = proxy({ GetPercentage: 40, SetPercentage: 30,
+                       Toggle: 0, StepUp: 45 },
+                     { deferred: ["SetPercentage", "Toggle", "StepUp"] });
+    let screen = control(Backlight.KEYBOARD, stub);
+    let answered = 0;
+
+    screen.setPercentage(30, () => answered++);
+    screen.toggle(() => answered++);
+    screen.stepBy(2, () => answered++);
+    Harness.equal(stub.pending.length, 1, "one mutation reached the old proxy");
+
+    screen._onOwnerVanished();
+    Harness.equal(answered, 3, "the in-flight and queued callers all settle");
+    Harness.equal(screen.available, false, "the vanished backend is unavailable");
+
+    stub.pending.shift()();
+    Harness.equal(answered, 3, "a late reply cannot answer any caller twice");
+    Harness.deepEqual(stub.calls.filter(call =>
+        ["SetPercentage", "Toggle", "StepUp"].indexOf(call[0]) >= 0),
+                      [["SetPercentage", 30]], "nothing queued reaches the stale proxy");
+};
+
+cases["proxy loss between notches stops the gathered flick"] = function () {
+    let stub = proxy({ GetPercentage: 40, StepUp: 45 },
+                     { deferred: ["StepUp"] });
+    let screen = control(Backlight.SCREEN, stub);
+    let answered = 0;
+
+    screen.stepBy(3, () => answered++);
+    Harness.equal(stub.pending.length, 1, "the first notch is in flight");
+    screen._onOwnerVanished();
+    Harness.equal(answered, 1, "owner loss settles the flick");
+
+    stub.pending.shift()();
+    Harness.deepEqual(stub.calls.filter(call => call[0] === "StepUp"),
+                      [["StepUp"]], "the reply does not dereference the lost proxy again");
+    Harness.equal(answered, 1, "and cannot settle the flick twice");
 };
 
 cases["a step is the daemon's own notch"] = function () {

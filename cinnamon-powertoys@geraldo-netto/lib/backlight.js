@@ -140,6 +140,8 @@ var BacklightControl = class BacklightControl {
         this._connectWaiters = [];
         this._generation = 0;
         this._readySent = false;
+        this._mutation = null;
+        this._mutationQueue = [];
 
         if (!this._xml) {
             this._settleReady();
@@ -197,6 +199,7 @@ var BacklightControl = class BacklightControl {
     _dropProxy() {
         ++this._generation;
         this._connecting = false;
+        this._cancelMutations();
         if (this._proxy && this._signalId) {
             try {
                 this._proxy.disconnectSignal(this._signalId);
@@ -271,6 +274,111 @@ var BacklightControl = class BacklightControl {
         });
     }
 
+    _once(callback) {
+        let called = false;
+        return () => {
+            if (called)
+                return;
+            called = true;
+            callback();
+        };
+    }
+
+    _cancelMutations() {
+        let current = this._mutation;
+        this._mutation = null;
+        let queued = this._mutationQueue.splice(0);
+        if (current)
+            current.settle();
+        for (let operation of queued)
+            operation.settle();
+    }
+
+    /*
+     * One mutation reaches the daemon at a time. Slider motion is special: a
+     * value still waiting behind another call is replaced by the latest one,
+     * because the intermediate point is nowhere the user stopped. Actions on
+     * either side of it remain ordered, so set/toggle/step cannot overtake one
+     * another and compute from stale state.
+     */
+    _enqueueMutation(operation) {
+        operation.settle = this._once(operation.done);
+        if (this.destroyed || !this._proxy) {
+            operation.settle();
+            return;
+        }
+
+        let last = this._mutationQueue[this._mutationQueue.length - 1];
+        if (operation.type === "set" && last && last.type === "set") {
+            last.settle();
+            this._mutationQueue[this._mutationQueue.length - 1] = operation;
+        } else {
+            this._mutationQueue.push(operation);
+        }
+        this._drainMutations();
+    }
+
+    _drainMutations() {
+        if (this._mutation || this.destroyed || !this._proxy ||
+            this._mutationQueue.length === 0)
+            return;
+
+        let operation = this._mutationQueue.shift();
+        let proxy = this._proxy;
+        let generation = this._generation;
+        this._mutation = operation;
+
+        let finish = (result, error) => {
+            /* Owner loss and destroy settle and detach the operation first. A
+             * late D-Bus reply is then only a second answer to the once guard. */
+            if (this._mutation !== operation) {
+                operation.settle();
+                return;
+            }
+            this._mutation = null;
+            if (!this.destroyed && generation === this._generation &&
+                proxy === this._proxy && !error && result)
+                this.percentage = result[0];
+            operation.settle();
+            this._drainMutations();
+        };
+
+        try {
+            if (operation.type === "set") {
+                proxy.SetPercentageRemote(operation.value, finish);
+            } else if (operation.type === "toggle") {
+                proxy.ToggleRemote(finish);
+            } else {
+                this._runSteps(operation, proxy, generation, finish);
+            }
+        } catch (e) {
+            finish(null, e);
+        }
+    }
+
+    _runSteps(operation, proxy, generation, finish) {
+        let remaining = operation.count;
+        let call = operation.up ? proxy.StepUpRemote : proxy.StepDownRemote;
+        let next = (result, error) => {
+            if (result !== undefined && !this.destroyed &&
+                generation === this._generation && proxy === this._proxy &&
+                !error && result)
+                this.percentage = result[0];
+            if (error || this.destroyed || generation !== this._generation ||
+                proxy !== this._proxy || remaining === 0) {
+                finish(null, error);
+                return;
+            }
+            remaining--;
+            try {
+                call.call(proxy, next);
+            } catch (e) {
+                finish(null, e);
+            }
+        };
+        next();
+    }
+
     /*
      * Every call here answers its caller exactly once, whatever happened.
      *
@@ -284,22 +392,8 @@ var BacklightControl = class BacklightControl {
      */
     setPercentage(value, onDone) {
         let done = onDone || function () {};
-        if (!this._proxy) {
-            done();
-            return;
-        }
         let wanted = Math.max(0, Math.min(100, Math.round(value)));
-        this._proxy.SetPercentageRemote(wanted, (result, error) => {
-            if (this.destroyed) {
-                done();
-                return;
-            }
-            /* The daemon answers with what it actually set, which is not
-             * always what was asked for: some panels have far fewer steps. */
-            if (!error && result)
-                this.percentage = result[0];
-            done();
-        });
+        this._enqueueMutation({ type: "set", value: wanted, done: done });
     }
 
     /*
@@ -313,15 +407,7 @@ var BacklightControl = class BacklightControl {
             done();
             return;
         }
-        this._proxy.ToggleRemote((result, error) => {
-            if (this.destroyed) {
-                done();
-                return;
-            }
-            if (!error && result)
-                this.percentage = result[0];
-            done();
-        });
+        this._enqueueMutation({ type: "toggle", done: done });
     }
 
     /*
@@ -341,26 +427,8 @@ var BacklightControl = class BacklightControl {
             done();
             return;
         }
-
-        let up = notches > 0;
-        let next = () => {
-            if (this.destroyed || remaining === 0) {
-                done();
-                return;
-            }
-            remaining--;
-            let call = up ? this._proxy.StepUpRemote : this._proxy.StepDownRemote;
-            call.call(this._proxy, (result, error) => {
-                if (this.destroyed) {
-                    done();
-                    return;
-                }
-                if (!error && result)
-                    this.percentage = result[0];
-                next();
-            });
-        };
-        next();
+        this._enqueueMutation({ type: "step", up: notches > 0,
+                                count: remaining, done: done });
     }
 
     /* One notch, which is what the slider's own wheel sends. */
