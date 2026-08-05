@@ -1124,6 +1124,13 @@ class MenuPresenter {
             Format.profileLabel, value => this._actions.setProfile(value));
         this._profileGroup.menu.addMenuItem(this._profileControl);
 
+        /* A backend with one profile reports useful status but no choice. The
+         * same non-reactive value row used by one-value CPU settings keeps it
+         * visible without putting a button or keyboard stop around it. */
+        this._profileValueRow = new InfoRow(_("Profile"), "");
+        this._profileValueRow.actor.hide();
+        this._profileGroup.menu.addMenuItem(this._profileValueRow);
+
         this._degradedRow = new InfoRow(_("Performance limited"), "");
         this._degradedRow.setWarning(true);
         this._degradedRow.actor.hide();
@@ -1472,8 +1479,13 @@ class MenuPresenter {
          * of one function rather than each spelling it out. */
         let active = Reading.shownProfile(data, options);
         let editable = Reading.profileCanChange(data, options.privileged);
+        let single = show && data.profile.list.length === 1;
         this._profileGroup.setVisible(show);
-        this._profileControl.sync(show ? data.profile.list : [], active, editable);
+        this._profileControl.sync(show && !single ? data.profile.list : [], active, editable);
+        this._profileControl.actor.visible = show && !single;
+        this._profileValueRow.setValue(single
+            ? Format.profileLabel(active || data.profile.list[0]) : "");
+        this._profileValueRow.actor.visible = single;
 
         let notes = [];
         if (data.profile.degraded)
