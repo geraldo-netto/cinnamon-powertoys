@@ -50,12 +50,31 @@ function scratch(options, body) {
         GLib.chmod(tools + "/install-translations.sh", 0o700);
 
         let path = GLib.getenv("PATH") || "/usr/bin:/bin";
-        if (options.rmdirStatus) {
+        if (options.rmdirStatus || options.failedReload) {
             let bin = directory + "/bin";
             GLib.mkdir_with_parents(bin, 0o755);
-            GLib.file_set_contents(bin + "/rmdir",
-                                   "#!/bin/sh\nexit " + options.rmdirStatus + "\n");
-            GLib.chmod(bin + "/rmdir", 0o700);
+            if (options.rmdirStatus) {
+                GLib.file_set_contents(bin + "/rmdir",
+                                       "#!/bin/sh\nexit " + options.rmdirStatus + "\n");
+                GLib.chmod(bin + "/rmdir", 0o700);
+            }
+            if (options.failedReload) {
+                let state = directory + "/reload-count";
+                GLib.file_set_contents(state, "0\n");
+                GLib.file_set_contents(bin + "/gdbus",
+                    "#!/bin/sh\n" +
+                    "case \"$*\" in\n" +
+                    "  *GetRunningXletUUIDs*)\n" +
+                    "    count=$(cat '" + state + "')\n" +
+                    "    if [ \"$count\" = 1 ]; then echo '(@as [],)';\n" +
+                    "    else echo \"(['" + UUID + "'],)\"; fi;;\n" +
+                    "  *ReloadXlet*)\n" +
+                    "    count=$(cat '" + state + "')\n" +
+                    "    echo $((count + 1)) > '" + state + "';;\n" +
+                    "  *Eval*) echo \"(true, '')\";;\n" +
+                    "esac\n");
+                GLib.chmod(bin + "/gdbus", 0o700);
+            }
             path = bin + ":" + path;
         }
 
@@ -67,11 +86,16 @@ function scratch(options, body) {
     }
 }
 
-function install(tree) {
-    return Harness.settle(done => Privileged._spawn([
-        "env", "PATH=" + tree.path, "DESTDIR=" + tree.stage, "PREFIX=/share",
-        tree.source + "/install.sh",
-    ], (status, stderr) => done({ status: status, stderr: stderr })), "the staged install");
+function install(tree, live) {
+    let environment = ["env", "PATH=" + tree.path];
+    if (live)
+        environment.push("PREFIX=" + tree.stage + "/share");
+    else
+        environment.push("DESTDIR=" + tree.stage, "PREFIX=/share");
+    environment.push(tree.source + "/install.sh");
+    return Harness.settle(done => Privileged._spawn(
+        environment, (status, stderr) => done({ status: status, stderr: stderr })),
+    live ? "the live install" : "the staged install");
 }
 
 function temporaryEntries(tree) {
@@ -129,5 +153,17 @@ cases["a complete staged applet replaces the previous tree"] = function () {
                                     GLib.FileTest.IS_EXECUTABLE), true,
                       "the helper was validated and made executable before the swap");
         Harness.deepEqual(temporaryEntries(tree), [], "the backup was removed after commit");
+    });
+};
+
+cases["a failed live reload restores and reactivates the previous applet"] = function () {
+    scratch({ failedReload: true }, tree => {
+        let outcome = install(tree, true);
+        Harness.ok(outcome.status !== 0, "a missing replacement instance fails the upgrade");
+        Harness.equal(read(tree.target + "/marker"), "old", "the prior tree was restored");
+        Harness.equal(read(tree.target + "/applet.js"), null, "the broken replacement was removed");
+        Harness.ok(outcome.stderr.indexOf("Restored and reloaded") >= 0,
+                   "the prior runtime was reactivated: " + outcome.stderr);
+        Harness.deepEqual(temporaryEntries(tree), [], "the rollback left no private trees");
     });
 };

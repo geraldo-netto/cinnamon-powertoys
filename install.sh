@@ -27,10 +27,37 @@ BACKUP=
 BACKUP_READY=no
 SWAPPED=no
 COMMITTED=no
+ROLLBACK_RELOAD=no
+
+running_xlet() {
+    output=$(gdbus call --session \
+        --dest org.Cinnamon \
+        --object-path /org/Cinnamon \
+        --method org.Cinnamon.GetRunningXletUUIDs applet 2>/dev/null) || return 2
+    printf '%s\n' "$output" | grep -Fq "$UUID"
+}
+
+wait_for_running_xlet() {
+    attempts=0
+    while [ "$attempts" -lt 5 ]; do
+        if running_xlet; then
+            return 0
+        else
+            result=$?
+            if [ "$result" -eq 2 ]; then
+                return 2
+            fi
+        fi
+        attempts=$((attempts + 1))
+        [ "$attempts" -ge 5 ] || sleep 0.2
+    done
+    return 1
+}
 
 cleanup() {
     status=$?
     trap - EXIT HUP INT TERM
+    restored=no
 
     if [ "$COMMITTED" != yes ]; then
         if [ "$BACKUP_READY" = yes ] && [ -n "$BACKUP" ] &&
@@ -40,8 +67,24 @@ cleanup() {
                 echo "could not restore previous install from $BACKUP" >&2
                 status=1
             }
+            if [ -e "$TARGET_DIR" ] || [ -L "$TARGET_DIR" ]; then
+                restored=yes
+            fi
         elif [ "$SWAPPED" = yes ]; then
             rm -rf -- "$TARGET_DIR"
+            restored=yes
+        fi
+    fi
+    if [ "$ROLLBACK_RELOAD" = yes ] && [ "$restored" = yes ]; then
+        if gdbus call --session \
+                --dest org.Cinnamon \
+                --object-path /org/Cinnamon \
+                --method org.Cinnamon.ReloadXlet "$UUID" APPLET >/dev/null 2>&1 &&
+                wait_for_running_xlet; then
+            echo "Restored and reloaded the previous applet." >&2
+        else
+            echo "restored the previous files but could not reload the applet" >&2
+            status=1
         fi
     fi
     if [ -n "$STAGING" ] && { [ -e "$STAGING" ] || [ -L "$STAGING" ]; }; then
@@ -61,6 +104,21 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
+
+# Remember whether this operation is replacing a live panel instance. A first
+# install is allowed to finish with next-step instructions; an upgrade of a
+# running applet is not successful unless a running instance comes back.
+was_running=unknown
+if [ -z "${DESTDIR:-}" ] && command -v gdbus >/dev/null 2>&1; then
+    if running_xlet; then
+        was_running=yes
+    else
+        running_status=$?
+        if [ "$running_status" -eq 1 ]; then
+            was_running=no
+        fi
+    fi
+fi
 
 cp -R "$SOURCE_DIR/." "$STAGING/"
 chmod 0755 "$STAGING"
@@ -100,22 +158,17 @@ SWAPPED=yes
 # binds its text domain to.
 "$(dirname "$0")/tools/install-translations.sh" install "${DESTDIR:-}$PREFIX/locale"
 
-# Translation installation is part of the operation too. Only after it has
-# succeeded is the prior applet discarded; until here the EXIT trap restores
-# it if anything fails.
-COMMITTED=yes
-if [ "$BACKUP_READY" = yes ] && [ -n "$BACKUP" ]; then
-    rm -rf -- "$BACKUP"
-    BACKUP=
-    BACKUP_READY=no
-fi
-trap - EXIT HUP INT TERM
-
-echo "Installed to $TARGET_DIR"
-
 # A staged install is for building a package, not for using: it must not reach
 # into the running session.
 if [ -n "${DESTDIR:-}" ]; then
+    COMMITTED=yes
+    if [ "$BACKUP_READY" = yes ] && [ -n "$BACKUP" ]; then
+        rm -rf -- "$BACKUP"
+        BACKUP=
+        BACKUP_READY=no
+    fi
+    trap - EXIT HUP INT TERM
+    echo "Installed to $TARGET_DIR"
     exit 0
 fi
 
@@ -146,9 +199,29 @@ if command -v gdbus > /dev/null 2>&1; then
             --dest org.Cinnamon \
             --object-path /org/Cinnamon \
             --method org.Cinnamon.ReloadXlet "$UUID" APPLET > /dev/null 2>&1; then
-        reloaded=yes
+        if wait_for_running_xlet; then
+            reloaded=yes
+        fi
     fi
 fi
+
+if [ "$was_running" = yes ] && [ "$reloaded" != yes ]; then
+    echo "the replacement did not start; restoring the previous applet" >&2
+    ROLLBACK_RELOAD=yes
+    exit 1
+fi
+
+# Copy, translations and (where there was a live instance) activation have all
+# succeeded. Only now can the source backup stop being the rollback path.
+COMMITTED=yes
+if [ "$BACKUP_READY" = yes ] && [ -n "$BACKUP" ]; then
+    rm -rf -- "$BACKUP"
+    BACKUP=
+    BACKUP_READY=no
+fi
+trap - EXIT HUP INT TERM
+
+echo "Installed to $TARGET_DIR"
 
 if [ "$reloaded" = yes ]; then
     if [ "$themed" = yes ]; then
