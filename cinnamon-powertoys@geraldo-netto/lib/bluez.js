@@ -30,15 +30,20 @@ var BUS_NAME = "org.bluez";
  */
 const WATCHED_INTERFACES = ["org.bluez.Device1", "org.bluez.Battery1"];
 
+const WATCHED_PROPERTIES = {
+    "org.bluez.Device1": ["Connected", "Alias", "Name", "Icon"],
+    "org.bluez.Battery1": ["Percentage"],
+};
+
 /*
- * How long a burst of BlueZ signals is allowed to settle before the tree is
- * read again.
+ * How long a burst of signals which could not be decoded is allowed to settle
+ * before the tree is read again.
  *
- * The filter above drops what is not this module's business; this is for what
- * is. Device1 carries RSSI, which BlueZ republishes several times a second per
- * device while an adapter is discovering, and every one of those was a
- * GetManagedObjects of its own. Long enough to gather a burst into one read,
- * short enough that nobody watching the menu sees the wait.
+ * Normal Device1 and Battery1 signals carry enough data to update the cache
+ * directly, and properties such as RSSI are ignored. The timer is only the
+ * conservative recovery path for a relevant signal with an unexpected shape:
+ * long enough to gather a burst into one read, short enough that nobody
+ * watching the menu sees the wait.
  */
 var REFRESH_SETTLE_MS = 250;
 
@@ -174,6 +179,9 @@ function systemNameWatcher(onAppeared, onVanished) {
         return null;
     }
 }
+/* Gio's name watcher always reports the current owner after registration.
+ * Injected watchers are not assumed to have that contract. */
+systemNameWatcher.reportsInitialState = true;
 
 /*
  * Watches BlueZ for connected devices that report a battery.
@@ -188,7 +196,8 @@ var BluezBatteries = class BluezBatteries {
         this.devices = [];
 
         this._onChanged = onChanged || function () {};
-        this._call = call || ((path, iface, method, onDone) => this._dbusCall(path, iface, method, onDone));
+        this._call = call || ((path, iface, method, onDone, cancellable) =>
+            this._dbusCall(path, iface, method, onDone, cancellable));
         /* A custom call owns its own environment unless it supplies the
          * matching name watcher too. Production supplies neither. */
         this._watchName = watchName === undefined
@@ -196,16 +205,25 @@ var BluezBatteries = class BluezBatteries {
         this._unwatchName = null;
         this._signalIds = [];
         this._refreshTimerId = 0;
-        /* A read of the tree is in flight, and one was asked for while it
-         * was; see _refresh. */
-        this._reading = false;
+        /* The last complete object tree is the base to which signal deltas
+         * are applied. Before it arrives, a relevant signal requests one
+         * follow-up snapshot so no startup race can leave the cache stale. */
+        this._objects = {};
+        this._cacheReady = false;
+        this._read = null;
         this._readAgain = false;
         /* Invalidates an answer that crossed a daemon stop or restart. */
         this._ownerEpoch = 0;
 
-        this._refresh();
         this._watch();
-        this._watchOwner();
+        let ownerDriven = this._watchName &&
+                          this._watchName.reportsInitialState === true;
+        let watching = this._watchOwner();
+        /* Production gets its first read from the owner's initial appeared
+         * callback. Injected transports and a failed watch retain the direct
+         * startup path expected by integrations and tests. */
+        if (!ownerDriven || !watching)
+            this._refresh();
     }
 
     /*
@@ -222,10 +240,10 @@ var BluezBatteries = class BluezBatteries {
      * No bus reads as no bluetoothd, which this module already treats as an
      * ordinary state of a desktop with no radio in it.
      */
-    _dbusCall(path, iface, method, onDone) {
+    _dbusCall(path, iface, method, onDone, cancellable) {
         try {
             Gio.DBus.system.call(BUS_NAME, path, iface, method, null, null,
-                                 Gio.DBusCallFlags.NONE, -1, null,
+                                 Gio.DBusCallFlags.NONE, -1, cancellable || null,
                                  (connection, result) => {
                                      try {
                                          onDone(connection.call_finish(result).deepUnpack()[0]);
@@ -259,25 +277,58 @@ var BluezBatteries = class BluezBatteries {
      * the same shape the applet's own _update uses for the same problem.
      */
     _refresh() {
-        if (this._reading) {
+        if (this.destroyed)
+            return;
+        if (this._read) {
             this._readAgain = true;
             return;
         }
-        this._reading = true;
-        let epoch = this._ownerEpoch;
-        this._call("/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects", objects => {
-            this._reading = false;
+        let cancellable = null;
+        try {
+            cancellable = new Gio.Cancellable();
+        } catch (error) {
+            /* An injected runtime without cancellables still has generation
+             * guards; cancellation is an optimization, not correctness. */
+        }
+        let operation = { epoch: this._ownerEpoch, cancellable: cancellable };
+        this._read = operation;
+        let finish = objects => {
+            if (this._read !== operation)
+                return;
+            this._read = null;
             if (this.destroyed)
                 return;
-            if (epoch === this._ownerEpoch) {
-                this.available = !!objects;
-                this._settle(objects ? parseObjects(objects) : []);
+            if (operation.epoch === this._ownerEpoch) {
+                let valid = objects && typeof objects === "object";
+                this.available = !!valid;
+                this._objects = valid ? objects : {};
+                this._cacheReady = !!valid;
+                this._settle(valid ? parseObjects(this._objects) : []);
             }
             let again = this._readAgain;
             this._readAgain = false;
             if (again)
                 this._refresh();
-        });
+        };
+        try {
+            this._call("/", "org.freedesktop.DBus.ObjectManager",
+                       "GetManagedObjects", finish, cancellable);
+        } catch (error) {
+            finish(null);
+        }
+    }
+
+    _cancelRead() {
+        let operation = this._read;
+        this._read = null;
+        this._readAgain = false;
+        if (operation && operation.cancellable) {
+            try {
+                operation.cancellable.cancel();
+            } catch (error) {
+                /* already cancelled */
+            }
+        }
     }
 
     /*
@@ -300,29 +351,30 @@ var BluezBatteries = class BluezBatteries {
     }
 
     /*
-     * A device coming or going, and a property changing on one of the two
-     * interfaces this module parses.
-     *
-     * Reacting means one D-Bus call that BlueZ answers out of memory, which is
-     * cheap - but it was subscribed to every property BlueZ publishes and
-     * taken on every one of them, which is not the same thing. See
-     * WATCHED_INTERFACES and REFRESH_SETTLE_MS.
+     * A device coming or going, and a displayed property changing on one of
+     * the two interfaces this module parses. Each signal updates the cached
+     * tree in place; unrelated interfaces and properties never reach a read.
      */
     _watch() {
-        for (let signal of ["InterfacesAdded", "InterfacesRemoved"])
-            this._subscribe("org.freedesktop.DBus.ObjectManager", signal, null);
+        this._subscribe("org.freedesktop.DBus.ObjectManager", "InterfacesAdded", null,
+                        (path, args) => this._interfacesAdded(args));
+        this._subscribe("org.freedesktop.DBus.ObjectManager", "InterfacesRemoved", null,
+                        (path, args) => this._interfacesRemoved(args));
         for (let iface of WATCHED_INTERFACES)
-            this._subscribe("org.freedesktop.DBus.Properties", "PropertiesChanged", iface);
+            this._subscribe("org.freedesktop.DBus.Properties", "PropertiesChanged", iface,
+                            (path, args) => this._propertiesChanged(path, args));
     }
 
     _watchOwner() {
         if (!this._watchName)
-            return;
+            return false;
         try {
             this._unwatchName = this._watchName(
                 () => this._ownerAppeared(), () => this._ownerVanished());
+            return !!this._unwatchName;
         } catch (error) {
             Log.error("cannot watch ownership of BlueZ: " + error);
+            return false;
         }
     }
 
@@ -330,6 +382,9 @@ var BluezBatteries = class BluezBatteries {
         if (this.destroyed)
             return;
         this._ownerEpoch++;
+        this._cancelRead();
+        this._objects = {};
+        this._cacheReady = false;
         this._refresh();
     }
 
@@ -337,8 +392,10 @@ var BluezBatteries = class BluezBatteries {
         if (this.destroyed)
             return;
         this._ownerEpoch++;
+        this._cancelRead();
         this.available = false;
-        this._readAgain = false;
+        this._objects = {};
+        this._cacheReady = false;
         if (this._refreshTimerId) {
             GLib.source_remove(this._refreshTimerId);
             this._refreshTimerId = 0;
@@ -346,21 +403,115 @@ var BluezBatteries = class BluezBatteries {
         this._settle([]);
     }
 
-    _subscribe(iface, member, arg0) {
+    _subscribe(iface, member, arg0, onSignal) {
         try {
             this._signalIds.push(Gio.DBus.system.signal_subscribe(
                 BUS_NAME, iface, member, null, arg0,
-                Gio.DBusSignalFlags.NONE, () => this._scheduleRefresh()));
+                Gio.DBusSignalFlags.NONE,
+                (connection, sender, path, signalIface, signal, parameters) => {
+                    if (this.destroyed)
+                        return;
+                    try {
+                        let args = parameters &&
+                                   typeof parameters.deepUnpack === "function"
+                            ? parameters.deepUnpack() : parameters;
+                        onSignal(path, Array.isArray(args) ? args : []);
+                    } catch (error) {
+                        /* A signal with an unexpected shape must not make the
+                         * cache permanently stale. One snapshot repairs it. */
+                        this._scheduleRefresh();
+                    }
+                }));
         } catch (error) {
             Log.error("cannot watch BlueZ for " + member +
                       (arg0 ? " on " + arg0 : "") + ": " + error);
         }
     }
 
+    _needSnapshot() {
+        if (this._read)
+            this._readAgain = true;
+        else
+            this._refresh();
+    }
+
+    _interfacesAdded(args) {
+        let path = args[0];
+        let added = args[1];
+        if (typeof path !== "string" || !added || typeof added !== "object")
+            return;
+        let relevant = WATCHED_INTERFACES.filter(iface =>
+            Object.prototype.hasOwnProperty.call(added, iface));
+        if (relevant.length === 0)
+            return;
+        if (!this._cacheReady) {
+            this._needSnapshot();
+            return;
+        }
+        let interfaces = this._objects[path] || {};
+        for (let iface of relevant)
+            interfaces[iface] = added[iface];
+        this._objects[path] = interfaces;
+        this._settle(parseObjects(this._objects));
+    }
+
+    _interfacesRemoved(args) {
+        let path = args[0];
+        let removed = args[1];
+        if (typeof path !== "string" || !Array.isArray(removed) ||
+            !removed.some(iface => WATCHED_INTERFACES.indexOf(iface) >= 0))
+            return;
+        if (!this._cacheReady) {
+            this._needSnapshot();
+            return;
+        }
+        let interfaces = this._objects[path];
+        if (!interfaces)
+            return;
+        for (let iface of removed)
+            delete interfaces[iface];
+        if (Object.keys(interfaces).length === 0)
+            delete this._objects[path];
+        this._settle(parseObjects(this._objects));
+    }
+
+    _propertiesChanged(path, args) {
+        let iface = args[0];
+        let changed = args[1];
+        let invalidated = args[2];
+        let watched = WATCHED_PROPERTIES[iface];
+        if (typeof path !== "string" || !watched || !changed ||
+            typeof changed !== "object")
+            return;
+        invalidated = Array.isArray(invalidated) ? invalidated : [];
+        let relevant = watched.some(property =>
+            Object.prototype.hasOwnProperty.call(changed, property) ||
+            invalidated.indexOf(property) >= 0);
+        if (!relevant)
+            return;
+        if (!this._cacheReady) {
+            this._needSnapshot();
+            return;
+        }
+        let interfaces = this._objects[path];
+        if (!interfaces || !interfaces[iface]) {
+            this._needSnapshot();
+            return;
+        }
+        let properties = interfaces[iface];
+        for (let property of watched) {
+            if (Object.prototype.hasOwnProperty.call(changed, property))
+                properties[property] = changed[property];
+            if (invalidated.indexOf(property) >= 0)
+                delete properties[property];
+        }
+        this._settle(parseObjects(this._objects));
+    }
+
     /*
-     * One read per burst. The first signal arms the timer and the rest of the
-     * burst finds it armed, so twenty signals in a quarter of a second are one
-     * GetManagedObjects rather than twenty.
+     * One recovery read per malformed-signal burst. The first arms the timer
+     * and the rest find it armed, so twenty undecodable signals in a quarter
+     * of a second are one GetManagedObjects rather than twenty.
      */
     _scheduleRefresh() {
         if (this.destroyed || this._refreshTimerId)
@@ -390,6 +541,7 @@ var BluezBatteries = class BluezBatteries {
 
     destroy() {
         this.destroyed = true;
+        this._cancelRead();
         if (this._refreshTimerId) {
             GLib.source_remove(this._refreshTimerId);
             this._refreshTimerId = 0;
@@ -410,6 +562,8 @@ var BluezBatteries = class BluezBatteries {
             }
         }
         this._signalIds = [];
+        this._objects = {};
+        this._cacheReady = false;
         this.devices = [];
         this.available = false;
     }
