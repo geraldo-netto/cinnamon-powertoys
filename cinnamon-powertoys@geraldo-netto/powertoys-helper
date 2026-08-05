@@ -20,7 +20,7 @@ CPUFREQ_DIR=$CPU_DIR/cpufreq
 POWER_SUPPLY_DIR=/sys/class/power_supply
 PLATFORM_PROFILE=/sys/firmware/acpi/platform_profile
 PLATFORM_PROFILE_CHOICES=/sys/firmware/acpi/platform_profile_choices
-PROTOCOL_VERSION=1
+PROTOCOL_VERSION=2
 
 die() {
     code=$1
@@ -227,6 +227,11 @@ set_charge_threshold() {
     targets=0
     plan=
     for battery in "$POWER_SUPPLY_DIR"/*; do
+        type="$battery/type"
+        [ -r "$type" ] || continue
+        battery_type=$(cat "$type" 2>/dev/null || echo "")
+        [ "$battery_type" = Battery ] || continue
+
         end="$battery/charge_control_end_threshold"
         [ -f "$end" ] || continue
         targets=$((targets + 1))

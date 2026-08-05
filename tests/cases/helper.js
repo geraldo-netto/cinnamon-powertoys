@@ -27,6 +27,8 @@ function scratch(batteries, body) {
         for (let name in batteries) {
             let battery = supply + "/" + name;
             GLib.mkdir_with_parents(battery, 0o755);
+            GLib.file_set_contents(battery + "/type",
+                                   (batteries[name].type || "Battery") + "\n");
             GLib.file_set_contents(battery + "/charge_control_end_threshold",
                                    String(batteries[name].end) + "\n");
             if (batteries[name].start !== undefined)
@@ -121,6 +123,21 @@ cases["charge writes update every battery as one transaction"] = function () {
                       "an already valid start is untouched");
         Harness.equal(contents(tree.supply + "/BAT1/charge_control_end_threshold"), "60",
                       "the second end");
+    });
+};
+
+cases["charge writes target only supplies declared as batteries"] = function () {
+    scratch({
+        BAT0: { type: "Battery", start: 70, end: 80 },
+        hidpp_battery_0: { type: "UPS", start: 40, end: 90 },
+    }, tree => {
+        let outcome = run(tree, ["charge-threshold", 60]);
+        Harness.equal(outcome.applied, true, "the battery change applied");
+        Harness.equal(contents(tree.supply + "/BAT0/charge_control_end_threshold"), "60",
+                      "the same battery the UI discovered is written");
+        Harness.equal(contents(tree.supply +
+                               "/hidpp_battery_0/charge_control_end_threshold"), "90",
+                      "a non-battery threshold is outside the transaction");
     });
 };
 

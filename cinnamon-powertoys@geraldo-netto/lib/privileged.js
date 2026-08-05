@@ -20,7 +20,7 @@ const Log = require("./lib/log.js");
  * check out. Both mean the user knows perfectly well nothing happened. */
 var PKEXEC_DISMISSED = 126;
 var PKEXEC_UNAUTHORISED = 127;
-var HELPER_PROTOCOL = 1;
+var HELPER_PROTOCOL = 2;
 var HELPER_PROTOCOL_LINE = "cinnamon-powertoys-helper-protocol " + HELPER_PROTOCOL;
 
 function _spawn(argv, onDone) {
