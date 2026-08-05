@@ -313,12 +313,11 @@ var DdcMonitor = class DdcMonitor {
      *
      * That second reason is the whole reason, and it applies just as much to
      * two reads. This checked the flag and never set it, so it was the one
-     * call that could overlap itself: opening the menu twice inside a probe's
-     * round trip refreshes every backlight again, and a monitors-changed
-     * re-detection can land on top of a menu open. What came back from that
-     * was nothing, which on a monitor that has answered before is silently
-     * kept as the value it had - so a bus collision looked exactly like a
-     * monitor that had gone to sleep.
+     * call that could overlap itself: the old menu-open path refreshed every
+     * backlight, while a monitors-changed re-detection could land on top of
+     * that read. What came back from the overlap was nothing, which on a
+     * monitor that had answered before was silently kept as the value it had -
+     * so a bus collision looked exactly like a monitor that had gone to sleep.
      */
     refresh(onDone) {
         let done = onDone || function () {};
@@ -598,17 +597,17 @@ var DdcBacklight = class DdcBacklight {
      * There are two conversations here and they were guarded separately: a
      * probe against another probe (_detecting), and one monitor against its own
      * next read or write (_busy, per monitor). Nothing guarded a probe against
-     * the reads, and the applet lines those two up as a matter of course -
-     * opening the menu refreshes every backlight, which sends a getvcp to every
-     * monitor, and then starts the watch, whose first probe goes out at once. A
-     * drag does the same once a second: a setvcp in flight, a tick, a detect.
+     * the reads, and the former menu path lined those two up as a matter of
+     * course: it sent a getvcp to every monitor, then started the watch whose
+     * first probe went out at once. A drag can still meet the recurring watch
+     * the same way: a setvcp in flight, a tick, a detect.
      *
      * A detect walks every bus, so it collides with whatever is on one of them,
      * and two ddcutil talking to one monitor is how ddcutil comes back with
-     * nothing - PT-135 and PT-145c met a third time. It heals silently, because
-     * a monitor that has answered before keeps its last value through a read
-     * that fails, which is exactly what makes it worth closing rather than
-     * watching for.
+     * nothing - PT-135 and PT-145c met a third time in the former menu-open
+     * refresh path. It heals silently, because a monitor that has answered
+     * before keeps its last value through a read that fails, which is exactly
+     * what makes it worth closing rather than watching for.
      *
      * So the two guards become one question, asked of the whole machine.
      */
