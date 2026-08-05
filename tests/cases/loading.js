@@ -468,6 +468,37 @@ cases["malformed battery icon metadata keeps the panel fallback"] = function () 
                       "the validated symbolic fallback still reaches the panel");
 };
 
+cases["presentation consumers fail independently"] = function () {
+    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let match = /    _present\(data\) \{([\s\S]*?)\n    \}\n\n    \/\* What the three switches/.exec(source);
+    Harness.ok(match, "the presentation boundary can be isolated");
+    let logs = [];
+    let present = Function("Log", "return function (data) {" + match[1] + "\n};")({
+        error: message => logs.push(message),
+    });
+    let calls = [];
+    let applet = {
+        _latest: null,
+        _pending: { settle: () => { calls.push("pending"); throw new Error("pending broke"); } },
+        _panel: { update: () => { calls.push("panel"); throw new Error("panel broke"); } },
+        _panelOptions: () => ({}),
+        _menuPresenter: {
+            update: () => { calls.push("menu"); throw new Error("menu broke"); },
+        },
+        _menuOptions: () => ({}),
+        menu: { isOpen: true },
+        _alerts: { check: () => calls.push("alerts") },
+        _alertLimits: () => ({}),
+    };
+    let data = { profile: { active: "balanced" } };
+
+    present.call(applet, data);
+    Harness.equal(applet._latest, data, "every consumer observes the same adopted snapshot");
+    Harness.deepEqual(calls, ["pending", "panel", "menu", "alerts"],
+                      "later consumers still run after independent failures");
+    Harness.equal(logs.length, 3, "each failed consumer is diagnosed once");
+};
+
 cases["slow rediscovery includes CPU topology"] = function () {
     let source = Harness.readFile(Harness.xletDir() + "/applet.js");
     let rediscover = /    _rediscover\(\) \{([\s\S]*?)\n    \}/.exec(source);

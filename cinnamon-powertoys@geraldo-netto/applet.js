@@ -2747,12 +2747,22 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     _present(data) {
+        this._latest = data;
+        let present = (consumer, callback) => {
+            try {
+                callback();
+            } catch (error) {
+                Log.error(consumer + " failed: " + error);
+            }
+        };
+
         /* Caught up with what was asked for - or given long enough to and
          * not, in which case the machine is taken at its word. */
-        this._pending.settle(data.profile.active);
+        present("pending profile presentation", () =>
+            this._pending.settle(data.profile.active));
 
-        this._latest = data;
-        this._panel.update(data, this._panelOptions());
+        present("panel presentation", () =>
+            this._panel.update(data, this._panelOptions()));
 
         /*
          * The panel is always on screen; the menu usually is not. Composing
@@ -2762,9 +2772,11 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * only moment its contents can be looked at.
          */
         if (this._menuPresenter && this.menu && this.menu.isOpen)
-            this._menuPresenter.update(data, this._menuOptions());
+            present("menu presentation", () =>
+                this._menuPresenter.update(data, this._menuOptions()));
 
-        this._alerts.check(data, this._alertLimits());
+        present("alert policy", () =>
+            this._alerts.check(data, this._alertLimits()));
     }
 
     /* What the three switches say, which is only read where the list is on
