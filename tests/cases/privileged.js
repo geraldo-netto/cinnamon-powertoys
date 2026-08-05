@@ -258,21 +258,23 @@ cases["the change already on screen is left to finish"] = function () {
 };
 
 cases["a helper probe does not spawn after the applet leaves"] = function () {
-    let probeDone = null;
+    let probeCancelled = 0;
     let spawned = [];
     let outcome = null;
     let helper = new Privileged.PrivilegedHelper(
         [SYSTEM], () => true, () => {},
         (argv, onDone) => spawned.push({ argv: argv, onDone: onDone }),
-        (path, onDone) => { probeDone = onDone; });
+        (path, onDone) => () => {
+            probeCancelled++;
+            onDone(false, "protocol probe cancelled");
+        });
 
     helper.run(["boost", "1"], result => { outcome = result; });
-    Harness.ok(probeDone, "the protocol probe is in flight");
     Harness.equal(helper.busy, true, "and owns the current job");
 
     helper.destroy();
-    probeDone(true, "");
 
+    Harness.equal(probeCancelled, 1, "the unfinished discovery process is cancelled");
     Harness.deepEqual(spawned, [], "pkexec never reaches the screen");
     Harness.equal(outcome.code, "shutting-down", "the detached job is settled");
     Harness.equal(helper.busy, false, "and no work remains owned");
@@ -445,6 +447,40 @@ cases["the shipped helper identifies its protocol before authentication"] = func
         "the helper protocol probe");
     Harness.equal(compatible.ok, true, "the applet and bundled helper agree");
     Harness.equal(compatible.diagnostic, "", "with no compatibility warning");
+};
+
+cases["a helper probe that cannot start has a safe cancellation handle"] = function () {
+    let answers = [];
+    let cancel = Privileged._probeHelper(
+        "/definitely/not/a/powertoys-helper",
+        (compatible, diagnostic) => answers.push({
+            compatible: compatible,
+            diagnostic: diagnostic,
+        }));
+
+    Harness.equal(answers.length, 1, "the setup failure settles synchronously");
+    Harness.equal(answers[0].compatible, false, "the missing executable is incompatible");
+    cancel();
+    Harness.equal(answers.length, 1, "late teardown cannot settle the failed probe again");
+};
+
+cases["a helper protocol probe that hangs is bounded"] = function () {
+    let directory = GLib.dir_make_tmp("powertoys-helper-hang-XXXXXX");
+    let path = directory + "/powertoys-helper";
+    try {
+        GLib.file_set_contents(path, "#!/bin/sh\nsleep 5\n");
+        GLib.chmod(path, 0o700);
+        let answer = Harness.settle(done => Privileged._probeHelper(
+            path, (compatible, diagnostic) =>
+                done({ compatible: compatible, diagnostic: diagnostic }), 20),
+            "a bounded helper protocol probe");
+        Harness.equal(answer.compatible, false, "a hung executable is not compatible");
+        Harness.equal(answer.diagnostic, "protocol probe timed out",
+                      "the timeout is distinct from a protocol mismatch");
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
+    }
 };
 
 cases["a successful executable with no helper protocol is rejected"] = function () {

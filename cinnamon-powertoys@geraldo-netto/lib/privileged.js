@@ -13,6 +13,7 @@
  */
 
 const Gio = imports.gi.Gio;
+const GLib = imports.gi.GLib;
 
 const Log = require("./lib/log.js");
 
@@ -22,6 +23,7 @@ var PKEXEC_DISMISSED = 126;
 var PKEXEC_UNAUTHORISED = 127;
 var HELPER_PROTOCOL = 2;
 var HELPER_PROTOCOL_LINE = "cinnamon-powertoys-helper-protocol " + HELPER_PROTOCOL;
+var PROBE_TIMEOUT_MS = 2000;
 
 function _spawn(argv, onDone) {
     let process;
@@ -57,8 +59,21 @@ function _spawn(argv, onDone) {
 /* A helper identifies its command and failure vocabulary before pkexec is
  * involved. Executing the probe also verifies that the candidate is a regular
  * executable with a working interpreter rather than merely an existing path. */
-function _probeHelper(path, onDone) {
-    _spawn([path, "protocol-version"], (status, stderr, stdout) => {
+function _probeHelper(path, onDone, timeoutMs) {
+    let done = false;
+    let timeoutId = 0;
+    let cancellable = new Gio.Cancellable();
+    let process;
+
+    function finish(status, stderr, stdout) {
+        if (done)
+            return;
+        done = true;
+        if (timeoutId) {
+            GLib.source_remove(timeoutId);
+            timeoutId = 0;
+        }
+
         let answer = String(stdout || "").trim();
         if (status === 0 && answer === HELPER_PROTOCOL_LINE) {
             onDone(true, "");
@@ -68,7 +83,47 @@ function _probeHelper(path, onDone) {
             ? "reported " + (answer || "no protocol")
             : String(stderr || "probe exited with status " + status).trim();
         onDone(false, diagnostic);
+    }
+
+    function stop(diagnostic) {
+        try {
+            cancellable.cancel();
+            process.force_exit();
+        } catch (error) {
+            /* already gone */
+        }
+        finish(-1, diagnostic, "");
+    }
+
+    try {
+        process = new Gio.Subprocess({
+            argv: [path, "protocol-version"],
+            flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE,
+        });
+        process.init(null);
+    } catch (error) {
+        finish(-1, String(error), "");
+        return function () {};
+    }
+
+    let limit = timeoutMs === undefined ? PROBE_TIMEOUT_MS : timeoutMs;
+    timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, limit, () => {
+        timeoutId = 0;
+        stop("protocol probe timed out");
+        return GLib.SOURCE_REMOVE;
     });
+
+    process.communicate_utf8_async(null, cancellable, (source, result) => {
+        try {
+            let [, stdout, stderr] = source.communicate_utf8_finish(result);
+            finish(source.get_if_exited() ? source.get_exit_status() : -1,
+                   stderr || "", stdout || "");
+        } catch (error) {
+            finish(-1, String(error), "");
+        }
+    });
+
+    return () => stop("protocol probe cancelled");
 }
 
 /* The helper's final line is a stable code followed by a diagnostic for the
@@ -105,6 +160,7 @@ var PrivilegedHelper = class PrivilegedHelper {
             ? ((path, onDone) => onDone(true, ""))
             : _probeHelper);
         this._selection = null;
+        this._activeProbe = null;
 
         /*
          * One at a time. Two clicks in quick succession used to spawn two
@@ -137,6 +193,10 @@ var PrivilegedHelper = class PrivilegedHelper {
     destroy() {
         this._destroyed = true;
         this._queue = [];
+        let activeProbe = this._activeProbe;
+        this._activeProbe = null;
+        if (activeProbe && activeProbe.cancel)
+            activeProbe.cancel();
     }
 
     /*
@@ -170,7 +230,15 @@ var PrivilegedHelper = class PrivilegedHelper {
         if (index > 0)
             this._repair(candidate);
 
-        this._probe(candidate, (compatible, diagnostic) => {
+        let activeProbe = { cancel: null };
+        this._activeProbe = activeProbe;
+        let cancel = this._probe(candidate, (compatible, diagnostic) => {
+            if (this._activeProbe === activeProbe)
+                this._activeProbe = null;
+            if (this._destroyed) {
+                onDone(null, issue);
+                return;
+            }
             if (compatible) {
                 this._selection = { path: candidate, issue: issue };
                 if (issue)
@@ -187,6 +255,8 @@ var PrivilegedHelper = class PrivilegedHelper {
             };
             this._tryCandidate(index + 1, issue || rejected, onDone);
         });
+        if (this._activeProbe === activeProbe && typeof cancel === "function")
+            activeProbe.cancel = cancel;
     }
 
     /*
