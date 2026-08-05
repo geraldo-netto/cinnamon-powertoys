@@ -16,6 +16,13 @@ ACTION=${1:-install}
 LOCALE_DIR=${2:-${XDG_DATA_HOME:-$HOME/.local/share}/locale}
 PO_DIR=$(cd "$(dirname "$0")/.." && pwd)/$UUID/po
 
+case "$ACTION" in
+    install|uninstall) ;;
+    *)
+        echo "usage: install-translations.sh install|uninstall [locale-root]" >&2
+        exit 2;;
+esac
+
 if [ "$ACTION" = uninstall ]; then
     removed=0
     # Only ever this applet's own catalogue, never the directory it sits in:

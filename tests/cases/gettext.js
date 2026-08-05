@@ -70,10 +70,14 @@ function install(tree) {
 }
 
 function installResult(tree) {
+    return actionResult(tree, "install");
+}
+
+function actionResult(tree, action) {
     let environment = GLib.get_environ();
     environment = GLib.environ_setenv(environment, "PATH",
         tree.bin + ":" + (GLib.getenv("PATH") || ""), true);
-    let result = GLib.spawn_sync(null, [tree.script, "install", tree.locale],
+    let result = GLib.spawn_sync(null, [tree.script, action, tree.locale],
                                  environment, GLib.SpawnFlags.NONE, null);
     return {
         status: result[3],
@@ -209,6 +213,20 @@ cases["a failed translation rollback retains its recovery backup"] = function ()
         Harness.ok(retained, "the recovery path is printed: " + result.stderr);
         Harness.equal(read(retained[1] + "/fr.mo"), "old french catalogue",
                       "the only recoverable copy is preserved for manual restoration");
+    });
+};
+
+cases["an unknown translation action fails without changing catalogues"] = function () {
+    installedTree('[ "$1" = -o ] && cp "$3" "$2"', tree => {
+        let french = tree.locale + "/fr/LC_MESSAGES/" + Harness.UUID + ".mo";
+        write(french, "existing catalogue");
+
+        let result = actionResult(tree, "isntall");
+        Harness.ok(result.status !== 0, "the misspelled action is rejected");
+        Harness.ok(result.stderr.indexOf("install|uninstall") >= 0,
+                   "the diagnostic names the accepted actions");
+        Harness.equal(read(french), "existing catalogue",
+                      "validation runs before the locale tree is touched");
     });
 };
 
