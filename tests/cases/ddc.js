@@ -485,9 +485,9 @@ cases["re-detections inside a probe coalesce into one follow-up"] = function () 
 cases["a re-detection waits for every monitor read"] = function () {
     /*
      * A detect walks every bus, so it collides with a conversation already on
-     * one of them. The applet lines the two up as a matter of course: opening
-     * the menu refreshes every backlight - a getvcp per monitor - and then
-     * starts the watch, whose first probe goes out at once.
+     * one of them. The applet formerly lined the two up as a matter of course:
+     * opening the menu refreshed every backlight - a getvcp per monitor - and
+     * then started the watch, whose first probe went out at once.
      */
     let run = held();
     let control = new Ddc.DdcBacklight(null, run);
@@ -497,7 +497,7 @@ cases["a re-detection waits for every monitor read"] = function () {
     run.answer("VCP 10 C 40 100\n", 0);
     Harness.equal(control.busy, false, "the probe is over and both monitors are idle");
 
-    /* What opening the menu does before the watch starts. */
+    /* Reproduce the former menu ordering directly to retain the bus guard. */
     control.refresh();
     Harness.equal(control.busy, true, "two reads are out");
     control.redetect();
@@ -890,10 +890,10 @@ cases["a monitor is asked one thing at a time, reads included"] = function () {
     /*
      * The write guard was there from the start; the read checked the same flag
      * and never set it, so it was the one call that could overlap itself.
-     * Opening the menu twice inside a probe's round trip does it, and so does
-     * a monitors-changed re-detection landing on a menu open - and what comes
-     * back from two getvcp on one bus is nothing, which on a monitor that has
-     * answered before is kept as the value it already had.
+     * The former menu refresh twice inside a probe's round trip did it, as can
+     * any caller that races a read with a monitors-changed re-detection - and
+     * what comes back from two getvcp on one bus is nothing, which on a monitor
+     * that has answered before is kept as the value it already had.
      */
     let waiting = [];
     let run = function (argv, onDone) {
