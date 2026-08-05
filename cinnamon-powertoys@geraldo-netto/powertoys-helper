@@ -83,6 +83,12 @@ write_node() {
     die write-failed "$what"
 }
 
+try_write() {
+    write_target=$1
+    write_value=$2
+    ( printf '%s\n' "$write_value" > "$write_target" ) 2>/dev/null
+}
+
 # write_policies <node name> <value>
 write_policies() {
     node=$1
@@ -168,47 +174,101 @@ set_charge_threshold() {
     fi
 
     targets=0
-    written=0
-    failed=
+    plan=
     for battery in "$POWER_SUPPLY_DIR"/*; do
         end="$battery/charge_control_end_threshold"
         [ -f "$end" ] || continue
         targets=$((targets + 1))
 
+        if [ ! -r "$end" ] || [ ! -w "$end" ]; then
+            die unavailable "charge threshold is not readable and writable: $end"
+        fi
+        old_end=$(cat "$end" 2>/dev/null || echo "")
+        case "$old_end" in
+            ''|*[!0-9]*) die unavailable "charge threshold is not numeric: $end" ;;
+        esac
+
         start="$battery/charge_control_start_threshold"
+        old_start=-
+        new_start=-
         if [ -f "$start" ]; then
-            current_start=$(cat "$start" 2>/dev/null || echo 0)
-            # A node can answer with something that is not a number - nothing
-            # at all, a word, a driver that publishes the file before it has a
-            # value for it - and comparing that arithmetically puts the shell's
-            # own complaint on stderr ("[: Illegal number:") before the test is
-            # taken as false. The applet reads the last line of stderr as the
-            # reason a change failed, and every line on there is supposed to be
-            # one this script wrote; see write_node. Unreadable and
-            # unintelligible mean the same thing here, which is that there is
-            # no start value standing in the way.
-            case "$current_start" in
-                ''|*[!0-9]*) current_start=0 ;;
+            if [ ! -r "$start" ] || [ ! -w "$start" ]; then
+                die unavailable "charge start threshold is not readable and writable: $start"
+            fi
+            old_start=$(cat "$start" 2>/dev/null || echo "")
+            case "$old_start" in
+                ''|*[!0-9]*) die unavailable "charge start threshold is not numeric: $start" ;;
             esac
+            new_start=$old_start
             # the kernel rejects a start value that is not below the end value
-            if [ "$current_start" -ge "$value" ]; then
+            if [ "$old_start" -ge "$value" ]; then
                 new_start=$((value - 5))
                 if [ "$new_start" -lt 0 ]; then
                     new_start=0
                 fi
-                ( printf '%s\n' "$new_start" > "$start" ) 2>/dev/null || true
             fi
+        else
+            start=-
         fi
 
-        if ( printf '%s\n' "$value" > "$end" ) 2>/dev/null; then
-            written=$((written + 1))
+        record="$end	$old_end	$start	$old_start	$new_start"
+        if [ -n "$plan" ]; then
+            plan="$plan
+$record"
         else
-            failed="${failed}${failed:+, }$end"
+            plan=$record
         fi
     done
     [ "$targets" -gt 0 ] || die unsupported "no battery exposes a charge threshold"
-    [ "$written" -eq "$targets" ] ||
-        die write-failed "only $written of $targets batteries accepted charge threshold $value; refused: $failed"
+
+    # Apply only after every node has been read and validated. Each completed
+    # write is prepended to `applied`, so rollback naturally runs in reverse:
+    # an end threshold is restored before the start threshold lowered for it.
+    applied=
+    failed=
+    tab=$(printf '\t')
+    while IFS="$tab" read -r end old_end start old_start new_start; do
+        if [ "$start" != - ] && [ "$new_start" != "$old_start" ]; then
+            if try_write "$start" "$new_start"; then
+                record="$start	$old_start"
+                applied="$record${applied:+
+$applied}"
+            else
+                failed="$start"
+                break
+            fi
+        fi
+        if [ "$old_end" != "$value" ]; then
+            if try_write "$end" "$value"; then
+                record="$end	$old_end"
+                applied="$record${applied:+
+$applied}"
+            else
+                failed="$end"
+                break
+            fi
+        fi
+    done <<EOF
+$plan
+EOF
+
+    [ -z "$failed" ] && return 0
+
+    rollback_failed=
+    if [ -n "$applied" ]; then
+        while IFS="$tab" read -r node original; do
+            if ! try_write "$node" "$original"; then
+                rollback_failed="${rollback_failed}${rollback_failed:+, }$node"
+            fi
+        done <<EOF
+$applied
+EOF
+    fi
+
+    if [ -n "$rollback_failed" ]; then
+        die rollback-failed "write refused: $failed; restoration refused: $rollback_failed"
+    fi
+    die change-failed-restored "write refused: $failed; previous thresholds restored"
 }
 
 [ $# -ge 2 ] || usage
