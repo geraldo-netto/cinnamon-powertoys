@@ -905,6 +905,7 @@ var SensorSet = class SensorSet {
         this._refreshPending = false;
         this._refreshChanged = false;
         this._refreshWaiters = [];
+        this._destroyed = false;
 
         if (this._asynchronous)
             this.discoverAsync();
@@ -913,11 +914,15 @@ var SensorSet = class SensorSet {
     }
 
     discover() {
+        if (this._destroyed)
+            return;
         let found = discoverSensors();
         this._adopt(found, discoverEnergyCounters(), this._topologyKey());
     }
 
     discoverAsync(onDone) {
+        if (this._destroyed)
+            return;
         if (onDone)
             this._discoverWaiters.push(onDone);
         if (this._discovering) {
@@ -926,6 +931,8 @@ var SensorSet = class SensorSet {
         }
         this._discovering = true;
         discoverSnapshotAsync(snapshot => {
+            if (this._destroyed)
+                return;
             this._discovering = false;
             this._adopt(snapshot.sensors, snapshot.counters, snapshot.topology);
             let waiters = this._discoverWaiters.splice(0);
@@ -980,6 +987,8 @@ var SensorSet = class SensorSet {
      * those nodes meaning. Moving readings are excluded.
      */
     refresh(onDone) {
+        if (this._destroyed)
+            return false;
         if (!this._asynchronous) {
             if (this._topologyKey() === this._topology)
                 return false;
@@ -1004,8 +1013,12 @@ var SensorSet = class SensorSet {
     }
 
     _startRefresh() {
+        if (this._destroyed)
+            return;
         this._refreshing = true;
         topologyKeyAsync(topology => {
+            if (this._destroyed)
+                return;
             if (topology === this._topology) {
                 this._finishRefresh(false);
                 return;
@@ -1015,6 +1028,8 @@ var SensorSet = class SensorSet {
     }
 
     _finishRefresh(changed) {
+        if (this._destroyed)
+            return;
         this._refreshChanged = this._refreshChanged || changed;
         if (this._refreshPending) {
             this._refreshPending = false;
@@ -1166,6 +1181,8 @@ var SensorSet = class SensorSet {
      * notice.
      */
     readAsync(wanted, onDone) {
+        if (this._destroyed)
+            return;
         let keep = wanted || (() => true);
         /*
          * The lists are taken now, not when the answer comes back.
@@ -1185,6 +1202,8 @@ var SensorSet = class SensorSet {
          */
         let found = this._lists();
         IO.readStringsAsync(this._paths(keep, found), values => {
+            if (this._destroyed)
+                return;
             onDone(this._assemble(keep, path => IO.toNumber(values[path]), found));
         });
     }
@@ -1228,5 +1247,23 @@ var SensorSet = class SensorSet {
             powers: powers.readings,
             packageWatts: powers.packageWatts,
         };
+    }
+
+    destroy() {
+        if (this._destroyed)
+            return;
+        this._destroyed = true;
+        this._onChanged = function () {};
+        this._discovering = false;
+        this._discoverAgain = false;
+        this._discoverWaiters = [];
+        this._refreshing = false;
+        this._refreshPending = false;
+        this._refreshChanged = false;
+        this._refreshWaiters = [];
+        this.temperatureSensors = [];
+        this.fanSensors = [];
+        this.powerSensors = [];
+        this.energyMeters = [];
     }
 };

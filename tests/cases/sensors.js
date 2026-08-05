@@ -745,6 +745,30 @@ cases["overlapping asynchronous refreshes settle after a newer topology check"] 
     });
 };
 
+cases["destroyed sensor discovery cannot publish its late answer"] = function () {
+    let listDirAsync = IO.listDirAsync;
+    let pending = [];
+    IO.listDirAsync = (path, done) => pending.push(() => done([]));
+    try {
+        let changed = 0;
+        let set = new Sensors.SensorSet({
+            asynchronous: true,
+            onChanged: () => changed++,
+        });
+        Harness.equal(pending.length, 3, "the three root listings are in flight");
+        set.destroy();
+        set.destroy();
+        for (let answer of pending.splice(0))
+            answer();
+        Harness.equal(changed, 0, "the obsolete discovery is not announced");
+        Harness.equal(set.temperatureSensors.length, 0, "no late snapshot is adopted");
+        Harness.equal(set.refresh(() => changed++), false, "destroyed sets reject new work");
+        Harness.equal(changed, 0, "rejected work has no callback into the old owner");
+    } finally {
+        IO.listDirAsync = listDirAsync;
+    }
+};
+
 cases["an asynchronous directory listing matches the synchronous one"] = function () {
     on("machine", function () {
         let expected = IO.listDir("/sys/class/hwmon");
