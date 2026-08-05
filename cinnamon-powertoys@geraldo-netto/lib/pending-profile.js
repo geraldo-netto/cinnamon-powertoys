@@ -44,6 +44,10 @@ var PendingProfile = class PendingProfile {
         this._name = null;
         this._written = false;
         this._readings = 0;
+        /* A name is not enough to identify a request: after a backend swap,
+         * the same profile can be asked for again before the abandoned
+         * backend answers. Keep those two writes distinct. */
+        this._request = 0;
     }
 
     /* The profile to draw, or null to draw whatever the reading says. */
@@ -62,6 +66,7 @@ var PendingProfile = class PendingProfile {
         this._name = name;
         this._written = false;
         this._readings = 0;
+        this._request++;
         return true;
     }
 
@@ -78,6 +83,7 @@ var PendingProfile = class PendingProfile {
         if (!this.ask(name))
             return false;
 
+        let request = this._request;
         let report = onResult || function () {};
         let answered = false;
         let done = outcome => {
@@ -89,9 +95,9 @@ var PendingProfile = class PendingProfile {
              * not written either way, and the name guard keeps an obsolete
              * answer from disturbing the newer request that replaced it. */
             if (outcome)
-                this.failed(name);
+                this.failed(name, request);
             else
-                this.written(name);
+                this.written(name, request);
             report(outcome || null);
         };
 
@@ -106,8 +112,6 @@ var PendingProfile = class PendingProfile {
         if (accepted === false) {
             if (!answered)
                 done(new Error("profile request was refused"));
-            else
-                this.failed(name);
             return false;
         }
         return true;
@@ -120,14 +124,16 @@ var PendingProfile = class PendingProfile {
      * Named, because a second profile may have been asked for while this one
      * was in flight; the older call's answer must not touch the newer request.
      */
-    written(name) {
-        if (name === this._name)
+    written(name, request) {
+        if (name === this._name &&
+                (request === undefined || request === this._request))
             this._written = true;
     }
 
     /* The backend refused it, or the user dismissed the dialog. Same guard. */
-    failed(name) {
-        if (name === this._name)
+    failed(name, request) {
+        if (name === this._name &&
+                (request === undefined || request === this._request))
             this.forget();
     }
 

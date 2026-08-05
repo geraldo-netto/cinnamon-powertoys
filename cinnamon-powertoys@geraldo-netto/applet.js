@@ -1633,6 +1633,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._profiles = null;
         this._platformProfiles = null;
         this._profileBackend = null;
+        this._profileBackendAvailable = false;
+        this._profileBackendGeneration = 0;
         this._upower = null;
         this.menuManager = null;
         this.menu = null;
@@ -2308,6 +2310,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * one. The caller has an in-flight flag riding on that promise. */
     _collect(onDone) {
         let readings = null;
+        let profileBackend = this._profileBackend;
+        let profileGeneration = this._profileBackendGeneration;
         let sensorsReady = false;
         let cpuReady = false;
         let chargeReady = false;
@@ -2322,9 +2326,18 @@ class PowerToysApplet extends Applet.TextIconApplet {
                 onDone(null);
                 return;
             }
+            /* A backend owner change schedules another collection. Do not
+             * publish a snapshot assembled from the old backend in between:
+             * its controls would belong to a writer that no longer owns it. */
+            if (profileBackend !== this._profileBackend ||
+                    profileGeneration !== this._profileBackendGeneration) {
+                onDone(null);
+                return;
+            }
             let data = null;
             try {
-                data = this._assemble(readings);
+                data = this._assemble(
+                    readings, this._collectProfile(profileBackend, profileGeneration));
             } catch (error) {
                 Log.error("collection failed: " + error);
             }
@@ -2350,7 +2363,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
             chargeReady = true;
             finish();
         }
-        let profileBackend = this._profileBackend;
         if (profileBackend && typeof profileBackend.sample === "function") {
             profileBackend.sample(() => {
                 profileReady = true;
@@ -2370,7 +2382,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * keep their proxies current; processor and sensor nodes were loaded
      * concurrently off the main loop and arrive here as coherent snapshots.
      */
-    _assemble(readings) {
+    _assemble(readings, profile) {
         let upower = this._upower.read();
         /* Anything with a charge that UPower did not mention. */
         let devices = upower.devices.concat(this._bluetooth.missingFrom(upower.devices));
@@ -2392,7 +2404,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             powers: powers,
             packageWatts: readings.packageWatts,
             cpu: this._cpu.snapshot(),
-            profile: this._collectProfile(),
+            profile: profile,
             /* whether this machine has a battery whose limit can be written */
             chargeLimitAvailable: charge.available,
             chargeLimit: charge.limit,
@@ -2521,19 +2533,34 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * daemon and nothing at all while there is.
      */
     _chooseProfileBackend() {
+        let backend;
         if (this._profiles.available)
-            this._profileBackend = this._profiles;
+            backend = this._profiles;
         else if (this._platformProfiles.available)
-            this._profileBackend = this._platformProfiles;
+            backend = this._platformProfiles;
         else
-            this._profileBackend = this._profiles;
+            backend = this._profiles;
+
+        let available = !!backend.available;
+        if (backend === this._profileBackend &&
+                available === this._profileBackendAvailable)
+            return false;
+
+        this._profileBackend = backend;
+        this._profileBackendAvailable = available;
+        this._profileBackendGeneration++;
+        /* A request belongs to the writer that accepted it. Its late answer
+         * is still allowed to settle, but it must not remain presented after
+         * ownership moved to a different profile state machine. */
+        this._pending.forget();
+        return true;
     }
 
     /* One look at whichever backend answers, rather than six. Each of them
      * has its own reason for that mattering: the firmware one opens two files
      * per property, the daemon one unpacks a variant per property. */
-    _collectProfile() {
-        let state = this._profileBackend.snapshot();
+    _collectProfile(backend, generation) {
+        let state = backend.snapshot();
         return {
             available: state.available,
             backend: state.busName,
@@ -2541,6 +2568,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
             list: state.profiles,
             degraded: state.degraded,
             holds: state.holds,
+            source: backend,
+            generation: generation,
         };
     }
 
@@ -2792,14 +2821,26 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * was one. Asking again for the profile already in flight is not one.
      */
     _setProfile(name) {
-        if (!this._profileState())
+        let state = this._profileState();
+        if (!state)
             return false;
+        let backend = state.source;
+        let generation = state.generation;
         let shown = Reading.shownProfile(this._latest,
                                          { pendingProfile: this._pending.value });
         if (name === shown)
             return false;
         let accepted = this._pending.request(name,
-            done => this._profileBackend.setProfile(name, done), outcome => {
+            done => backend.setProfile(name, done), outcome => {
+                /* Ownership moved while the old transport was in flight.
+                 * Its result describes neither the current controls nor the
+                 * current writer, and _chooseProfileBackend already cleared
+                 * its optimistic presentation. */
+                if (backend !== this._profileBackend ||
+                        generation !== this._profileBackendGeneration) {
+                    this._scheduleUpdate();
+                    return;
+                }
                 let error = Profiles.profileWriteError(outcome);
                 if (error) {
                     /* Cancelling a password dialog is not news; the user did it. */
@@ -2937,6 +2978,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _profileState() {
         let state = this._latest ? this._latest.profile : null;
         if (!state || !state.available || state.list.length === 0)
+            return null;
+        if (state.source !== this._profileBackend ||
+                state.generation !== this._profileBackendGeneration)
             return null;
         if (!Reading.profileCanChange(this._latest, this.enablePrivilegedControls))
             return null;

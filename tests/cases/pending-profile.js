@@ -147,6 +147,33 @@ cases["a superseded non-error outcome preserves its replacement"] = function () 
                   "the discarded request did not start the replacement's lapse clock");
 };
 
+cases["a late answer cannot alter the same request on a replacement backend"] = function () {
+    let profile = pending();
+    let oldDone = null;
+    let newDone = null;
+
+    profile.request("performance", done => {
+        oldDone = done;
+        return true;
+    });
+    /* A backend generation change abandons the presentation while the old
+     * transport is still entitled to answer. The replacement may then take
+     * the very same profile name. */
+    profile.forget();
+    profile.request("performance", done => {
+        newDone = done;
+        return true;
+    });
+
+    oldDone(null);
+    waitOut(profile, "balanced");
+    Harness.equal(profile.value, "performance",
+                  "the old success did not start the replacement's lapse clock");
+
+    newDone(new Error("replacement refused"));
+    Harness.equal(profile.value, null, "only the replacement's own answer clears it");
+};
+
 cases["a write nobody has taken waits indefinitely"] = function () {
     /* A pkexec dialog can be on screen for as long as the user leaves it
      * there, and until it is answered nothing has happened yet. */
