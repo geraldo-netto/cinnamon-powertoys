@@ -44,3 +44,20 @@ cases["selector dots expose synchronized radio semantics"] = function () {
                                 "        this._syncSelection();") >= 0,
                "runtime selection changes update both representations");
 };
+
+cases["visual group titles expose heading semantics"] = function () {
+    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let start = source.indexOf("function exposeHeading");
+    let helper = source.slice(start, source.indexOf("\n/*", start));
+    Harness.ok(start >= 0 && helper.length > 0, "the heading boundary is present");
+    Harness.ok(helper.indexOf("set_accessible_role(Atk.Role.HEADING)") >= 0,
+               "visual headings identify their structural role");
+    Harness.ok(helper.indexOf("set_accessible_name(text || \"\")") >= 0,
+               "the role has an explicit name");
+
+    let uses = source.match(/\bexposeHeading\(/g) || [];
+    Harness.equal(uses.length, 4,
+                  "the helper and all three heading factories use the same boundary");
+    Harness.ok(source.indexOf("heading.actor.set_accessible_name(value || \"\")") >= 0,
+               "renamed sensor headings synchronize their accessible name");
+};

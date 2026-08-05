@@ -482,6 +482,15 @@ class SelectorItem extends PopupMenu.PopupMenuItem {
     }
 }
 
+/* A heading is visible structure rather than an unavailable command. Cinnamon
+ * gives every PopupBaseMenuItem a MENU_ITEM role by default, including the
+ * non-reactive ones; state the role and name that the typography already
+ * communicates without putting the actor into the keyboard focus order. */
+function exposeHeading(item, text) {
+    item.actor.set_accessible_role(Atk.Role.HEADING);
+    item.actor.set_accessible_name(text || "");
+}
+
 /*
  * A radio group: a heading carrying the current value, then one dot item per
  * value.
@@ -523,6 +532,7 @@ class SelectorGroup {
 
     _createHeader() {
         let header = new InfoRow(this._title, "");
+        exposeHeading(header, this._title);
         header.actor.add_style_class_name("powertoys-group-title");
         header.addTextStyleClass("powertoys-group-title-text");
         return header;
@@ -976,6 +986,7 @@ class PanelSection extends PopupMenu.PopupMenuSection {
  */
 function headingItem(text) {
     let heading = new PopupMenu.PopupMenuItem(text, { reactive: false });
+    exposeHeading(heading, text);
     heading.actor.add_style_class_name("powertoys-group-title");
     /* The size goes on the label, the padding and the opacity on the row; see
      * the stylesheet for what putting both on the row cost. */
@@ -1401,9 +1412,13 @@ class MenuPresenter {
 
     _createHeading(text) {
         let heading = new PopupMenu.PopupMenuItem(text, { reactive: false });
+        exposeHeading(heading, text);
         heading.actor.add_style_class_name("powertoys-subgroup-title");
         heading.label.add_style_class_name("powertoys-subgroup-title-text");
-        heading.setLabel = value => heading.label.set_text(value || "");
+        heading.setLabel = value => {
+            heading.label.set_text(value || "");
+            heading.actor.set_accessible_name(value || "");
+        };
         return heading;
     }
 
