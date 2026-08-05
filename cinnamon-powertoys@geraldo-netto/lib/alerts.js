@@ -21,6 +21,7 @@
 
 const Device = require("./lib/device.js");
 const Format = require("./lib/format.js");
+const Log = require("./lib/log.js");
 const Translate = require("./lib/gettext.js");
 
 const _ = Translate._;
@@ -58,9 +59,18 @@ function criticalBelow(critical, low) {
 var AlertPolicy = class AlertPolicy {
     /* `notify` is called as (urgent, title, body). */
     constructor(notify) {
-        this._notify = notify || function () {};
+        this._notify = notify || function () { return false; };
         this._alerted = new Map();
         this._tempAlerted = null;
+    }
+
+    _deliver(urgent, title, body) {
+        try {
+            return this._notify(urgent, title, body) === true;
+        } catch (error) {
+            Log.error("alert delivery failed: " + error);
+            return false;
+        }
     }
 
     check(data, limits) {
@@ -101,17 +111,15 @@ var AlertPolicy = class AlertPolicy {
 
         if (system && Device.chargeIsCritical(device, limits.criticalLevel)) {
             if (level !== "critical") {
-                this._alerted.set(device.path, "critical");
-                this._notify(true, _("Battery critically low"),
-                             Format.deviceTitle(device) + " - " +
-                             charge.text);
+                if (this._deliver(true, _("Battery critically low"),
+                                  Format.deviceTitle(device) + " - " + charge.text))
+                    this._alerted.set(device.path, "critical");
             }
         } else if (Device.chargeIsLow(device, threshold)) {
             if (level === "") {
-                this._alerted.set(device.path, "low");
-                this._notify(false, _("Battery low"),
-                             Format.deviceTitle(device) + " - " +
-                             charge.text);
+                if (this._deliver(false, _("Battery low"),
+                                  Format.deviceTitle(device) + " - " + charge.text))
+                    this._alerted.set(device.path, "low");
             }
         } else if (Device.chargeRecovered(device, threshold, HYSTERESIS)) {
             this._alerted.delete(device.path);
@@ -131,11 +139,11 @@ var AlertPolicy = class AlertPolicy {
         let identity = sensor.id || sensor.label || "temperature";
         if (celsius >= limits.highTempCelsius) {
             if (this._tempAlerted !== identity) {
-                this._tempAlerted = identity;
                 let source = sensor.label || sensor.groupLabel || _("Temperature");
-                this._notify(false, _("High temperature"),
-                             source + " - " +
-                             Format.temperature(celsius, limits.tempUnit, 1));
+                if (this._deliver(false, _("High temperature"),
+                                  source + " - " +
+                                  Format.temperature(celsius, limits.tempUnit, 1)))
+                    this._tempAlerted = identity;
             }
         } else if (celsius < limits.highTempCelsius - HYSTERESIS) {
             this._tempAlerted = null;

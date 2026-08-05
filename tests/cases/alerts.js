@@ -72,9 +72,10 @@ function reading(devices, celsius) {
 /* A policy plus the notifications it produced, in order. */
 function policy() {
     let said = [];
-    let alerts = new Alerts.AlertPolicy((urgent, title, body) => said.push({
-        urgent: urgent, title: title, body: body,
-    }));
+    let alerts = new Alerts.AlertPolicy((urgent, title, body) => {
+        said.push({ urgent: urgent, title: title, body: body });
+        return true;
+    });
     return { alerts: alerts, said: said };
 }
 
@@ -92,6 +93,42 @@ cases["a battery falling past the limit is reported once"] = function () {
     each.alerts.check(reading([battery(18)]), limits());
     each.alerts.check(reading([battery(17)]), limits());
     Harness.equal(each.said.length, 1, "the same news is not news three more times");
+};
+
+cases["a failed battery delivery is retried before it is latched"] = function () {
+    let attempts = 0;
+    let alerts = new Alerts.AlertPolicy(() => ++attempts > 1);
+
+    alerts.check(reading([battery(10)]), limits());
+    alerts.check(reading([battery(10)]), limits());
+    alerts.check(reading([battery(10)]), limits());
+    Harness.equal(attempts, 2, "failure retries once and success latches the alert");
+};
+
+cases["a throwing alert sink cannot suppress later devices"] = function () {
+    let attempts = [];
+    let alerts = new Alerts.AlertPolicy((urgent, title, body) => {
+        attempts.push(body);
+        if (body.indexOf("BAT0") >= 0)
+            throw new Error("notification shell failed");
+        return true;
+    });
+    let devices = [battery(10), mouse(10)];
+
+    alerts.check(reading(devices), limits());
+    Harness.equal(attempts.length, 2, "the second device is attempted in the same reading");
+    alerts.check(reading(devices), limits());
+    Harness.equal(attempts.length, 3, "only the undelivered device is retried later");
+};
+
+cases["a failed temperature delivery is retried"] = function () {
+    let attempts = 0;
+    let alerts = new Alerts.AlertPolicy(() => ++attempts > 1);
+
+    alerts.check(reading([], 95), limits());
+    alerts.check(reading([], 95), limits());
+    alerts.check(reading([], 95), limits());
+    Harness.equal(attempts, 2, "temperature state commits only after delivery");
 };
 
 cases["a battery has to climb clear of the limit before it counts again"] = function () {
