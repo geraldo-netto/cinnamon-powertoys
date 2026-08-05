@@ -2280,7 +2280,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
             lines: upower.lines,
             primary: upower.primary,
             onBattery: upower.onBattery,
-            lineOnline: upower.lineOnline,
             temperatures: temperatures,
             fans: readings.fans,
             powers: powers,
@@ -2291,8 +2290,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
             chargeLimitAvailable: charge.available,
             chargeLimit: charge.limit,
             chargeLimitState: charge.state,
-            /* Compatibility for reading consumers that only need this case. */
-            chargeLimitDivided: charge.divided,
             cpuTemperature: picked.sensor === null ? null : picked.sensor.celsius,
             /* whether the user's hint is the reason it came from there -
              * false means they asked for a sensor and it was not found,
@@ -2530,7 +2527,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
         data.chargeLimitAvailable = charge.available;
         data.chargeLimit = charge.limit;
         data.chargeLimitState = charge.state;
-        data.chargeLimitDivided = charge.divided;
     }
 
     /*

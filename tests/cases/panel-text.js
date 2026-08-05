@@ -26,7 +26,6 @@ function reading(parts) {
         lines: [],
         primary: null,
         onBattery: false,
-        lineOnline: false,
         cpu: { governor: null, averageFrequency: null, maxFrequency: null },
         cpuTemperature: null,
         powers: [],
@@ -256,7 +255,7 @@ cases["UPower establishes the source without a primary device"] = function () {
 };
 
 cases["a machine with no battery says it is on the mains"] = function () {
-    let plugged = PanelText.tooltipText(reading({ lineOnline: true }), options());
+    let plugged = PanelText.tooltipText(reading(), options());
     Harness.equal(plugged.split("\n")[0], "Power source: AC", "the charger is in");
 
     /* With no manager, there is no evidence for either source. */
@@ -281,7 +280,6 @@ cases["the tooltip carries what the panel deliberately does not"] = function () 
      * acting on. The tooltip is read by choosing to hover, so they are here.
      */
     let data = reading({
-        lineOnline: true,
         cpu: { governor: "schedutil", averageFrequency: 2440, maxFrequency: 4800 },
         cpuTemperature: 62.5,
         systemWatts: 24.4,
@@ -336,7 +334,6 @@ cases["the tooltip shows every device with the status it reports"] = function ()
      * UPower order is kept and every known state is said.
      */
     let data = reading({
-        lineOnline: true,
         devices: [
             peripheral({ path: "/a", model: "Mouse", percentage: 80,
                          state: State.DISCHARGING, timeToEmpty: 3600 }),
@@ -359,7 +356,6 @@ cases["the tooltip shows every device with the status it reports"] = function ()
 cases["a device with no charge is still named"] = function () {
     /* Some UPower devices report their presence and state but no charge. */
     let data = reading({
-        lineOnline: true,
         devices: [peripheral({ percentage: null })],
     });
     Harness.equal(PanelText.tooltipText(data, options()),

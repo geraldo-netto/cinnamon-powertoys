@@ -885,7 +885,7 @@ cases["the charger is the one device kept on the other list"] = function () {
     let reading = monitor.read();
     Harness.deepEqual(reading.lines.map(entry => entry.path), [mains], "the charger, on its own list");
     Harness.deepEqual(reading.devices.map(entry => entry.path), [BAT0], "and not on the other one");
-    Harness.equal(reading.lineOnline, true, "the cable is in");
+    Harness.equal(reading.lines[0].online, true, "the cable state stays on its device");
 
     /* The same two questions asked one at a time, which is what a caller that
      * wants only one of them does - and the answer has to be the reading's. */

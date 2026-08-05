@@ -551,7 +551,6 @@ var UPowerMonitor = class UPowerMonitor {
             lines: lines,
             primary: this._primaryDevice(devices),
             onBattery: this.onBattery,
-            lineOnline: lines.some(device => device.online),
             temperatures: readings.temperatures,
             powers: readings.powers,
         };

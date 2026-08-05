@@ -65,7 +65,6 @@ cases["UPower answers the questions the applet asks it"] = function () {
         Harness.ok(Array.isArray(reading.temperatures), "temperatures is a list");
         Harness.ok(Array.isArray(reading.powers), "powers is a list");
         Harness.equal(typeof reading.onBattery, "boolean", "onBattery");
-        Harness.equal(typeof reading.lineOnline, "boolean", "lineOnline");
 
         /*
          * Every device it describes has to carry what the menu and the alert
