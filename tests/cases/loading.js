@@ -209,3 +209,16 @@ cases["a late collection stops when its applet is destroyed"] = function () {
     Harness.deepEqual(answers, [null], "the abandoned collection still settles exactly once");
     Harness.deepEqual(logged, [], "ordinary teardown is not reported as a collection error");
 };
+
+cases["slow rediscovery includes CPU topology"] = function () {
+    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let rediscover = /    _rediscover\(\) \{([\s\S]*?)\n    \}/.exec(source);
+    Harness.ok(rediscover, "the rediscovery method can be isolated");
+    Harness.ok(rediscover[1].indexOf("this._cpu.refresh()") >= 0,
+               "the periodic hardware sweep refreshes CPU policies and drivers");
+
+    let opened = /    _onMenuOpened\(\) \{([\s\S]*?)\n    \}/.exec(source);
+    Harness.ok(opened, "the menu-open method can be isolated");
+    Harness.equal(opened[1].indexOf("this._cpu.refresh()"), -1,
+                  "menu opening reuses the shared rediscovery path");
+};

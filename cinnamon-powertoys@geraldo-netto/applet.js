@@ -2459,15 +2459,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
     /*
      * What the machine has, as against what it is doing.
      *
-     * The three of these are discovery: which sensors exist, which batteries
-     * take a charge limit, and which backend owns the profiles. None of them
-     * changes on the cadence a reading does, and each was found once and then
-     * kept - so they are asked together, on the slow timer and when the menu
-     * opens, which are the two moments the applet already looks at the machine
-     * again rather than at its values.
+     * These are discovery: which sensors and CPU policies exist, which
+     * batteries take a charge limit, and which backend owns the profiles. None
+     * changes on the cadence a reading does, so they are asked together on the
+     * slow timer and when the menu opens - the two moments the applet already
+     * looks at the machine again rather than at its values.
      */
     _rediscover() {
         this._sensors.refresh();
+        this._cpu.refresh();
         this._rediscoverChargeControl();
         this._chooseProfileBackend();
     }
@@ -2561,7 +2561,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * the menu wants what is true now. */
         this._rediscover();
         this._sinceRediscover = 0;
-        this._cpu.refresh();
         /*
          * UPower is deliberately not asked to re-poll. Its properties arrive
          * by signal and the proxies are already up to date; Refresh() makes it
