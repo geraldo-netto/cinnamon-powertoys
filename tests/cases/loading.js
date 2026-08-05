@@ -321,6 +321,33 @@ cases["profile collections and controls reject a backend transition"] = function
 
     pending.profile(true);
     Harness.equal(pending.answer, null, "the old collection is discarded, not presented");
+
+    let firmwareState = {
+        available: true,
+        list: ["low-power", "balanced", "performance"],
+        source: firmware,
+        generation: applet._profileBackendGeneration,
+    };
+    applet._latest = { profile: firmwareState };
+    applet._helper = { busy: true };
+    Harness.equal(profileState.call(applet), null,
+                  "a helper-backed profile is gated while another mutation is active");
+    applet._helper.busy = false;
+    Harness.equal(profileState.call(applet), firmwareState,
+                  "the firmware profile returns when the helper is free");
+
+    daemon.available = true;
+    choose.call(applet);
+    let daemonState = {
+        available: true,
+        list: ["balanced", "performance"],
+        source: daemon,
+        generation: applet._profileBackendGeneration,
+    };
+    applet._latest = { profile: daemonState };
+    applet._helper.busy = true;
+    Harness.equal(profileState.call(applet), daemonState,
+                  "the unprivileged daemon stays responsive while the helper is busy");
 };
 
 cases["a profile write stays with the backend that produced its control"] = function () {

@@ -1483,7 +1483,7 @@ class MenuPresenter {
          * panel label answer the same question, which is why all three ask it
          * of one function rather than each spelling it out. */
         let active = Reading.shownProfile(data, options);
-        let editable = Reading.profileCanChange(data, options.privileged);
+        let editable = Reading.profileCanChange(data, options.profilePrivileged);
         let single = show && data.profile.list.length === 1;
         this._profileGroup.setVisible(show);
         this._profileControl.sync(show && !single ? data.profile.list : [], active, editable);
@@ -2267,6 +2267,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     _menuOptions() {
+        let helperBusy = this._helper.busy;
+        let profilePrivileged = this.enablePrivilegedControls &&
+            (this._profileBackend !== this._platformProfiles || !helperBusy);
         return {
             tempUnit: this.tempUnit,
             showProfiles: this.showProfiles,
@@ -2275,6 +2278,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             showSensors: this.showSensors,
             showAllSensors: this.showAllSensors,
             privileged: this.enablePrivilegedControls,
+            profilePrivileged: profilePrivileged,
             highTempCelsius: this.highTempCelsius,
             /* what a device row colours itself against */
             lowLevel: this.lowBatteryThreshold,
@@ -2283,7 +2287,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             /* a change the machine has not confirmed yet */
             pendingProfile: this._pending.value,
             externalDisplayMode: this._externalDisplayMode(),
-            busy: this._helper.busy,
+            busy: helperBusy,
         };
     }
 
@@ -2987,6 +2991,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
             return null;
         if (state.source !== this._profileBackend ||
                 state.generation !== this._profileBackendGeneration)
+            return null;
+        if (state.source === this._platformProfiles && this._helper && this._helper.busy)
             return null;
         if (!Reading.profileCanChange(this._latest, this.enablePrivilegedControls))
             return null;
