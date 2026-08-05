@@ -2743,8 +2743,37 @@ class PowerToysApplet extends Applet.TextIconApplet {
                 return;
             this._cpu.refresh();
             this._update();
+            if (!outcome.applied && !outcome.cancelled)
+                outcome = Object.assign({}, outcome,
+                                        { error: this._helperErrorMessage(outcome) });
             onDone(outcome);
         });
+    }
+
+    /* Helper diagnostics describe kernel and filesystem details for the log;
+     * they are not UI strings. Codes are deliberately broader and stable, so
+     * these messages can be translated without coupling the catalogue to a
+     * shell, driver or path. */
+    _helperErrorMessage(outcome) {
+        switch (outcome && outcome.code) {
+        case "invalid-invocation":
+        case "invalid-value":
+            return _("The requested value is not valid for this control.");
+        case "unsupported":
+            return _("This control is not supported on this system.");
+        case "unavailable":
+            return _("This control is currently unavailable.");
+        case "write-failed":
+            return _("The system refused the requested change.");
+        case "change-failed-restored":
+            return _("The change failed; the previous settings were restored.");
+        case "rollback-failed":
+            return _("The change failed and some previous settings could not be restored.");
+        case "helper-not-found":
+            return _("The privileged helper could not be found.");
+        default:
+            return _("The change could not be applied.");
+        }
     }
 
     /* Gio prefixes a remote error with the D-Bus error name, which means
@@ -2874,7 +2903,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
              * not check out; they do not need telling what they just did. */
             if (!outcome.cancelled)
                 Main.notifyError(_("Power Toys"),
-                                 outcome.error || _("The change could not be applied."));
+                                 this._helperErrorMessage(outcome));
             if (onDone)
                 onDone(outcome);
         });

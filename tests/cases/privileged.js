@@ -84,15 +84,17 @@ cases["a dismissed password dialog is cancelled, not an error"] = function () {
     }
 };
 
-cases["the helper's own last word becomes the reason"] = function () {
+cases["a structured helper failure keeps its code and diagnostic apart"] = function () {
     let helper = helperWith([SYSTEM], [1,
-        "powertoys-helper: no cpufreq policy found\npowertoys-helper: unknown governor: nonsense\n"]);
+        "some shell detail\npowertoys-helper-error invalid-value unknown governor: nonsense\n"]);
     let outcome = null;
     helper.run(["governor", "nonsense"], result => { outcome = result; });
     Harness.equal(outcome.applied, false, "not applied");
     Harness.equal(outcome.cancelled, undefined, "not cancelled either");
+    Harness.equal(outcome.code, "invalid-value", "the stable UI vocabulary");
+    Harness.equal(outcome.diagnostic, "unknown governor: nonsense", "the detail for the log");
     Harness.equal(outcome.error, "unknown governor: nonsense",
-                  "the last line, without the script's own name in front of it");
+                  "the compatibility reason remains available to non-UI callers");
 };
 
 cases["a failure with nothing to say still reports a failure"] = function () {
@@ -100,6 +102,7 @@ cases["a failure with nothing to say still reports a failure"] = function () {
     let outcome = null;
     helper.run(["boost", "1"], result => { outcome = result; });
     Harness.equal(outcome.applied, false, "not applied");
+    Harness.equal(outcome.code, "helper-failed", "the generic code");
     Harness.equal(outcome.error, "", "with no reason to give, which the caller words itself");
 };
 
@@ -285,20 +288,18 @@ cases["a real helper run reaches the outcome the menu reads"] = function () {
     Harness.deepEqual(outcome, { applied: true }, "applied, with nothing else to say");
 };
 
-cases["what the helper prints is turned into one line of reason"] = function () {
-    /* The applet shows the last line, without the helper's own name in front
-     * of it: a notification saying "powertoys-helper: unknown governor" is
-     * telling the user about a script they did not run. */
+cases["what the helper prints is separated into code and diagnostic"] = function () {
     let helper = new Privileged.PrivilegedHelper(
         ["/bin/sh"], () => true, () => {},
         (argv, onDone) => Privileged._spawn(
-            ["sh", "-c", "echo first line >&2; echo 'powertoys-helper: no cpufreq policy found' >&2; exit 3"],
+            ["sh", "-c", "echo first line >&2; echo 'powertoys-helper-error unavailable no cpufreq policy found' >&2; exit 3"],
             onDone));
 
     let outcome = Harness.settle(done => helper.run(["governor", "x"], done), "a refusal");
     Harness.equal(outcome.applied, false, "not applied");
-    Harness.equal(outcome.error, "no cpufreq policy found",
-                  "the last line, and not the script's name");
+    Harness.equal(outcome.code, "unavailable", "the code the applet translates");
+    Harness.equal(outcome.diagnostic, "no cpufreq policy found",
+                  "the last line's detail for the log");
 };
 
 cases["a helper that prints something no text can hold is still an answer"] = function () {
@@ -317,15 +318,25 @@ cases["a helper that prints something no text can hold is still an answer"] = fu
     Harness.ok(typeof outcome.stderr === "string", "and with something to say");
 };
 
-cases["the reason is the last line, even where there is only one"] = function () {
-    /* A helper that dies on its first check prints one line, which is the
-     * common case and the one a caller most wants the words of. */
+cases["the structured failure works when it is the only line"] = function () {
     let helper = new Privileged.PrivilegedHelper(
         [SYSTEM], () => true, () => {},
-        (argv, onDone) => onDone(1, "powertoys-helper: unknown governor: nonsense\n"));
+        (argv, onDone) => onDone(1,
+            "powertoys-helper-error invalid-value unknown governor: nonsense\n"));
     let outcome = null;
     helper.run(["governor", "nonsense"], result => { outcome = result; });
+    Harness.equal(outcome.code, "invalid-value", "the code");
     Harness.equal(outcome.error, "unknown governor: nonsense", "one line, and it is the reason");
+};
+
+cases["the shipped helper emits the structured contract"] = function () {
+    let path = Harness.xletDir() + "/powertoys-helper";
+    let result = Harness.settle(done => Privileged._spawn(
+        [path, "boost", "not-a-switch"], (status, stderr) =>
+            done({ status: status, stderr: stderr })), "the real helper refusing a value");
+    Harness.equal(result.status, 1, "the value was refused");
+    Harness.ok(/^powertoys-helper-error invalid-value /.test(result.stderr),
+               "and the final line carries a stable code: " + result.stderr);
 };
 
 cases["a refusal is written to the log with its status and its reason"] = function () {
@@ -340,18 +351,20 @@ cases["a refusal is written to the log with its status and its reason"] = functi
     try {
         let helper = new Privileged.PrivilegedHelper(
             [SYSTEM], () => true, () => {},
-            (argv, onDone) => onDone(3, "powertoys-helper: no cpufreq policy found\n"));
+            (argv, onDone) => onDone(3,
+                "powertoys-helper-error unavailable no cpufreq policy found\n"));
         helper.run(["governor", "x"], () => {});
         Harness.equal(lines.length, 1, "one line");
         Harness.equal(lines[0],
-                      "[powertoys] helper failed with status 3: no cpufreq policy found",
-                      "the status and the reason, in that order");
+                      "[powertoys] helper failed with status 3 [unavailable]: no cpufreq policy found",
+                      "the status, code and diagnostic, in that order");
 
         lines.length = 0;
         let quiet = new Privileged.PrivilegedHelper(
             [SYSTEM], () => true, () => {}, (argv, onDone) => onDone(9, ""));
         quiet.run(["boost", "1"], () => {});
-        Harness.equal(lines[0], "[powertoys] helper failed with status 9: no reason given",
+        Harness.equal(lines[0],
+                      "[powertoys] helper failed with status 9 [helper-failed]: no reason given",
                       "and a helper that said nothing is said to have said nothing");
     } finally {
         Log.setSink(null);

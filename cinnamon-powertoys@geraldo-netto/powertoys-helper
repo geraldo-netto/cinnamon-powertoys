@@ -22,7 +22,9 @@ PLATFORM_PROFILE=/sys/firmware/acpi/platform_profile
 PLATFORM_PROFILE_CHOICES=/sys/firmware/acpi/platform_profile_choices
 
 die() {
-    echo "powertoys-helper: $1" >&2
+    code=$1
+    shift
+    printf 'powertoys-helper-error %s %s\n' "$code" "$*" >&2
     exit 1
 }
 
@@ -38,6 +40,7 @@ Usage:
 Every value is checked against the list the kernel advertises before it is
 written. Run through pkexec, the settings are owned by root.
 EOF
+    echo "powertoys-helper-error invalid-invocation invalid command line" >&2
     exit 2
 }
 
@@ -77,7 +80,7 @@ write_node() {
     if ( printf '%s\n' "$value" > "$node" ) 2>/dev/null; then
         return 0
     fi
-    die "$what"
+    die write-failed "$what"
 }
 
 # write_policies <node name> <value>
@@ -98,28 +101,28 @@ write_policies() {
             fi
         fi
     done
-    [ "$targets" -gt 0 ] || die "no cpufreq policy exposes $node"
+    [ "$targets" -gt 0 ] || die unsupported "no cpufreq policy exposes $node"
     [ "$written" -eq "$targets" ] ||
-        die "only $written of $targets policies accepted $node=$value; refused: $failed"
+        die write-failed "only $written of $targets policies accepted $node=$value; refused: $failed"
 }
 
 set_governor() {
     value=$1
-    policy=$(first_policy) || die "no cpufreq policy found"
+    policy=$(first_policy) || die unavailable "no cpufreq policy found"
     available=$(cat "$policy/scaling_available_governors" 2>/dev/null || echo "")
-    [ -n "$available" ] || die "the scaling driver does not expose governors"
+    [ -n "$available" ] || die unsupported "the scaling driver does not expose governors"
     # shellcheck disable=SC2086
-    contains "$value" $available || die "unknown governor: $value"
+    contains "$value" $available || die invalid-value "unknown governor: $value"
     write_policies scaling_governor "$value"
 }
 
 set_energy_preference() {
     value=$1
-    policy=$(first_policy) || die "no cpufreq policy found"
+    policy=$(first_policy) || die unavailable "no cpufreq policy found"
     available=$(cat "$policy/energy_performance_available_preferences" 2>/dev/null || echo "")
-    [ -n "$available" ] || die "the scaling driver does not expose energy preferences"
+    [ -n "$available" ] || die unsupported "the scaling driver does not expose energy preferences"
     # shellcheck disable=SC2086
-    contains "$value" $available || die "unknown energy preference: $value"
+    contains "$value" $available || die invalid-value "unknown energy preference: $value"
     write_policies energy_performance_preference "$value"
 }
 
@@ -127,7 +130,7 @@ set_boost() {
     value=$1
     case "$value" in
         0|1) ;;
-        *) die "boost expects 0 or 1" ;;
+        *) die invalid-value "boost expects 0 or 1" ;;
     esac
 
     if [ -f "$CPUFREQ_DIR/boost" ]; then
@@ -142,26 +145,26 @@ set_boost() {
         write_node "$CPU_DIR/intel_pstate/no_turbo" "$inverse" \
             "the kernel would not set boost to $value"
     else
-        die "this system does not expose a boost switch"
+        die unsupported "this system does not expose a boost switch"
     fi
 }
 
 set_platform_profile() {
     value=$1
-    [ -f "$PLATFORM_PROFILE" ] || die "no ACPI platform profile on this system"
+    [ -f "$PLATFORM_PROFILE" ] || die unsupported "no ACPI platform profile on this system"
     choices=$(cat "$PLATFORM_PROFILE_CHOICES" 2>/dev/null || echo "")
     # shellcheck disable=SC2086
-    contains "$value" $choices || die "unknown platform profile: $value"
+    contains "$value" $choices || die invalid-value "unknown platform profile: $value"
     write_node "$PLATFORM_PROFILE" "$value" "the firmware would not take the profile: $value"
 }
 
 set_charge_threshold() {
     value=$1
     case "$value" in
-        ''|*[!0-9]*) die "charge threshold expects a number" ;;
+        ''|*[!0-9]*) die invalid-value "charge threshold expects a number" ;;
     esac
     if [ "$value" -lt 20 ] || [ "$value" -gt 100 ]; then
-        die "charge threshold must be between 20 and 100"
+        die invalid-value "charge threshold must be between 20 and 100"
     fi
 
     targets=0
@@ -203,9 +206,9 @@ set_charge_threshold() {
             failed="${failed}${failed:+, }$end"
         fi
     done
-    [ "$targets" -gt 0 ] || die "no battery exposes a charge threshold"
+    [ "$targets" -gt 0 ] || die unsupported "no battery exposes a charge threshold"
     [ "$written" -eq "$targets" ] ||
-        die "only $written of $targets batteries accepted charge threshold $value; refused: $failed"
+        die write-failed "only $written of $targets batteries accepted charge threshold $value; refused: $failed"
 }
 
 [ $# -ge 2 ] || usage

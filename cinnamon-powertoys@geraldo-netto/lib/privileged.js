@@ -51,11 +51,19 @@ function _spawn(argv, onDone) {
     });
 }
 
-/* The helper explains itself on stderr, so the last line is the reason. */
-function _reason(stderr) {
+/* The helper's final line is a stable code followed by a diagnostic for the
+ * log. Older installed helpers and failures before the helper starts have no
+ * such line, so retain their last line as a diagnostic under a generic code. */
+function _failure(stderr) {
     let lines = (stderr || "").split("\n").map(line => line.trim()).filter(line => line !== "");
     let last = lines.length > 0 ? lines[lines.length - 1] : "";
-    return last.replace(/^powertoys-helper:\s*/, "");
+    let structured = /^powertoys-helper-error\s+([a-z0-9-]+)(?:\s+(.*))?$/.exec(last);
+    if (structured)
+        return { code: structured[1], diagnostic: structured[2] || "" };
+    return {
+        code: "helper-failed",
+        diagnostic: last.replace(/^powertoys-helper:\s*/, ""),
+    };
 }
 
 var PrivilegedHelper = class PrivilegedHelper {
@@ -127,12 +135,16 @@ var PrivilegedHelper = class PrivilegedHelper {
      *   { applied: true }                  the helper did it
      *   { applied: false, cancelled: true} the user closed the dialog or the
      *                                      password was wrong - they know
-     *   { applied: false, error: "..." }   something else, with the reason
+     *   { applied: false, code: "...", diagnostic: "..." }
+     *                                      something else, with a stable code
+     *                                      for UI text and detail for the log
      */
     run(args, onDone) {
         let done = onDone || function () {};
         if (this._destroyed) {
-            done({ applied: false, error: "the applet is shutting down" });
+            done({ applied: false, code: "shutting-down",
+                   diagnostic: "the applet is shutting down",
+                   error: "the applet is shutting down" });
             return;
         }
         this._queue.push({ args: args, done: done });
@@ -153,7 +165,9 @@ var PrivilegedHelper = class PrivilegedHelper {
         let helper = this.path();
 
         if (!helper) {
-            job.done({ applied: false, error: "the helper script could not be found" });
+            job.done({ applied: false, code: "helper-not-found",
+                       diagnostic: "the helper script could not be found",
+                       error: "the helper script could not be found" });
             this._next();
             return;
         }
@@ -172,8 +186,12 @@ var PrivilegedHelper = class PrivilegedHelper {
             return { applied: true };
         if (status === PKEXEC_DISMISSED || status === PKEXEC_UNAUTHORISED)
             return { applied: false, cancelled: true };
-        let reason = _reason(stderr);
-        Log.error("helper failed with status " + status + ": " + (reason || "no reason given"));
-        return { applied: false, error: reason };
+        let failure = _failure(stderr);
+        Log.error("helper failed with status " + status + " [" + failure.code + "]: " +
+                  (failure.diagnostic || "no reason given"));
+        return { applied: false, code: failure.code, diagnostic: failure.diagnostic,
+                 /* Kept for callers outside the applet during the transition
+                  * to codes; UI code must use code, never this raw text. */
+                 error: failure.diagnostic };
     }
 };
