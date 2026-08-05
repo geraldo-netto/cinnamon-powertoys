@@ -648,6 +648,23 @@ cases["asynchronous discovery produces the synchronous snapshot"] = function () 
     });
 };
 
+cases["asynchronous discovery performs no synchronous link reads"] = function () {
+    on("machine", function () {
+        let originalReadLink = IO.readLink;
+        IO.readLink = () => { throw new Error("synchronous link read"); };
+        try {
+            Hardware.forget();
+            let found = Harness.settle(done => Sensors.discoverSensorsAsync(done),
+                                       "asynchronous sensor links");
+            Harness.equal(found.temperatures.length, 8, "the complete snapshot still arrives");
+            Harness.equal(byId(found.temperatures, "hwmon:hwmon3:temp1").identity,
+                          "03:00.0", "with identity from the asynchronous target");
+        } finally {
+            IO.readLink = originalReadLink;
+        }
+    });
+};
+
 cases["an asynchronous sensor set keeps an atomic snapshot"] = function () {
     on("machine", function () {
         let set;

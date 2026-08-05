@@ -141,12 +141,13 @@ function _label(base, prefix, index, readString) {
  * Something to tell two chips of the same name apart: the block device for
  * drivetemp, the PCI slot for two amdgpu cards, the controller name for nvme.
  */
-function _hwmonIdentity(base, listDir) {
+function _hwmonIdentity(base, listDir, readLink) {
     let list = listDir || IO.listDir;
+    let link = readLink || IO.readLink;
     let block = list(base + "/device/block");
     if (block.length > 0)
         return block[0];
-    let target = IO.readLink(base + "/device");
+    let target = link(base + "/device");
     if (target) {
         let name = GLib.path_get_basename(target);
         /* 0000:03:00.0 reads better as 03:00.0 */
@@ -159,8 +160,9 @@ function _hwmonIdentity(base, listDir) {
  * expose different class symlinks for the same hardware, so their raw link
  * text cannot be compared directly. No link means no evidence of a duplicate:
  * a display name alone is not an identity. */
-function deviceIdentity(base) {
-    let target = IO.readLink(base + "/device");
+function deviceIdentity(base, readLink) {
+    let link = readLink || IO.readLink;
+    let target = link(base + "/device");
     if (!target)
         return null;
     let parent = GLib.path_get_dirname(IO.resolve(base + "/device"));
@@ -495,11 +497,21 @@ function _metadataPaths(directories) {
     return Array.from(new Set(paths));
 }
 
-function _scanSensors(directories, readString) {
+function _linkPaths(directories) {
+    let paths = [];
+    for (let entry of directories[HWMON_DIR] || [])
+        paths.push(HWMON_DIR + "/" + entry + "/device");
+    for (let entry of directories[THERMAL_DIR] || [])
+        paths.push(THERMAL_DIR + "/" + entry + "/device");
+    return paths;
+}
+
+function _scanSensors(directories, readString, readLink) {
     let found = { temperatures: [], fans: [], powerMeters: [] };
     let hwmonTemperatureDevices = new Set();
     let groups = [];
     let list = path => directories[path] || [];
+    let link = readLink || IO.readLink;
     let readNumber = path => IO.toNumber(readString(path));
     let exists = path => {
         let parent = GLib.path_get_dirname(path);
@@ -510,9 +522,9 @@ function _scanSensors(directories, readString) {
         let base = HWMON_DIR + "/" + entry;
         let chip = readString(base + "/name") || entry;
         let kind = classifyChip(chip);
-        let identity = _hwmonIdentity(base, list);
-        let device = deviceIdentity(base);
-        let pciAddress = Hardware.pciAddressIn(IO.readLink(base + "/device"));
+        let identity = _hwmonIdentity(base, list, link);
+        let device = deviceIdentity(base, link);
+        let pciAddress = Hardware.pciAddressIn(link(base + "/device"));
         let group = "hwmon:" + entry;
         groups.push({ key: group, chip: chip, kind: kind, identity: identity,
                       pciAddress: pciAddress });
@@ -571,7 +583,7 @@ function _scanSensors(directories, readString) {
             continue;
         let base = THERMAL_DIR + "/" + entry;
         let type = readString(base + "/type");
-        let device = deviceIdentity(base);
+        let device = deviceIdentity(base, link);
         if (!type || (device && hwmonTemperatureDevices.has(device)))
             continue;
         groups.push({ key: "thermal:" + entry, chip: type, kind: classifyChip(type),
@@ -738,9 +750,15 @@ function _topologyFromInventory(directories, readString) {
  * has answered. Until this callback, callers keep using the prior snapshot. */
 function discoverSnapshotAsync(onDone) {
     _directoryInventoryAsync(directories => {
-        IO.readStringsAsync(_metadataPaths(directories), values => {
+        let metadata = null;
+        let links = null;
+        let finish = () => {
+            if (metadata === null || links === null)
+                return;
+            let values = metadata;
             let read = path => values[path] === undefined ? null : values[path];
-            let scanned = _scanSensors(directories, read);
+            let readLink = path => links[path] === undefined ? null : links[path];
+            let scanned = _scanSensors(directories, read, readLink);
             let addresses = scanned.groups.map(group => group.pciAddress);
             Hardware.machineNamesAsync(addresses, names => {
                 let labels = _nameGroupsFrom(scanned.groups, names.cpuName, names.pciNames);
@@ -750,6 +768,14 @@ function discoverSnapshotAsync(onDone) {
                     topology: _topologyFromInventory(directories, read),
                 });
             });
+        };
+        IO.readStringsAsync(_metadataPaths(directories), values => {
+            metadata = values;
+            finish();
+        }, 32);
+        IO.readLinksAsync(_linkPaths(directories), values => {
+            links = values;
+            finish();
         }, 32);
     });
 }

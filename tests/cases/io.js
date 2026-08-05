@@ -221,6 +221,22 @@ cases["a link reads as where it points"] = function () {
     });
 };
 
+cases["several link targets are queried asynchronously"] = function () {
+    scratch(function (directory) {
+        write(directory, "target", "x");
+        GLib.spawn_sync(null, ["ln", "-s", "target", directory + "/link"],
+                        null, GLib.SpawnFlags.SEARCH_PATH, null);
+        rooted(directory, function () {
+            let values = Harness.settle(
+                done => IO.readLinksAsync(["/link", "/target", "/gone"], done, 2),
+                "three link queries");
+            Harness.equal(values["/link"], "target", "the undecoded target is retained");
+            Harness.equal(values["/target"], null, "a regular file is not a link");
+            Harness.equal(values["/gone"], null, "nor is a missing path");
+        });
+    });
+};
+
 cases["several nodes at once answer once, with a value each"] = function () {
     /*
      * The asynchronous read the poll uses. What matters is that it answers

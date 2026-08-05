@@ -146,6 +146,60 @@ function readLink(path) {
     }
 }
 
+/* Symlink targets in one bounded asynchronous batch. query_info_async keeps
+ * resolving a sysfs class link off Cinnamon's main thread just as
+ * readStringsAsync does for node contents. */
+function readLinksAsync(paths, onDone, concurrency) {
+    let values = {};
+    let unique = Array.from(new Set(paths));
+    let outstanding = unique.length;
+    let nextPath = 0;
+    let active = 0;
+    let limit = Math.max(1, concurrency || unique.length);
+
+    if (outstanding === 0) {
+        onDone(values);
+        return;
+    }
+
+    let start = () => {
+        while (active < limit && nextPath < unique.length) {
+            let path = unique[nextPath++];
+            active++;
+            load(path);
+        }
+    };
+
+    let load = path => {
+        let settle = target => {
+            values[path] = target || null;
+            active--;
+            outstanding--;
+            if (outstanding === 0)
+                onDone(values);
+            else
+                start();
+        };
+
+        try {
+            Gio.File.new_for_path(resolve(path)).query_info_async(
+                "standard::is-symlink,standard::symlink-target",
+                Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS,
+                GLib.PRIORITY_DEFAULT, null, (file, result) => {
+                    try {
+                        let info = file.query_info_finish(result);
+                        settle(info.get_is_symlink() ? info.get_symlink_target() : null);
+                    } catch (e) {
+                        settle(null);
+                    }
+                });
+        } catch (e) {
+            settle(null);
+        }
+    };
+    start();
+}
+
 function exists(path) {
     return GLib.file_test(resolve(path), GLib.FileTest.EXISTS);
 }
