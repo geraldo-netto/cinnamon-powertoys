@@ -31,6 +31,7 @@ HELPER_DIR  := $(dir $(HELPER_DEST))
 RAPL_RULE   := 99-cinnamon-powertoys-rapl.rules
 RAPL_DIR    := $(DESTDIR)/etc/udev/rules.d
 RAPL_GROUP  ?= adm
+RAPL_TOOL   := tools/rapl-access.sh
 
 # Where a coverage run puts the copies it measures and the lcov it produces,
 # and the figure every function has to reach. Per function rather than per
@@ -110,26 +111,16 @@ install-rapl:
 	esac
 	@[ -n "$(DESTDIR)" ] || getent group "$(RAPL_GROUP)" >/dev/null || \
 		{ echo "no such group: $(RAPL_GROUP)"; exit 1; }
-	@install -d "$(RAPL_DIR)"
-	@sed 's/@GROUP@/$(RAPL_GROUP)/g' "udev/$(RAPL_RULE)" > "$(RAPL_DIR)/$(RAPL_RULE)"
-	@chmod 0644 "$(RAPL_DIR)/$(RAPL_RULE)"
-	@[ -n "$(DESTDIR)" ] || udevadm control --reload
-	@[ -n "$(DESTDIR)" ] || udevadm trigger --subsystem-match=powercap
+	@DESTDIR="$(DESTDIR)" sh "$(RAPL_TOOL)" install "udev/$(RAPL_RULE)" \
+		"$(RAPL_DIR)/$(RAPL_RULE)" "$(RAPL_GROUP)"
 	@echo "installed $(RAPL_DIR)/$(RAPL_RULE), reading given to group $(RAPL_GROUP)"
 	@echo "open the applet menu to discover the counters now, or wait up to one minute"
 
 uninstall-rapl:
 	@[ -n "$(DESTDIR)" ] || [ "$$(id -u)" = 0 ] || \
 		{ echo "needs root: sudo make uninstall-rapl"; exit 1; }
-	@rm -f -- "$(RAPL_DIR)/$(RAPL_RULE)"
-	@[ -n "$(DESTDIR)" ] || udevadm control --reload
-	# Remove the access this rule granted, then replay the remaining udev
-	# policy. The reset supplies the kernel's conservative default where no
-	# other rule exists; triggering last lets an administrator, distribution or
-	# another application have the final say instead of being overwritten here.
-	@[ -n "$(DESTDIR)" ] || for f in /sys/class/powercap/*-rapl:*/energy_uj; do \
-		[ -e "$$f" ] || continue; chgrp root "$$f"; chmod 0400 "$$f"; done
-	@[ -n "$(DESTDIR)" ] || udevadm trigger --subsystem-match=powercap
+	@DESTDIR="$(DESTDIR)" sh "$(RAPL_TOOL)" uninstall "udev/$(RAPL_RULE)" \
+		"$(RAPL_DIR)/$(RAPL_RULE)" "$(RAPL_GROUP)"
 	@echo "removed $(RAPL_DIR)/$(RAPL_RULE)"
 	@echo "reapplied the remaining udev policy (root only when no other rule grants access)"
 
@@ -138,7 +129,8 @@ check:
 	@cjs tools/parse-check.js $(UUID)/applet.js $(UUID)/lib/*.js
 	@cjs tests/run.js
 	@sh -n $(UUID)/powertoys-helper install.sh tools/install-translations.sh \
-		tools/uninstall.sh && echo "shell ok     helper and install scripts"
+		tools/uninstall.sh tools/rapl-access.sh \
+		&& echo "shell ok     helper and install scripts"
 	@python3 -c "import json; [json.load(open(f)) for f in ['$(UUID)/metadata.json','$(UUID)/settings-schema.json']]" \
 		&& echo "json ok      $(UUID)/metadata.json $(UUID)/settings-schema.json"
 	@python3 -c "import xml.dom.minidom; xml.dom.minidom.parse('polkit/$(POLICY)')" \

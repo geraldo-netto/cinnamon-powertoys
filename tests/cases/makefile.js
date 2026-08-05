@@ -16,20 +16,96 @@ cases["the helper install destination is the runtime path"] = function () {
                "no independently assembled destination can drift from it");
 };
 
-cases["RAPL uninstall gives remaining udev rules the final say"] = function () {
+cases["RAPL Make targets share one transition implementation"] = function () {
     let source = Harness.readFile(Harness.testsDir() + "/../Makefile");
-    let start = source.indexOf("uninstall-rapl:");
-    let end = source.indexOf("\ncheck:", start);
-    let recipe = source.slice(start, end);
+    Harness.ok(source.indexOf('sh "$(RAPL_TOOL)" install') >= 0,
+               "install delegates the whole state change");
+    Harness.ok(source.indexOf('sh "$(RAPL_TOOL)" uninstall') >= 0,
+               "uninstall delegates to the same owner");
+};
 
-    let remove = recipe.indexOf('rm -f -- "$(RAPL_DIR)/$(RAPL_RULE)"');
-    let reload = recipe.indexOf("udevadm control --reload");
-    let reset = recipe.indexOf('chgrp root "$$f"; chmod 0400 "$$f"');
-    let trigger = recipe.indexOf("udevadm trigger --subsystem-match=powercap");
-    Harness.ok(remove >= 0 && reload > remove, "the applet rule is removed before reload");
-    Harness.ok(reset > reload, "the conservative fallback is applied after that rule is gone");
-    Harness.ok(trigger > reset,
-               "remaining distribution and administrator rules run after the fallback");
+function writeExecutable(path, source) {
+    GLib.file_set_contents(path, source);
+    GLib.chmod(path, 0o700);
+}
+
+function transition(action, udevSource, withCounter) {
+    let directory = GLib.dir_make_tmp("powertoys-rapl-transition-XXXXXX");
+    try {
+        let bin = directory + "/bin";
+        let rules = directory + "/rules";
+        let powercap = directory + "/powercap";
+        let source = directory + "/source.rules";
+        let destination = rules + "/99-powertoys.rules";
+        let log = directory + "/calls";
+        GLib.mkdir_with_parents(bin, 0o755);
+        GLib.mkdir_with_parents(rules, 0o755);
+        GLib.mkdir_with_parents(powercap, 0o755);
+        GLib.file_set_contents(source, "GROUP=@GROUP@\n");
+        GLib.file_set_contents(destination, "old rule\n");
+        GLib.file_set_contents(log, "");
+        writeExecutable(bin + "/udevadm", udevSource);
+        if (withCounter) {
+            let domain = powercap + "/intel-rapl:0";
+            GLib.mkdir_with_parents(domain, 0o755);
+            GLib.file_set_contents(domain + "/energy_uj", "1\n");
+            for (let command of ["chgrp", "chmod"]) {
+                writeExecutable(bin + "/" + command,
+                    "#!/bin/sh\nprintf '%s %s\\n' '" + command +
+                    "' \"$*\" >> \"$POWERTOYS_LOG\"\n");
+            }
+        }
+
+        let path = bin + ":" + (GLib.getenv("PATH") || "/usr/bin:/bin");
+        let tool = Harness.testsDir() + "/../tools/rapl-access.sh";
+        let outcome = Harness.settle(done => Privileged._spawn(
+            ["env", "PATH=" + path, "DESTDIR=",
+             "POWERTOYS_POWERCAP_ROOT=" + powercap, "POWERTOYS_LOG=" + log,
+             "sh", tool, action, source, destination, "adm"],
+            (status, stderr) => done({
+                status: status,
+                stderr: stderr,
+                destination: GLib.file_test(destination, GLib.FileTest.EXISTS)
+                    ? Harness.readFile(destination) : null,
+                calls: Harness.readFile(log),
+            })), "the RAPL " + action + " transition");
+        return outcome;
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
+    }
+}
+
+cases["a failed RAPL install restores the previous rule and live policy"] = function () {
+    let udev = "#!/bin/sh\n" +
+        "printf '%s\\n' \"udevadm $*\" >> \"$POWERTOYS_LOG\"\n" +
+        "case \"$*\" in\n" +
+        "  *trigger*)\n" +
+        "    state=\"$POWERTOYS_LOG.triggered\"\n" +
+        "    if [ ! -f \"$state\" ]; then touch \"$state\"; exit 9; fi;;\n" +
+        "esac\n";
+    let outcome = transition("install", udev, false);
+    Harness.ok(outcome.status !== 0, "the failed live trigger fails the install");
+    Harness.equal(outcome.destination.trim(), "old rule", "the previous rule is restored");
+    Harness.equal((outcome.calls.match(/udevadm control --reload/g) || []).length, 2,
+                  "udev is reloaded for publish and rollback");
+    Harness.equal((outcome.calls.match(/udevadm trigger/g) || []).length, 2,
+                  "the restored policy is replayed");
+};
+
+cases["a failed RAPL uninstall still revokes live access"] = function () {
+    let udev = "#!/bin/sh\n" +
+        "printf '%s\\n' \"udevadm $*\" >> \"$POWERTOYS_LOG\"\n" +
+        "case \"$*\" in *control*) exit 8;; esac\n";
+    let outcome = transition("uninstall", udev, true);
+    Harness.ok(outcome.status !== 0, "the reload failure is surfaced");
+    Harness.equal(outcome.destination, null, "the persistent grant remains removed");
+    let reload = outcome.calls.indexOf("udevadm control --reload");
+    let owner = outcome.calls.indexOf("chgrp root ");
+    let mode = outcome.calls.indexOf("chmod 0400 ");
+    let trigger = outcome.calls.indexOf("udevadm trigger --subsystem-match=powercap");
+    Harness.ok(reload >= 0 && owner > reload && mode > owner && trigger > mode,
+               "live counters are revoked and remaining policy replayed despite reload failure");
 };
 
 cases["RAPL install describes live sensor discovery"] = function () {
