@@ -1703,6 +1703,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._iconTheme = null;
         this._iconThemeId = 0;
         this._monitorsId = 0;
+        this._failures = new Log.FailureLog();
 
         try {
             this._initialize(metadata, orientation, instanceId, backends);
@@ -2400,8 +2401,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
             try {
                 data = this._assemble(
                     readings, this._collectProfile(profileBackend, profileGeneration));
+                this._failures.recover("collection");
             } catch (error) {
-                Log.error("collection failed: " + error);
+                this._failures.report("collection", "collection failed: " + error);
             }
             onDone(data);
         };
@@ -2774,8 +2776,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
             if (data) {
                 try {
                     this._present(data);
+                    this._failures.recover("reading-presentation");
                 } catch (error) {
-                    Log.error("could not show the reading: " + error);
+                    this._failures.report(
+                        "reading-presentation", "could not show the reading: " + error);
                 }
             }
             if (this._collectAgain) {
@@ -2787,9 +2791,11 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._collecting = true;
         try {
             this._collect(finished);
+            this._failures.recover("reading-start");
         } catch (error) {
             /* Thrown before the read was even started, so nothing is coming. */
-            Log.error("could not start a reading: " + error);
+            this._failures.report(
+                "reading-start", "could not start a reading: " + error);
             finished(null);
         }
     }
@@ -2797,10 +2803,12 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _present(data) {
         this._latest = data;
         let present = (consumer, callback) => {
+            let key = "consumer:" + consumer;
             try {
                 callback();
+                this._failures.recover(key);
             } catch (error) {
-                Log.error(consumer + " failed: " + error);
+                this._failures.report(key, consumer + " failed: " + error);
             }
         };
 

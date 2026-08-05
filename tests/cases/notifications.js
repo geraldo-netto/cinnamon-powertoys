@@ -38,3 +38,28 @@ cases["notification delivery failures are contained"] = function () {
         Log.setSink(null);
     }
 };
+
+cases["one continuous notification failure is logged once"] = function () {
+    let lines = [];
+    let failing = true;
+    Log.setSink(line => lines.push(line));
+    try {
+        let center = new Notifications.NotificationCenter({
+            notify: () => {
+                if (failing)
+                    throw new Error("shell unavailable");
+            },
+        });
+        Harness.equal(center.notify("A", "one"), false, "the first attempt fails");
+        Harness.equal(center.notify("A", "two"), false, "the retry still fails");
+        Harness.equal(lines.length, 1, "one continuous failure has one diagnostic");
+
+        failing = false;
+        Harness.equal(center.notify("A", "three"), true, "success closes the failure");
+        failing = true;
+        Harness.equal(center.notify("A", "four"), false, "a later outage fails again");
+        Harness.equal(lines.length, 2, "a later outage receives its own diagnostic");
+    } finally {
+        Log.setSink(null);
+    }
+};

@@ -16,6 +16,7 @@ const Fuzz = imports.fuzz;
 const UPowerGlib = imports.gi.UPowerGlib;
 
 const Alerts = Harness.requireXlet("./lib/alerts.js");
+const Log = Harness.requireXlet("./lib/log.js");
 
 const State = UPowerGlib.DeviceState;
 const Level = UPowerGlib.DeviceLevel;
@@ -121,6 +122,32 @@ cases["a throwing alert sink cannot suppress later devices"] = function () {
     Harness.equal(attempts.length, 2, "the second device is attempted in the same reading");
     alerts.check(reading(devices), limits());
     Harness.equal(attempts.length, 3, "only the undelivered device is retried later");
+};
+
+cases["one continuous throwing alert sink is logged once"] = function () {
+    let lines = [];
+    let failing = true;
+    Log.setSink(line => lines.push(line));
+    try {
+        let alerts = new Alerts.AlertPolicy(() => {
+            if (failing)
+                throw new Error("notification shell failed");
+            return true;
+        });
+
+        alerts.check(reading([battery(10)]), limits());
+        alerts.check(reading([battery(10)]), limits());
+        Harness.equal(lines.length, 1, "retries share one diagnostic");
+
+        failing = false;
+        alerts.check(reading([battery(10)]), limits());
+        alerts.check(reading([battery(30)]), limits());
+        failing = true;
+        alerts.check(reading([battery(10)]), limits());
+        Harness.equal(lines.length, 2, "success rearms a later failure diagnostic");
+    } finally {
+        Log.setSink(null);
+    }
 };
 
 cases["a failed temperature delivery is retried"] = function () {

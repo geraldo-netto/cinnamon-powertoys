@@ -5,6 +5,7 @@ const Log = require("./lib/log.js");
 var NotificationCenter = class NotificationCenter {
     constructor(shell) {
         this._shell = shell || {};
+        this._failures = new Log.FailureLog();
     }
 
     _send(method, title, body) {
@@ -13,9 +14,10 @@ var NotificationCenter = class NotificationCenter {
             if (typeof send !== "function")
                 throw new Error(method + " is unavailable");
             send.call(this._shell, title, body);
+            this._failures.recover(method);
             return true;
         } catch (error) {
-            Log.error(method + " failed: " + error);
+            this._failures.report(method, method + " failed: " + error);
             return false;
         }
     }

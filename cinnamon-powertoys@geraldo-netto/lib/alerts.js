@@ -67,13 +67,18 @@ var AlertPolicy = class AlertPolicy {
         this._notify = notify || function () { return false; };
         this._alerted = new Map();
         this._tempAlerted = null;
+        this._failures = new Log.FailureLog();
     }
 
     _deliver(urgent, title, body) {
+        let key = urgent ? "urgent" : "normal";
         try {
-            return this._notify(urgent, title, body) === true;
+            let delivered = this._notify(urgent, title, body) === true;
+            if (delivered)
+                this._failures.recover(key);
+            return delivered;
         } catch (error) {
-            Log.error("alert delivery failed: " + error);
+            this._failures.report(key, "alert delivery failed: " + error);
             return false;
         }
     }

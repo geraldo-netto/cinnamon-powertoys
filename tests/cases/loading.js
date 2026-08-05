@@ -198,6 +198,7 @@ cases["a late collection stops when its applet is destroyed"] = function () {
     let answers = [];
     let applet = {
         _destroyed: false,
+        _failures: new (Harness.requireXlet("./lib/log.js").FailureLog)(),
         _sensorFilter: () => function () { return true; },
         _sensors: {
             readAsync: (wanted, onDone) => { sensorDone = onDone; },
@@ -232,6 +233,7 @@ cases["collection waits for asynchronous charge and firmware samples"] = functio
     let answers = [];
     let applet = {
         _destroyed: false,
+        _failures: new (Harness.requireXlet("./lib/log.js").FailureLog)(),
         menu: { isOpen: true },
         _sensorFilter: () => function () { return true; },
         _sensors: { readAsync: (wanted, done) => { pending.sensors = done; } },
@@ -279,6 +281,7 @@ cases["profile collections and controls reject a backend transition"] = function
     let firmware = { available: true };
     let applet = {
         _destroyed: false,
+        _failures: new (Harness.requireXlet("./lib/log.js").FailureLog)(),
         _profiles: daemon,
         _platformProfiles: firmware,
         _profileBackend: null,
@@ -479,17 +482,34 @@ cases["presentation consumers fail independently"] = function () {
         error: message => logs.push(message),
     });
     let calls = [];
+    let active = new Set();
+    let failing = true;
+    let consume = name => {
+        calls.push(name);
+        if (failing && name !== "alerts")
+            throw new Error(name + " broke");
+    };
     let applet = {
         _latest: null,
-        _pending: { settle: () => { calls.push("pending"); throw new Error("pending broke"); } },
-        _panel: { update: () => { calls.push("panel"); throw new Error("panel broke"); } },
+        _failures: {
+            report: (key, message) => {
+                if (active.has(key))
+                    return false;
+                active.add(key);
+                logs.push(message);
+                return true;
+            },
+            recover: key => active.delete(key),
+        },
+        _pending: { settle: () => consume("pending") },
+        _panel: { update: () => consume("panel") },
         _panelOptions: () => ({}),
         _menuPresenter: {
-            update: () => { calls.push("menu"); throw new Error("menu broke"); },
+            update: () => consume("menu"),
         },
         _menuOptions: () => ({}),
         menu: { isOpen: true },
-        _alerts: { check: () => calls.push("alerts") },
+        _alerts: { check: () => consume("alerts") },
         _alertLimits: () => ({}),
     };
     let data = { profile: { active: "balanced" } };
@@ -499,6 +519,14 @@ cases["presentation consumers fail independently"] = function () {
     Harness.deepEqual(calls, ["pending", "panel", "menu", "alerts"],
                       "later consumers still run after independent failures");
     Harness.equal(logs.length, 3, "each failed consumer is diagnosed once");
+
+    present.call(applet, data);
+    Harness.equal(logs.length, 3, "persistent presentation failures stay quiet");
+    failing = false;
+    present.call(applet, data);
+    failing = true;
+    present.call(applet, data);
+    Harness.equal(logs.length, 6, "a success rearms later presentation failures");
 };
 
 cases["slow rediscovery includes CPU topology"] = function () {
