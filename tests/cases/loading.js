@@ -157,3 +157,14 @@ cases["the libraries load without a shell"] = function () {
     Harness.equal(typeof globalThis.global, "undefined",
                   "a library defined a shell global just by being loaded");
 };
+
+cases["partial applet construction owns its rollback"] = function () {
+    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let start = source.indexOf("constructor(metadata, orientation");
+    let constructor = source.slice(start, source.indexOf("\n    _initialize(metadata", start));
+    Harness.ok(constructor.indexOf("try {") >= 0, "initialization has a guarded acquisition stage");
+    Harness.ok(constructor.indexOf("this._teardown()") >= 0,
+               "a constructor that cannot return releases its partial state");
+    Harness.ok(source.indexOf("on_applet_removed_from_panel() {\n        this._teardown();") >= 0,
+               "normal removal uses the same teardown path");
+};

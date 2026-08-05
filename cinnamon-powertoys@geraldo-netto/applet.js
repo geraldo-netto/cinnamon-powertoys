@@ -1594,6 +1594,41 @@ class PowerToysApplet extends Applet.TextIconApplet {
     constructor(metadata, orientation, panelHeight, instanceId, backends) {
         super(orientation, panelHeight, instanceId);
 
+        /* Every field teardown may reach exists before the first acquisition.
+         * If initialization fails, the constructor never returns an applet for
+         * Cinnamon to remove, so it must release what was acquired itself. */
+        this._destroyed = false;
+        this._panel = null;
+        this.settings = null;
+        this._helper = null;
+        this._sensors = null;
+        this._cpu = null;
+        this._chargeControl = null;
+        this._backlights = {};
+        this._bluetooth = null;
+        this._profiles = null;
+        this._platformProfiles = null;
+        this._profileBackend = null;
+        this._upower = null;
+        this.menuManager = null;
+        this.menu = null;
+        this._menuPresenter = null;
+        this._hotkeyIds = [];
+        this._actorSignalIds = [];
+        this._iconTheme = null;
+        this._iconThemeId = 0;
+        this._monitorsId = 0;
+
+        try {
+            this._initialize(metadata, orientation, instanceId, backends);
+        } catch (error) {
+            this._teardown();
+            throw error;
+        }
+    }
+
+    _initialize(metadata, orientation, instanceId, backends) {
+
         this.metadata = metadata;
         this.instanceId = instanceId;
         this._backends = backends || defaultBackends();
@@ -1722,8 +1757,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this.menuManager = new PopupMenu.PopupMenuManager(this);
         this._createMenu(orientation);
 
-        this.actor.connect("scroll-event", (actor, event) => this._onScroll(actor, event));
-        this.actor.connect("button-press-event", (actor, event) => this._onButtonPress(actor, event));
+        this._actorSignalIds.push(
+            this.actor.connect("scroll-event", (actor, event) => this._onScroll(actor, event)),
+            this.actor.connect("button-press-event",
+                               (actor, event) => this._onButtonPress(actor, event)));
 
         /*
          * Which icon names exist is a fact about the current theme, and both
@@ -3123,42 +3160,77 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     on_applet_removed_from_panel() {
+        this._teardown();
+    }
+
+    _teardown() {
+        if (this._destroyed)
+            return;
         this._destroyed = true;
-        this._panel.destroy();
-        this._stopPolling();
-        this._stopProbingMonitors();
-        this._cancelPendingScroll();
+
+        /* One failed release must not strand everything acquired before it. */
+        let release = (name, action) => {
+            try {
+                action();
+            } catch (error) {
+                Log.error("could not release " + name + ": " + error);
+            }
+        };
+        let destroy = (field, name) => {
+            let resource = this[field];
+            this[field] = null;
+            if (resource && typeof resource.destroy === "function")
+                release(name, () => resource.destroy());
+        };
+
+        release("poll timer", () => this._stopPolling());
+        release("monitor timer", () => this._stopProbingMonitors());
+        release("scroll timer", () => this._cancelPendingScroll());
         if (this._idleId) {
-            Mainloop.source_remove(this._idleId);
+            let id = this._idleId;
             this._idleId = 0;
+            release("update callback", () => Mainloop.source_remove(id));
         }
-        this._removeHotkeys();
+        release("hotkeys", () => this._removeHotkeys());
+
+        for (let id of this._actorSignalIds)
+            release("applet signal", () => this.actor.disconnect(id));
+        this._actorSignalIds = [];
         if (this._iconThemeId) {
-            this._iconTheme.disconnect(this._iconThemeId);
+            let id = this._iconThemeId;
             this._iconThemeId = 0;
+            release("icon theme signal", () => this._iconTheme.disconnect(id));
         }
         if (this._monitorsId) {
-            Main.layoutManager.disconnect(this._monitorsId);
+            let id = this._monitorsId;
             this._monitorsId = 0;
+            release("monitor signal", () => Main.layoutManager.disconnect(id));
         }
-        this._destroyMenu();
-        /* Before the backends that feed it: whatever is queued here would
-         * otherwise still put a password dialog on screen for an applet that
-         * has left the panel. */
-        if (this._helper)
-            this._helper.destroy();
-        if (this._profiles)
-            this._profiles.destroy();
-        if (this._platformProfiles)
-            this._platformProfiles.destroy();
-        if (this._upower)
-            this._upower.destroy();
-        if (this._bluetooth)
-            this._bluetooth.destroy();
-        for (let name in this._backlights)
-            this._backlights[name].destroy();
-        if (this.settings)
-            this.settings.finalize();
+        release("menu", () => this._destroyMenu());
+
+        destroy("_upower", "UPower monitor");
+        destroy("_platformProfiles", "platform profile backend");
+        destroy("_profiles", "profile backend");
+        this._profileBackend = null;
+        destroy("_bluetooth", "Bluetooth backend");
+        let backlights = this._backlights;
+        this._backlights = {};
+        for (let name in backlights) {
+            let control = backlights[name];
+            if (control && typeof control.destroy === "function")
+                release(name + " backlight", () => control.destroy());
+        }
+        destroy("_cpu", "CPU backend");
+        destroy("_sensors", "sensor backend");
+        /* Before settings and presentation: no queued privileged job may put
+         * a password dialog on screen after its owner has gone. */
+        destroy("_helper", "privileged helper");
+
+        let settings = this.settings;
+        this.settings = null;
+        if (settings)
+            release("settings", () => settings.finalize());
+        destroy("_panel", "panel presenter");
     }
 }
 
