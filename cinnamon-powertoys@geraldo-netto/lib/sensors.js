@@ -739,25 +739,46 @@ function _nestedTopology(directories, root) {
     }).join(",");
 }
 
-function _topologyFromInventory(directories, readString) {
+function _topologyFromInventory(directories, readString, readLink) {
     let powercap = directories[POWERCAP_DIR] || [];
-    return [_nestedTopology(directories, HWMON_DIR),
-            _nestedTopology(directories, THERMAL_DIR),
-            _powercapTopology(powercap, path => readString(path) !== null)].join("|");
+    let metadata = _metadataPaths(directories)
+        /* The counter value moves continuously; only whether it can be read
+         * is topology, and that is represented by _powercapTopology. */
+        .filter(path => !/\/energy_uj$/.test(path))
+        .map(path => [path, readString(path)]);
+    let links = _linkPaths(directories).map(path => [path, readLink(path)]);
+    return JSON.stringify([
+        _nestedTopology(directories, HWMON_DIR),
+        _nestedTopology(directories, THERMAL_DIR),
+        _powercapTopology(powercap, path => readString(path) !== null),
+        metadata,
+        links,
+    ]);
 }
 
-/* The refresh check follows the same asynchronous directory route as a full
- * discovery, but reads only the few powercap nodes whose accessibility is
- * itself part of the topology. Nothing here blocks Cinnamon's main thread. */
+/* The refresh check follows the same asynchronous directory, metadata and
+ * link route as discovery. Values that move on every reading are excluded;
+ * everything retained is something discovery uses to classify or name a
+ * sensor. Nothing here blocks Cinnamon's main thread. */
 function topologyKeyAsync(onDone) {
     _directoryInventoryAsync(directories => {
-        let energyPaths = (directories[POWERCAP_DIR] || [])
-            .filter(entry => /^(intel-rapl|amd-rapl|dtpm)/.test(entry))
-            .map(entry => POWERCAP_DIR + "/" + entry + "/energy_uj");
-        IO.readStringsAsync(energyPaths, values => {
-            let read = path => values[path] === undefined ? null : values[path];
-            onDone(_topologyFromInventory(directories, read));
-        }, 16);
+        let metadata = null;
+        let links = null;
+        let finish = () => {
+            if (metadata === null || links === null)
+                return;
+            let read = path => metadata[path] === undefined ? null : metadata[path];
+            let readLink = path => links[path] === undefined ? null : links[path];
+            onDone(_topologyFromInventory(directories, read, readLink));
+        };
+        IO.readStringsAsync(_metadataPaths(directories), values => {
+            metadata = values;
+            finish();
+        }, 32);
+        IO.readLinksAsync(_linkPaths(directories), values => {
+            links = values;
+            finish();
+        }, 32);
     });
 }
 
@@ -780,7 +801,7 @@ function discoverSnapshotAsync(onDone) {
                 onDone({
                     sensors: _finishSensors(scanned, labels),
                     counters: _energyCounters(directories[POWERCAP_DIR] || [], read),
-                    topology: _topologyFromInventory(directories, read),
+                    topology: _topologyFromInventory(directories, read, readLink),
                 });
             });
         };
@@ -946,8 +967,7 @@ var SensorSet = class SensorSet {
      */
     _topologyKey() {
         let directories = _directoryInventory();
-        return _topologyFromInventory(
-            directories, path => IO.canRead(path) ? "readable" : null);
+        return _topologyFromInventory(directories, IO.readString, IO.readLink);
     }
 
     /*
@@ -956,8 +976,8 @@ var SensorSet = class SensorSet {
      * sets take an optional callback with that answer and report that the
      * request was accepted immediately.
      *
-     * The comparison is directory names only; values and labels are still not
-     * reread unless the exposed node set or access state changes.
+     * The comparison includes the stable metadata and device links that give
+     * those nodes meaning. Moving readings are excluded.
      */
     refresh(onDone) {
         if (!this._asynchronous) {

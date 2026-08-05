@@ -1010,6 +1010,31 @@ cases["a sensor node changing inside an existing device triggers a sweep"] = fun
     });
 };
 
+cases["replacing a device behind the same sensor nodes triggers a sweep"] = function () {
+    on("machine", function () {
+        let originalReadString = IO.readString;
+        let replacement = false;
+        IO.readString = function (path) {
+            if (replacement && /\/hwmon0\/name$/.test(path))
+                return "replacement-chip";
+            return originalReadString(path);
+        };
+        try {
+            let set = new Sensors.SensorSet();
+            Harness.equal(set.refresh(), false, "the original identity is current");
+
+            replacement = true;
+            Harness.equal(set.refresh(), true, "metadata changes with the same node layout");
+            Harness.equal(set.temperatureSensors.some(sensor =>
+                sensor.chip === "replacement-chip"), true,
+            "rediscovery adopts the replacement's classification metadata");
+            Harness.equal(set.refresh(), false, "the replacement identity is remembered");
+        } finally {
+            IO.readString = originalReadString;
+        }
+    });
+};
+
 cases["RAPL access changing is a topology change"] = function () {
     on("machine", function () {
         let originalCanRead = IO.canRead;
