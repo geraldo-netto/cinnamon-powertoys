@@ -90,9 +90,14 @@ install_rule() {
         cp -p -- "$DESTINATION" "$backup"
         backup_ready=yes
     fi
+    # Keep publication and its rollback state indivisible to the signal trap.
+    # Otherwise cleanup can discard the backup while the new rule is already
+    # visible but `published` still says it is not.
+    trap '' HUP INT TERM
     mv -f -- "$staging" "$DESTINATION"
     staging=
     published=yes
+    trap 'exit 1' HUP INT TERM
 
     if [ -z "${DESTDIR:-}" ]; then
         reload_rules

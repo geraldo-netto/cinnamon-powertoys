@@ -29,7 +29,7 @@ function writeExecutable(path, source) {
     GLib.chmod(path, 0o700);
 }
 
-function transition(action, udevSource, withCounter) {
+function transition(action, udevSource, withCounter, signalPublish) {
     let directory = GLib.dir_make_tmp("powertoys-rapl-transition-XXXXXX");
     try {
         let bin = directory + "/bin";
@@ -45,6 +45,10 @@ function transition(action, udevSource, withCounter) {
         GLib.file_set_contents(destination, "old rule\n");
         GLib.file_set_contents(log, "");
         writeExecutable(bin + "/udevadm", udevSource);
+        if (signalPublish) {
+            writeExecutable(bin + "/mv",
+                "#!/bin/sh\n/bin/mv \"$@\"\nkill -TERM \"$PPID\"\n");
+        }
         if (withCounter) {
             let domain = powercap + "/intel-rapl:0";
             GLib.mkdir_with_parents(domain, 0o755);
@@ -91,6 +95,18 @@ cases["a failed RAPL install restores the previous rule and live policy"] = func
                   "udev is reloaded for publish and rollback");
     Harness.equal((outcome.calls.match(/udevadm trigger/g) || []).length, 2,
                   "the restored policy is replayed");
+};
+
+cases["a RAPL publish cannot be interrupted before it is recorded"] = function () {
+    let udev = "#!/bin/sh\n" +
+        "printf '%s\\n' \"udevadm $*\" >> \"$POWERTOYS_LOG\"\n";
+    let outcome = transition("install", udev, false, true);
+    Harness.equal(outcome.status, 0,
+                  "the signal in the protected publish transition is ignored");
+    Harness.equal(outcome.destination.trim(), "GROUP=adm",
+                  "the completed rule, not a partial transaction, remains published");
+    Harness.equal((outcome.calls.match(/udevadm control --reload/g) || []).length, 1,
+                  "the live policy is reloaded after publication");
 };
 
 cases["a failed RAPL uninstall still revokes live access"] = function () {
