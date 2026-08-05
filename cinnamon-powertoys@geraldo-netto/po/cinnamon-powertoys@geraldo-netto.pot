@@ -32,7 +32,7 @@ msgstr ""
 msgid "Keyboard"
 msgstr ""
 
-#: applet.js:1121 applet.js:2949
+#: applet.js:1121 applet.js:2948
 msgid "Power profile"
 msgstr ""
 
@@ -116,8 +116,8 @@ msgid "Some battery limits could not be read."
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:1904 applet.js:2886 applet.js:2895 applet.js:2949 applet.js:3008
-#: applet.js:3017 applet.js:3171
+#: applet.js:1904 applet.js:2885 applet.js:2894 applet.js:2948 applet.js:3007
+#: applet.js:3016 applet.js:3170
 msgid "Power Toys"
 msgstr ""
 
@@ -129,56 +129,56 @@ msgid ""
 "shortcuts."
 msgstr ""
 
-#: applet.js:2835 applet.js:2976
+#: applet.js:2834 applet.js:2975
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2860
+#: applet.js:2859
 msgid "The requested value is not valid for this control."
 msgstr ""
 
-#: applet.js:2862
+#: applet.js:2861
 msgid "This control is not supported on this system."
 msgstr ""
 
-#: applet.js:2864
+#: applet.js:2863
 msgid "This control is currently unavailable."
 msgstr ""
 
-#: applet.js:2866
+#: applet.js:2865
 msgid "The system refused the requested change."
 msgstr ""
 
-#: applet.js:2868
+#: applet.js:2867
 msgid "The change failed; the previous settings were restored."
 msgstr ""
 
-#: applet.js:2870
+#: applet.js:2869
 msgid "The change failed and some previous settings could not be restored."
 msgstr ""
 
-#: applet.js:2872
+#: applet.js:2871
 msgid "The privileged helper could not be found."
 msgstr ""
 
-#: applet.js:2874 applet.js:2887
+#: applet.js:2873 applet.js:2886
 msgid ""
 "The installed privileged helper is outdated. Re-run the policy installation."
 msgstr ""
 
-#: applet.js:2876
+#: applet.js:2875
 msgid "The privileged helper is incompatible with this applet version."
 msgstr ""
 
-#: applet.js:2878
+#: applet.js:2877
 msgid "The change could not be applied."
 msgstr ""
 
-#: applet.js:2896
+#: applet.js:2895
 msgid "Could not switch to"
 msgstr ""
 
-#: applet.js:3172
+#: applet.js:3171
 msgid "Shortcut is already in use"
 msgstr ""
 
@@ -671,7 +671,9 @@ msgid "Refresh interval"
 msgstr ""
 
 #. settings-schema.json->refresh-interval->tooltip
-msgid "How often sensors and battery levels are polled."
+msgid ""
+"How often sensor readings and the display are refreshed. Battery levels "
+"update when UPower reports a change."
 msgstr ""
 
 #. settings-schema.json->temp-unit->description

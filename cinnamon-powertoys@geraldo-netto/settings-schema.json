@@ -11,7 +11,7 @@
         "step": 1,
         "units": "seconds",
         "description": "Refresh interval",
-        "tooltip": "How often sensors and battery levels are polled."
+        "tooltip": "How often sensor readings and the display are refreshed. Battery levels update when UPower reports a change."
     },
     "temp-unit": {
         "type": "combobox",

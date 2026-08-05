@@ -102,6 +102,17 @@ cases["a setting that needs more than a repaint says so"] = function () {
     }
 };
 
+cases["the refresh interval distinguishes polled and signalled data"] = function () {
+    let schema = JSON.parse(readFile(Harness.xletDir() + "/settings-schema.json"));
+    let tooltip = schema["refresh-interval"].tooltip;
+    Harness.ok(tooltip.indexOf("sensor readings") >= 0,
+               "the timed sensor work is named");
+    Harness.ok(tooltip.indexOf("UPower reports a change") >= 0,
+               "battery updates are described as signal-driven");
+    Harness.equal(tooltip.indexOf("battery levels are polled"), -1,
+                  "the control no longer promises a battery hardware poll");
+};
+
 cases["the privileged setting names every gated control"] = function () {
     let schema = JSON.parse(readFile(Harness.xletDir() + "/settings-schema.json"));
     let setting = schema["enable-privileged-controls"];
