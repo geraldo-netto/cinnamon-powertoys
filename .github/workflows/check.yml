@@ -46,15 +46,53 @@ jobs:
       - name: Check
         run: make check
 
-      # A staged install, so the packaging is exercised without any of it
-      # reaching the runner's own home directory.
-      - name: Staged install
+      # A staged lifecycle, so packaging and every destructive counterpart are
+      # exercised without any of it reaching the runner's own home directory.
+      - name: Staged install and uninstall
         run: |
-          make install DESTDIR="$PWD/staged"
-          test -f "staged$HOME/.local/share/cinnamon/applets/cinnamon-powertoys@geraldo-netto/applet.js"
-          make install-policy DESTDIR="$PWD/staged"
-          test -f "$PWD/staged/usr/share/polkit-1/actions/io.github.geraldo-netto.cinnamon-powertoys.policy"
-          test -x "$PWD/staged/usr/local/lib/cinnamon-powertoys/powertoys-helper"
+          stage="$PWD/staged"
+          data="$stage$HOME/.local/share"
+          applet="$data/cinnamon/applets/cinnamon-powertoys@geraldo-netto"
+          action="$stage/usr/share/polkit-1/actions/io.github.geraldo-netto.cinnamon-powertoys.policy"
+          helper="$stage/usr/local/lib/cinnamon-powertoys/powertoys-helper"
+          rapl="$stage/etc/udev/rules.d/99-cinnamon-powertoys-rapl.rules"
+
+          make install DESTDIR="$stage"
+          test -f "$applet/applet.js"
+          make install-policy DESTDIR="$stage"
+          test -f "$action"
+          test -x "$helper"
+          make install-rapl DESTDIR="$stage"
+          test -f "$rapl"
+
+          # Each target shares its parent with other packages. Sentinels make
+          # over-broad cleanup fail this smoke test instead of passing because
+          # the intended file happened to disappear too.
+          mkdir -p "$data/cinnamon/applets/unrelated@example" \
+            "$data/locale/fr/LC_MESSAGES" \
+            "$stage/usr/share/polkit-1/actions" \
+            "$stage/usr/local/lib/cinnamon-powertoys" \
+            "$stage/etc/udev/rules.d"
+          touch "$data/cinnamon/applets/unrelated@example/keep" \
+            "$data/locale/fr/LC_MESSAGES/unrelated.mo" \
+            "$stage/usr/share/polkit-1/actions/unrelated.policy" \
+            "$stage/usr/local/lib/cinnamon-powertoys/unrelated-helper" \
+            "$stage/etc/udev/rules.d/98-unrelated.rules"
+
+          make uninstall DESTDIR="$stage"
+          test ! -e "$applet"
+          test -f "$data/cinnamon/applets/unrelated@example/keep"
+          test -f "$data/locale/fr/LC_MESSAGES/unrelated.mo"
+
+          make uninstall-policy DESTDIR="$stage"
+          test ! -e "$action"
+          test ! -e "$helper"
+          test -f "$stage/usr/share/polkit-1/actions/unrelated.policy"
+          test -f "$stage/usr/local/lib/cinnamon-powertoys/unrelated-helper"
+
+          make uninstall-rapl DESTDIR="$stage"
+          test ! -e "$rapl"
+          test -f "$stage/etc/udev/rules.d/98-unrelated.rules"
 
       # The template has to match the strings that are actually in the source,
       # or a translator is working from a list that has moved on without them.
