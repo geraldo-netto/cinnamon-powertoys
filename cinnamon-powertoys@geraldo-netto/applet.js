@@ -459,8 +459,9 @@ class SelectorItem extends PopupMenu.PopupMenuItem {
     _init(label, value, selected, onActivate) {
         super._init.call(this, label);
         this.value = value;
-        this._selected = selected;
-        this.setShowDot(this._selected);
+        this._selected = selected === true;
+        this.actor.set_accessible_role(Atk.Role.RADIO_MENU_ITEM);
+        this._syncSelection();
         this.connect("activate", () => {
             if (!this._selected)
                 onActivate(value);
@@ -468,8 +469,16 @@ class SelectorItem extends PopupMenu.PopupMenuItem {
     }
 
     setSelected(selected) {
-        this._selected = selected;
+        this._selected = selected === true;
+        this._syncSelection();
+    }
+
+    _syncSelection() {
         this.setShowDot(this._selected);
+        if (this._selected)
+            this.actor.add_accessible_state(Atk.StateType.CHECKED);
+        else
+            this.actor.remove_accessible_state(Atk.StateType.CHECKED);
     }
 }
 

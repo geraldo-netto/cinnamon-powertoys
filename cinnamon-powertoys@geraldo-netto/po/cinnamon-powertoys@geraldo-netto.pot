@@ -16,108 +16,108 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: applet.js:844 applet.js:879 applet.js:1104
+#: applet.js:853 applet.js:888 applet.js:1113
 msgid "Brightness"
 msgstr ""
 
-#: applet.js:1081
+#: applet.js:1090
 msgid "System power settings"
 msgstr ""
 
-#: applet.js:1110
+#: applet.js:1119
 msgid "Screen"
 msgstr ""
 
-#: applet.js:1128 lib/format.js:108
+#: applet.js:1137 lib/format.js:108
 msgid "Keyboard"
 msgstr ""
 
-#: applet.js:1136 applet.js:3065
+#: applet.js:1145 applet.js:3074
 msgid "Power profile"
 msgstr ""
 
-#: applet.js:1145 lib/panel-text.js:224
+#: applet.js:1154 lib/panel-text.js:224
 msgid "Profile"
 msgstr ""
 
-#: applet.js:1149
+#: applet.js:1158
 msgid "Performance limited"
 msgstr ""
 
-#: applet.js:1175 lib/panel-text.js:212 lib/panel-text.js:236
+#: applet.js:1184 lib/panel-text.js:212 lib/panel-text.js:236
 #: lib/sensors.js:37
 msgid "Processor"
 msgstr ""
 
-#: applet.js:1180
+#: applet.js:1189
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1198 lib/panel-text.js:226 lib/reading.js:140
+#: applet.js:1207 lib/panel-text.js:226 lib/reading.js:140
 msgid "Governor"
 msgstr ""
 
-#: applet.js:1201 lib/reading.js:142
+#: applet.js:1210 lib/reading.js:142
 msgid "Energy preference"
 msgstr ""
 
-#: applet.js:1216 lib/panel-text.js:267
+#: applet.js:1225 lib/panel-text.js:267
 msgid "Devices"
 msgstr ""
 
-#: applet.js:1252 lib/reading.js:146
+#: applet.js:1261 lib/reading.js:146
 msgid "Charge limit"
 msgstr ""
 
-#: applet.js:1268
+#: applet.js:1277
 msgid "Sensors"
 msgstr ""
 
-#: applet.js:1381
+#: applet.js:1390
 #, javascript-format
 msgid "Only the first %d monitors have a slider"
 msgstr ""
 
-#: applet.js:1509
+#: applet.js:1518
 msgid "an application"
 msgstr ""
 
-#: applet.js:1528 lib/panel-text.js:251
+#: applet.js:1537 lib/panel-text.js:251
 msgid "Connected"
 msgstr ""
 
-#: applet.js:1528 lib/panel-text.js:251
+#: applet.js:1537 lib/panel-text.js:251
 msgid "Disconnected"
 msgstr ""
 
-#: applet.js:1582
+#: applet.js:1591
 msgid "No sensor matches “%{sensor}”"
 msgstr ""
 
-#: applet.js:1604
+#: applet.js:1613
 msgid "The batteries have different limits; choosing one sets all batteries."
 msgstr ""
 
-#: applet.js:1605
+#: applet.js:1614
 msgid "The batteries have different charge limits."
 msgstr ""
 
-#: applet.js:1608
+#: applet.js:1617
 msgid ""
 "Some battery limits could not be read; choosing one sets all batteries."
 msgstr ""
 
-#: applet.js:1609
+#: applet.js:1618
 msgid "Some battery limits could not be read."
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:1925 applet.js:2991 applet.js:3005 applet.js:3064 applet.js:3126
-#: applet.js:3135 applet.js:3290
+#: applet.js:1934 applet.js:3000 applet.js:3014 applet.js:3073 applet.js:3135
+#: applet.js:3144 applet.js:3299
 msgid "Power Toys"
 msgstr ""
 
-#: applet.js:1926
+#: applet.js:1935
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "
@@ -125,60 +125,60 @@ msgid ""
 "shortcuts."
 msgstr ""
 
-#: applet.js:2940 applet.js:3094
+#: applet.js:2949 applet.js:3103
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:2965
+#: applet.js:2974
 msgid "The requested value is not valid for this control."
 msgstr ""
 
-#: applet.js:2967
+#: applet.js:2976
 msgid "This control is not supported on this system."
 msgstr ""
 
-#: applet.js:2969
+#: applet.js:2978
 msgid "This control is currently unavailable."
 msgstr ""
 
-#: applet.js:2971
+#: applet.js:2980
 msgid "The system refused the requested change."
 msgstr ""
 
-#: applet.js:2973
+#: applet.js:2982
 msgid "The change failed; the previous settings were restored."
 msgstr ""
 
-#: applet.js:2975
+#: applet.js:2984
 msgid "The change failed and some previous settings could not be restored."
 msgstr ""
 
-#: applet.js:2977
+#: applet.js:2986
 msgid "The privileged helper could not be found."
 msgstr ""
 
-#: applet.js:2979 applet.js:2992
+#: applet.js:2988 applet.js:3001
 msgid ""
 "The installed privileged helper is outdated. Re-run the policy installation."
 msgstr ""
 
-#: applet.js:2981
+#: applet.js:2990
 msgid "The privileged helper is incompatible with this applet version."
 msgstr ""
 
-#: applet.js:2983
+#: applet.js:2992
 msgid "The change could not be applied."
 msgstr ""
 
-#: applet.js:3002
+#: applet.js:3011
 msgid "Could not switch to %{profile}: %{detail}"
 msgstr ""
 
-#: applet.js:3003
+#: applet.js:3012
 msgid "Could not switch to %{profile}"
 msgstr ""
 
-#: applet.js:3291
+#: applet.js:3300
 msgid "Shortcut is already in use: %{shortcut}"
 msgstr ""
 
