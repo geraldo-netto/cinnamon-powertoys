@@ -8,6 +8,13 @@
  * and everything installed here is put back when the applet is removed.
  */
 
+function _leftAlignedStyle(style) {
+    let original = typeof style === "string" ? style : "";
+    if (original.trim() === "")
+        return "text-align: left;";
+    return original + (/;\s*$/.test(original) ? " " : "; ") + "text-align: left;";
+}
+
 var PanelAdapter = class PanelAdapter {
     constructor(applet, callbacks) {
         callbacks = callbacks || {};
@@ -38,35 +45,63 @@ var PanelAdapter = class PanelAdapter {
         if (!tooltip)
             return false;
 
-        let actor = tooltip._tooltip;
-        if (actor && typeof actor.set_style === "function") {
-            if (typeof actor.get_style === "function")
-                this._originalTooltipStyle = actor.get_style();
-            actor.set_style("text-align: left;");
-            this._tooltipActor = actor;
-            this._changedTooltipStyle = true;
-        }
-
         if (typeof tooltip.show !== "function" || typeof tooltip.hide !== "function")
             return false;
 
-        this._tooltip = tooltip;
-        this._originalShow = tooltip.show;
-        this._originalHide = tooltip.hide;
+        let originalShow = tooltip.show;
+        let originalHide = tooltip.hide;
         let self = this;
         this._wrappedShow = function () {
             self._beforeTooltip();
-            let result = self._originalShow.apply(tooltip, arguments);
+            let result = originalShow.apply(tooltip, arguments);
             self._publishTooltip(self._visibleAfter(true));
             return result;
         };
         this._wrappedHide = function () {
-            let result = self._originalHide.apply(tooltip, arguments);
+            let result = originalHide.apply(tooltip, arguments);
             self._publishTooltip(self._visibleAfter(false));
             return result;
         };
-        tooltip.show = this._wrappedShow;
-        tooltip.hide = this._wrappedHide;
+        /* Some shell revisions expose these members without allowing them to
+         * be replaced. Publish no partial integration if either assignment is
+         * unusable. In particular, the actor has not been touched yet. */
+        try {
+            tooltip.show = this._wrappedShow;
+            tooltip.hide = this._wrappedHide;
+            if (tooltip.show !== this._wrappedShow || tooltip.hide !== this._wrappedHide)
+                throw new Error("tooltip lifecycle hooks are not writable");
+        } catch (error) {
+            try { tooltip.show = originalShow; } catch (ignored) {}
+            try { tooltip.hide = originalHide; } catch (ignored) {}
+            return false;
+        }
+
+        this._tooltip = tooltip;
+        this._originalShow = originalShow;
+        this._originalHide = originalHide;
+
+        /* Alignment is optional decoration on a now-working integration.
+         * Preserve every declaration Cinnamon or the theme already supplied,
+         * append our override, and retain the exact original for teardown. */
+        let actor = tooltip._tooltip;
+        if (actor && typeof actor.get_style === "function" &&
+                typeof actor.set_style === "function") {
+            let originalStyle;
+            let styleRead = false;
+            try {
+                originalStyle = actor.get_style();
+                styleRead = true;
+                actor.set_style(_leftAlignedStyle(originalStyle));
+                this._originalTooltipStyle = originalStyle;
+                this._tooltipActor = actor;
+                this._changedTooltipStyle = true;
+            } catch (error) {
+                /* Lifecycle hooks remain useful when styling is unavailable. */
+                if (styleRead) {
+                    try { actor.set_style(originalStyle); } catch (ignored) {}
+                }
+            }
+        }
         return true;
     }
 

@@ -16,7 +16,7 @@ function publicApplet(calls, actor) {
 }
 
 cases["private tooltip hooks report reality and are restored"] = function () {
-    let style = "";
+    let style = "color: red; padding: 4px;";
     let tooltipActor = {
         get_style: () => style,
         set_style: value => { style = value; },
@@ -47,7 +47,8 @@ cases["private tooltip hooks report reality and are restored"] = function () {
         beforeTooltip: () => { before++; },
         onTooltip: visible => lifecycle.push(visible),
     });
-    Harness.equal(style, "text-align: left;", "multiline tooltip alignment");
+    Harness.equal(style, "color: red; padding: 4px; text-align: left;",
+                  "multiline alignment preserves Cinnamon's inline declarations");
     Harness.ok(panel.hasTooltipLifecycle, "private lifecycle detected");
 
     Harness.equal(tooltip.show("declined"), "declined", "show return value preserved");
@@ -79,10 +80,89 @@ cases["private tooltip hooks report reality and are restored"] = function () {
     panel.destroy();
     Harness.equal(tooltip.show, originalShow, "show restored");
     Harness.equal(tooltip.hide, originalHide, "hide restored");
-    Harness.equal(style, "", "theme style restored exactly");
+    Harness.equal(style, "color: red; padding: 4px;", "theme style restored exactly");
     Harness.deepEqual(lifecycle, [true, false, true, false],
                       "active tooltip closed for its consumer");
     panel.destroy();
+};
+
+cases["incomplete private tooltip hooks do not mutate the actor"] = function () {
+    let style = "padding: 6px;";
+    let styleWrites = 0;
+    let tooltip = {
+        _tooltip: {
+            get_style: () => style,
+            set_style: value => { style = value; styleWrites++; },
+        },
+        show: function () {},
+        /* no private hide hook: this integration is not usable */
+    };
+    let nextId = 0;
+    let actor = {
+        connect: () => ++nextId,
+        disconnect: () => {},
+    };
+    let applet = publicApplet([], actor);
+    applet._applet_tooltip = tooltip;
+
+    let panel = new CinnamonPanel.PanelAdapter(applet);
+    Harness.ok(panel.hasTooltipLifecycle, "the public hover fallback remains available");
+    Harness.equal(styleWrites, 0, "validation happens before any private actor mutation");
+    Harness.equal(style, "padding: 6px;", "the existing inline style is untouched");
+    panel.destroy();
+};
+
+cases["unwritable private tooltip hooks roll back before fallback"] = function () {
+    let originalShow = function () {};
+    let originalHide = function () {};
+    let tooltip = { show: originalShow };
+    Object.defineProperty(tooltip, "hide", {
+        configurable: false,
+        enumerable: true,
+        value: originalHide,
+        writable: false,
+    });
+    let nextId = 0;
+    let actor = {
+        connect: () => ++nextId,
+        disconnect: () => {},
+    };
+    let applet = publicApplet([], actor);
+    applet._applet_tooltip = tooltip;
+
+    let panel = new CinnamonPanel.PanelAdapter(applet);
+    Harness.ok(panel.hasTooltipLifecycle, "the public fallback replaces unusable hooks");
+    Harness.equal(tooltip.show, originalShow, "a partial show replacement is rolled back");
+    Harness.equal(tooltip.hide, originalHide, "the private hide hook remains untouched");
+    panel.destroy();
+};
+
+cases["a tooltip style failure restores the original without losing lifecycle"] = function () {
+    let style = "padding: 3px;";
+    let writes = 0;
+    let tooltip = {
+        visible: false,
+        _tooltip: {
+            get_style: () => style,
+            set_style: value => {
+                style = value;
+                writes++;
+                if (writes === 1)
+                    throw new Error("theme rejected alignment");
+            },
+        },
+        show: function () { this.visible = true; },
+        hide: function () { this.visible = false; },
+    };
+    let applet = publicApplet([], null);
+    applet._applet_tooltip = tooltip;
+
+    let panel = new CinnamonPanel.PanelAdapter(applet);
+    Harness.ok(panel.hasTooltipLifecycle, "styling is optional to the valid lifecycle hooks");
+    Harness.equal(style, "padding: 3px;", "the failed mutation restores the exact style");
+    Harness.equal(writes, 2, "one attempted mutation and one recovery write");
+    panel.destroy();
+    Harness.equal(writes, 2, "teardown does not restore an unapplied style a second time");
 };
 
 cases["public hover events are the fallback and disconnect cleanly"] = function () {
