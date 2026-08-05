@@ -1320,6 +1320,7 @@ class MenuPresenter {
                                              ? this._createHeading(entry.label)
                                              : new InfoRow(entry.label, entry.value),
                                          (row, entry) => {
+                                             row.setLabel(entry.label);
                                              if (entry.heading)
                                                  return;
                                              row.setValue(entry.value);
@@ -1403,6 +1404,7 @@ class MenuPresenter {
         let heading = new PopupMenu.PopupMenuItem(text, { reactive: false });
         heading.actor.add_style_class_name("powertoys-subgroup-title");
         heading.label.add_style_class_name("powertoys-subgroup-title-text");
+        heading.setLabel = value => heading.label.set_text(value || "");
         return heading;
     }
 
