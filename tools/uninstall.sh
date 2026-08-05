@@ -21,6 +21,35 @@ running_xlet() {
     printf '%s\n' "$output" | grep -Fq "$UUID"
 }
 
+active_xlet_path() {
+    eval_result=$(gdbus call --session \
+        --dest org.Cinnamon \
+        --object-path /org/Cinnamon \
+        --method org.Cinnamon.Eval \
+        "imports.ui.appletManager.appletMeta['$UUID'] ? imports.ui.appletManager.appletMeta['$UUID'].path : null" \
+        2>/dev/null) || return 1
+
+    # Eval returns JSON inside gdbus's textual GVariant tuple. Parse both
+    # layers rather than trimming quotes in shell, where a valid path may
+    # itself contain quotes, backslashes or parentheses.
+    POWERTOYS_EVAL_RESULT=$eval_result python3 -c '
+import ast
+import json
+import os
+import re
+
+raw = os.environ["POWERTOYS_EVAL_RESULT"]
+match = re.fullmatch(r"\(true,\s*(.+)\)\s*", raw, re.S)
+if match is None:
+    raise SystemExit(1)
+encoded = ast.literal_eval(match.group(1))
+path = json.loads(encoded)
+if not isinstance(path, str) or not path:
+    raise SystemExit(1)
+print(os.path.realpath(path))
+'
+}
+
 backup_translations() {
     TRANSLATION_BACKUP=$(mktemp -d "${TMPDIR:-/tmp}/.$UUID.locale.XXXXXX")
     for mo in "$LOCALE_DIR"/*/LC_MESSAGES/"$UUID.mo"; do
@@ -118,6 +147,22 @@ if [ -z "${DESTDIR:-}" ]; then
         running_status=$?
         if [ "$running_status" -ne 1 ]; then
             echo "could not determine whether $UUID is running; uninstall was not changed" >&2
+            exit 1
+        fi
+    fi
+
+    if [ "$was_running" = yes ]; then
+        active_source=$(active_xlet_path) || {
+            echo "could not determine where the running $UUID was loaded from; uninstall was not changed" >&2
+            exit 1
+        }
+        target_source=$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' \
+            "$TARGET_DIR") || {
+            echo "could not resolve the requested applet target; uninstall was not changed" >&2
+            exit 1
+        }
+        if [ "$active_source" != "$target_source" ]; then
+            echo "$UUID is running from $active_source, not $TARGET_DIR; uninstall was not changed" >&2
             exit 1
         fi
     fi

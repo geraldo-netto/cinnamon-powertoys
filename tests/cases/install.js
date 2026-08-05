@@ -123,6 +123,7 @@ function scratch(options, body) {
             if (options.uninstallRuntime) {
                 let disabled = directory + "/disabled";
                 let settings = directory + "/enabled-applets";
+                let activePath = options.uninstallActivePath || target;
                 GLib.file_set_contents(bin + "/gsettings",
                     "#!/bin/sh\n" +
                     "if [ \"$1\" = get ]; then\n" +
@@ -131,8 +132,14 @@ function scratch(options, body) {
                 GLib.chmod(bin + "/gsettings", 0o700);
                 GLib.file_set_contents(bin + "/gdbus",
                     "#!/bin/sh\n" +
-                    "if [ -f '" + disabled + "' ]; then echo '(@as [],)';\n" +
-                    "else echo \"(['" + UUID + "'],)\"; fi\n");
+                    "case \"$*\" in\n" +
+                    "  *Eval*) echo \"(true, '\\\"" + activePath + "\\\"')\";;\n" +
+                    "  *GetRunningXletUUIDs*)\n" +
+                    (options.uninstallNotRunning ?
+                        "    echo '(@as [],)' ;;\n" :
+                        "    if [ -f '" + disabled + "' ]; then echo '(@as [],)';\n" +
+                        "    else echo \"(['" + UUID + "'],)\"; fi;;\n") +
+                    "esac\n");
                 GLib.chmod(bin + "/gdbus", 0o700);
                 options.enabledState = settings;
             }
@@ -338,6 +345,32 @@ cases["a live uninstall disables the applet before deleting it"] = function () {
         let enabled = read(options.enabledState);
         Harness.equal(enabled.indexOf(UUID), -1, "the stale panel entry was removed");
         Harness.ok(enabled.indexOf("menu@cinnamon.org") >= 0, "other applets were preserved");
+    });
+};
+
+cases["a prefix cannot disable the same UUID running from another source"] = function () {
+    let options = {
+        firstInstall: true,
+        uninstallRuntime: true,
+        uninstallActivePath: "/opt/other/share/cinnamon/applets/" + UUID,
+    };
+    scratch(options, tree => {
+        let outcome = uninstall(tree, true);
+        Harness.ok(outcome.status !== 0, "the mismatched active source aborts the uninstall");
+        Harness.equal(read(options.enabledState), null,
+                      "the foreign applet's panel setting was not changed");
+        Harness.ok(outcome.stderr.indexOf("is running from /opt/other/") >= 0,
+                   "the mismatch names the protected source: " + outcome.stderr);
+    });
+};
+
+cases["a stale panel entry is removed when no applet copy is running"] = function () {
+    let options = { firstInstall: true, uninstallRuntime: true, uninstallNotRunning: true };
+    scratch(options, tree => {
+        let outcome = uninstall(tree, true);
+        Harness.equal(outcome.status, 0, "stale cleanup does not require installed source");
+        Harness.equal(read(options.enabledState).indexOf(UUID), -1,
+                      "the stale UUID was removed from the panel setting");
     });
 };
 
