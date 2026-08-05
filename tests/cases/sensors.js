@@ -933,7 +933,7 @@ cases["an asynchronous reading with nothing to read still answers"] = function (
     });
 };
 
-cases["destroyed sensor reads do not publish new or late results"] = function () {
+cases["destroyed sensor reads reject new work and settle in-flight work"] = function () {
     let set = new Sensors.SensorSet();
     set.destroy();
     let answered = 0;
@@ -943,12 +943,15 @@ cases["destroyed sensor reads do not publish new or late results"] = function ()
     set = new Sensors.SensorSet();
     let original = IO.readStringsAsync;
     let finish = null;
+    let answers = [];
     IO.readStringsAsync = (paths, done) => { finish = done; };
     try {
-        set.readAsync(null, () => answered++);
+        set.readAsync(null, answer => answers.push(answer));
         set.destroy();
         finish({});
-        Harness.equal(answered, 0, "an in-flight read cannot publish after teardown");
+        finish({});
+        Harness.deepEqual(answers, [null],
+                          "an in-flight read settles once as unsuccessful after teardown");
     } finally {
         IO.readStringsAsync = original;
     }

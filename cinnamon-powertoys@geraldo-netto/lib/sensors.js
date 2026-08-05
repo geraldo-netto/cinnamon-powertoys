@@ -1264,12 +1264,21 @@ var SensorSet = class SensorSet {
          * past each other - an update deferred by an in-flight read finishing
          * after the next tick's sweep. Rare, and it costs one array of
          * references to make impossible.
-         */
+        */
         let found = this._lists();
-        IO.readStringsAsync(this._paths(keep, found), values => {
-            if (this._destroyed)
+        let finished = false;
+        let finish = answer => {
+            if (finished)
                 return;
-            onDone(this._assemble(keep, path => IO.toNumber(values[path]), found));
+            finished = true;
+            onDone(answer);
+        };
+        IO.readStringsAsync(this._paths(keep, found), values => {
+            if (this._destroyed) {
+                finish(null);
+                return;
+            }
+            finish(this._assemble(keep, path => IO.toNumber(values[path]), found));
         });
     }
 
