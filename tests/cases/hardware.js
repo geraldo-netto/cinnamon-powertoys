@@ -153,6 +153,25 @@ cases["an address that had nothing at it is asked about again"] = function () {
     }
 };
 
+cases["a replacement at one PCI address gets its own name"] = function () {
+    on("machine", function () {
+        Harness.equal(Hardware.pciDeviceNames(["0000:03:00.0"])["0000:03:00.0"],
+                      "Radeon RX 6600/6600 XT/6600M", "the original card is cached");
+        let originalReadString = IO.readString;
+        IO.readString = function (path) {
+            if (/\/0000:03:00\.0\/device$/.test(path))
+                return "0x164e";
+            return originalReadString(path);
+        };
+        try {
+            Harness.equal(Hardware.pciDeviceNames(["0000:03:00.0"])["0000:03:00.0"],
+                          "AMD Raphael", "new IDs invalidate the address's old name");
+        } finally {
+            IO.readString = originalReadString;
+        }
+    });
+};
+
 /* ---------------------------------------------------------------- */
 /* monitors                                                          */
 
@@ -302,10 +321,13 @@ cases["one address asked about twice is looked up once"] = function () {
             return real(path);
         };
         try {
-            let names = Hardware.pciDeviceNames(["03:00.0", "03:00.0", "03:00.0"]);
+            let names = Hardware.pciDeviceNames(
+                ["0000:03:00.0", "0000:03:00.0", "0000:03:00.0"]);
             Harness.equal(reads, 1, "the table was read once");
-            Harness.equal(Object.keys(names).length <= 1, true,
-                          "and one address is one answer");
+            Harness.equal(Object.keys(names).length, 1, "and one address is one answer");
+
+            Hardware.pciDeviceNames(["0000:03:00.0"]);
+            Harness.equal(reads, 1, "the same IDs reuse the resolved name");
         } finally {
             IO.readString = real;
         }

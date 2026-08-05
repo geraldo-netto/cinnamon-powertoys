@@ -10,9 +10,8 @@
  * The table is 1.4 MB and is wanted for a handful of devices, so it is never
  * split into lines: a vendor's entries are one contiguous block and finding
  * that block is a substring search. It is read at most once per resolution and
- * dropped again immediately, while the answers - a few dozen bytes - are kept
- * for the life of the applet, because a PCI address does not change its meaning
- * while the machine is running.
+ * dropped again immediately, while an answer - a few dozen bytes - is kept as
+ * long as the device IDs at that address still identify the same hardware.
  */
 
 const IO = require("./lib/io.js");
@@ -148,6 +147,24 @@ function _pciIds(address) {
     return _pciIdsFrom(address, IO.readString);
 }
 
+function _pciIdentity(ids) {
+    if (!ids)
+        return null;
+    return [ids.vendor, ids.device, ids.subVendor || "", ids.subDevice || ""].join(":");
+}
+
+function _cachedPciName(address, ids) {
+    let cached = _pciNames[address];
+    if (cached && cached.identity === _pciIdentity(ids))
+        return cached.name;
+    delete _pciNames[address];
+    return null;
+}
+
+function _rememberPciName(address, ids, name) {
+    _pciNames[address] = { identity: _pciIdentity(ids), name: name };
+}
+
 /*
  * One vendor's whole entry, from its own line to the line before the next
  * vendor. Vendor lines start at column zero; devices are indented by one tab
@@ -265,26 +282,29 @@ function _resolve(text, ids) {
  * than present and null, so a caller can ask with `names[address] ||
  * something-else`.
  *
- * Only the answers are remembered. That a device is called something is true
- * for as long as it is plugged in, and the caller asks again whenever the
- * hardware changes; that an address has no name is not a fact about hardware
- * at all - it is a fact about what happened to be at that address the last
- * time anyone looked, and an external card, a dock or a bus rescan makes it
- * wrong. Remembering the misses meant those kept the raw slot number for the
- * rest of the session. Not remembering them costs one read of the table per
- * rediscovery, which is what a rediscovery is for.
+ * Only answers tied to the four current PCI IDs are remembered. An external
+ * card, dock or bus rescan can put a different device at the same address;
+ * missing IDs and unresolved names are not cached.
  */
 function pciDeviceNames(addresses) {
     let names = {};
     let wanted = [];
+    let seen = new Set();
 
     for (let address of addresses) {
-        if (!address || names[address])
+        if (!address || seen.has(address))
             continue;
-        if (_pciNames[address])
-            names[address] = _pciNames[address];
-        else if (wanted.indexOf(address) < 0)
-            wanted.push(address);
+        seen.add(address);
+        let ids = _pciIds(address);
+        if (!ids) {
+            delete _pciNames[address];
+            continue;
+        }
+        let cached = _cachedPciName(address, ids);
+        if (cached)
+            names[address] = cached;
+        else
+            wanted.push({ address: address, ids: ids });
     }
 
     if (wanted.length === 0)
@@ -294,12 +314,11 @@ function pciDeviceNames(addresses) {
     if (!text)
         return names;
 
-    for (let address of wanted) {
-        let ids = _pciIds(address);
-        let name = ids ? _resolve(text, ids) : null;
+    for (let item of wanted) {
+        let name = _resolve(text, item.ids);
         if (name) {
-            _pciNames[address] = name;
-            names[address] = name;
+            _rememberPciName(item.address, item.ids, name);
+            names[item.address] = name;
         }
     }
     return names;
@@ -312,26 +331,19 @@ function pciDeviceNames(addresses) {
  */
 function machineNamesAsync(addresses, onDone) {
     let names = {};
-    let wanted = [];
+    let unique = [];
     for (let address of addresses) {
-        if (!address || names[address])
-            continue;
-        if (_pciNames[address])
-            names[address] = _pciNames[address];
-        else if (wanted.indexOf(address) < 0)
-            wanted.push(address);
+        if (address && unique.indexOf(address) < 0)
+            unique.push(address);
     }
 
     let paths = [];
     if (_cpuName === undefined)
         paths.push(CPUINFO);
-    if (wanted.length > 0) {
-        paths = paths.concat(PCI_IDS_PATHS);
-        for (let address of wanted) {
-            let base = PCI_DEVICE_DIR + "/" + address;
-            paths.push(base + "/vendor", base + "/device",
-                       base + "/subsystem_vendor", base + "/subsystem_device");
-        }
+    for (let address of unique) {
+        let base = PCI_DEVICE_DIR + "/" + address;
+        paths.push(base + "/vendor", base + "/device",
+                   base + "/subsystem_vendor", base + "/subsystem_device");
     }
 
     IO.readStringsAsync(paths, values => {
@@ -343,24 +355,44 @@ function machineNamesAsync(addresses, onDone) {
             _cpuName = tidyCpuName(raw);
         }
 
-        let table = null;
-        for (let path of PCI_IDS_PATHS) {
-            if (values[path]) {
-                table = values[path];
-                break;
+        let wanted = [];
+        for (let address of unique) {
+            let ids = _pciIdsFrom(address, path => values[path] || null);
+            if (!ids) {
+                delete _pciNames[address];
+                continue;
             }
+            let cached = _cachedPciName(address, ids);
+            if (cached)
+                names[address] = cached;
+            else
+                wanted.push({ address: address, ids: ids });
         }
-        if (table) {
-            for (let address of wanted) {
-                let ids = _pciIdsFrom(address, path => values[path] || null);
-                let name = ids ? _resolve(table, ids) : null;
-                if (name) {
-                    _pciNames[address] = name;
-                    names[address] = name;
+
+        if (wanted.length === 0) {
+            onDone({ cpuName: _cpuName, pciNames: names });
+            return;
+        }
+
+        IO.readStringsAsync(PCI_IDS_PATHS, tables => {
+            let table = null;
+            for (let path of PCI_IDS_PATHS) {
+                if (tables[path]) {
+                    table = tables[path];
+                    break;
                 }
             }
-        }
-        onDone({ cpuName: _cpuName, pciNames: names });
+            if (table) {
+                for (let item of wanted) {
+                    let name = _resolve(table, item.ids);
+                    if (!name)
+                        continue;
+                    _rememberPciName(item.address, item.ids, name);
+                    names[item.address] = name;
+                }
+            }
+            onDone({ cpuName: _cpuName, pciNames: names });
+        }, PCI_IDS_PATHS.length);
     });
 }
 
