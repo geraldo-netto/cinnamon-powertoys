@@ -369,6 +369,34 @@ cases["a daemon appearing is connected to, and one vanishing is let go"] = funct
     Harness.equal(changes, 2, "and told again");
 };
 
+cases["a name appearance during discovery restarts a failed search"] = function () {
+    let old = daemon();
+    let oldAvailable = false;
+    let newerReply = null;
+    let system = bus({});
+    system.proxy = function (backend, onDone) {
+        if (backend.name === HADESS) {
+            if (oldAvailable)
+                onDone(old, null);
+            else
+                onDone(null, new Error("not owned yet"));
+            return;
+        }
+        newerReply = onDone;
+    };
+
+    let client = new Profiles.PowerProfilesClient(null, system);
+    Harness.ok(newerReply, "the alternate backend attempt is in flight");
+
+    oldAvailable = true;
+    system.watched.find(entry => entry.name === HADESS).appeared();
+    Harness.equal(client.available, false, "the active search is allowed to settle first");
+
+    newerReply(null, new Error("alternate is absent"));
+    Harness.equal(client.busName, HADESS, "the remembered wake-up reruns preferred-first search");
+    Harness.equal(client.available, true, "the daemon that appeared is adopted");
+};
+
 cases["a vanished backend falls through to an existing alternate"] = function () {
     let daemons = { [HADESS]: daemon(), [UPOWER]: daemon({ active: "performance" }) };
     let system = bus(daemons);

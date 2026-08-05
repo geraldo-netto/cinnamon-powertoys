@@ -212,6 +212,7 @@ var PowerProfilesClient = class PowerProfilesClient {
         this.destroyed = false;
         /* A search for the daemon is under way; see _connect. */
         this._connecting = false;
+        this._connectPending = false;
         /* Built on demand and dropped whenever the daemon says anything has
          * changed - see snapshot(). */
         this._snapshot = null;
@@ -246,15 +247,31 @@ var PowerProfilesClient = class PowerProfilesClient {
      * once at startup.
      */
     _connect() {
-        if (this.destroyed || this._proxy || this._connecting)
+        if (this.destroyed || this._proxy)
             return;
+        if (this._connecting) {
+            /* Name watches are edges, not a state that will be repeated. If
+             * one fires while another backend is being tried, remember it so
+             * a failed search cannot consume the only wake-up. */
+            this._connectPending = true;
+            return;
+        }
+        this._connectPending = false;
         this._connecting = true;
         this._tryBackend(0);
     }
 
+    _finishConnectSearch() {
+        this._connecting = false;
+        if (this._connectPending) {
+            this._connectPending = false;
+            this._connect();
+        }
+    }
+
     _tryBackend(index) {
         if (index >= BACKENDS.length) {
-            this._connecting = false;
+            this._finishConnectSearch();
             return;
         }
 
@@ -265,6 +282,7 @@ var PowerProfilesClient = class PowerProfilesClient {
             this._bus.proxy(backend, (proxy, error) => {
                 if (this.destroyed) {
                     this._connecting = false;
+                    this._connectPending = false;
                     return;
                 }
                 /*
@@ -278,6 +296,7 @@ var PowerProfilesClient = class PowerProfilesClient {
                 }
 
                 this._connecting = false;
+                this._connectPending = false;
                 this._proxy = proxy;
                 this.busName = backend.name;
                 this.busPath = backend.path;
@@ -461,6 +480,7 @@ var PowerProfilesClient = class PowerProfilesClient {
         /* A search may still be out on the bus; what it finds is no longer
          * wanted, the same way a probe in flight is disowned in lib/ddc.js. */
         this.destroyed = true;
+        this._connectPending = false;
         let call = this._setCall;
         this._setCall = null;
         this._setQueued = null;
