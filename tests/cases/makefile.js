@@ -1,7 +1,10 @@
 /* Project operations that are declarative Make recipes rather than loadable
  * code. Hold their ordering to the safety property the command depends on. */
 
+const GLib = imports.gi.GLib;
 const Harness = imports.harness;
+
+const Privileged = Harness.requireXlet("./lib/privileged.js");
 
 var cases = {};
 
@@ -31,4 +34,36 @@ cases["RAPL install describes live sensor discovery"] = function () {
     Harness.ok(makefile.indexOf("looks for these counters once") < 0 &&
                readme.indexOf("looks for\nthem once") < 0,
                "the obsolete startup-only instruction is gone");
+};
+
+function stagedRapl(group) {
+    let directory = GLib.dir_make_tmp("powertoys-rapl-stage-XXXXXX");
+    try {
+        return Harness.settle(done => Privileged._spawn(
+            ["make", "-s", "install-rapl", "DESTDIR=" + directory,
+             "RAPL_GROUP=" + group],
+            (status, stderr) => {
+                let rule = null;
+                if (status === 0)
+                    rule = Harness.readFile(directory +
+                        "/etc/udev/rules.d/99-cinnamon-powertoys-rapl.rules");
+                done({ status: status, stderr: stderr, rule: rule });
+            }),
+            "staged RAPL rule");
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
+    }
+}
+
+cases["a staged RAPL rule accepts a target-only group"] = function () {
+    let outcome = stagedRapl("powertoys-target-only-pt225");
+    Harness.equal(outcome.status, 0, "the build host needs no matching account");
+    Harness.ok(outcome.rule.indexOf("/usr/bin/chgrp powertoys-target-only-pt225") >= 0,
+               "the validated target group is written into the staged rule");
+};
+
+cases["a staged RAPL rule rejects unsafe group syntax"] = function () {
+    let outcome = stagedRapl("bad/group");
+    Harness.ok(outcome.status !== 0, "a value that would corrupt the rule is rejected");
 };

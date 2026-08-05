@@ -106,7 +106,11 @@ uninstall-policy:
 install-rapl:
 	@[ -n "$(DESTDIR)" ] || [ "$$(id -u)" = 0 ] || \
 		{ echo "needs root: sudo make install-rapl"; exit 1; }
-	@getent group $(RAPL_GROUP) >/dev/null || \
+	@case "$(RAPL_GROUP)" in \
+		""|*[!A-Za-z0-9_-]*) echo "invalid group name: $(RAPL_GROUP)"; exit 1;; \
+		*) :;; \
+	esac
+	@[ -n "$(DESTDIR)" ] || getent group "$(RAPL_GROUP)" >/dev/null || \
 		{ echo "no such group: $(RAPL_GROUP)"; exit 1; }
 	@install -d "$(RAPL_DIR)"
 	@sed 's/@GROUP@/$(RAPL_GROUP)/g' "udev/$(RAPL_RULE)" > "$(RAPL_DIR)/$(RAPL_RULE)"
