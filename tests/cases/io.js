@@ -417,6 +417,27 @@ cases["readability metadata is queried without reading contents"] = function () 
     });
 };
 
+cases["readability metadata batches do not sample node contents"] = function () {
+    let attributes = [];
+    let factory = () => ({
+        query_info_async: function (requested, flags, priority, token, onDone) {
+            attributes.push(requested);
+            onDone(this, {});
+        },
+        query_info_finish: () => ({
+            get_attribute_boolean: name => name === "access::can-read",
+        }),
+    });
+    let values = Harness.settle(done =>
+        IO.pathsReadableAsync(["/energy", "/power"], done, 1, factory),
+        "readability metadata batch");
+
+    Harness.deepEqual(values, { "/energy": true, "/power": true },
+                      "each access answer is retained");
+    Harness.deepEqual(attributes, ["access::can-read", "access::can-read"],
+                      "only access metadata is requested");
+};
+
 function asyncDirectory(options) {
     let settings = options || {};
     let batches = (settings.batches || [[]]).slice();

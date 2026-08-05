@@ -304,6 +304,29 @@ function pathsExistAsync(paths, onDone, concurrency, fileFactory, options) {
     }, options);
 }
 
+/* Readability for a bounded batch, without sampling the nodes themselves. */
+function pathsReadableAsync(paths, onDone, concurrency, fileFactory, options) {
+    return _batchAsync(paths, onDone, concurrency, false,
+        (path, cancellable, settle) => {
+        try {
+            let file = fileFactory ? fileFactory(resolve(path))
+                                   : Gio.File.new_for_path(resolve(path));
+            file.query_info_async(
+                "access::can-read", Gio.FileQueryInfoFlags.NONE,
+                GLib.PRIORITY_DEFAULT, cancellable, (file, result) => {
+                    try {
+                        let info = file.query_info_finish(result);
+                        settle(info.get_attribute_boolean("access::can-read"));
+                    } catch (e) {
+                        settle(false);
+                    }
+                });
+        } catch (e) {
+            settle(false);
+        }
+    }, options);
+}
+
 function exists(path) {
     return GLib.file_test(resolve(path), GLib.FileTest.EXISTS);
 }

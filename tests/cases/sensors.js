@@ -753,6 +753,31 @@ cases["asynchronous topology checks never use synchronous filesystem calls"] = f
     });
 };
 
+cases["asynchronous topology checks do not sample powercap counters"] = function () {
+    on("machine", function () {
+        let set = Harness.settle(function (done) {
+            let created = new Sensors.SensorSet({ asynchronous: true,
+                                                  onChanged: () => done(created) });
+        }, "initial sensor discovery");
+        let original = IO.readStringsAsync;
+        let sampled = [];
+        IO.readStringsAsync = function (paths, done, concurrency, factory, options) {
+            sampled = sampled.concat(paths.filter(path =>
+                /\/(?:energy_uj|power_uw)$/.test(path)));
+            return original(paths, done, concurrency, factory, options);
+        };
+        try {
+            Harness.equal(Harness.settle(done => set.refresh(done),
+                                         "metadata-only topology check"), false,
+                          "the unchanged topology remains current");
+            Harness.deepEqual(sampled, [], "moving counter contents are never requested");
+        } finally {
+            IO.readStringsAsync = original;
+            set.destroy();
+        }
+    });
+};
+
 cases["overlapping asynchronous refreshes settle after a newer topology check"] = function () {
     on("machine", function () {
         let set = Harness.settle(function (done) {

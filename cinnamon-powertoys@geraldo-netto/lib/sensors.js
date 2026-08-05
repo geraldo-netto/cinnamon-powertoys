@@ -776,6 +776,17 @@ function _powercapTopology(entries, readable) {
     }).join(",");
 }
 
+function _powercapAccessPaths(entries) {
+    let paths = [];
+    for (let entry of entries) {
+        if (!/^(intel-rapl|amd-rapl|dtpm)/.test(entry))
+            continue;
+        let base = POWERCAP_DIR + "/" + entry;
+        paths.push(base + "/energy_uj", base + "/power_uw");
+    }
+    return paths;
+}
+
 function _nestedTopology(directories, root) {
     return (directories[root] || []).map(entry => {
         let base = root + "/" + entry;
@@ -783,7 +794,7 @@ function _nestedTopology(directories, root) {
     }).join(",");
 }
 
-function _topologyFromInventory(directories, readString, readLink) {
+function _topologyFromInventory(directories, readString, readLink, canRead) {
     let powercap = directories[POWERCAP_DIR] || [];
     let metadata = _metadataPaths(directories)
         /* The counter value moves continuously; only whether it can be read
@@ -794,7 +805,7 @@ function _topologyFromInventory(directories, readString, readLink) {
     return JSON.stringify([
         _nestedTopology(directories, HWMON_DIR),
         _nestedTopology(directories, THERMAL_DIR),
-        _powercapTopology(powercap, path => readString(path) !== null),
+        _powercapTopology(powercap, canRead || (path => readString(path) !== null)),
         metadata,
         links,
     ]);
@@ -808,14 +819,17 @@ function topologyKeyAsync(onDone, ioOptions) {
     _directoryInventoryAsync(directories => {
         let metadata = null;
         let links = null;
+        let access = null;
         let finish = () => {
-            if (metadata === null || links === null)
+            if (metadata === null || links === null || access === null)
                 return;
             let read = path => metadata[path] === undefined ? null : metadata[path];
             let readLink = path => links[path] === undefined ? null : links[path];
-            onDone(_topologyFromInventory(directories, read, readLink));
+            let readable = path => access[path] === true;
+            onDone(_topologyFromInventory(directories, read, readLink, readable));
         };
-        IO.readStringsAsync(_metadataPaths(directories), values => {
+        IO.readStringsAsync(_metadataPaths(directories).filter(path =>
+            !/\/(?:energy_uj|power_uw)$/.test(path)), values => {
             metadata = values;
             finish();
         }, 32, null, ioOptions);
@@ -823,6 +837,11 @@ function topologyKeyAsync(onDone, ioOptions) {
             links = values;
             finish();
         }, 32, null, ioOptions);
+        IO.pathsReadableAsync(_powercapAccessPaths(directories[POWERCAP_DIR] || []),
+            values => {
+                access = values;
+                finish();
+            }, 32, null, ioOptions);
     }, ioOptions);
 }
 
@@ -832,12 +851,14 @@ function discoverSnapshotAsync(onDone, ioOptions) {
     _directoryInventoryAsync(directories => {
         let metadata = null;
         let links = null;
+        let access = null;
         let finish = () => {
-            if (metadata === null || links === null)
+            if (metadata === null || links === null || access === null)
                 return;
             let values = metadata;
             let read = path => values[path] === undefined ? null : values[path];
             let readLink = path => links[path] === undefined ? null : links[path];
+            let readable = path => access[path] === true;
             let scanned = _scanSensors(directories, read, readLink);
             let addresses = scanned.groups.map(group => group.pciAddress);
             Hardware.machineNamesAsync(addresses, names => {
@@ -847,7 +868,7 @@ function discoverSnapshotAsync(onDone, ioOptions) {
                     counters: _energyCounters(directories[POWERCAP_DIR] || [], read),
                     directPowers: _directPowercapSensors(
                         directories[POWERCAP_DIR] || [], read),
-                    topology: _topologyFromInventory(directories, read, readLink),
+                    topology: _topologyFromInventory(directories, read, readLink, readable),
                 });
             }, ioOptions);
         };
@@ -859,6 +880,11 @@ function discoverSnapshotAsync(onDone, ioOptions) {
             links = values;
             finish();
         }, 32, null, ioOptions);
+        IO.pathsReadableAsync(_powercapAccessPaths(directories[POWERCAP_DIR] || []),
+            values => {
+                access = values;
+                finish();
+            }, 32, null, ioOptions);
     }, ioOptions);
 }
 
@@ -1038,7 +1064,7 @@ var SensorSet = class SensorSet {
      */
     _topologyKey() {
         let directories = _directoryInventory();
-        return _topologyFromInventory(directories, IO.readString, IO.readLink);
+        return _topologyFromInventory(directories, IO.readString, IO.readLink, IO.canRead);
     }
 
     /*
