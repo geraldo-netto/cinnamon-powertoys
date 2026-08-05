@@ -343,11 +343,16 @@ cases["a monitor that stops answering stops being available"] = function () {
 };
 
 cases["more monitors than there are sliders is said rather than hidden"] = function () {
-    let each = started(detectMany(Ddc.MAX_DISPLAYS + 2), 0);
-    Harness.equal(each.control.limit, Ddc.MAX_DISPLAYS,
-                  "the applied cap travels with the backend view state");
-    Harness.equal(each.control.monitors.length, Ddc.MAX_DISPLAYS, "the cap holds");
-    Harness.equal(each.control.hidden, 2, "and the two over it are counted");
+    logging(function (lines) {
+        let each = started(detectMany(Ddc.MAX_DISPLAYS + 2), 0);
+        Harness.equal(each.control.limit, Ddc.MAX_DISPLAYS,
+                      "the applied cap travels with the backend view state");
+        Harness.equal(each.control.monitors.length, Ddc.MAX_DISPLAYS, "the cap holds");
+        Harness.equal(each.control.hidden, 2, "and the two over it are counted");
+        each.control.redetect();
+        Harness.equal(each.control.hidden, 2, "the repeated probe retains the UI notice");
+        Harness.deepEqual(lines, [], "a supported display cap is not an error");
+    });
 };
 
 cases["under the cap nothing is reported as hidden"] = function () {
@@ -1399,7 +1404,7 @@ cases["output that no text can hold is an answer too"] = function () {
     Harness.equal(outcome.status, -1, "and a failure of its own");
 };
 
-cases["a monitor that never answers is given up on, once"] = function () {
+cases["a monitor that never answers is given up on without repeated logs"] = function () {
     /*
      * ddcutil hangs where a monitor accepts the connection and then says
      * nothing, which is what a display asleep on a KVM does. Without the timer
@@ -1412,17 +1417,20 @@ cases["a monitor that never answers is given up on, once"] = function () {
      */
     logging(function (lines) {
         let answers = [];
-        let outcome = hurried(10, () => Harness.settle(done => Ddc.runCommand(
-            ["sleep", "30"], function (output, status) {
-                answers.push(status);
-                done({ output: output, status: status });
-            }), "a command that never answers"));
+        for (let attempt = 0; attempt < 2; attempt++) {
+            let outcome = hurried(10, () => Harness.settle(done => Ddc.runCommand(
+                ["sleep", "30"], function (output, status) {
+                    answers.push(status);
+                    done({ output: output, status: status });
+                }), "a command that never answers"));
 
-        Harness.equal(outcome.status, -1, "given up on");
-        Harness.equal(outcome.output, "", "with nothing to parse");
-        Harness.equal(answers.length, 1, "and answered exactly once");
-        Harness.ok(lines.join("\n").indexOf("did not answer in time") >= 0,
-                   "and said so: " + lines.join("\n"));
+            Harness.equal(outcome.status, -1, "given up on");
+            Harness.equal(outcome.output, "", "with nothing to parse");
+        }
+        Harness.deepEqual(answers, [-1, -1], "each command still answers exactly once");
+        Harness.equal(lines.length, 1, "the continuous timeout is logged once");
+        Harness.ok(lines[0].indexOf("did not answer in time") >= 0,
+                   "and said why: " + lines[0]);
     });
 };
 

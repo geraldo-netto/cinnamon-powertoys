@@ -53,6 +53,11 @@ var MAX_DISPLAYS = 10;
 var MISSING_CONFIRMATIONS = 2;
 var FAILURE_GRACE = 3;
 
+/* A timeout belongs to the command that reached one monitor, not to DDC as a
+ * whole: another display answering between retries must not make a sleeping
+ * one look like a fresh failure every second. */
+let _commandFailures = new Log.FailureLog();
+
 /*
  * Runs a command and hands back its output. Gio.Subprocess rather than
  * Cinnamon's spawn helpers, so this module stays loadable outside the shell,
@@ -63,6 +68,7 @@ function runCommand(argv, onDone) {
     let done = false;
     let timeoutId = 0;
     let process;
+    let failureKey = "timeout:" + argv.join("\u0000");
 
     function finish(output, status) {
         if (done)
@@ -85,13 +91,15 @@ function runCommand(argv, onDone) {
         process.init(null);
     } catch (error) {
         /* ddcutil is not installed, which is the ordinary case. */
+        _commandFailures.recover(failureKey);
         finish("", -1);
         return;
     }
 
     timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, CALL_TIMEOUT_MS, () => {
         timeoutId = 0;
-        Log.error("ddcutil did not answer in time, giving up on it");
+        _commandFailures.report(
+            failureKey, "ddcutil did not answer in time, giving up on it");
         try {
             process.force_exit();
         } catch (e) {
@@ -102,6 +110,8 @@ function runCommand(argv, onDone) {
     });
 
     process.communicate_utf8_async(null, null, (source, result) => {
+        if (!done)
+            _commandFailures.recover(failureKey);
         try {
             let [, stdout] = source.communicate_utf8_finish(result);
             /* A process that was killed never exited, and asking one for an
@@ -844,9 +854,6 @@ var DdcBacklight = class DdcBacklight {
             this._missingSignature = null;
             this._missingConfirmations = 0;
             this.hidden = Math.max(0, found.length - MAX_DISPLAYS);
-            if (this.hidden > 0)
-                Log.error("more than " + MAX_DISPLAYS + " monitors answered DDC/CI; " +
-                          this.hidden + " of them have no slider");
 
             this.monitors = this._adopt(visible);
             if (this.monitors.length === 0) {
