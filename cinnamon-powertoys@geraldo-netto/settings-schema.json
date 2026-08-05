@@ -209,6 +209,11 @@
         "default": false,
         "description": "Notify on high temperature"
     },
+    "high-temp-threshold-section": {
+        "type": "section",
+        "description": "High temperature threshold",
+        "dependency": "notify-high-temp"
+    },
     "high-temp-threshold": {
         "type": "spinbutton",
         "default": 90,

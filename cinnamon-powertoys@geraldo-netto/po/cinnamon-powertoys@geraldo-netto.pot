@@ -891,6 +891,10 @@ msgstr ""
 msgid "Notify on high temperature"
 msgstr ""
 
+#. settings-schema.json->high-temp-threshold-section->description
+msgid "High temperature threshold"
+msgstr ""
+
 #. settings-schema.json->high-temp-threshold->units
 msgid "°C"
 msgstr ""

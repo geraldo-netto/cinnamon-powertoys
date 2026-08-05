@@ -128,6 +128,20 @@ cases["disabling privileged writes keeps the charge limit readable"] = function 
                "permission controls only whether it can be changed");
 };
 
+cases["temperature thresholds require both the alert and their unit"] = function () {
+    let schema = JSON.parse(readFile(Harness.xletDir() + "/settings-schema.json"));
+    let keys = Object.keys(schema);
+    let section = schema["high-temp-threshold-section"];
+    Harness.equal(section.dependency, "notify-high-temp",
+                  "the threshold section follows the notification switch");
+    Harness.ok(keys.indexOf("high-temp-threshold-section") < keys.indexOf("high-temp-threshold"),
+               "both threshold rows are inside that dependent section");
+    Harness.equal(schema["high-temp-threshold"].dependency, "temp-unit=celsius",
+                  "the Celsius row still follows its unit");
+    Harness.equal(schema["high-temp-threshold-fahrenheit"].dependency, "temp-unit=fahrenheit",
+                  "the Fahrenheit row still follows its unit");
+};
+
 cases["the primary sensor documentation names every primary kind"] = function () {
     let schema = JSON.parse(readFile(Harness.xletDir() + "/settings-schema.json"));
     let tooltip = schema["show-all-sensors"].tooltip;
