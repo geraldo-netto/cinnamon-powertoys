@@ -482,6 +482,56 @@ cases["overlapping CPU refreshes settle from a newer discovery"] = function () {
     }
 };
 
+cases["an asynchronous sample refreshes only live CPU values"] = function () {
+    try {
+        Hardware.forget();
+        IO.setRoot(Harness.fixture("machine"));
+        let cpu = Harness.settle(function (done) {
+            let created = new Cpu.CpuControl(() => {}, {
+                asynchronous: true,
+                onChanged: () => done(created),
+            });
+        }, "initial asynchronous CPU discovery");
+        let readStrings = IO.readStringsAsync;
+        let sampled = [];
+        IO.readStringsAsync = function (paths, done) {
+            sampled = paths.slice();
+            let values = {};
+            for (let path of paths) {
+                if (/scaling_governor$/.test(path))
+                    values[path] = "performance";
+                else if (/energy_performance_preference$/.test(path))
+                    values[path] = "performance";
+                else if (/cpuinfo_avg_freq$/.test(path))
+                    values[path] = /policy0/.test(path) ? "1000000" : "3000000";
+                else if (/scaling_cur_freq$/.test(path))
+                    values[path] = "4000000";
+                else
+                    values[path] = "0";
+            }
+            done(values);
+        };
+        try {
+            let after = Harness.settle(done => cpu.sample(() => done(cpu.snapshot())),
+                                       "live CPU sample");
+            Harness.equal(after.governor, "performance", "the current governor is replaced");
+            Harness.equal(after.energyPreference, "performance", "the current EPP is replaced");
+            Harness.equal(after.boostEnabled, false, "the current boost value is replaced");
+            Harness.near(after.averageFrequency, 2000, 0.001, "policy frequencies are replaced");
+            Harness.ok(sampled.length > 0, "live nodes were read");
+            Harness.equal(sampled.some(path => /scaling_driver$/.test(path)), false,
+                          "the scaling topology was not rediscovered");
+            Harness.equal(sampled.some(path => /cpuinfo_max_freq$/.test(path)), false,
+                          "the fixed ceiling was not reread");
+        } finally {
+            IO.readStringsAsync = readStrings;
+            cpu.destroy();
+        }
+    } finally {
+        release();
+    }
+};
+
 cases["one policy is a machine, not half of one"] = function () {
     /*
      * Plenty of machines expose a single cpufreq policy for every core - an

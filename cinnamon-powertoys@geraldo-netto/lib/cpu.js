@@ -67,6 +67,7 @@ var CpuControl = class CpuControl {
         this._refreshing = false;
         this._refreshPending = false;
         this._refreshWaiters = [];
+        this._stateGeneration = 0;
         this._destroyed = false;
 
         this.policies = [];
@@ -225,31 +226,13 @@ var CpuControl = class CpuControl {
             let raw = read(path);
             return raw ? raw.split(/\s+/) : [];
         };
-        let agreed = (targets, node) => {
-            if (targets.length === 0)
-                return null;
-            let answers = targets.map(path => read(path + "/" + node));
-            if (answers.some(value => value === null))
-                return null;
-            return answers.every(value => value === answers[0]) ? answers[0] : null;
-        };
-
         let energyPolicies = policies.filter(policy =>
             existence[policy + "/energy_performance_preference"]);
         let maximum = null;
-        let total = 0;
-        let count = 0;
         for (let policy of policies) {
             let max = IO.toNumber(read(policy + "/cpuinfo_max_freq"));
             if (max !== null && max > 0 && (maximum === null || max > maximum))
                 maximum = max;
-            let current = IO.toNumber(read(policy + "/cpuinfo_avg_freq"));
-            if (current === null)
-                current = IO.toNumber(read(policy + "/scaling_cur_freq"));
-            if (current !== null) {
-                total += current;
-                count++;
-            }
         }
 
         let boostPath = null;
@@ -260,9 +243,7 @@ var CpuControl = class CpuControl {
             boostPath = CPU_DIR + "/intel_pstate/no_turbo";
             boostInverted = true;
         }
-        let boostValue = boostPath ? IO.toNumber(read(boostPath)) : null;
-
-        return {
+        return Object.assign({
             policies: policies,
             reference: policies.length > 0 ? policies[0] : null,
             driver: policies.length > 0 ? read(policies[0] + "/scaling_driver") : null,
@@ -276,6 +257,44 @@ var CpuControl = class CpuControl {
             maxFrequency: maximum,
             boostPath: boostPath,
             boostInverted: boostInverted,
+        }, this._dynamicFrom(policies, energyPolicies, boostPath, boostInverted, read));
+    }
+
+    _dynamicPaths(policies, energyPolicies, boostPath) {
+        let paths = [];
+        for (let policy of policies)
+            paths.push(policy + "/scaling_governor",
+                       policy + "/cpuinfo_avg_freq",
+                       policy + "/scaling_cur_freq");
+        for (let policy of energyPolicies)
+            paths.push(policy + "/energy_performance_preference");
+        if (boostPath)
+            paths.push(boostPath);
+        return paths;
+    }
+
+    _dynamicFrom(policies, energyPolicies, boostPath, boostInverted, read) {
+        let agreed = (targets, node) => {
+            if (targets.length === 0)
+                return null;
+            let answers = targets.map(path => read(path + "/" + node));
+            if (answers.some(value => value === null))
+                return null;
+            return answers.every(value => value === answers[0]) ? answers[0] : null;
+        };
+        let total = 0;
+        let count = 0;
+        for (let policy of policies) {
+            let current = IO.toNumber(read(policy + "/cpuinfo_avg_freq"));
+            if (current === null)
+                current = IO.toNumber(read(policy + "/scaling_cur_freq"));
+            if (current !== null) {
+                total += current;
+                count++;
+            }
+        }
+        let boostValue = boostPath ? IO.toNumber(read(boostPath)) : null;
+        return {
             governor: agreed(policies, "scaling_governor"),
             energyPreference: agreed(energyPolicies, "energy_performance_preference"),
             boostEnabled: boostValue === null ? null
@@ -285,6 +304,7 @@ var CpuControl = class CpuControl {
     }
 
     _adopt(state) {
+        this._stateGeneration++;
         this.policies = state.policies;
         this.reference = state.reference;
         this.driver = state.driver;
@@ -300,6 +320,46 @@ var CpuControl = class CpuControl {
         this._energyPreference = state.energyPreference;
         this._boostEnabled = state.boostEnabled;
         this._averageFrequency = state.averageFrequency;
+    }
+
+    _adoptDynamic(state) {
+        this._governor = state.governor;
+        this._energyPreference = state.energyPreference;
+        this._boostEnabled = state.boostEnabled;
+        this._averageFrequency = state.averageFrequency;
+    }
+
+    /* Read only values that move between topology discoveries. The policy
+     * lists and paths are captured together, and a full refresh invalidates
+     * the answer if it adopts a different machine while these reads are in
+     * flight. */
+    sample(onDone) {
+        let done = onDone || function () {};
+        if (!this._asynchronous) {
+            done(true);
+            return;
+        }
+        if (this._destroyed) {
+            done(false);
+            return;
+        }
+
+        let generation = this._stateGeneration;
+        let policies = this.policies.slice();
+        let energyPolicies = this.energyPolicies.slice();
+        let boostPath = this.boostPath;
+        let boostInverted = this.boostInverted;
+        let paths = this._dynamicPaths(policies, energyPolicies, boostPath);
+        IO.readStringsAsync(paths, values => {
+            if (this._destroyed || generation !== this._stateGeneration) {
+                done(false);
+                return;
+            }
+            let read = path => values[path] === undefined ? null : values[path];
+            this._adoptDynamic(this._dynamicFrom(
+                policies, energyPolicies, boostPath, boostInverted, read));
+            done(true);
+        }, 32);
     }
 
     get available() {
@@ -423,6 +483,7 @@ var CpuControl = class CpuControl {
 
     destroy() {
         this._destroyed = true;
+        this._stateGeneration++;
         this._refreshPending = false;
         this._refreshWaiters = [];
     }

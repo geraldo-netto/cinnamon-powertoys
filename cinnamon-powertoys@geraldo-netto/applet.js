@@ -2301,7 +2301,12 @@ class PowerToysApplet extends Applet.TextIconApplet {
     /* Answers exactly once, with the reading or with null when there is not
      * one. The caller has an in-flight flag riding on that promise. */
     _collect(onDone) {
-        this._sensors.readAsync(this._sensorFilter(), readings => {
+        let readings = null;
+        let sensorsReady = false;
+        let cpuReady = false;
+        let finish = () => {
+            if (!sensorsReady || !cpuReady)
+                return;
             let data = null;
             try {
                 data = this._assemble(readings);
@@ -2309,6 +2314,16 @@ class PowerToysApplet extends Applet.TextIconApplet {
                 Log.error("collection failed: " + error);
             }
             onDone(data);
+        };
+
+        this._sensors.readAsync(this._sensorFilter(), answer => {
+            readings = answer;
+            sensorsReady = true;
+            finish();
+        });
+        this._cpu.sample(() => {
+            cpuReady = true;
+            finish();
         });
     }
 
@@ -2316,10 +2331,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * The sensor readings, and everything else that describes the machine,
      * put side by side.
      *
-     * The other backends answer from memory - UPower and the profile daemon
-     * from their proxies, the processor from a snapshot of files small enough
-     * and hot enough that reading them costs tens of microseconds. The sensors
-     * were the part that could block, and they arrive here already read.
+     * The other backends answer from memory. UPower and the profile daemon
+     * keep their proxies current; processor and sensor nodes were loaded
+     * concurrently off the main loop and arrive here as coherent snapshots.
      */
     _assemble(readings) {
         let upower = this._upower.read();
