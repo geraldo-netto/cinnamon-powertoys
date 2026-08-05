@@ -185,15 +185,16 @@ function run(argv, environment) {
  * A mutant that breaks a callback does not fail a case, it stops one
  * answering - and the harness waits five seconds before calling that a
  * failure. At one whole suite run per mutant, that is the difference between
- * a run somebody makes and a run somebody means to make one day. Half a second
- * is far longer than anything here legitimately takes; the cases that talk to
- * a real daemon keep the generous default in an ordinary run.
+ * a run somebody makes and a run somebody means to make one day. One second
+ * leaves room for the live install rollback's two applet reloads while the
+ * outer timeout still catches a callback that will never arrive; cases that
+ * talk to a real daemon keep the generous default in an ordinary run.
  */
 function environmentWith(xletDir) {
     return GLib.get_environ()
         .filter(entry => entry.indexOf("POWERTOYS_XLET_DIR=") !== 0 &&
                          entry.indexOf("POWERTOYS_SETTLE_MS=") !== 0)
-        .concat(["POWERTOYS_XLET_DIR=" + xletDir, "POWERTOYS_SETTLE_MS=500"]);
+        .concat(["POWERTOYS_XLET_DIR=" + xletDir, "POWERTOYS_SETTLE_MS=1000"]);
 }
 
 function sourceFiles() {
@@ -253,7 +254,9 @@ if (files.length === 0)
  */
 let work = GLib.dir_make_tmp("powertoys-mutate-XXXXXX");
 let copy = work + "/" + UUID;
-for (let part of [UUID, "tests", "tools"]) {
+/* Tests also inspect these root fixtures. Keep the manifest explicit so the
+ * isolated baseline proves the same project that the ordinary suite proves. */
+for (let part of [UUID, "tests", "tools", "install.sh", "Makefile", "README.md"]) {
     if (run(["cp", "-r", ROOT + "/" + part, work + "/" + part], null) !== 0) {
         printerr("could not copy " + part + " to " + work);
         System.exit(2);
