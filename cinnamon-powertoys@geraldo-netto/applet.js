@@ -1226,11 +1226,9 @@ class MenuPresenter {
          * offer, the same way every other group in this menu hides, and
          * _updateCharge asks the reading rather than the constructor.
          */
-        let chargeSection = new PopupMenu.PopupMenuSection();
-        menu.addMenuItem(chargeSection);
-        this._chargeGroup = new SelectorGroup(chargeSection, limit => limit + "%",
-                                              value => this._actions.setChargeLimit(value),
-                                              _("Charge limit"));
+        this._chargeLimitControl = new ChoiceControl(
+            menu, _("Charge limit"), limit => limit + "%",
+            value => this._actions.setChargeLimit(value));
 
         /*
          * Where the batteries have been set apart by something else there
@@ -1566,16 +1564,21 @@ class MenuPresenter {
          * asked of the reading rather than of what was true when the menu was
          * built: a dock or a bay battery arrives after that, and the applet
          * looks again. An empty list clears the group, which is how it hides. */
-        let show = data.chargeLimitAvailable && options.privileged && !options.busy;
-        this._chargeGroup.sync(show ? CHARGE_LIMITS : [], data.chargeLimit);
+        let show = data.chargeLimitAvailable;
+        let editable = options.privileged && !options.busy;
+        this._chargeLimitControl.sync(show ? CHARGE_LIMITS : [], data.chargeLimit,
+                                      editable, show);
         let note = "";
-        if (data.chargeLimitState === "divided")
-            note = _("The batteries have different limits; choosing one sets all batteries.");
-        else if (data.chargeLimitState === "incomplete")
-            note = _("Some battery limits could not be read; choosing one sets all batteries.");
+        if (data.chargeLimitState === "divided") {
+            note = editable
+                ? _("The batteries have different limits; choosing one sets all batteries.")
+                : _("The batteries have different charge limits.");
+        } else if (data.chargeLimitState === "incomplete") {
+            note = editable
+                ? _("Some battery limits could not be read; choosing one sets all batteries.")
+                : _("Some battery limits could not be read.");
+        }
         this._chargeStateRow.setText(note);
-        /* With no selector beside it, this sentence promises an action that
-         * is not on screen. Busy or disabled controls therefore hide it too. */
         this._chargeStateRow.actor.visible = show && note !== "";
     }
 }
@@ -2371,9 +2374,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
      *
      * It is deliberately a live read rather than something remembered: the
      * firmware and other tools change it too. But it appears in one place -
-     * the device panel, behind the privileged controls - so with the menu shut
-     * or those controls off there is nobody it could be read for, and it was
-     * the last reading in the poll still being taken regardless.
+     * the device panel - so with the menu shut there is nobody it could be
+     * read for, and it was the last reading in the poll still being taken
+     * regardless.
      *
      * Opening the menu re-reads before anything is drawn, so what is on screen
      * is never the value from the last time the menu happened to be open. That
@@ -2387,7 +2390,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * reported whatever the menu is doing; the value is what costs a read
          * and is only worth taking while somebody could be looking at it. */
         let available = !!this._chargeControl;
-        if (!available || !this.enablePrivilegedControls)
+        if (!available)
             return { available: available, limit: null, state: null, divided: false };
         if (!this.menu || !this.menu.isOpen)
             return { available: available, limit: null, state: null, divided: false };

@@ -111,6 +111,23 @@ cases["the privileged setting names every gated control"] = function () {
                "the firmware profile is named among the gated writes");
 };
 
+cases["disabling privileged writes keeps the charge limit readable"] = function () {
+    let source = readFile(Harness.xletDir() + "/applet.js");
+    let readStart = source.indexOf("    _readChargeLimit() {");
+    let readEnd = source.indexOf("\n    }", readStart);
+    let read = source.slice(readStart, readEnd);
+    Harness.ok(read.indexOf("enablePrivilegedControls") < 0,
+               "the read is not gated by write permission");
+
+    let updateStart = source.indexOf("    _updateCharge(data, options) {");
+    let updateEnd = source.indexOf("\n    }", updateStart);
+    let update = source.slice(updateStart, updateEnd);
+    Harness.ok(update.indexOf("let show = data.chargeLimitAvailable") >= 0,
+               "availability controls visibility");
+    Harness.ok(update.indexOf("let editable = options.privileged && !options.busy") >= 0,
+               "permission controls only whether it can be changed");
+};
+
 cases["the primary sensor documentation names every primary kind"] = function () {
     let schema = JSON.parse(readFile(Harness.xletDir() + "/settings-schema.json"));
     let tooltip = schema["show-all-sensors"].tooltip;
