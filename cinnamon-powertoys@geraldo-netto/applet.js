@@ -391,13 +391,22 @@ class NoteRow extends PopupMenu.PopupBaseMenuItem {
     _init(text) {
         super._init.call(this, { reactive: false });
         this.actor.add_style_class_name("powertoys-note");
-        this._label = new St.Label({ text: text });
+        /* The child alone receives pointer events for the tooltip. The row
+         * remains non-reactive and cannot become a menu action or keyboard
+         * stop merely because its complete sentence is available on hover. */
+        this._label = new St.Label({ text: text, reactive: true, track_hover: true });
+        this._label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         this._label.add_style_class_name("powertoys-note-text");
         this.addActor(this._label, { span: -1, expand: true });
+        this.tooltip = new Tooltips.Tooltip(this._label, text);
+        this.actor.set_accessible_name(text || "");
     }
 
     setText(text) {
-        this._label.set_text(text || "");
+        text = text || "";
+        this._label.set_text(text);
+        this.tooltip.set_text(text);
+        this.actor.set_accessible_name(text);
     }
 
     getColumnWidths() {

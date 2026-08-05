@@ -61,3 +61,18 @@ cases["visual group titles expose heading semantics"] = function () {
     Harness.ok(source.indexOf("heading.actor.set_accessible_name(value || \"\")") >= 0,
                "renamed sensor headings synchronize their accessible name");
 };
+
+cases["clipped notes preserve their complete text"] = function () {
+    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let start = source.indexOf("class NoteRow ");
+    let note = source.slice(start, source.indexOf("\nclass DeviceRow", start));
+    Harness.ok(start >= 0 && note.length > 0, "the note row is present");
+    Harness.ok(note.indexOf("Pango.EllipsizeMode.END") >= 0,
+               "clipping is shown with an ellipsis");
+    Harness.ok(note.indexOf("new Tooltips.Tooltip(this._label, text)") >= 0,
+               "the complete text is available to the pointer");
+    Harness.ok(note.indexOf("this.actor.set_accessible_name(text)") >= 0,
+               "updated text remains available to assistive technology");
+    Harness.ok(note.indexOf("super._init.call(this, { reactive: false })") >= 0,
+               "the informational row stays outside the interactive focus order");
+};
