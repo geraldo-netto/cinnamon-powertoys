@@ -107,6 +107,30 @@ function bus(daemons) {
     return stub;
 }
 
+/* A production-shaped name watcher: each registration immediately reports
+ * whether its name is currently owned. This is the contract Gio documents
+ * and the optimization under test; the simpler bus() intentionally retains
+ * the integration fallback where watchers only report later edges. */
+function ownerBus(daemons) {
+    let system = bus(daemons);
+    let originalProxy = system.proxy;
+    system.watchReportsInitialState = true;
+    system.asked = [];
+    system.proxy = function (backend, onDone, cancellable) {
+        system.asked.push(backend.name);
+        originalProxy(backend, onDone, cancellable);
+    };
+    system.watch = function (name, onAppeared, onVanished) {
+        system.watched.push({ name: name, appeared: onAppeared, vanished: onVanished });
+        if (Object.prototype.hasOwnProperty.call(daemons, name))
+            onAppeared();
+        else
+            onVanished();
+        return system.watched.length;
+    };
+    return system;
+}
+
 var cases = {};
 
 cases["the daemon is found under either of the two names"] = function () {
@@ -117,6 +141,39 @@ cases["the daemon is found under either of the two names"] = function () {
     let recent = new Profiles.PowerProfilesClient(null, bus({ [UPOWER]: daemon() }));
     Harness.equal(recent.available, true, "0.20 and newer");
     Harness.equal(recent.busName, UPOWER, "under the name it moved to");
+};
+
+cases["only names reported as owned are probed at startup"] = function () {
+    let recentBus = ownerBus({ [UPOWER]: daemon() });
+    let recent = new Profiles.PowerProfilesClient(null, recentBus);
+    Harness.deepEqual(recentBus.asked, [UPOWER], "the absent legacy name costs no proxy call");
+    Harness.equal(recent.busName, UPOWER, "the owned backend is selected");
+
+    let noneBus = ownerBus({});
+    let none = new Profiles.PowerProfilesClient(null, noneBus);
+    Harness.deepEqual(noneBus.asked, [], "no owner means no blind D-Bus probes");
+    Harness.equal(none.available, false, "and the result remains unavailable");
+
+    recent.destroy();
+    none.destroy();
+};
+
+cases["the highest-priority owned profile name wins"] = function () {
+    let daemons = { [HADESS]: daemon(), [UPOWER]: daemon({ active: "performance" }) };
+    let system = ownerBus(daemons);
+    let client = new Profiles.PowerProfilesClient(null, system);
+
+    Harness.deepEqual(system.asked, [HADESS], "one successful preferred proxy is enough");
+    Harness.equal(client.busName, HADESS, "the established priority is preserved");
+
+    delete daemons[HADESS];
+    system.watched.find(entry => entry.name === HADESS).vanished();
+    Harness.equal(client.busName, UPOWER, "owner loss falls through to the live alternate");
+
+    daemons[HADESS] = daemon({ active: "power-saver" });
+    system.watched.find(entry => entry.name === HADESS).appeared();
+    Harness.equal(client.busName, HADESS, "a returning preferred owner replaces the fallback");
+    client.destroy();
 };
 
 cases["a name that offers no profiles is passed over"] = function () {
@@ -251,6 +308,17 @@ cases["a hold names the application and the profile it is holding"] = function (
                       "each field out of its own variant");
 };
 
+cases["a hold with an absent field is still readable"] = function () {
+    let client = new Profiles.PowerProfilesClient(null, bus({
+        [HADESS]: daemon({ holds: [{ ApplicationId: null,
+                                     Profile: variant("performance"), Reason: null }] }),
+    }));
+    Harness.deepEqual(client.holds,
+                      [{ application: "", profile: "performance", reason: "" }],
+                      "null is absence, not a variant to unpack");
+    client.destroy();
+};
+
 cases["degraded falls back to inhibited"] = function () {
     let newer = new Profiles.PowerProfilesClient(null, bus({
         [HADESS]: daemon({ degraded: "lap-detected", inhibited: "high-operating-temperature" }),
@@ -362,9 +430,79 @@ cases["an in-flight profile write is cancelled at teardown"] = function () {
     client.setProfile("performance", () => completions++);
 
     client.destroy();
-    Harness.equal(system.cancellables[0].cancelled, true, "the D-Bus call is cancelled");
+    Harness.equal(system.cancellables[system.cancellables.length - 1].cancelled, true,
+                  "the D-Bus call is cancelled");
     finish(new Error("cancelled"));
     Harness.equal(completions, 0, "its late callback cannot reach the removed applet");
+};
+
+cases["an in-flight proxy search is cancelled at teardown"] = function () {
+    let system = ownerBus({ [HADESS]: daemon() });
+    let finish = null;
+    let token = null;
+    system.proxy = function (backend, onDone, cancellable) {
+        system.asked.push(backend.name);
+        finish = onDone;
+        token = cancellable;
+    };
+    let client = new Profiles.PowerProfilesClient(null, system);
+
+    Harness.ok(token, "the proxy initialization owns a cancellable");
+    client.destroy();
+    Harness.equal(token.cancelled, true, "teardown stops the pending bus work");
+    finish(daemon(), null);
+    Harness.equal(client.available, false, "the cancelled answer is not adopted");
+};
+
+cases["owner replacement cancels the old profile proxy search"] = function () {
+    let daemons = { [HADESS]: daemon() };
+    let system = ownerBus(daemons);
+    let oldFinish = null;
+    let oldToken = null;
+    system.proxy = function (backend, onDone, cancellable) {
+        system.asked.push(backend.name);
+        if (backend.name === HADESS) {
+            oldFinish = onDone;
+            oldToken = cancellable;
+        } else {
+            onDone(daemons[backend.name], null);
+        }
+    };
+    let client = new Profiles.PowerProfilesClient(null, system);
+
+    delete daemons[HADESS];
+    system.watched.find(entry => entry.name === HADESS).vanished();
+    Harness.equal(oldToken.cancelled, true, "the vanished owner's search is cancelled");
+
+    daemons[UPOWER] = daemon({ active: "performance" });
+    system.watched.find(entry => entry.name === UPOWER).appeared();
+    Harness.equal(client.busName, UPOWER, "the replacement owner is connected");
+    oldFinish(daemon({ active: "power-saver" }), null);
+    Harness.equal(client.busName, UPOWER, "the obsolete late answer cannot replace it");
+    client.destroy();
+};
+
+cases["daemon loss cancels and settles profile writes"] = function () {
+    let daemons = { [HADESS]: daemon() };
+    let system = ownerBus(daemons);
+    let finish = null;
+    system.setProperty = function (name, path, property, value, cancellable, onDone) {
+        finish = onDone;
+    };
+    let client = new Profiles.PowerProfilesClient(null, system);
+    let outcome = null;
+    client.setProfile("performance", error => { outcome = error; });
+    let writeToken = system.cancellables[system.cancellables.length - 1];
+
+    delete daemons[HADESS];
+    system.watched.find(entry => entry.name === HADESS).vanished();
+    Harness.equal(writeToken.cancelled, true, "the old owner's call is cancelled");
+    Harness.ok(outcome && outcome.message, "the caller is told the daemon disappeared");
+
+    let settled = outcome;
+    finish(null);
+    Harness.equal(outcome, settled, "the late cancellation reply cannot settle twice");
+    client.destroy();
 };
 
 cases["a daemon appearing is connected to, and one vanishing is let go"] = function () {
@@ -426,6 +564,21 @@ cases["a vanished backend falls through to an existing alternate"] = function ()
     system.watched.find(entry => entry.name === HADESS).vanished();
     Harness.equal(client.busName, UPOWER, "the already-owned alternate is selected");
     Harness.equal(client.active, "performance", "and supplies the live reading");
+};
+
+cases["a proxy without a property handler disconnects cleanly"] = function () {
+    let stub = daemon();
+    stub.connect = function () { return 0; };
+    stub.disconnected = [];
+    stub.disconnect = id => stub.disconnected.push(id);
+    let daemons = { [HADESS]: stub };
+    let system = ownerBus(daemons);
+    let client = new Profiles.PowerProfilesClient(null, system);
+
+    delete daemons[HADESS];
+    system.watched.find(entry => entry.name === HADESS).vanished();
+    Harness.deepEqual(stub.disconnected, [], "zero is no signal registration to release");
+    client.destroy();
 };
 
 cases["the daemon's version is the daemon's, and there is none without one"] = function () {
