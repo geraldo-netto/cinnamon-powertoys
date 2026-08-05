@@ -397,7 +397,21 @@ function listDir(path) {
 function listDirAsync(path, onDone, fileFactory, options) {
     let names = [];
     let enumerator = null;
+    let closeStarted = false;
+    let closeCancelled = handle => {
+        if (!handle || closeStarted)
+            return;
+        closeStarted = true;
+        try {
+            handle.close(null);
+        } catch (e) {
+            /* already closed, or cancellation made the provider fail */
+        }
+        if (enumerator === handle)
+            enumerator = null;
+    };
     let operation = _asyncOperation(() => {
+        closeCancelled(enumerator);
         onDone(names.sort(naturalCompare));
     }, options);
 
@@ -406,6 +420,11 @@ function listDirAsync(path, onDone, fileFactory, options) {
             onDone(names.sort(naturalCompare));
     };
     let close = handle => {
+        if (!handle || closeStarted) {
+            finish();
+            return;
+        }
+        closeStarted = true;
         try {
             handle.close_async(GLib.PRIORITY_DEFAULT, operation.cancellable,
                 (source, result) => {
@@ -414,9 +433,13 @@ function listDirAsync(path, onDone, fileFactory, options) {
                 } catch (e) {
                     /* The listing is still useful when closing reports an error. */
                 }
+                if (enumerator === handle)
+                    enumerator = null;
                 finish();
             });
         } catch (e) {
+            if (enumerator === handle)
+                enumerator = null;
             finish();
         }
     };
@@ -429,12 +452,15 @@ function listDirAsync(path, onDone, fileFactory, options) {
         directory.enumerate_children_async(
             "standard::name", Gio.FileQueryInfoFlags.NONE,
             GLib.PRIORITY_DEFAULT, operation.cancellable, (source, result) => {
-                if (!operation.active)
-                    return;
                 try {
                     enumerator = source.enumerate_children_finish(result);
                 } catch (e) {
-                    finish();
+                    if (operation.active)
+                        finish();
+                    return;
+                }
+                if (!operation.active) {
+                    closeCancelled(enumerator);
                     return;
                 }
 

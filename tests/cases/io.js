@@ -421,6 +421,10 @@ function asyncDirectory(options) {
     let settings = options || {};
     let batches = (settings.batches || [[]]).slice();
     let enumerator = {
+        close: function () {
+            if (settings.onClose)
+                settings.onClose();
+        },
         next_files_async: function (count, priority, cancellable, onDone) {
             if (settings.throwNext)
                 throw new Error("cannot ask for entries");
@@ -505,6 +509,48 @@ cases["an asynchronous listing deadline settles an unresponsive directory"] = fu
     Harness.deepEqual(value, [], "a stalled listing becomes the best partial listing");
     Harness.equal(cancelled, 1, "the enumeration is cancelled");
     Harness.equal(answers, 1, "the listing settles exactly once");
+};
+
+cases["cancelling an open asynchronous listing closes its enumerator once"] = function () {
+    let next = null;
+    let closed = 0;
+    let answers = 0;
+    let directory = asyncDirectory({ onClose: () => closed++ });
+    directory.enumerate_children_finish = function () {
+        let handle = asyncDirectory({ onClose: () => closed++ })
+            .enumerate_children_finish();
+        handle.next_files_async = function (count, priority, token, onDone) {
+            next = () => onDone(this, {});
+        };
+        return handle;
+    };
+    let operation = IO.listDirAsync("/open", () => answers++, () => directory,
+        { addTimeout: () => 19, removeTimeout: () => {} });
+
+    operation.cancel();
+    operation.cancel();
+    next();
+    Harness.equal(closed, 1, "the acquired handle is closed exactly once");
+    Harness.equal(answers, 1, "cancellation settles exactly once");
+};
+
+cases["a listing opened by a late cancellation reply is still closed"] = function () {
+    let enumerate = null;
+    let closed = 0;
+    let handle = asyncDirectory({ onClose: () => closed++ })
+        .enumerate_children_finish();
+    let directory = {
+        enumerate_children_async: function (attributes, flags, priority, token, onDone) {
+            enumerate = () => onDone(this, {});
+        },
+        enumerate_children_finish: () => handle,
+    };
+    let operation = IO.listDirAsync("/late", () => {}, () => directory,
+        { addTimeout: () => 23, removeTimeout: () => {} });
+
+    operation.cancel();
+    enumerate();
+    Harness.equal(closed, 1, "the late handle is closed after cancellation");
 };
 
 cases["asking for no nodes at all still answers"] = function () {
