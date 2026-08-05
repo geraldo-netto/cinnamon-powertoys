@@ -10,6 +10,7 @@
 const GLib = imports.gi.GLib;
 const Harness = imports.harness;
 const Loader = imports.loader;
+const Translate = Harness.requireXlet("./lib/gettext.js");
 
 /* The file tools/loader.js claims to copy. Absent on anything that is not a
  * Cinnamon desktop, which includes the runner. */
@@ -407,7 +408,7 @@ cases["profile announcements wait for matching success"] = function () {
     let notices = [];
     let callbacks = [];
     let stepProfile = Function(
-        "Reading", "Profiles", "Main", "_", "Format",
+        "Reading", "Profiles", "Main", "_", "Format", "Translate",
         "return function (step, wrap, announce) {" + match[1] + "\n};")({
         shownProfile: () => "balanced",
     }, {
@@ -416,7 +417,7 @@ cases["profile announcements wait for matching success"] = function () {
         notify: (title, body) => notices.push([title, body]),
     }, text => text, {
         profileLabel: name => name,
-    });
+    }, Translate);
     let applet = {
         _profileState: () => ({ list: ["balanced", "performance"] }),
         _latest: {},

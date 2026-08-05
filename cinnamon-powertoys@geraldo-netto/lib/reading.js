@@ -50,7 +50,9 @@ function powerText(data) {
     if (data.systemWatts === null)
         return "";
     let label = powerSourceLabel(data.systemWattsSource);
-    return Format.watts(data.systemWatts) + (label ? " (" + label + ")" : "");
+    let power = Format.watts(data.systemWatts);
+    return label ? Translate.interpolate(_("%{power} (%{source})"),
+        { power: power, source: label }) : power;
 }
 
 /*
@@ -137,13 +139,16 @@ function profileCanChange(data, privileged) {
 function describeChange(args) {
     switch (args[0]) {
         case "governor":
-            return _("Governor") + ": " + Format.governorLabel(args[1]);
+            return Translate.interpolate(_("Governor: %{governor}"),
+                { governor: Format.governorLabel(args[1]) });
         case "epp":
-            return _("Energy preference") + ": " + Format.energyPreferenceLabel(args[1]);
+            return Translate.interpolate(_("Energy preference: %{preference}"),
+                { preference: Format.energyPreferenceLabel(args[1]) });
         case "boost":
             return String(args[1]) === "1" ? _("Turbo boost on") : _("Turbo boost off");
         case "charge-threshold":
-            return _("Charge limit") + ": " + args[1] + "%";
+            return Translate.interpolate(_("Charge limit: %{limit}"),
+                { limit: args[1] + "%" });
         default:
             return "";
     }

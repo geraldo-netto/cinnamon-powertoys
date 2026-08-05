@@ -850,7 +850,8 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
         this.addActor(row, { span: -1, expand: true });
 
         this.actor.set_accessible_role(Atk.Role.SLIDER);
-        this.actor.set_accessible_name(_("Brightness") + ": " + label);
+        this.actor.set_accessible_name(Translate.interpolate(
+            _("Brightness: %{display}"), { display: label }));
         this._accessible = this.actor.get_accessible();
         /* Slider accessibles also implement Atk.Action, whose set_description
          * takes an action index before the text. Name Atk.Object explicitly so
@@ -885,7 +886,8 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
         this._control = control;
         this._name = label;
         this._label.set_text(label);
-        this.actor.set_accessible_name(_("Brightness") + ": " + label);
+        this.actor.set_accessible_name(Translate.interpolate(
+            _("Brightness: %{display}"), { display: label }));
         this._showValue();
     }
 
@@ -906,8 +908,11 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
     _showValue() {
         let percentage = this._control.percentage;
         this._reading.set_text(percentage === null ? "" : percentage + "%");
-        this.tooltip.set_text(percentage === null ? this._name
-                                                  : this._name + ": " + percentage + "%");
+        this.tooltip.set_text(percentage === null ? this._name : Translate.interpolate(
+            _("%{display}: %{percentage}"), {
+                display: this._name,
+                percentage: percentage + "%",
+            }));
         if (percentage !== null)
             this._accessible.accessible_value = percentage;
     }
@@ -3071,7 +3076,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
             if (announce && !error)
                 this._notifications.notify(
                     _("Power Toys"),
-                    _("Power profile") + ": " + Format.profileLabel(name));
+                    Translate.interpolate(_("Power profile: %{profile}"),
+                        { profile: Format.profileLabel(name) }));
         }))
             return false;
         return true;

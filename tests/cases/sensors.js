@@ -140,6 +140,18 @@ cases["a tidied label is text, not a replacement pattern"] = function () {
     });
 };
 
+cases["die sensor tokens keep their complete translated labels"] = function () {
+    let entries = Sensors._finalizeNames([
+        { rawLabel: "Tccd", chip: "k10temp", measure: "temperature", siblings: 1, index: 1 },
+        { rawLabel: "Tdie", chip: "k10temp", measure: "temperature", siblings: 1, index: 2 },
+    ]);
+
+    Harness.deepEqual(entries.map(entry => entry.short), [
+        "Core die (Tccd)",
+        "Measured die (Tdie)",
+    ], "each complete sensor phrase preserves the driver's matching token");
+};
+
 cases["everything one chip says stays together, in kind order"] = function () {
     on("machine", function () {
         let found = Sensors.discoverSensors();

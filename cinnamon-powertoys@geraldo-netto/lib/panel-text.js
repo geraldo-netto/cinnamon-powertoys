@@ -151,7 +151,8 @@ function powerStatusLabel(data) {
 function powerStatusTooltip(data) {
     if (!data.upowerAvailable)
         return _("Power status unavailable");
-    return _("Power source") + ": " + (data.onBattery ? _("Battery") : "AC");
+    return Translate.interpolate(_("Power source: %{source}"),
+        { source: data.onBattery ? _("Battery") : "AC" });
 }
 
 /* A section of the tooltip, separated from the one before it and indented so
@@ -178,7 +179,8 @@ function deviceStatus(device) {
 
 function namedStatus(name, device) {
     let status = deviceStatus(device);
-    return name + (status ? ": " + status : "");
+    return status ? Translate.interpolate(_("%{name}: %{status}"),
+        { name: name, status: status }) : name;
 }
 
 /*
@@ -193,11 +195,14 @@ function namedStatus(name, device) {
 function consumptionEntries(data) {
     let entries = [];
     if (data.systemWattsSource === "battery" && data.systemWatts !== null)
-        entries.push(_("Whole system (battery)") + ": " + Format.watts(data.systemWatts));
+        entries.push(Translate.interpolate(_("Whole system (battery): %{power}"),
+            { power: Format.watts(data.systemWatts) }));
     if (data.systemWattsSource === "platform" && data.systemWatts !== null)
-        entries.push(_("Platform total (DTPM)") + ": " + Format.watts(data.systemWatts));
+        entries.push(Translate.interpolate(_("Platform total (DTPM): %{power}"),
+            { power: Format.watts(data.systemWatts) }));
     if (data.packageWatts !== undefined && data.packageWatts !== null)
-        entries.push(_("Processor package total") + ": " + Format.watts(data.packageWatts));
+        entries.push(Translate.interpolate(_("Processor package total: %{power}"),
+            { power: Format.watts(data.packageWatts) }));
 
     let meters = (data.powers || []).filter(meter =>
         (meter.kind === "cpu" || meter.kind === "gpu") && meter.watts !== null);
@@ -211,8 +216,10 @@ function consumptionEntries(data) {
         let name = meter.groupLabel || meter.label ||
                    (meter.kind === "gpu" ? _("Graphics") : _("Processor"));
         if (counts[group] > 1 && meter.shortLabel)
-            name += " — " + meter.shortLabel;
-        entries.push(name + ": " + Format.watts(meter.watts));
+            name = Translate.interpolate(_("%{name} — %{detail}"),
+                { name: name, detail: meter.shortLabel });
+        entries.push(Translate.interpolate(_("%{name}: %{power}"),
+            { name: name, power: Format.watts(meter.watts) }));
     }
     return entries;
 }
@@ -221,9 +228,11 @@ function performanceEntries(data, options) {
     let entries = [];
     let profile = Reading.shownProfile(data, options);
     if (profile)
-        entries.push(_("Profile") + ": " + Format.profileLabel(profile));
+        entries.push(Translate.interpolate(_("Profile: %{profile}"),
+            { profile: Format.profileLabel(profile) }));
     if (data.cpu.governor)
-        entries.push(_("Governor") + ": " + Format.governorLabel(data.cpu.governor));
+        entries.push(Translate.interpolate(_("Governor: %{governor}"),
+            { governor: Format.governorLabel(data.cpu.governor) }));
 
     let current = Format.frequency(data.cpu.averageFrequency);
     let maximum = Format.frequency(data.cpu.maxFrequency);
@@ -233,11 +242,15 @@ function performanceEntries(data, options) {
     if (maximum)
         processor.push(_("maximum %s").replace("%s", maximum));
     if (processor.length > 0)
-        entries.push(_("Processor") + ": " + processor.join(" · "));
+        entries.push(Translate.interpolate(_("Processor: %{details}"),
+            { details: processor.join(" · ") }));
     if (data.selectedTemperature) {
         let sensor = data.selectedTemperature;
         let source = sensor.label || sensor.groupLabel || _("Temperature");
-        entries.push(source + ": " + Format.temperature(sensor.celsius, options.tempUnit, 1));
+        entries.push(Translate.interpolate(_("%{source}: %{temperature}"), {
+            source: source,
+            temperature: Format.temperature(sensor.celsius, options.tempUnit, 1),
+        }));
     }
     return entries;
 }
@@ -247,8 +260,11 @@ function performanceEntries(data, options) {
  * display battery on most machines; the physical batteries remain devices of
  * their own here, as they are in the menu. */
 function deviceEntries(data) {
-    let entries = (data.lines || []).map(line =>
-        Format.deviceTitle(line) + ": " + (line.online ? _("Connected") : _("Disconnected")));
+    let entries = (data.lines || []).map(line => Translate.interpolate(
+        _("%{device}: %{state}"), {
+            device: Format.deviceTitle(line),
+            state: line.online ? _("Connected") : _("Disconnected"),
+        }));
     for (let device of data.devices || [])
         entries.push(namedStatus(Format.deviceTitle(device), device));
     return entries;

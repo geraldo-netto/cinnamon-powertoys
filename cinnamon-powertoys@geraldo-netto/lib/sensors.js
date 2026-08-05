@@ -208,10 +208,14 @@ function deviceIdentity(base, readLink) {
  * the driver's own capitals.
  */
 const SHORT_LABELS = [
-    [/^tccd(\d+)$/i, match => _("Core die") + " " + match[1] + " (" + match[0] + ")"],
-    [/^tccd$/i, match => _("Core die") + " (" + match[0] + ")"],
-    [/^tdie$/i, match => _("Measured die") + " (" + match[0] + ")"],
-    [/^tctl$/i, match => _("Cooling control") + " (" + match[0] + ")"],
+    [/^tccd(\d+)$/i, match => Translate.interpolate(
+        _("Core die %{number} (%{token})"), { number: match[1], token: match[0] })],
+    [/^tccd$/i, match => Translate.interpolate(
+        _("Core die (%{token})"), { token: match[0] })],
+    [/^tdie$/i, match => Translate.interpolate(
+        _("Measured die (%{token})"), { token: match[0] })],
+    [/^tctl$/i, match => Translate.interpolate(
+        _("Cooling control (%{token})"), { token: match[0] })],
     [/^edge$/i, () => _("Die edge")],
     [/^junction$/i, () => _("Hotspot")],
     [/^mem$/i, () => _("Memory")],
