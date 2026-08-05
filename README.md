@@ -56,12 +56,12 @@ monitor sliders while UPower reports its lid closed, hides the unusable built-in
 screen slider, and switches back when the lid opens. Each monitor is named for
 the one it moves: make and model out of the EDID, the socket appended where two
 monitors are the same model. Up to ten, and past that a line saying so rather
-than nothing. Monitors are looked for
-when the desktop says a connector changed, and once a second while you are
-actually looking at the applet — the menu open, or the pointer resting on the
-icon — because a monitor that was asleep, switched on without a hotplug event
-or slow to answer produces no signal at all and would otherwise have no slider
-for the rest of the session. Never on the poll, never while nobody is looking,
+than nothing. Monitors are looked for when the desktop says a connector
+changed, once when the pointer first rests on the icon, and once a second while
+the menu is open. The hover probe warms the list for a possible menu open but
+does not start recurring I2C traffic. These extra probes find a monitor that
+was asleep, switched on without a hotplug event or slow to answer and therefore
+produced no signal at all. Never on the poll, never while nobody is looking,
 and never while a laptop's built-in screen is usable: probing spawns `ddcutil`,
 talks to every display on the I2C bus and wakes a sleeping one. If UPower cannot
 report a closed lid, the applet keeps the conservative built-in-screen path.
