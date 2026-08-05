@@ -830,7 +830,7 @@ cases["destroyed sensor sets reject synchronous and asynchronous discovery"] = f
     Harness.deepEqual(set.temperatureSensors, [], "the destroyed snapshot remains empty");
 };
 
-cases["overlapping sensor discoveries replay once and settle every waiter"] = function () {
+cases["overlapping sensor discoveries settle callers from their own generation"] = function () {
     let original = IO.listDirAsync;
     let pending = [];
     IO.listDirAsync = (path, done) => pending.push(() => done([]));
@@ -853,6 +853,8 @@ cases["overlapping sensor discoveries replay once and settle every waiter"] = fu
                 answer();
         }, "the first overlapping sensor discovery");
         Harness.equal(pending.length, 3, "the overlap becomes one replay");
+        Harness.deepEqual(answers, [true],
+                          "the first caller settles from the snapshot it requested");
         Harness.settle(done => {
             set._onChanged = () => {
                 changes++;
@@ -861,7 +863,8 @@ cases["overlapping sensor discoveries replay once and settle every waiter"] = fu
             for (let answer of pending.splice(0))
                 answer();
         }, "the replayed sensor discovery");
-        Harness.deepEqual(answers, [true, true], "both callers settle from completed discovery");
+        Harness.deepEqual(answers, [true, true],
+                          "the overlapping caller settles only after its replay");
         Harness.equal(changes, 2, "each completed coherent snapshot is announced");
         set.destroy();
     } finally {

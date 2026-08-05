@@ -960,6 +960,7 @@ var SensorSet = class SensorSet {
         this._discovering = false;
         this._discoverAgain = false;
         this._discoverWaiters = [];
+        this._discoverNextWaiters = [];
         this._refreshing = false;
         this._refreshPending = false;
         this._refreshChanged = false;
@@ -985,12 +986,17 @@ var SensorSet = class SensorSet {
     discoverAsync(onDone) {
         if (this._destroyed)
             return;
-        if (onDone)
-            this._discoverWaiters.push(onDone);
         if (this._discovering) {
+            /* This caller arrived after the current inventory began. Its
+             * promise belongs to the replay that observes everything up to
+             * this request, not to the older snapshot already in flight. */
+            if (onDone)
+                this._discoverNextWaiters.push(onDone);
             this._discoverAgain = true;
             return;
         }
+        if (onDone)
+            this._discoverWaiters.push(onDone);
         this._discovering = true;
         discoverSnapshotAsync(snapshot => {
             if (this._destroyed)
@@ -1005,6 +1011,7 @@ var SensorSet = class SensorSet {
 
             if (this._discoverAgain) {
                 this._discoverAgain = false;
+                this._discoverWaiters = this._discoverNextWaiters.splice(0);
                 this.discoverAsync();
             } else if (this._refreshPending && !this._refreshing) {
                 /* A refresh requested during discovery checks the completed
@@ -1340,6 +1347,7 @@ var SensorSet = class SensorSet {
         this._discovering = false;
         this._discoverAgain = false;
         this._discoverWaiters = [];
+        this._discoverNextWaiters = [];
         this._refreshing = false;
         this._refreshPending = false;
         this._refreshChanged = false;
