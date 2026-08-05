@@ -74,21 +74,35 @@ function readNumber(path) {
  * is missing, root-only or busy is an ordinary state here and not a failure.
  * It is called exactly once, including for an empty list.
  */
-function readStringsAsync(paths, onDone) {
+function readStringsAsync(paths, onDone, concurrency) {
     let values = {};
     let outstanding = paths.length;
+    let nextPath = 0;
+    let active = 0;
+    let limit = Math.max(1, concurrency || paths.length);
 
     if (outstanding === 0) {
         onDone(values);
         return;
     }
 
-    for (let path of paths) {
+    let start = () => {
+        while (active < limit && nextPath < paths.length) {
+            let path = paths[nextPath++];
+            active++;
+            load(path);
+        }
+    };
+
+    let load = path => {
         let settle = contents => {
             values[path] = contents;
+            active--;
             outstanding--;
             if (outstanding === 0)
                 onDone(values);
+            else
+                start();
         };
 
         try {
@@ -103,7 +117,8 @@ function readStringsAsync(paths, onDone) {
         } catch (e) {
             settle(null);
         }
-    }
+    };
+    start();
 }
 
 /*
@@ -200,4 +215,71 @@ function listDir(path) {
         return [];
     }
     return _drain(enumerator).sort(naturalCompare);
+}
+
+/*
+ * The same directory listing without making Cinnamon's main loop wait for the
+ * filesystem. Entries arrive in bounded batches: a machine with a crowded
+ * hwmon tree yields between batches instead of monopolising the compositor.
+ */
+function listDirAsync(path, onDone) {
+    let names = [];
+    let directory = Gio.File.new_for_path(resolve(path));
+
+    let finish = () => onDone(names.sort(naturalCompare));
+    let close = enumerator => {
+        try {
+            enumerator.close_async(GLib.PRIORITY_DEFAULT, null, (source, result) => {
+                try {
+                    source.close_finish(result);
+                } catch (e) {
+                    /* The listing is still useful when closing reports an error. */
+                }
+                finish();
+            });
+        } catch (e) {
+            finish();
+        }
+    };
+
+    try {
+        directory.enumerate_children_async(
+            "standard::name", Gio.FileQueryInfoFlags.NONE,
+            GLib.PRIORITY_DEFAULT, null, (source, result) => {
+                let enumerator;
+                try {
+                    enumerator = source.enumerate_children_finish(result);
+                } catch (e) {
+                    finish();
+                    return;
+                }
+
+                let next = () => {
+                    try {
+                        enumerator.next_files_async(64, GLib.PRIORITY_DEFAULT, null,
+                            (files, nextResult) => {
+                                let entries;
+                                try {
+                                    entries = files.next_files_finish(nextResult);
+                                } catch (e) {
+                                    close(enumerator);
+                                    return;
+                                }
+                                if (!entries || entries.length === 0) {
+                                    close(enumerator);
+                                    return;
+                                }
+                                for (let info of entries)
+                                    names.push(info.get_name());
+                                next();
+                            });
+                    } catch (e) {
+                        close(enumerator);
+                    }
+                };
+                next();
+            });
+    } catch (e) {
+        finish();
+    }
 }

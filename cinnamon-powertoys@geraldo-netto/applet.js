@@ -146,7 +146,10 @@ const CHARGE_LIMITS = [60, 70, 80, 90, 95, 100];
  */
 function defaultBackends() {
     return {
-        sensors: () => new Sensors.SensorSet(),
+        sensors: onChanged => new Sensors.SensorSet({
+            asynchronous: true,
+            onChanged: onChanged,
+        }),
         cpuControl: runner => new Cpu.CpuControl(runner),
         chargeControl: runner => PowerSupply.discoverChargeControl(runner),
         platformProfileClient: runner => new PowerSupply.PlatformProfileClient(runner),
@@ -1690,7 +1693,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
             path => this._backends.fileExists(path),
             path => this._ensureExecutable(path));
 
-        this._sensors = this._backends.sensors();
+        /* Discovery opens many metadata files and may load pci.ids. The
+         * backend keeps its prior complete snapshot while doing that work and
+         * asks for a new reading only after the replacement is ready. */
+        this._sensors = this._backends.sensors(() => this._scheduleUpdate());
         this._cpu = this._backends.cpuControl((args, onDone) => this._runHelper(args, onDone));
         this._chargeControl = null;
         this._rediscoverChargeControl();

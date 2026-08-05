@@ -125,10 +125,10 @@ function pciAddressIn(path) {
     return found ? found[found.length - 1].toLowerCase() : null;
 }
 
-function _pciIds(address) {
+function _pciIdsFrom(address, readString) {
     let base = PCI_DEVICE_DIR + "/" + address;
     let read = node => {
-        let raw = IO.readString(base + "/" + node);
+        let raw = readString(base + "/" + node);
         let match = raw && /^0x([0-9a-f]{4})$/i.exec(raw.trim());
         return match ? match[1].toLowerCase() : null;
     };
@@ -142,6 +142,10 @@ function _pciIds(address) {
         subVendor: read("subsystem_vendor"),
         subDevice: read("subsystem_device"),
     };
+}
+
+function _pciIds(address) {
+    return _pciIdsFrom(address, IO.readString);
 }
 
 /*
@@ -299,6 +303,65 @@ function pciDeviceNames(addresses) {
         }
     }
     return names;
+}
+
+/*
+ * The two hardware-name lookups sensor discovery needs, read as one batch off
+ * the main loop. pci.ids is the expensive member of that batch; loading it
+ * asynchronously is what keeps a first sensor sweep from pausing the panel.
+ */
+function machineNamesAsync(addresses, onDone) {
+    let names = {};
+    let wanted = [];
+    for (let address of addresses) {
+        if (!address || names[address])
+            continue;
+        if (_pciNames[address])
+            names[address] = _pciNames[address];
+        else if (wanted.indexOf(address) < 0)
+            wanted.push(address);
+    }
+
+    let paths = [];
+    if (_cpuName === undefined)
+        paths.push(CPUINFO);
+    if (wanted.length > 0) {
+        paths = paths.concat(PCI_IDS_PATHS);
+        for (let address of wanted) {
+            let base = PCI_DEVICE_DIR + "/" + address;
+            paths.push(base + "/vendor", base + "/device",
+                       base + "/subsystem_vendor", base + "/subsystem_device");
+        }
+    }
+
+    IO.readStringsAsync(paths, values => {
+        if (_cpuName === undefined) {
+            let text = values[CPUINFO] || "";
+            let raw = _cpuInfoValue(text, "model name") ||
+                      _cpuInfoValue(text, "Model") ||
+                      _cpuInfoValue(text, "Hardware");
+            _cpuName = tidyCpuName(raw);
+        }
+
+        let table = null;
+        for (let path of PCI_IDS_PATHS) {
+            if (values[path]) {
+                table = values[path];
+                break;
+            }
+        }
+        if (table) {
+            for (let address of wanted) {
+                let ids = _pciIdsFrom(address, path => values[path] || null);
+                let name = ids ? _resolve(table, ids) : null;
+                if (name) {
+                    _pciNames[address] = name;
+                    names[address] = name;
+                }
+            }
+        }
+        onDone({ cpuName: _cpuName, pciNames: names });
+    });
 }
 
 /* ----------------------------------------------------------------- monitors */

@@ -132,16 +132,18 @@ function bySensorOrder(a, b) {
     return a.label < b.label ? -1 : 1;
 }
 
-function _label(base, prefix, index) {
-    return IO.readString(base + "/" + prefix + index + "_label");
+function _label(base, prefix, index, readString) {
+    let read = readString || IO.readString;
+    return read(base + "/" + prefix + index + "_label");
 }
 
 /*
  * Something to tell two chips of the same name apart: the block device for
  * drivetemp, the PCI slot for two amdgpu cards, the controller name for nvme.
  */
-function _hwmonIdentity(base) {
-    let block = IO.listDir(base + "/device/block");
+function _hwmonIdentity(base, listDir) {
+    let list = listDir || IO.listDir;
+    let block = list(base + "/device/block");
     if (block.length > 0)
         return block[0];
     let target = IO.readLink(base + "/device");
@@ -308,10 +310,7 @@ function _groupName(entry, pciNames, cpuName) {
  * told the chips apart in the first place is appended - the PCI slot, the
  * block device, the thermal zone.
  */
-function _nameGroups(groups) {
-    let cpuName = Hardware.cpuModelName();
-    let pciNames = Hardware.pciDeviceNames(groups.map(group => group.pciAddress));
-
+function _nameGroupsFrom(groups, cpuName, pciNames) {
     let named = groups.map(group => Object.assign({}, group, {
         label: _groupName(group, pciNames, cpuName),
     }));
@@ -327,6 +326,11 @@ function _nameGroups(groups) {
             : group.label;
     }
     return labels;
+}
+
+function _nameGroups(groups) {
+    return _nameGroupsFrom(groups, Hardware.cpuModelName(),
+                           Hardware.pciDeviceNames(groups.map(group => group.pciAddress)));
 }
 
 /*
@@ -345,10 +349,11 @@ const NODE_KINDS = [
         pattern: /^temp(\d+)_input$/,
         /* The chip's own limit, which is what a reading gets flagged
          * against. Some drivers only publish the emergency one. */
-        extra: function (base, index) {
-            let critical = IO.readNumber(base + "/temp" + index + "_crit");
+        extra: function (base, index, readNumber) {
+            let read = readNumber || IO.readNumber;
+            let critical = read(base + "/temp" + index + "_crit");
             if (critical === null)
-                critical = IO.readNumber(base + "/temp" + index + "_emergency");
+                critical = read(base + "/temp" + index + "_emergency");
             return { critical: critical === null ? null : critical / 1000 };
         },
     },
@@ -365,8 +370,9 @@ const NODE_KINDS = [
         /* powerN_average is the driver's own averaged value, powerN_input the
          * instantaneous one. Both are microwatts. */
         pattern: /^power(\d+)_(average|input)$/,
-        skip: function (base, index, match) {
-            return match[2] === "input" && IO.exists(base + "/power" + index + "_average");
+        skip: function (base, index, match, exists) {
+            let present = exists || IO.exists;
+            return match[2] === "input" && present(base + "/power" + index + "_average");
         },
     },
 ];
@@ -376,16 +382,116 @@ const NODE_KINDS = [
  * thermal zone that hwmon does not already cover. Values are not read here,
  * only the paths to read later.
  */
-function discoverSensors() {
+function _directoryInventory() {
+    let directories = {};
+    let roots = [HWMON_DIR, THERMAL_DIR, POWERCAP_DIR];
+    for (let root of roots)
+        directories[root] = IO.listDir(root);
+    for (let entry of directories[HWMON_DIR]) {
+        let base = HWMON_DIR + "/" + entry;
+        directories[base] = IO.listDir(base);
+        directories[base + "/device/block"] = IO.listDir(base + "/device/block");
+    }
+    for (let entry of directories[THERMAL_DIR]) {
+        let base = THERMAL_DIR + "/" + entry;
+        directories[base] = IO.listDir(base);
+    }
+    return directories;
+}
+
+function _listDirectoriesAsync(paths, directories, onDone) {
+    let unique = Array.from(new Set(paths));
+    let outstanding = unique.length;
+    if (outstanding === 0) {
+        onDone();
+        return;
+    }
+    for (let path of unique) {
+        IO.listDirAsync(path, entries => {
+            directories[path] = entries;
+            outstanding--;
+            if (outstanding === 0)
+                onDone();
+        });
+    }
+}
+
+/* Directory enumeration is asynchronous too, and one bounded listing is made
+ * per directory. The arrays form one immutable inventory for the rest of the
+ * sweep, so hardware moving during it is caught by the next topology check. */
+function _directoryInventoryAsync(onDone) {
+    let directories = {};
+    _listDirectoriesAsync([HWMON_DIR, THERMAL_DIR, POWERCAP_DIR], directories, () => {
+        let children = [];
+        for (let entry of directories[HWMON_DIR]) {
+            let base = HWMON_DIR + "/" + entry;
+            children.push(base, base + "/device/block");
+        }
+        for (let entry of directories[THERMAL_DIR])
+            children.push(THERMAL_DIR + "/" + entry);
+        _listDirectoriesAsync(children, directories, () => onDone(directories));
+    });
+}
+
+function _metadataPaths(directories) {
+    let paths = [];
+    let list = path => directories[path] || [];
+    for (let entry of list(HWMON_DIR)) {
+        let base = HWMON_DIR + "/" + entry;
+        paths.push(base + "/name");
+        for (let node of list(base)) {
+            for (let nodeKind of NODE_KINDS) {
+                let match = node.match(nodeKind.pattern);
+                if (!match)
+                    continue;
+                let index = match[1];
+                paths.push(base + "/" + nodeKind.prefix + index + "_label");
+                if (nodeKind.prefix === "temp") {
+                    paths.push(base + "/temp" + index + "_crit",
+                               base + "/temp" + index + "_emergency");
+                }
+                break;
+            }
+        }
+    }
+    for (let entry of list(THERMAL_DIR)) {
+        if (!/^thermal_zone\d+$/.test(entry))
+            continue;
+        let base = THERMAL_DIR + "/" + entry;
+        paths.push(base + "/type");
+        for (let node of list(base)) {
+            let match = node.match(/^trip_point_(\d+)_type$/);
+            if (match)
+                paths.push(base + "/" + node,
+                           base + "/trip_point_" + match[1] + "_temp");
+        }
+    }
+    for (let entry of list(POWERCAP_DIR)) {
+        if (!/^(intel-rapl|amd-rapl|dtpm)/.test(entry))
+            continue;
+        let base = POWERCAP_DIR + "/" + entry;
+        paths.push(base + "/energy_uj", base + "/name",
+                   base + "/max_energy_range_uj");
+    }
+    return Array.from(new Set(paths));
+}
+
+function _scanSensors(directories, readString) {
     let found = { temperatures: [], fans: [], powerMeters: [] };
     let hwmonTemperatureDevices = new Set();
     let groups = [];
+    let list = path => directories[path] || [];
+    let readNumber = path => IO.toNumber(readString(path));
+    let exists = path => {
+        let parent = GLib.path_get_dirname(path);
+        return list(parent).indexOf(GLib.path_get_basename(path)) >= 0;
+    };
 
-    for (let entry of IO.listDir(HWMON_DIR)) {
+    for (let entry of list(HWMON_DIR)) {
         let base = HWMON_DIR + "/" + entry;
-        let chip = IO.readString(base + "/name") || entry;
+        let chip = readString(base + "/name") || entry;
         let kind = classifyChip(chip);
-        let identity = _hwmonIdentity(base);
+        let identity = _hwmonIdentity(base, list);
         let device = deviceIdentity(base);
         let pciAddress = Hardware.pciAddressIn(IO.readLink(base + "/device"));
         let group = "hwmon:" + entry;
@@ -394,14 +500,14 @@ function discoverSensors() {
 
         let ofThisChip = { temperatures: [], fans: [], powerMeters: [] };
 
-        for (let node of IO.listDir(base)) {
+        for (let node of list(base)) {
             for (let nodeKind of NODE_KINDS) {
                 let match = node.match(nodeKind.pattern);
                 if (!match)
                     continue;
 
                 let index = match[1];
-                if (nodeKind.skip && nodeKind.skip(base, index, match))
+                if (nodeKind.skip && nodeKind.skip(base, index, match, exists))
                     break;
 
                 let sensor = {
@@ -413,11 +519,11 @@ function discoverSensors() {
                     group: group,
                     index: index,
                     identity: identity,
-                    rawLabel: _label(base, nodeKind.prefix, index),
+                    rawLabel: _label(base, nodeKind.prefix, index, readString),
                     path: base + "/" + node,
                 };
                 if (nodeKind.extra)
-                    Object.assign(sensor, nodeKind.extra(base, index));
+                    Object.assign(sensor, nodeKind.extra(base, index, readNumber));
 
                 ofThisChip[nodeKind.list].push(sensor);
                 break;
@@ -435,11 +541,11 @@ function discoverSensors() {
             hwmonTemperatureDevices.add(device);
     }
 
-    for (let entry of IO.listDir(THERMAL_DIR)) {
+    for (let entry of list(THERMAL_DIR)) {
         if (!/^thermal_zone\d+$/.test(entry))
             continue;
         let base = THERMAL_DIR + "/" + entry;
-        let type = IO.readString(base + "/type");
+        let type = readString(base + "/type");
         let device = deviceIdentity(base);
         if (!type || (device && hwmonTemperatureDevices.has(device)))
             continue;
@@ -457,12 +563,16 @@ function discoverSensors() {
             identity: entry,
             rawLabel: null,
             path: base + "/temp",
-            critical: _criticalTripPoint(base),
+            critical: _criticalTripPoint(base, list, readString),
         });
     }
 
+    return { found: found, groups: groups };
+}
+
+function _finishSensors(scanned, groupLabels) {
+    let found = scanned.found;
     /* One pass over everything, then split back out by what it measures. */
-    let groupLabels = _nameGroups(groups);
     let named = _finalizeNames(found.temperatures.concat(found.fans, found.powerMeters))
         .map(entry => Object.assign({}, entry, { groupLabel: groupLabels[entry.group] || "" }));
     return {
@@ -472,15 +582,23 @@ function discoverSensors() {
     };
 }
 
-function _criticalTripPoint(base) {
-    for (let node of IO.listDir(base)) {
+function discoverSensors() {
+    let directories = _directoryInventory();
+    let scanned = _scanSensors(directories, IO.readString);
+    return _finishSensors(scanned, _nameGroups(scanned.groups));
+}
+
+function _criticalTripPoint(base, listDir, readString) {
+    let list = listDir || IO.listDir;
+    let read = readString || IO.readString;
+    for (let node of list(base)) {
         let match = node.match(/^trip_point_(\d+)_type$/);
         if (!match)
             continue;
-        let type = IO.readString(base + "/" + node);
+        let type = read(base + "/" + node);
         if (type !== "critical")
             continue;
-        let value = IO.readNumber(base + "/trip_point_" + match[1] + "_temp");
+        let value = IO.toNumber(read(base + "/trip_point_" + match[1] + "_temp"));
         if (value !== null)
             return value / 1000;
     }
@@ -527,20 +645,21 @@ function _raplName(raw, packages) {
  * simply means no package power readout. README says how to hand it back, and
  * what is being handed back with it.
  */
-function discoverEnergyCounters() {
+function _energyCounters(entries, readString) {
     let found = [];
-    for (let entry of IO.listDir(POWERCAP_DIR)) {
+    let readNumber = path => IO.toNumber(readString(path));
+    for (let entry of entries) {
         if (!/^(intel-rapl|amd-rapl|dtpm)/.test(entry))
             continue;
         let base = POWERCAP_DIR + "/" + entry;
         let energyPath = base + "/energy_uj";
-        if (!IO.exists(energyPath) || !IO.isReadable(energyPath))
+        if (readString(energyPath) === null)
             continue;
         found.push({
             entry: entry,
             base: base,
             energyPath: energyPath,
-            raw: IO.readString(base + "/name") || entry,
+            raw: readString(base + "/name") || entry,
         });
     }
 
@@ -557,10 +676,44 @@ function discoverEnergyCounters() {
         group: "rapl",
         label: _raplName(item.raw, packages),
         path: item.energyPath,
-        maxRange: IO.readNumber(item.base + "/max_energy_range_uj"),
+        maxRange: readNumber(item.base + "/max_energy_range_uj"),
         domain: item.entry,
         topLevel: RAPL_PACKAGE_DOMAIN.test(item.entry),
     }));
+}
+
+function discoverEnergyCounters() {
+    return _energyCounters(IO.listDir(POWERCAP_DIR), IO.readString);
+}
+
+function _topologyFromInventory(directories) {
+    return [directories[HWMON_DIR] || [], directories[THERMAL_DIR] || [],
+            directories[POWERCAP_DIR] || []]
+        .map(entries => entries.join(",")).join("|");
+}
+
+/* One complete sensor snapshot, assembled only after every asynchronous part
+ * has answered. Until this callback, callers keep using the prior snapshot. */
+function discoverSnapshotAsync(onDone) {
+    _directoryInventoryAsync(directories => {
+        IO.readStringsAsync(_metadataPaths(directories), values => {
+            let read = path => values[path] === undefined ? null : values[path];
+            let scanned = _scanSensors(directories, read);
+            let addresses = scanned.groups.map(group => group.pciAddress);
+            Hardware.machineNamesAsync(addresses, names => {
+                let labels = _nameGroupsFrom(scanned.groups, names.cpuName, names.pciNames);
+                onDone({
+                    sensors: _finishSensors(scanned, labels),
+                    counters: _energyCounters(directories[POWERCAP_DIR] || [], read),
+                    topology: _topologyFromInventory(directories),
+                });
+            });
+        }, 32);
+    });
+}
+
+function discoverSensorsAsync(onDone) {
+    discoverSnapshotAsync(snapshot => onDone(snapshot.sensors));
 }
 
 /* Turns a monotonic microjoule counter into watts. */
@@ -632,20 +785,63 @@ var EnergyMeter = class EnergyMeter {
  * is what a poll calls.
  */
 var SensorSet = class SensorSet {
-    constructor() {
+    constructor(options) {
+        let configuration = options || {};
         this._topology = null;
-        this.discover();
+        this.temperatureSensors = [];
+        this.fanSensors = [];
+        this.powerSensors = [];
+        this.energyMeters = [];
+        this._asynchronous = !!configuration.asynchronous;
+        this._onChanged = configuration.onChanged || function () {};
+        this._discovering = false;
+        this._discoverAgain = false;
+        this._discoverWaiters = [];
+
+        if (this._asynchronous)
+            this.discoverAsync();
+        else
+            this.discover();
     }
 
     discover() {
         let found = discoverSensors();
+        this._adopt(found, discoverEnergyCounters(), this._topologyKey());
+    }
+
+    discoverAsync(onDone) {
+        if (onDone)
+            this._discoverWaiters.push(onDone);
+        if (this._discovering) {
+            this._discoverAgain = true;
+            return;
+        }
+        this._discovering = true;
+        discoverSnapshotAsync(snapshot => {
+            this._discovering = false;
+            this._adopt(snapshot.sensors, snapshot.counters, snapshot.topology);
+            let waiters = this._discoverWaiters.splice(0);
+            for (let waiter of waiters)
+                waiter(true);
+            this._onChanged();
+
+            if (this._discoverAgain) {
+                this._discoverAgain = false;
+                this.discoverAsync();
+            }
+        });
+    }
+
+    _adopt(found, counters, topology) {
+        /* One assignment boundary: a reading sees the complete old machine or
+         * the complete new one, never half of each. */
         this.temperatureSensors = found.temperatures;
         this.fanSensors = found.fans;
         this.powerSensors = found.powerMeters;
         /* The meters keep the previous counter value between polls, so they
          * outlive a reading and are only rebuilt by a rediscovery. */
-        this.energyMeters = discoverEnergyCounters().map(counter => new EnergyMeter(counter));
-        this._topology = this._topologyKey();
+        this.energyMeters = counters.map(counter => new EnergyMeter(counter));
+        this._topology = topology;
     }
 
     /*
@@ -670,7 +866,10 @@ var SensorSet = class SensorSet {
     refresh() {
         if (this._topologyKey() === this._topology)
             return false;
-        this.discover();
+        if (this._asynchronous)
+            this.discoverAsync();
+        else
+            this.discover();
         return true;
     }
 

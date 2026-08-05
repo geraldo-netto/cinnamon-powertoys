@@ -620,6 +620,44 @@ cases["a filter that says no to everything reads nothing"] = function () {
 /* ---------------------------------------------------------------- */
 /* reading without blocking                                          */
 
+cases["asynchronous discovery produces the synchronous snapshot"] = function () {
+    on("machine", function () {
+        let expected = Sensors.discoverSensors();
+        Hardware.forget();
+        let actual = Harness.settle(done => Sensors.discoverSensorsAsync(done),
+                                    "discoverSensorsAsync");
+        Harness.deepEqual(actual, expected,
+                          "directory and metadata reads do not change discovery semantics");
+    });
+};
+
+cases["an asynchronous sensor set keeps an atomic snapshot"] = function () {
+    on("machine", function () {
+        let set;
+        let before;
+        Harness.settle(function (done) {
+            set = new Sensors.SensorSet({
+                asynchronous: true,
+                onChanged: () => done(true),
+            });
+            before = set.temperatureSensors.length;
+        }, "initial sensor discovery");
+        Harness.equal(before, 0, "construction does not block to populate a partial snapshot");
+        Harness.equal(set.temperatureSensors.length, 8, "the complete snapshot is adopted together");
+        Harness.equal(set.fanSensors.length, 1, "including fans");
+        Harness.equal(set.powerSensors.length, 3, "and power meters");
+    });
+};
+
+cases["an asynchronous directory listing matches the synchronous one"] = function () {
+    on("machine", function () {
+        let expected = IO.listDir("/sys/class/hwmon");
+        let actual = Harness.settle(
+            done => IO.listDirAsync("/sys/class/hwmon", done), "listDirAsync");
+        Harness.deepEqual(actual, expected, "same naturally sorted entries");
+    });
+};
+
 /*
  * A fresh set per reading, because the energy meters remember their last
  * counter value: the same set read twice would compute watts the second time
