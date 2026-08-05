@@ -34,12 +34,10 @@ the governor it wrote. All of it hides itself rather than sitting there empty.
 **Batteries, every device type.** Everything UPower knows about is listed, not
 just the laptop battery: mice, keyboards, headsets, game controllers, phones,
 tablets, UPS units, styluses. Each row shows charge, state, time remaining,
-draw in watts, voltage, temperature, health (capacity versus design capacity)
-and charge cycles when the device reports them — a temperature of exactly zero
-counts as not reporting, because UPower publishes 0.0 °C for a device with no
-thermometer in it and offers nothing to tell that apart from one that is
-genuinely at freezing. Devices that only report a coarse level (low / normal /
-high) are shown that way instead of a fake percentage. Chargers are listed
+voltage, stored versus full energy, health (capacity versus design capacity)
+and charge cycles when the device reports them. Devices that only report a
+coarse level (low / normal / high) are shown that way instead of a fake
+percentage. Chargers are listed
 above them, by model where UPower knows it, so whether the machine is on the
 cable is the first line under *Devices*.
 Connected bluetooth devices are read from BlueZ as well as from UPower, which
@@ -107,8 +105,10 @@ helper launched with `pkexec`.
 
 **Temperature and power.** Every hwmon and thermal zone sensor plus fan speeds,
 hwmon power meters (for example the amdgpu GPU package power), RAPL package
-power when the kernel allows reading it, and what the batteries report about
-themselves. Readings are grouped by the thing they came off and it is named
+power when the kernel allows reading it, and the temperature and consumption
+rate batteries report through UPower. Those live battery measurements appear
+only here rather than being repeated in Devices. Readings are grouped by the
+thing they came off and it is named
 rather than addressed: the processor from `/proc/cpuinfo`, anything on the PCI
 bus from `pci.ids`, a battery by what UPower calls it. So two graphics cards
 read as *Radeon RX 6600/6600 XT/6600M* and *AMD Raphael* rather than as

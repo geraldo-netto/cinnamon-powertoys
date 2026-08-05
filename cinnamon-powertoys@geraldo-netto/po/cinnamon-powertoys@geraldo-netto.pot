@@ -206,23 +206,23 @@ msgstr ""
 msgid "until full"
 msgstr ""
 
-#: lib/device.js:113
+#: lib/device.js:102
 msgid "health"
 msgstr ""
 
-#: lib/device.js:115
+#: lib/device.js:104
 msgid "cycles"
 msgstr ""
 
-#: lib/device.js:132
+#: lib/device.js:121
 msgid "A battery is present, but its status is unavailable"
 msgstr ""
 
-#: lib/device.js:134
+#: lib/device.js:123
 msgid "Device status is unavailable"
 msgstr ""
 
-#: lib/device.js:135
+#: lib/device.js:124
 msgid "Nothing with a battery is connected"
 msgstr ""
 

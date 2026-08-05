@@ -79,12 +79,13 @@ function remainingText(device) {
 }
 
 /*
- * The one line under a device's name: everything it is willing to say about
- * itself, in the order it matters. Devices report wildly different subsets -
- * a laptop battery has all of it, a bluetooth mouse has a percentage and
- * nothing else - so each part is dropped rather than shown empty.
+ * The one line under a device's name: its status, stored charge and health,
+ * in the order they matter. Live temperature and consumption belong to the
+ * Sensors section, where UPower publishes them beside every other reading,
+ * rather than being repeated here. Devices report wildly different subsets,
+ * so each absent part is dropped rather than shown empty.
  */
-function describe(device, tempUnit) {
+function describe(device) {
     let parts = [];
 
     /* Peripherals usually report no state at all, and "Unknown" says less
@@ -95,20 +96,8 @@ function describe(device, tempUnit) {
         parts.push(Format.deviceStateName(device.state));
 
     parts.push(remainingText(device));
-    if (device.energyRate)
-        parts.push(Format.watts(device.energyRate));
     if (device.voltage)
         parts.push(Format.volts(device.voltage));
-    /*
-     * Zero is dropped here for the same reason it is dropped in
-     * lib/upower.js: UPower publishes Temperature as 0.0 for a device that has
-     * no thermometer in it, with nothing on the interface to tell that apart
-     * from a device that is actually at freezing. Every bluetooth peripheral
-     * on the machine reads 0.0, so trusting it means every one of them
-     * claiming a temperature it never took.
-     */
-    if (device.temperature)
-        parts.push(Format.temperature(device.temperature, tempUnit, 1));
     if (device.capacity && device.capacity < 100)
         parts.push(_("health") + " " + Format.percent(device.capacity));
     if (device.cycles && device.cycles > 0)
@@ -174,7 +163,7 @@ function viewModel(device, options) {
         key: device.path,
         title: title(device),
         icon: iconName(device),
-        details: describe(device, options.tempUnit),
+        details: describe(device),
         warning: isDraining(device) &&
                  chargeIsLow(device, lowThreshold(device, options.lowLevel,
                                                   options.peripheralLevel)),

@@ -105,45 +105,36 @@ cases["time remaining is shown for the direction it is going"] = function () {
 /* ---------------------------------------------------------------- */
 /* the sentence under the name                                       */
 
-cases["a full battery says everything it knows"] = function () {
+cases["a full battery says its status and health"] = function () {
     let device = battery({ state: State.DISCHARGING, timeToEmpty: 5400, energyRate: 11.5,
                            voltage: 11.1, temperature: 31.5, capacity: 92, cycles: 140,
                            energy: 40, energyFull: 50 });
-    Harness.equal(Device.describe(device, "celsius"),
-                  "Discharging · 1h 30m remaining · 12 W · 11.10 V · 31.5 °C · " +
-                  "health 92% · 140 cycles · 40.0 Wh / 50.0 Wh", "celsius");
-    Harness.equal(Device.describe(device, "fahrenheit").indexOf("88.7 °F") >= 0, true,
-                  "the unit reaches the temperature");
+    Harness.equal(Device.describe(device),
+                  "Discharging · 1h 30m remaining · 11.10 V · " +
+                  "health 92% · 140 cycles · 40.0 Wh / 50.0 Wh", "status details");
 };
 
 cases["a device that reports nothing says what it is"] = function () {
-    Harness.equal(Device.describe(mouse(), "celsius"), "Mouse",
+    Harness.equal(Device.describe(mouse()), "Mouse",
                   "better than the word Unknown");
 };
 
-cases["a device that measures nothing does not claim to be at freezing"] = function () {
-    /* UPower publishes Temperature as 0.0 for a device with no thermometer,
-     * and offers nothing to tell that apart from a device that is genuinely
-     * at 0 °C, so the reading a bluetooth headset never took has to go. */
-    Harness.equal(Device.describe(mouse({ temperature: 0 }), "celsius").indexOf("°C"), -1,
-                  "a mouse is not at freezing, it is not measuring");
-    Harness.equal(Device.describe(battery({ temperature: 31.5 }), "celsius").indexOf("31.5 °C") >= 0,
-                  true, "and a battery that does measure still says so");
-
-    let idle = Device.describe(battery({ energyRate: 0, voltage: 0 }), "celsius");
-    Harness.equal(idle.indexOf("W"), -1, "a battery at rest draws nothing worth a row");
-    Harness.equal(idle.indexOf("V"), -1, "and 0 V is a battery that is not reporting");
+cases["live measurements are owned by Sensors rather than device status"] = function () {
+    let details = Device.describe(battery({ energyRate: 11.5, temperature: 31.5, voltage: 0 }));
+    Harness.equal(details.indexOf("W"), -1, "consumption is not duplicated under Devices");
+    Harness.equal(details.indexOf("°C"), -1, "temperature is not duplicated under Devices");
+    Harness.equal(details.indexOf("V"), -1, "and 0 V is a battery that is not reporting");
 };
 
 cases["a healthy battery does not mention its health"] = function () {
-    Harness.equal(Device.describe(battery({ capacity: 100 }), "celsius").indexOf("health"), -1,
+    Harness.equal(Device.describe(battery({ capacity: 100 })).indexOf("health"), -1,
                   "100% health is not news");
-    Harness.equal(Device.describe(battery({ capacity: 92 }), "celsius").indexOf("health 92%") >= 0,
+    Harness.equal(Device.describe(battery({ capacity: 92 })).indexOf("health 92%") >= 0,
                   true, "92% is");
 };
 
 cases["nothing empty is left in the sentence"] = function () {
-    let text = Device.describe(battery({ state: State.CHARGING }), "celsius");
+    let text = Device.describe(battery({ state: State.CHARGING }));
     Harness.equal(text, "Charging", "no stray separators");
     Harness.equal(text.indexOf("··"), -1, "and none doubled");
 };
