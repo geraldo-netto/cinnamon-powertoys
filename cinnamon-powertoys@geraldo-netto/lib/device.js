@@ -109,17 +109,17 @@ function describe(device) {
 }
 
 /*
- * What an empty Devices section means. UPower is the authority for the rows,
- * but the independent sysfs charge-limit discovery can prove a battery is
- * present even when UPower cannot describe it. Never turn either backend
- * failure into an assertion that no battery exists.
+ * What an empty Devices section means. UPower and BlueZ are both authorities
+ * for rows, while the independent sysfs charge-limit discovery can prove a
+ * battery is present even when neither can describe it. Never turn any
+ * backend failure into an assertion that no battery exists.
  */
 function emptyStatus(data) {
     if ((data.lines || []).length > 0 || (data.devices || []).length > 0)
         return "";
     if (data.chargeLimitAvailable)
         return _("A battery is present, but its status is unavailable");
-    if (!data.upowerAvailable)
+    if (data.upowerAvailable !== true || data.bluezAvailable !== true)
         return _("Device status is unavailable");
     return _("Nothing with a battery is connected");
 }

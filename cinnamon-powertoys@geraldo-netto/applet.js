@@ -2411,6 +2411,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         return {
             upowerAvailable: upower.available,
+            bluezAvailable: this._bluetooth.available,
             devices: devices,
             lines: upower.lines,
             primary: upower.primary,

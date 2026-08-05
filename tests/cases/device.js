@@ -141,21 +141,30 @@ cases["nothing empty is left in the sentence"] = function () {
 
 cases["an empty device group distinguishes absence from unavailable status"] = function () {
     Harness.equal(Device.emptyStatus({
-        lines: [], devices: [], upowerAvailable: true, chargeLimitAvailable: false,
-    }), "Nothing with a battery is connected", "UPower confirmed the genuinely empty case");
+        lines: [], devices: [], upowerAvailable: true, bluezAvailable: true,
+        chargeLimitAvailable: false,
+    }), "Nothing with a battery is connected", "both sources confirmed the genuinely empty case");
     Harness.equal(Device.emptyStatus({
-        lines: [], devices: [], upowerAvailable: false, chargeLimitAvailable: false,
-    }), "Device status is unavailable", "an unavailable backend makes no absence claim");
+        lines: [], devices: [], upowerAvailable: false, bluezAvailable: true,
+        chargeLimitAvailable: false,
+    }), "Device status is unavailable", "unavailable UPower makes no absence claim");
     Harness.equal(Device.emptyStatus({
-        lines: [], devices: [], upowerAvailable: false, chargeLimitAvailable: true,
+        lines: [], devices: [], upowerAvailable: true, bluezAvailable: false,
+        chargeLimitAvailable: false,
+    }), "Device status is unavailable", "unavailable BlueZ makes no absence claim");
+    Harness.equal(Device.emptyStatus({
+        lines: [], devices: [], upowerAvailable: false, bluezAvailable: false,
+        chargeLimitAvailable: true,
     }), "A battery is present, but its status is unavailable",
     "sysfs evidence names the known battery without inventing its status");
     Harness.equal(Device.emptyStatus({
-        lines: [], devices: [], upowerAvailable: true, chargeLimitAvailable: true,
+        lines: [], devices: [], upowerAvailable: true, bluezAvailable: true,
+        chargeLimitAvailable: true,
     }), "A battery is present, but its status is unavailable",
     "independent battery evidence wins over an empty UPower device list");
     Harness.equal(Device.emptyStatus({
-        lines: [], devices: [battery()], upowerAvailable: false, chargeLimitAvailable: false,
+        lines: [], devices: [battery()], upowerAvailable: false, bluezAvailable: false,
+        chargeLimitAvailable: false,
     }), "", "a row leaves no empty-state message beside it");
 };
 
