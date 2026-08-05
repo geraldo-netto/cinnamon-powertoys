@@ -223,6 +223,18 @@ var PrivilegedHelper = class PrivilegedHelper {
         let job = this._queue.shift();
         this._running = true;
         this.path((helper, issue) => {
+            /* Selecting a helper is asynchronous on the first run. Destroying
+             * the applet while its protocol probe is out means no pkexec
+             * process has reached the screen yet, so this job is still safe
+             * to stop rather than treating it as the already-visible dialog
+             * destroy() deliberately leaves alone. */
+            if (this._destroyed) {
+                this._running = false;
+                job.done({ applied: false, code: "shutting-down",
+                           diagnostic: "the applet is shutting down",
+                           error: "the applet is shutting down" });
+                return;
+            }
             if (!helper) {
                 this._running = false;
                 let diagnostic = issue ? issue.diagnostic : "the helper script could not be found";

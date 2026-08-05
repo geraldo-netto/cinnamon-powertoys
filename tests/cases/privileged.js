@@ -208,6 +208,27 @@ cases["the change already on screen is left to finish"] = function () {
     Harness.equal(outcome.applied, true, "and it applied, as the user asked");
 };
 
+cases["a helper probe does not spawn after the applet leaves"] = function () {
+    let probeDone = null;
+    let spawned = [];
+    let outcome = null;
+    let helper = new Privileged.PrivilegedHelper(
+        [SYSTEM], () => true, () => {},
+        (argv, onDone) => spawned.push({ argv: argv, onDone: onDone }),
+        (path, onDone) => { probeDone = onDone; });
+
+    helper.run(["boost", "1"], result => { outcome = result; });
+    Harness.ok(probeDone, "the protocol probe is in flight");
+    Harness.equal(helper.busy, true, "and owns the current job");
+
+    helper.destroy();
+    probeDone(true, "");
+
+    Harness.deepEqual(spawned, [], "pkexec never reaches the screen");
+    Harness.equal(outcome.code, "shutting-down", "the detached job is settled");
+    Harness.equal(helper.busy, false, "and no work remains owned");
+};
+
 cases["nothing new is taken after that"] = function () {
     let helper = deferredHelper();
     helper.destroy();
