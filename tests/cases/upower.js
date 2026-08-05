@@ -346,6 +346,29 @@ function busFor(manager, devices, options) {
     return stub;
 }
 
+function retryTimers(bus) {
+    let timers = { next: 1, pending: {}, delays: [], removed: [] };
+    bus.timeoutAdd = function (delay, callback) {
+        let id = timers.next++;
+        timers.pending[id] = callback;
+        timers.delays.push(delay);
+        return id;
+    };
+    bus.removeTimer = function (id) {
+        timers.removed.push(id);
+        delete timers.pending[id];
+    };
+    timers.fire = function () {
+        let ids = Object.keys(timers.pending);
+        Harness.equal(ids.length, 1, "exactly one UPower retry is pending");
+        let id = Number(ids[0]);
+        let callback = timers.pending[id];
+        delete timers.pending[id];
+        callback();
+    };
+    return timers;
+}
+
 /* A monitor, with what it was told counted. */
 function monitorOn(bus) {
     let counts = { changed: 0, ready: 0 };
@@ -412,6 +435,137 @@ cases["UPower ownership drives availability and reconnection"] = function () {
 
     monitor.destroy();
     Harness.deepEqual(bus.unwatched, [27], "the owner watch goes with the monitor");
+};
+
+cases["owned UPower manager failures retry with capped backoff"] = function () {
+    let manager = managerFor([]);
+    let bus = busFor(manager, { [DISPLAY]: proxyFor() }, { watch: true });
+    let timers = retryTimers(bus);
+    let failures = 6;
+    let attempts = 0;
+    bus.manager = function (onDone, cancellable) {
+        attempts++;
+        if (cancellable)
+            cancellable.kind = "manager";
+        onDone(failures-- > 0 ? null : manager,
+               failures >= 0 ? new Error("manager timeout") : null);
+    };
+    let monitor = monitorOn(bus);
+    bus.appear();
+
+    for (let i = 0; i < 6; i++)
+        timers.fire();
+    Harness.deepEqual(timers.delays, [500, 1000, 2000, 4000, 8000, 8000],
+                      "manager retry delay doubles only to its cap");
+    Harness.equal(attempts, 7, "the owned manager is retried until it recovers");
+    Harness.equal(monitor.available, true, "the recovered manager is adopted");
+    Harness.equal(Object.keys(timers.pending).length, 0, "success cancels further retry");
+    Harness.equal(monitor._retryDelay, UPower.RETRY_INITIAL_MS,
+                  "success resets backoff for a later incident");
+    monitor.destroy();
+};
+
+cases["UPower retry is cancelled on owner loss and teardown"] = function () {
+    let bus = busFor(null, {}, { watch: true, managerError: new Error("timeout") });
+    let timers = retryTimers(bus);
+    let monitor = monitorOn(bus);
+    bus.appear();
+    Harness.equal(Object.keys(timers.pending).length, 1, "manager failure arms retry");
+
+    bus.vanish();
+    Harness.equal(Object.keys(timers.pending).length, 0, "owner loss cancels retry");
+    bus.appear();
+    Harness.equal(Object.keys(timers.pending).length, 1, "the new owner has a fresh incident");
+    monitor.destroy();
+    Harness.equal(Object.keys(timers.pending).length, 0, "teardown cancels retry too");
+};
+
+cases["a failed UPower enumeration is retried from a fresh manager"] = function () {
+    let enumerations = 0;
+    let manager = managerFor([BAT0]);
+    manager.EnumerateDevicesRemote = function (onDone) {
+        enumerations++;
+        if (enumerations === 1)
+            onDone(null, new Error("enumeration timeout"));
+        else
+            onDone([[BAT0]], null);
+    };
+    let bus = busFor(manager, { [DISPLAY]: proxyFor(), [BAT0]: proxyFor() }, { watch: true });
+    let timers = retryTimers(bus);
+    let monitor = monitorOn(bus);
+    bus.appear();
+
+    Harness.equal(Object.keys(timers.pending).length, 1, "failed enumeration arms retry");
+    timers.fire();
+    Harness.equal(enumerations, 2, "retry re-enumerates through a fresh connection");
+    Harness.deepEqual(monitor.snapshot().map(entry => entry.path), [BAT0],
+                      "the recovered enumeration supplies its battery");
+    Harness.equal(Object.keys(timers.pending).length, 0, "complete initialization is stable");
+    monitor.destroy();
+};
+
+cases["UPower retry waits for both initialization branches to settle"] = function () {
+    let manager = managerFor([], { enumerateError: true });
+    let bus = busFor(manager, { [DISPLAY]: proxyFor() },
+                     { watch: true, holdDevices: true });
+    let timers = retryTimers(bus);
+    let monitor = monitorOn(bus);
+    bus.appear();
+
+    Harness.equal(Object.keys(timers.pending).length, 0,
+                  "enumeration failure alone does not race the display request");
+    bus.answer();
+    Harness.equal(Object.keys(timers.pending).length, 1,
+                  "the retry starts once the display branch has settled too");
+    monitor.destroy();
+};
+
+cases["a failed UPower device proxy is recovered by re-enumeration"] = function () {
+    let manager = managerFor([BAT0]);
+    let bus = busFor(manager, { [DISPLAY]: proxyFor(), [BAT0]: proxyFor() }, { watch: true });
+    let timers = retryTimers(bus);
+    let originalDevice = bus.device;
+    let failed = false;
+    bus.device = function (path, onDone, cancellable) {
+        if (path === BAT0 && !failed) {
+            failed = true;
+            bus.asked.push(path);
+            onDone(null, new Error("device timeout"));
+            return;
+        }
+        originalDevice(path, onDone, cancellable);
+    };
+    let monitor = monitorOn(bus);
+    bus.appear();
+
+    Harness.deepEqual(monitor.snapshot(), [], "the failed device is not invented");
+    Harness.equal(Object.keys(timers.pending).length, 1, "device failure arms re-enumeration");
+    timers.fire();
+    Harness.equal(bus.asked.filter(path => path === BAT0).length, 2,
+                  "the missing path is proxied again");
+    Harness.deepEqual(monitor.snapshot().map(entry => entry.path), [BAT0],
+                      "the recovered device enters the cache");
+    monitor.destroy();
+};
+
+cases["an unusable UPower device proxy is retried like a failed proxy"] = function () {
+    let manager = managerFor([BAT0]);
+    let devices = {
+        [DISPLAY]: proxyFor(),
+        [BAT0]: { connect: () => { throw new Error("cannot connect properties"); } },
+    };
+    let bus = busFor(manager, devices, { watch: true });
+    let timers = retryTimers(bus);
+    let monitor = monitorOn(bus);
+    bus.appear();
+
+    Harness.deepEqual(monitor.snapshot(), [], "the unusable proxy is not cached");
+    Harness.equal(Object.keys(timers.pending).length, 1, "its path schedules recovery");
+    devices[BAT0] = proxyFor();
+    timers.fire();
+    Harness.deepEqual(monitor.snapshot().map(entry => entry.path), [BAT0],
+                      "a usable replacement is adopted on retry");
+    monitor.destroy();
 };
 
 cases["the manager reports a closed laptop lid live"] = function () {

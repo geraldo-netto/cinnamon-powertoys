@@ -7,6 +7,7 @@
  */
 
 const Gio = imports.gi.Gio;
+const GLib = imports.gi.GLib;
 const UPowerGlib = imports.gi.UPowerGlib;
 
 const Format = require("./lib/format.js");
@@ -15,6 +16,8 @@ const Log = require("./lib/log.js");
 var BUS_NAME = "org.freedesktop.UPower";
 var MANAGER_PATH = "/org/freedesktop/UPower";
 var DISPLAY_DEVICE_PATH = "/org/freedesktop/UPower/devices/DisplayDevice";
+var RETRY_INITIAL_MS = 500;
+var RETRY_MAX_MS = 8000;
 
 const MANAGER_XML = '<node>\
 <interface name="org.freedesktop.UPower">\
@@ -234,13 +237,16 @@ var UPowerMonitor = class UPowerMonitor {
         this._connecting = false;
         this._managerRequest = null;
         this._proxyRequests = new Set();
+        this._retryTimerId = 0;
+        this._retryDelay = RETRY_INITIAL_MS;
         this._readySent = false;
         this.available = false;
         this.destroyed = false;
+        this._ownerPresent = this._bus.watch ? null : true;
 
         if (this._bus.watch) {
             try {
-                this._watchId = this._bus.watch(() => this._connect(),
+                this._watchId = this._bus.watch(() => this._onNameAppeared(),
                                                 () => this._onNameVanished());
             } catch (e) {
                 Log.error("cannot watch UPower: " + e);
@@ -279,6 +285,7 @@ var UPowerMonitor = class UPowerMonitor {
             this._connecting = false;
             Log.error("cannot reach UPower: " + e);
             this._settleReady();
+            this._scheduleRetry();
         }
     }
 
@@ -292,11 +299,26 @@ var UPowerMonitor = class UPowerMonitor {
         if (error || !proxy) {
             Log.error("UPower manager unavailable: " + (error ? error.message : "no proxy"));
             this._settleReady();
+            this._scheduleRetry();
             return;
         }
 
         this._manager = proxy;
         this.available = true;
+        let initialPending = 2;
+        let initialFailed = false;
+        let initialized = success => {
+            if (this.destroyed || generation !== this._generation)
+                return;
+            if (!success)
+                initialFailed = true;
+            if (--initialPending > 0)
+                return;
+            if (initialFailed)
+                this._scheduleRetry();
+            else
+                this._cancelRetry();
+        };
 
         this._busSignalIds.push(proxy.connectSignal("DeviceAdded", (p, sender, [path]) => {
             if (generation === this._generation)
@@ -324,9 +346,12 @@ var UPowerMonitor = class UPowerMonitor {
          * it went unnoticed; it is not the same thing as being told.
          */
         this._requestDevice(DISPLAY_DEVICE_PATH, (displayProxy, displayError) => {
-            if (this.destroyed || generation !== this._generation ||
-                displayError || !displayProxy)
+            if (this.destroyed || generation !== this._generation)
                 return;
+            if (displayError || !displayProxy) {
+                initialized(false);
+                return;
+            }
             this._display = displayProxy;
             this._displaySignalId = displayProxy.connect("g-properties-changed", () => {
                 if (generation === this._generation)
@@ -336,26 +361,33 @@ var UPowerMonitor = class UPowerMonitor {
              * the panel's fallback. Adopting the composite device changes
              * that answer just as surely as one of its properties changing. */
             this._onChanged();
+            initialized(true);
         });
 
-        proxy.EnumerateDevicesRemote((result, enumError) => {
+        let enumerated = (result, enumError) => {
             if (this.destroyed || generation !== this._generation)
                 return;
-            if (enumError) {
-                Log.error("EnumerateDevices failed: " + enumError.message);
+            let paths = result && Array.isArray(result[0]) ? result[0] : null;
+            if (enumError || !paths) {
+                Log.error("EnumerateDevices failed: " +
+                          (enumError ? enumError.message : "invalid reply"));
                 this._settleReady();
                 this._onChanged();
+                initialized(false);
                 return;
             }
-            let paths = result[0] || [];
             let pending = paths.length;
             if (pending === 0) {
                 this._settleReady();
                 this._onChanged();
+                initialized(true);
                 return;
             }
+            let failed = false;
             for (let path of paths)
-                this._addDevice(path, () => {
+                this._addDevice(path, success => {
+                    if (!success)
+                        failed = true;
                     if (--pending > 0)
                         return;
                     /* The applet can be removed while the enumeration is still
@@ -366,19 +398,67 @@ var UPowerMonitor = class UPowerMonitor {
                         return;
                     this._settleReady();
                     this._onChanged();
+                    initialized(!failed);
                 }, generation);
-        });
+        };
+        try {
+            proxy.EnumerateDevicesRemote(enumerated);
+        } catch (error) {
+            enumerated(null, error);
+        }
+    }
+
+    _onNameAppeared() {
+        if (this.destroyed)
+            return;
+        this._ownerPresent = true;
+        this._cancelRetry();
+        this._connect();
     }
 
     _onNameVanished() {
         if (this.destroyed)
             return;
+        this._ownerPresent = false;
+        this._cancelRetry();
         let changed = this.available || this._manager !== null ||
                       this._devices.size > 0 || this._display !== null;
         this._disconnectManager();
         this._settleReady();
         if (changed)
             this._onChanged();
+    }
+
+    _scheduleRetry() {
+        if (this.destroyed || this._ownerPresent !== true || this._retryTimerId)
+            return;
+        let delay = this._retryDelay;
+        this._retryDelay = Math.min(delay * 2, RETRY_MAX_MS);
+        let callback = () => {
+            this._retryTimerId = 0;
+            if (!this.destroyed && this._ownerPresent === true) {
+                let changed = this.available || this._devices.size > 0 || this._display !== null;
+                this._disconnectManager();
+                if (changed)
+                    this._onChanged();
+                this._connect();
+            }
+            return GLib.SOURCE_REMOVE;
+        };
+        this._retryTimerId = this._bus.timeoutAdd
+            ? this._bus.timeoutAdd(delay, callback)
+            : GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback);
+    }
+
+    _cancelRetry() {
+        if (this._retryTimerId) {
+            if (this._bus.removeTimer)
+                this._bus.removeTimer(this._retryTimerId);
+            else
+                GLib.source_remove(this._retryTimerId);
+            this._retryTimerId = 0;
+        }
+        this._retryDelay = RETRY_INITIAL_MS;
     }
 
     /* Proxy wrappers normally report failure to their callback, but reaching
@@ -455,34 +535,49 @@ var UPowerMonitor = class UPowerMonitor {
      */
     _addDevice(path, done, generation) {
         generation = generation === undefined ? this._generation : generation;
-        let settle = () => {
+        let settle = success => {
             if (done)
-                done();
+                done(success);
         };
 
         if (this._devices.has(path) || this._adding.has(path)) {
-            settle();
+            settle(true);
             return;
         }
 
         this._adding.add(path);
         this._requestDevice(path, (proxy, error) => {
             if (generation !== this._generation) {
-                settle();
+                settle(false);
                 return;
             }
             /* False where the device went away while this was in flight, which
              * is _removeDevice having taken the path back out. */
             let wanted = this._adding.delete(path);
-            if (this.destroyed || !wanted || error || !proxy) {
-                settle();
+            if (this.destroyed || !wanted) {
+                settle(false);
                 return;
             }
-            let signalId = proxy.connect("g-properties-changed", () => this._onChanged());
+            if (error || !proxy) {
+                if (!done)
+                    this._scheduleRetry();
+                settle(false);
+                return;
+            }
+            let changed = () => this._onChanged();
+            let signalId;
+            try {
+                signalId = proxy.connect("g-properties-changed", changed);
+            } catch (error) {
+                if (!done)
+                    this._scheduleRetry();
+                settle(false);
+                return;
+            }
             this._devices.set(path, proxy);
             this._deviceSignals.set(path, signalId);
             if (done)
-                done();
+                done(true);
             else
                 this._onChanged();
         });
@@ -672,6 +767,7 @@ var UPowerMonitor = class UPowerMonitor {
 
     destroy() {
         this.destroyed = true;
+        this._cancelRetry();
         if (this._watchId && this._bus.unwatch) {
             try {
                 this._bus.unwatch(this._watchId);
