@@ -158,6 +158,20 @@ cases["the production ownership adapter preserves both callbacks"] = function ()
     Harness.deepEqual(removed, [73], "the same token is released");
 };
 
+cases["an injected owner can use the production release fallback"] = function () {
+    let owner = {
+        reportsInitialState: false,
+        watch: (appeared, vanished) => Backlight.watchOwner(appeared, vanished),
+    };
+    let screen = new Backlight.BacklightControl(
+        Backlight.SCREEN, null, null,
+        (xml, onDone) => onDone(proxy({ GetPercentage: 42 }), null), owner);
+
+    Harness.equal(screen.percentage, 42, "the injected connector remains usable");
+    screen.destroy();
+    Harness.equal(screen.destroyed, true, "the production unwatch fallback completes teardown");
+};
+
 cases["monitor brightness follows the visible display topology"] = function () {
     Harness.equal(Backlight.shouldUseMonitorBacklight(false, false, false), false,
                   "the setting keeps every DDC probe off");

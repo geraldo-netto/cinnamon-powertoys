@@ -66,8 +66,7 @@ function interpolate(text, values) {
     let fields = values || {};
     return String(text).replace(/%\{([A-Za-z][A-Za-z0-9_]*)\}/g,
         function (placeholder, name) {
-            if (!Object.prototype.hasOwnProperty.call(fields, name))
-                return placeholder;
-            return String(fields[name]);
+            return Object.prototype.hasOwnProperty.call(fields, name)
+                ? String(fields[name]) : placeholder;
         });
 }

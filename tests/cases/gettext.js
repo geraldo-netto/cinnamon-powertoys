@@ -250,6 +250,8 @@ cases["named values are inserted after the complete message is translated"] = fu
                   "7 then 7", "a translator can move or repeat a named value");
     Harness.equal(Translate.interpolate("Keep %{missing}", {}), "Keep %{missing}",
                   "a catalogue typo remains visible instead of silently deleting text");
+    Harness.equal(Translate.interpolate("Still %{missing}"), "Still %{missing}",
+                  "an omitted value map also preserves the visible placeholder");
 };
 
 cases["dynamic name and value phrases use complete templates"] = function () {

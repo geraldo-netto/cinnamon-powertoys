@@ -87,3 +87,18 @@ cases["teardown cancels an owner watch retry"] = function () {
     Harness.equal(Object.keys(clock.pending).length, 0, "the timer was removed");
     Harness.deepEqual(clock.removed, [1], "the owned timer is released once");
 };
+
+cases["the default GLib retry timer is owned and cannot be duplicated"] = function () {
+    let watch = new OwnerWatch.ResilientOwnerWatch({
+        install: () => { throw new Error("offline"); },
+    });
+    Log.setSink(() => {});
+    try {
+        Harness.equal(watch.start(), false, "the failed registration arms its fallback timer");
+        watch._scheduleRetry();
+        Harness.equal(watch.active, false, "a pending retry is not an installed watch");
+        watch.stop();
+    } finally {
+        Log.setSink(null);
+    }
+};
