@@ -252,10 +252,10 @@ sudo make uninstall-rapl                    # remove this applet's access rule
 ```
 
 `adm` is the default because a desktop session is already in it, so the counters
-become readable without logging out. Reload the applet afterwards — it looks for
-them once, when it starts. The row then appears under *Package* in the Sensors
-column, one line for the socket and one for each domain inside it the kernel
-publishes.
+become readable without logging out. Open the applet menu after installing to
+discover them immediately; otherwise the periodic topology check finds them
+within one minute. The row then appears under *Package* in the Sensors column,
+one line for the socket and one for each domain inside it the kernel publishes.
 
 Uninstall resets the counters to the kernel's root-only default and then
 replays the remaining udev rules. If the distribution, administrator or

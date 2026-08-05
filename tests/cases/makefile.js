@@ -20,3 +20,15 @@ cases["RAPL uninstall gives remaining udev rules the final say"] = function () {
     Harness.ok(trigger > reset,
                "remaining distribution and administrator rules run after the fallback");
 };
+
+cases["RAPL install describes live sensor discovery"] = function () {
+    let makefile = Harness.readFile(Harness.testsDir() + "/../Makefile");
+    let readme = Harness.readFile(Harness.testsDir() + "/../README.md");
+    Harness.ok(makefile.indexOf("open the applet menu to discover the counters now") >= 0,
+               "the command names the immediate discovery path");
+    Harness.ok(readme.indexOf("periodic topology check finds them\nwithin one minute") >= 0,
+               "the documentation names the background path");
+    Harness.ok(makefile.indexOf("looks for these counters once") < 0 &&
+               readme.indexOf("looks for\nthem once") < 0,
+               "the obsolete startup-only instruction is gone");
+};

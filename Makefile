@@ -114,7 +114,7 @@ install-rapl:
 	@[ -n "$(DESTDIR)" ] || udevadm control --reload
 	@[ -n "$(DESTDIR)" ] || udevadm trigger --subsystem-match=powercap
 	@echo "installed $(RAPL_DIR)/$(RAPL_RULE), reading given to group $(RAPL_GROUP)"
-	@echo "reload the applet - it looks for these counters once, when it starts"
+	@echo "open the applet menu to discover the counters now, or wait up to one minute"
 
 uninstall-rapl:
 	@[ -n "$(DESTDIR)" ] || [ "$$(id -u)" = 0 ] || \
