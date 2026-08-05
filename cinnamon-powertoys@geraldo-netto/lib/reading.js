@@ -148,7 +148,7 @@ function describeChange(args) {
             return String(args[1]) === "1" ? _("Turbo boost on") : _("Turbo boost off");
         case "charge-threshold":
             return Translate.interpolate(_("Charge limit: %{limit}"),
-                { limit: args[1] + "%" });
+                { limit: Format.percent(Number(args[1])) });
         default:
             return "";
     }

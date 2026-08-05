@@ -27,6 +27,15 @@ function withTheme(names, body) {
     }
 }
 
+function withNumberLocale(locale, body) {
+    Format.setNumberLocale(locale);
+    try {
+        return body();
+    } finally {
+        Format.setNumberLocale(null);
+    }
+}
+
 var cases = {};
 
 cases["the xapp icons are used where they are installed"] = function () {
@@ -181,12 +190,25 @@ cases["a percentage is whole unless asked otherwise"] = function () {
     Harness.equal(Format.percent(undefined), "", "still nothing");
 };
 
+cases["every numeric unit follows the user's decimal locale"] = function () {
+    withNumberLocale("de-DE", function () {
+        Harness.equal(Format.number(1234.5, 1), "1234,5",
+                      "the shared formatter localizes decimals without grouping");
+        Harness.equal(Format.percent(42.5, 1), "42,5%", "percentage");
+        Harness.equal(Format.temperature(20.25, "celsius", 2), "20,25 °C",
+                      "temperature");
+        Harness.equal(Format.watts(8.5), "8,5 W", "power");
+        Harness.equal(Format.frequency(3500), "3,50 GHz", "frequency");
+        Harness.equal(Format.volts(11.1), "11,10 V", "voltage");
+        Harness.equal(Format.rpm(1367), "1367 RPM", "fan speed");
+        Harness.equal(Format.energy(49.5), "49,5 Wh", "energy");
+    });
+};
+
 cases["a temperature follows the unit it is given"] = function () {
     Harness.equal(Format.temperature(70.8, "celsius", 1), "70.8 °C", "celsius");
-    /* toFixed rounds the binary value, not the decimal one, so 70.85 goes
-     * down. Worth pinning: it is the sort of thing a rewrite would "fix"
-     * into a different set of readings. */
-    Harness.equal(Format.temperature(70.85, "celsius", 1), "70.8 °C", "a value that lands on a half");
+    Harness.equal(Format.temperature(70.85, "celsius", 1), "70.9 °C",
+                  "locale formatting rounds the displayed decimal value");
     Harness.equal(Format.temperature(0, "fahrenheit", 1), "32.0 °F", "freezing");
     Harness.equal(Format.temperature(100, "fahrenheit", 0), "212 °F", "boiling");
     Harness.equal(Format.temperature(70.85, "celsius", 0), "71 °C", "no decimals");

@@ -926,11 +926,12 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
 
     _showValue() {
         let percentage = this._control.percentage;
-        this._reading.set_text(percentage === null ? "" : percentage + "%");
+        let percentageText = Format.percent(percentage);
+        this._reading.set_text(percentageText);
         this.tooltip.set_text(percentage === null ? this._name : Translate.interpolate(
             _("%{display}: %{percentage}"), {
                 display: this._name,
-                percentage: percentage + "%",
+                percentage: percentageText,
             }));
         if (percentage !== null)
             this._accessible.accessible_value = percentage;
@@ -1283,7 +1284,7 @@ class MenuPresenter {
          * _updateCharge asks the reading rather than the constructor.
          */
         this._chargeLimitControl = new ChoiceControl(
-            menu, _("Charge limit"), limit => limit + "%",
+            menu, _("Charge limit"), limit => Format.percent(limit),
             value => this._actions.setChargeLimit(value));
 
         /*

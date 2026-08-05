@@ -20,123 +20,123 @@ msgstr ""
 msgid "Brightness: %{display}"
 msgstr ""
 
-#: applet.js:931
+#: applet.js:932
 msgid "%{display}: %{percentage}"
 msgstr ""
 
-#: applet.js:1115
+#: applet.js:1116
 msgid "System power settings"
 msgstr ""
 
-#: applet.js:1138
+#: applet.js:1139
 msgid "Brightness"
 msgstr ""
 
-#: applet.js:1144
+#: applet.js:1145
 msgid "Screen"
 msgstr ""
 
-#: applet.js:1162 lib/format.js:108
+#: applet.js:1163 lib/format.js:150
 msgid "Keyboard"
 msgstr ""
 
-#: applet.js:1170
+#: applet.js:1171
 msgid "Power profile"
 msgstr ""
 
-#: applet.js:1179
+#: applet.js:1180
 msgid "Profile"
 msgstr ""
 
-#: applet.js:1183
+#: applet.js:1184
 msgid "Performance limited"
 msgstr ""
 
-#: applet.js:1209 lib/panel-text.js:217 lib/sensors.js:37
+#: applet.js:1210 lib/panel-text.js:217 lib/sensors.js:37
 msgid "Processor"
 msgstr ""
 
-#: applet.js:1214
+#: applet.js:1215
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1232
+#: applet.js:1233
 msgid "Governor"
 msgstr ""
 
-#: applet.js:1235
+#: applet.js:1236
 msgid "Energy preference"
 msgstr ""
 
-#: applet.js:1250 lib/panel-text.js:283
+#: applet.js:1251 lib/panel-text.js:283
 msgid "Devices"
 msgstr ""
 
-#: applet.js:1286
+#: applet.js:1287
 msgid "Charge limit"
 msgstr ""
 
-#: applet.js:1302
+#: applet.js:1303
 msgid "Sensors"
 msgstr ""
 
-#: applet.js:1415
+#: applet.js:1416
 #, javascript-format
 msgid "Only the first %d monitors have a slider"
 msgstr ""
 
-#: applet.js:1516
+#: applet.js:1517
 msgid "%{kind} %{charge}"
 msgstr ""
 
-#: applet.js:1521
+#: applet.js:1522
 msgid "%{state} · %{remaining}"
 msgstr ""
 
-#: applet.js:1550
+#: applet.js:1551
 msgid "an application"
 msgstr ""
 
-#: applet.js:1552
+#: applet.js:1553
 msgid "%{application} → %{profile}"
 msgstr ""
 
-#: applet.js:1573 lib/panel-text.js:266
+#: applet.js:1574 lib/panel-text.js:266
 msgid "Connected"
 msgstr ""
 
-#: applet.js:1573 lib/panel-text.js:266
+#: applet.js:1574 lib/panel-text.js:266
 msgid "Disconnected"
 msgstr ""
 
-#: applet.js:1627
+#: applet.js:1628
 msgid "No sensor matches “%{sensor}”"
 msgstr ""
 
-#: applet.js:1649
+#: applet.js:1650
 msgid "The batteries have different limits; choosing one sets all batteries."
 msgstr ""
 
-#: applet.js:1650
+#: applet.js:1651
 msgid "The batteries have different charge limits."
 msgstr ""
 
-#: applet.js:1653
+#: applet.js:1654
 msgid ""
 "Some battery limits could not be read; choosing one sets all batteries."
 msgstr ""
 
-#: applet.js:1654
+#: applet.js:1655
 msgid "Some battery limits could not be read."
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:1970 applet.js:3036 applet.js:3050 applet.js:3109 applet.js:3172
-#: applet.js:3181 applet.js:3336
+#: applet.js:1972 applet.js:3045 applet.js:3059 applet.js:3118 applet.js:3181
+#: applet.js:3190 applet.js:3345
 msgid "Power Toys"
 msgstr ""
 
-#: applet.js:1971
+#: applet.js:1973
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "
@@ -144,64 +144,64 @@ msgid ""
 "shortcuts."
 msgstr ""
 
-#: applet.js:2985 applet.js:3140
+#: applet.js:2994 applet.js:3149
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:3010
+#: applet.js:3019
 msgid "The requested value is not valid for this control."
 msgstr ""
 
-#: applet.js:3012
+#: applet.js:3021
 msgid "This control is not supported on this system."
 msgstr ""
 
-#: applet.js:3014
+#: applet.js:3023
 msgid "This control is currently unavailable."
 msgstr ""
 
-#: applet.js:3016
+#: applet.js:3025
 msgid "The system refused the requested change."
 msgstr ""
 
-#: applet.js:3018
+#: applet.js:3027
 msgid "The change failed; the previous settings were restored."
 msgstr ""
 
-#: applet.js:3020
+#: applet.js:3029
 msgid "The change failed and some previous settings could not be restored."
 msgstr ""
 
-#: applet.js:3022
+#: applet.js:3031
 msgid "The privileged helper could not be found."
 msgstr ""
 
-#: applet.js:3024 applet.js:3037
+#: applet.js:3033 applet.js:3046
 msgid ""
 "The installed privileged helper is outdated. Re-run the policy installation."
 msgstr ""
 
-#: applet.js:3026
+#: applet.js:3035
 msgid "The privileged helper is incompatible with this applet version."
 msgstr ""
 
-#: applet.js:3028
+#: applet.js:3037
 msgid "The change could not be applied."
 msgstr ""
 
-#: applet.js:3047
+#: applet.js:3056
 msgid "Could not switch to %{profile}: %{detail}"
 msgstr ""
 
-#: applet.js:3048
+#: applet.js:3057
 msgid "Could not switch to %{profile}"
 msgstr ""
 
-#: applet.js:3110
+#: applet.js:3119
 msgid "Power profile: %{profile}"
 msgstr ""
 
-#: applet.js:3337
+#: applet.js:3346
 msgid "Shortcut is already in use: %{shortcut}"
 msgstr ""
 
@@ -209,19 +209,19 @@ msgstr ""
 msgid "%{source} - %{reading}"
 msgstr ""
 
-#: lib/alerts.js:135
+#: lib/alerts.js:140
 msgid "Battery critically low"
 msgstr ""
 
-#: lib/alerts.js:141
+#: lib/alerts.js:146
 msgid "Battery low"
 msgstr ""
 
-#: lib/alerts.js:163 lib/format.js:441 lib/panel-text.js:249
+#: lib/alerts.js:168 lib/format.js:483 lib/panel-text.js:249
 msgid "Temperature"
 msgstr ""
 
-#: lib/alerts.js:164
+#: lib/alerts.js:169
 msgid "High temperature"
 msgstr ""
 
@@ -261,283 +261,323 @@ msgstr ""
 msgid "%{device}  %{charge}"
 msgstr ""
 
-#: lib/format.js:103
-msgid "AC adapter"
+#: lib/format.js:72
+msgid "%{value}%"
 msgstr ""
 
-#: lib/format.js:104 lib/panel-text.js:155 lib/sensors.js:42
-msgid "Battery"
+#: lib/format.js:80
+msgid "%{value} °F"
 msgstr ""
 
-#: lib/format.js:105
-msgid "UPS"
+#: lib/format.js:84
+msgid "%{value} °C"
+msgstr ""
+
+#: lib/format.js:93
+msgid "%{value} mW"
+msgstr ""
+
+#: lib/format.js:97
+msgid "%{value} W"
 msgstr ""
 
 #: lib/format.js:106
-msgid "Monitor"
-msgstr ""
-
-#: lib/format.js:107
-msgid "Mouse"
-msgstr ""
-
-#: lib/format.js:109
-msgid "PDA"
+msgid "%{value} GHz"
 msgstr ""
 
 #: lib/format.js:110
-msgid "Phone"
-msgstr ""
-
-#: lib/format.js:111
-msgid "Media player"
-msgstr ""
-
-#: lib/format.js:112
-msgid "Tablet"
-msgstr ""
-
-#: lib/format.js:113
-msgid "Computer"
-msgstr ""
-
-#: lib/format.js:114
-msgid "Game controller"
-msgstr ""
-
-#: lib/format.js:115
-msgid "Pen"
+msgid "%{value} MHz"
 msgstr ""
 
 #: lib/format.js:116
-msgid "Touchpad"
-msgstr ""
-
-#: lib/format.js:117
-msgid "Modem"
-msgstr ""
-
-#: lib/format.js:118
-msgid "Network device"
-msgstr ""
-
-#: lib/format.js:119
-msgid "Headset"
-msgstr ""
-
-#: lib/format.js:120
-msgid "Speakers"
-msgstr ""
-
-#: lib/format.js:121
-msgid "Headphones"
+msgid "%{value} V"
 msgstr ""
 
 #: lib/format.js:122
-msgid "Video device"
-msgstr ""
-
-#: lib/format.js:123
-msgid "Audio device"
-msgstr ""
-
-#: lib/format.js:124
-msgid "Remote control"
-msgstr ""
-
-#: lib/format.js:125
-msgid "Printer"
-msgstr ""
-
-#: lib/format.js:126
-msgid "Scanner"
-msgstr ""
-
-#: lib/format.js:127
-msgid "Camera"
+msgid "%{value} RPM"
 msgstr ""
 
 #: lib/format.js:128
-msgid "Wearable"
-msgstr ""
-
-#: lib/format.js:129
-msgid "Toy"
-msgstr ""
-
-#: lib/format.js:130
-msgid "Bluetooth device"
-msgstr ""
-
-#: lib/format.js:135
-msgid "Device"
-msgstr ""
-
-#: lib/format.js:142
-msgid "Charging"
-msgstr ""
-
-#: lib/format.js:143
-msgid "Discharging"
-msgstr ""
-
-#: lib/format.js:144
-msgid "Empty"
+msgid "%{value} Wh"
 msgstr ""
 
 #: lib/format.js:145
-msgid "Fully charged"
+msgid "AC adapter"
 msgstr ""
 
-#: lib/format.js:146
-msgid "Pending charge"
+#: lib/format.js:146 lib/panel-text.js:155 lib/sensors.js:42
+msgid "Battery"
 msgstr ""
 
 #: lib/format.js:147
-msgid "Pending discharge"
+msgid "UPS"
 msgstr ""
 
-#: lib/format.js:148 lib/format.js:160
-msgid "Unknown"
+#: lib/format.js:148
+msgid "Monitor"
+msgstr ""
+
+#: lib/format.js:149
+msgid "Mouse"
+msgstr ""
+
+#: lib/format.js:151
+msgid "PDA"
+msgstr ""
+
+#: lib/format.js:152
+msgid "Phone"
+msgstr ""
+
+#: lib/format.js:153
+msgid "Media player"
+msgstr ""
+
+#: lib/format.js:154
+msgid "Tablet"
 msgstr ""
 
 #: lib/format.js:155
-msgid "Full"
+msgid "Computer"
 msgstr ""
 
 #: lib/format.js:156
-msgid "High"
+msgid "Game controller"
 msgstr ""
 
 #: lib/format.js:157
-msgid "Normal"
+msgid "Pen"
 msgstr ""
 
 #: lib/format.js:158
-msgid "Low"
+msgid "Touchpad"
 msgstr ""
 
 #: lib/format.js:159
+msgid "Modem"
+msgstr ""
+
+#: lib/format.js:160
+msgid "Network device"
+msgstr ""
+
+#: lib/format.js:161
+msgid "Headset"
+msgstr ""
+
+#: lib/format.js:162
+msgid "Speakers"
+msgstr ""
+
+#: lib/format.js:163
+msgid "Headphones"
+msgstr ""
+
+#: lib/format.js:164
+msgid "Video device"
+msgstr ""
+
+#: lib/format.js:165
+msgid "Audio device"
+msgstr ""
+
+#: lib/format.js:166
+msgid "Remote control"
+msgstr ""
+
+#: lib/format.js:167
+msgid "Printer"
+msgstr ""
+
+#: lib/format.js:168
+msgid "Scanner"
+msgstr ""
+
+#: lib/format.js:169
+msgid "Camera"
+msgstr ""
+
+#: lib/format.js:170
+msgid "Wearable"
+msgstr ""
+
+#: lib/format.js:171
+msgid "Toy"
+msgstr ""
+
+#: lib/format.js:172
+msgid "Bluetooth device"
+msgstr ""
+
+#: lib/format.js:177
+msgid "Device"
+msgstr ""
+
+#: lib/format.js:184
+msgid "Charging"
+msgstr ""
+
+#: lib/format.js:185
+msgid "Discharging"
+msgstr ""
+
+#: lib/format.js:186
+msgid "Empty"
+msgstr ""
+
+#: lib/format.js:187
+msgid "Fully charged"
+msgstr ""
+
+#: lib/format.js:188
+msgid "Pending charge"
+msgstr ""
+
+#: lib/format.js:189
+msgid "Pending discharge"
+msgstr ""
+
+#: lib/format.js:190 lib/format.js:202
+msgid "Unknown"
+msgstr ""
+
+#: lib/format.js:197
+msgid "Full"
+msgstr ""
+
+#: lib/format.js:198
+msgid "High"
+msgstr ""
+
+#: lib/format.js:199
+msgid "Normal"
+msgstr ""
+
+#: lib/format.js:200
+msgid "Low"
+msgstr ""
+
+#: lib/format.js:201
 msgid "Critical"
 msgstr ""
 
-#: lib/format.js:286
+#: lib/format.js:328
 msgid "Power saver"
 msgstr ""
 
-#: lib/format.js:287
+#: lib/format.js:329
 msgid "Balanced"
 msgstr ""
 
-#: lib/format.js:288
+#: lib/format.js:330
 msgid "Balanced performance"
 msgstr ""
 
-#: lib/format.js:289 lib/format.js:399 lib/format.js:417 lib/panel-text.js:282
+#: lib/format.js:331 lib/format.js:441 lib/format.js:459 lib/panel-text.js:282
 msgid "Performance"
 msgstr ""
 
-#: lib/format.js:290
+#: lib/format.js:332
 msgid "Quiet"
 msgstr ""
 
-#: lib/format.js:291
+#: lib/format.js:333
 msgid "Low power"
 msgstr ""
 
-#: lib/format.js:292
+#: lib/format.js:334
 msgid "Cool"
 msgstr ""
 
-#: lib/format.js:353 lib/format.js:354
+#: lib/format.js:395 lib/format.js:396
 msgid "AMD"
 msgstr ""
 
-#: lib/format.js:355
+#: lib/format.js:397
 msgid "ACPI"
 msgstr ""
 
-#: lib/format.js:356
+#: lib/format.js:398
 msgid "Intel"
 msgstr ""
 
-#: lib/format.js:357
+#: lib/format.js:399
 msgid "Intel, kernel managed"
 msgstr ""
 
-#: lib/format.js:358
+#: lib/format.js:400
 msgid "ACPI hardware managed"
 msgstr ""
 
-#: lib/format.js:359
+#: lib/format.js:401
 msgid "Intel SpeedStep"
 msgstr ""
 
-#: lib/format.js:360
+#: lib/format.js:402
 msgid "AMD PowerNow"
 msgstr ""
 
-#: lib/format.js:361
+#: lib/format.js:403
 msgid "Processor Clocking Control"
 msgstr ""
 
-#: lib/format.js:370
+#: lib/format.js:412
 msgid "hardware managed"
 msgstr ""
 
-#: lib/format.js:371
+#: lib/format.js:413
 msgid "guided"
 msgstr ""
 
-#: lib/format.js:372
+#: lib/format.js:414
 msgid "kernel managed"
 msgstr ""
 
-#: lib/format.js:386
+#: lib/format.js:428
 msgid "unknown"
 msgstr ""
 
-#: lib/format.js:400
+#: lib/format.js:442
 msgid "Power save"
 msgstr ""
 
-#: lib/format.js:401
+#: lib/format.js:443
 msgid "On demand"
 msgstr ""
 
-#: lib/format.js:402
+#: lib/format.js:444
 msgid "Conservative"
 msgstr ""
 
-#: lib/format.js:403
+#: lib/format.js:445
 msgid "Scheduler guided"
 msgstr ""
 
-#: lib/format.js:404
+#: lib/format.js:446
 msgid "Userspace"
 msgstr ""
 
-#: lib/format.js:416
+#: lib/format.js:458
 msgid "Default"
 msgstr ""
 
-#: lib/format.js:418
+#: lib/format.js:460
 msgid "Balance performance"
 msgstr ""
 
-#: lib/format.js:419
+#: lib/format.js:461
 msgid "Balance power"
 msgstr ""
 
-#: lib/format.js:420
+#: lib/format.js:462
 msgid "Power saving"
 msgstr ""
 
-#: lib/format.js:442
+#: lib/format.js:484
 msgid "Fan"
 msgstr ""
 
-#: lib/format.js:443 lib/sensors.js:224
+#: lib/format.js:485 lib/sensors.js:224
 msgid "Power"
 msgstr ""
 

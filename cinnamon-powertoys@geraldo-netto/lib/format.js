@@ -37,53 +37,95 @@ function _figure(value) {
     return typeof value === "number" && Number.isFinite(value);
 }
 
-function percent(value, decimals) {
+/* Left unset in production so Intl follows the process locale. The explicit
+ * seam keeps every unit formatter checkable under a decimal-comma locale. */
+let _numberLocale = null;
+
+function setNumberLocale(locale) {
+    _numberLocale = locale || null;
+}
+
+/* A fixed-precision, ungrouped number in the user's numeric locale. Sensor
+ * values are compact measurements rather than counts, so grouping would add
+ * width and ambiguity to values such as 1367 RPM. */
+function number(value, decimals) {
     if (!_figure(value))
         return "";
-    return value.toFixed(decimals === undefined ? 0 : decimals) + "%";
+    let digits = decimals === undefined ? 0 :
+        Math.max(0, Math.floor(Number(decimals) || 0));
+    try {
+        return new Intl.NumberFormat(_numberLocale || undefined, {
+            useGrouping: false,
+            minimumFractionDigits: digits,
+            maximumFractionDigits: digits,
+        }).format(value);
+    } catch (error) {
+        /* Keep older GJS/ICU combinations usable if Intl rejects an option. */
+        return value.toFixed(digits);
+    }
+}
+
+function percent(value, decimals) {
+    let valueText = number(value, decimals);
+    if (!valueText)
+        return "";
+    return Translate.interpolate(_("%{value}%"), { value: valueText });
 }
 
 function temperature(celsius, unit, decimals) {
     if (!_figure(celsius))
         return "";
     let digits = decimals === undefined ? 1 : decimals;
-    if (unit === "fahrenheit")
-        return (celsius * 9 / 5 + 32).toFixed(digits) + " °F";
-    return celsius.toFixed(digits) + " °C";
+    if (unit === "fahrenheit") {
+        return Translate.interpolate(_("%{value} °F"), {
+            value: number(celsius * 9 / 5 + 32, digits),
+        });
+    }
+    return Translate.interpolate(_("%{value} °C"), {
+        value: number(celsius, digits),
+    });
 }
 
 function watts(value) {
     if (!_figure(value))
         return "";
-    if (Math.abs(value) < 1)
-        return (value * 1000).toFixed(0) + " mW";
-    return value.toFixed(value < 10 ? 1 : 0) + " W";
+    if (Math.abs(value) < 1) {
+        return Translate.interpolate(_("%{value} mW"), {
+            value: number(value * 1000, 0),
+        });
+    }
+    return Translate.interpolate(_("%{value} W"), {
+        value: number(value, value < 10 ? 1 : 0),
+    });
 }
 
 function frequency(mhz) {
     if (!_figure(mhz))
         return "";
-    if (mhz >= 1000)
-        return (mhz / 1000).toFixed(2) + " GHz";
-    return mhz.toFixed(0) + " MHz";
+    if (mhz >= 1000) {
+        return Translate.interpolate(_("%{value} GHz"), {
+            value: number(mhz / 1000, 2),
+        });
+    }
+    return Translate.interpolate(_("%{value} MHz"), { value: number(mhz, 0) });
 }
 
 function volts(value) {
     if (!_figure(value) || value === 0)
         return "";
-    return value.toFixed(2) + " V";
+    return Translate.interpolate(_("%{value} V"), { value: number(value, 2) });
 }
 
 function rpm(value) {
     if (!_figure(value))
         return "";
-    return value.toFixed(0) + " RPM";
+    return Translate.interpolate(_("%{value} RPM"), { value: number(value, 0) });
 }
 
 function energy(wattHours) {
     if (!_figure(wattHours))
         return "";
-    return wattHours.toFixed(1) + " Wh";
+    return Translate.interpolate(_("%{value} Wh"), { value: number(wattHours, 1) });
 }
 
 /* Seconds to a compact "2h 05m" / "45m" form. */
