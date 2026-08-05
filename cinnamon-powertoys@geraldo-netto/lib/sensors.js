@@ -686,10 +686,20 @@ function discoverEnergyCounters() {
     return _energyCounters(IO.listDir(POWERCAP_DIR), IO.readString);
 }
 
-function _topologyFromInventory(directories) {
-    return [directories[HWMON_DIR] || [], directories[THERMAL_DIR] || [],
-            directories[POWERCAP_DIR] || []]
-        .map(entries => entries.join(",")).join("|");
+function _powercapTopology(entries, readable) {
+    return entries.map(entry => {
+        if (!/^(intel-rapl|amd-rapl|dtpm)/.test(entry))
+            return entry;
+        let path = POWERCAP_DIR + "/" + entry + "/energy_uj";
+        return entry + ":" + (readable(path) ? "readable" : "restricted");
+    }).join(",");
+}
+
+function _topologyFromInventory(directories, readString) {
+    let powercap = directories[POWERCAP_DIR] || [];
+    return [(directories[HWMON_DIR] || []).join(","),
+            (directories[THERMAL_DIR] || []).join(","),
+            _powercapTopology(powercap, path => readString(path) !== null)].join("|");
 }
 
 /* One complete sensor snapshot, assembled only after every asynchronous part
@@ -705,7 +715,7 @@ function discoverSnapshotAsync(onDone) {
                 onDone({
                     sensors: _finishSensors(scanned, labels),
                     counters: _energyCounters(directories[POWERCAP_DIR] || [], read),
-                    topology: _topologyFromInventory(directories),
+                    topology: _topologyFromInventory(directories, read),
                 });
             });
         }, 32);
@@ -845,14 +855,15 @@ var SensorSet = class SensorSet {
     }
 
     /*
-     * A cheap description of what is present: three directory listings. A
-     * card waking up, a USB sensor being plugged in or a driver being loaded
-     * adds or removes an entry in one of them.
+     * A cheap description of what is present: three directory listings plus
+     * access metadata for the few powercap counters. A card waking up, a USB
+     * sensor being plugged in or a driver being loaded changes a listing;
+     * installing the optional RAPL rule changes the access metadata.
      */
     _topologyKey() {
         return [IO.listDir(HWMON_DIR).join(","),
                 IO.listDir(THERMAL_DIR).join(","),
-                IO.listDir(POWERCAP_DIR).join(",")].join("|");
+                _powercapTopology(IO.listDir(POWERCAP_DIR), IO.canRead)].join("|");
     }
 
     /*

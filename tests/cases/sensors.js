@@ -646,6 +646,7 @@ cases["an asynchronous sensor set keeps an atomic snapshot"] = function () {
         Harness.equal(set.temperatureSensors.length, 8, "the complete snapshot is adopted together");
         Harness.equal(set.fanSensors.length, 1, "including fans");
         Harness.equal(set.powerSensors.length, 3, "and power meters");
+        Harness.equal(set.refresh(), false, "the asynchronous topology signature is current");
     });
 };
 
@@ -885,5 +886,29 @@ cases["a sweep is only run again where the hardware has moved"] = function () {
         Harness.equal(set.energyMeters.length, 0, "meters and all");
 
         Harness.equal(set.refresh(), false, "and the new shape is the one it now knows");
+    });
+};
+
+cases["RAPL access changing is a topology change"] = function () {
+    on("machine", function () {
+        let originalCanRead = IO.canRead;
+        let originalReadString = IO.readString;
+        let readable = true;
+        let isEnergy = path => /\/powercap\/[^/]+\/energy_uj$/.test(path);
+        IO.canRead = path => isEnergy(path) ? readable : originalCanRead(path);
+        IO.readString = path => isEnergy(path) && !readable
+            ? null : originalReadString(path);
+        try {
+            let set = new Sensors.SensorSet();
+            Harness.ok(set.energyMeters.length > 0, "the readable counters are discovered");
+
+            readable = false;
+            Harness.equal(set.refresh(), true, "permission alone triggers a new sweep");
+            Harness.equal(set.energyMeters.length, 0, "restricted counters leave the snapshot");
+            Harness.equal(set.refresh(), false, "the new permission state is remembered");
+        } finally {
+            IO.canRead = originalCanRead;
+            IO.readString = originalReadString;
+        }
     });
 };

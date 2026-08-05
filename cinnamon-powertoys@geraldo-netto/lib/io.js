@@ -154,6 +154,20 @@ function isReadable(path) {
     return readString(path) !== null;
 }
 
+/* Whether this process may read a path, without reading the path itself. This
+ * is for topology checks: an energy counter changes from root-only to readable
+ * without changing its directory name, and sampling it just to ask would both
+ * block and advance a device whose value has time semantics. */
+function canRead(path) {
+    try {
+        let info = Gio.File.new_for_path(resolve(path)).query_info(
+            "access::can-read", Gio.FileQueryInfoFlags.NONE, null);
+        return info.get_attribute_boolean("access::can-read");
+    } catch (e) {
+        return false;
+    }
+}
+
 /* hwmon2 must sort before hwmon10 */
 function naturalCompare(a, b) {
     let re = /(\d+)/g;
