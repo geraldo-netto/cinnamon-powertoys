@@ -5,8 +5,8 @@
  * these moved out of applet.js nothing could ask it anything. What is checked
  * here is the rules rather than the formatting - lib/format.js has its own
  * cases for that: when a profile is worth saying in words beside a gauge that
- * already says it, what a machine with nothing to report says, and how many
- * accessories fit in a tooltip before the rest are counted instead.
+ * already says it, what a machine with nothing to report says, and whether
+ * the tooltip names every consumption reading and device honestly.
  */
 
 const Harness = imports.harness;
@@ -23,11 +23,14 @@ function reading(parts) {
     return Object.assign({
         upowerAvailable: true,
         devices: [],
+        lines: [],
         primary: null,
         onBattery: false,
         lineOnline: false,
-        cpu: { governor: null },
+        cpu: { governor: null, averageFrequency: null, maxFrequency: null },
         cpuTemperature: null,
+        powers: [],
+        packageWatts: null,
         systemWatts: null,
         systemWattsSource: null,
         profile: { active: null, list: [] },
@@ -196,7 +199,7 @@ cases["a coarse battery level is written everywhere"] = function () {
     let coarse = battery({ percentage: 0, batteryLevel: Level.LOW });
     let data = reading({ primary: coarse, devices: [coarse] });
     Harness.equal(PanelText.labelText(data, options(), "battery", null), "Low", "panel label");
-    Harness.ok(PanelText.tooltipText(data, options()).indexOf("Battery Low") >= 0,
+    Harness.ok(PanelText.tooltipText(data, options()).indexOf("Battery: Low") >= 0,
                "tooltip: " + PanelText.tooltipText(data, options()));
 
     let mouse = peripheral({ percentage: 0, batteryLevel: Level.CRITICAL });
@@ -245,16 +248,16 @@ cases["a machine with no profile has no profile to say"] = function () {
 
 cases["UPower establishes the source without a primary device"] = function () {
     Harness.equal(PanelText.tooltipText(reading({ onBattery: false }), options()),
-                  "Running on AC power", "the manager says it is plugged in");
+                  "Power source: AC", "the manager says it is plugged in");
     Harness.equal(PanelText.tooltipText(reading({ onBattery: true }), options()),
-                  "Running on battery power", "and it can say battery without a display device");
+                  "Power source: Battery", "and it can say battery without a display device");
     Harness.equal(PanelText.powerStatusLabel(reading({ onBattery: true })),
                   "On battery power", "the menu uses the same source");
 };
 
 cases["a machine with no battery says it is on the mains"] = function () {
     let plugged = PanelText.tooltipText(reading({ lineOnline: true }), options());
-    Harness.equal(plugged.split("\n")[0], "Running on AC power", "the charger is in");
+    Harness.equal(plugged.split("\n")[0], "Power source: AC", "the charger is in");
 
     /* With no manager, there is no evidence for either source. */
     let noUPower = PanelText.tooltipText(reading({ upowerAvailable: false }), options());
@@ -266,8 +269,9 @@ cases["a machine with no battery says it is on the mains"] = function () {
 cases["the tooltip opens with the battery and how long it has"] = function () {
     let data = reading({ primary: battery({ percentage: 61, timeToEmpty: 7200 }) });
     let lines = PanelText.tooltipText(data, options()).split("\n");
-    Harness.equal(lines[0], "Battery 61% - Discharging", "what it is, how full, what it is doing");
-    Harness.equal(lines[1], "2h 00m remaining", "and how long that leaves");
+    Harness.equal(lines[0], "Power source: AC", "which supply the machine is using");
+    Harness.equal(lines[1], "Battery: 61% · Discharging · 2h 00m remaining",
+                  "what it is, how full, what it is doing, and how long that leaves");
 };
 
 cases["the tooltip carries what the panel deliberately does not"] = function () {
@@ -278,19 +282,43 @@ cases["the tooltip carries what the panel deliberately does not"] = function () 
      */
     let data = reading({
         lineOnline: true,
-        cpu: { governor: "schedutil" },
+        cpu: { governor: "schedutil", averageFrequency: 2440, maxFrequency: 4800 },
         cpuTemperature: 62.5,
         systemWatts: 24.4,
         systemWattsSource: "package",
+        packageWatts: 24.4,
         profile: { active: "performance", list: ["balanced", "performance"] },
     });
     Harness.deepEqual(PanelText.tooltipText(data, options()).split("\n"),
-                      ["Running on AC power",
-                       "Profile: Performance",
-                       "Governor: Scheduler guided",
-                       "Temperature: 62.5 °C",
-                       "Power draw: 24 W (package)"],
-                      "one line each, in the order they answer to each other");
+                      ["Power source: AC", "", "Consumption",
+                       "  Processor package total: 24 W", "", "Performance",
+                       "  Profile: Performance",
+                       "  Governor: Scheduler guided",
+                       "  Processor: 2.44 GHz · maximum 4.80 GHz",
+                       "  Temperature: 62.5 °C"],
+                      "related facts grouped in the order they answer to each other");
+};
+
+cases["consumption names system processor and graphics readings separately"] = function () {
+    let data = reading({
+        primary: battery(),
+        systemWatts: 17.2,
+        systemWattsSource: "battery",
+        packageWatts: 9.8,
+        powers: [
+            { id: "gpu-power", kind: "gpu", group: "gpu0", groupLabel: "Radeon RX 6600",
+              label: "amdgpu power", shortLabel: "Power", watts: 34.2 },
+            { id: "cpu-ppt", kind: "cpu", group: "cpu0", groupLabel: "AMD Ryzen 7",
+              label: "k10temp PPT", shortLabel: "Power", watts: 10.1 },
+        ],
+    });
+    let lines = PanelText.tooltipText(data, options()).split("\n");
+    Harness.deepEqual(lines.slice(4, 8),
+                      ["  Whole system (battery): 17 W",
+                       "  Processor package total: 9.8 W",
+                       "  Radeon RX 6600: 34 W",
+                       "  AMD Ryzen 7: 10 W"],
+                      "none is promoted to an unnamed whole-machine total");
 };
 
 cases["the tooltip draws the profile that was asked for"] = function () {
@@ -301,17 +329,19 @@ cases["the tooltip draws the profile that was asked for"] = function () {
     Harness.ok(text.indexOf("Profile: Performance") >= 0, "what was clicked: " + text);
 };
 
-cases["the emptiest three accessories fit, and the rest are counted"] = function () {
+cases["the tooltip shows every device with the status it reports"] = function () {
     /*
-     * A desk with a mouse, a keyboard, a headset and two controllers made an
-     * eleven line tooltip, which is not read at all. The ones worth knowing
-     * about are the emptiest, so those are the ones that fit.
+     * A tooltip may be long when many devices are attached, but silently
+     * replacing some of them with a count makes it incomplete. Their stable
+     * UPower order is kept and every known state is said.
      */
     let data = reading({
         lineOnline: true,
         devices: [
-            peripheral({ path: "/a", model: "Mouse", percentage: 80 }),
-            peripheral({ path: "/b", model: "Keyboard", percentage: 15 }),
+            peripheral({ path: "/a", model: "Mouse", percentage: 80,
+                         state: State.DISCHARGING, timeToEmpty: 3600 }),
+            peripheral({ path: "/b", model: "Keyboard", percentage: 15,
+                         state: State.CHARGING, timeToFull: 1800 }),
             peripheral({ path: "/c", model: "Headset", percentage: 45 }),
             peripheral({ path: "/d", model: "Pad one", percentage: 30 }),
             peripheral({ path: "/e", model: "Pad two", percentage: 55 }),
@@ -319,26 +349,43 @@ cases["the emptiest three accessories fit, and the rest are counted"] = function
     });
 
     Harness.deepEqual(PanelText.tooltipText(data, options()).split("\n"),
-                      ["Running on AC power", "",
-                       "Keyboard: 15%", "Pad one: 30%", "Headset: 45%",
-                       "and 2 more"],
-                      "three by charge, then a count of what is left");
+                      ["Power source: AC", "", "Devices",
+                       "  Mouse: 80% · Discharging · 1h 00m remaining",
+                       "  Keyboard: 15% · Charging · 30m until full",
+                       "  Headset: 45%", "  Pad one: 30%", "  Pad two: 55%"],
+                      "all of them, with known states and times");
 };
 
-cases["an accessory with no charge is not a line"] = function () {
-    /* Reported by BlueZ or UPower without a percentage at all, which is most
-     * of what is connected to a machine. */
+cases["a device with no charge is still named"] = function () {
+    /* Some UPower devices report their presence and state but no charge. */
     let data = reading({
         lineOnline: true,
-        devices: [peripheral({ percentage: null }), battery()],
+        devices: [peripheral({ percentage: null })],
     });
-    Harness.equal(PanelText.tooltipText(data, options()), "Running on AC power",
-                  "nothing to add");
+    Harness.equal(PanelText.tooltipText(data, options()),
+                  "Power source: AC\n\nDevices\n  MX", "present, not silently dropped");
 };
 
-cases["accessories are separated from the established power source"] = function () {
-    /* The blank line separates them from the machine's own status. */
-    let data = reading({ devices: [peripheral({ model: "MX", percentage: 40 })] });
-    Harness.equal(PanelText.tooltipText(data, options()),
-                  "Running on AC power\n\nMX: 40%", "separated from the established source");
+cases["chargers and batteries are devices too"] = function () {
+    let primary = battery({ path: "/display" });
+    let data = reading({
+        primary: primary,
+        lines: [{ path: "/line", kind: Kind.LINE_POWER, vendor: "Dell", model: "130W",
+                  online: true }],
+        devices: [battery({ path: "/bat0", model: "BAT0", state: State.CHARGING,
+                            percentage: 70, timeToEmpty: 0, timeToFull: 1200 }),
+                  peripheral({ model: "MX", percentage: 40 })],
+    });
+    let text = PanelText.tooltipText(data, options());
+    Harness.ok(text.indexOf("Dell 130W: Connected") >= 0, "charger: " + text);
+    Harness.ok(text.indexOf("BAT0: 70% · Charging · 20m until full") >= 0,
+               "physical battery: " + text);
+    Harness.ok(text.indexOf("MX: 40%") >= 0, "peripheral: " + text);
+};
+
+cases["a primary device remains in the complete device section"] = function () {
+    let primary = battery({ path: "/bat0" });
+    let text = PanelText.tooltipText(reading({ primary: primary, devices: [primary] }), options());
+    Harness.ok(text.indexOf("Battery: 61%") >= 0, "composite summary: " + text);
+    Harness.ok(text.indexOf("BAT0: 61%") >= 0, "complete device list: " + text);
 };

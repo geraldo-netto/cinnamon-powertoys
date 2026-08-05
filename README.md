@@ -135,7 +135,11 @@ over the applet changes screen brightness — every monitor together, since the
 gesture names no screen — and a middle click toggles the keyboard backlight,
 as they do on the applet this one can replace; either can be pointed at the
 power profile instead, or switched off. Optional keyboard shortcuts to cycle
-the profile and to open the menu.
+the profile and to open the menu. Its tooltip groups the active power source,
+battery state, consumption, performance and every connected device. A battery
+discharge rate is identified as the whole-system estimate; processor-package
+and GPU meters keep their own names rather than any component being presented
+as a system total.
 
 ## Install
 

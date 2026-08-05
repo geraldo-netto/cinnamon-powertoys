@@ -246,7 +246,7 @@ class PanelPresenter {
          * The tooltip is composed when it is about to be shown, not when the
          * reading arrives.
          *
-         * It is six lines of formatted text and it is the whole of what the
+         * It is formatted text and it is the whole of what the
          * panel costs per poll - and it can only be read with the pointer
          * resting on the applet, which is a fraction of the time the applet
          * exists. Cinnamon calls show() on the tooltip after its own delay,

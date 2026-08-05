@@ -40,7 +40,8 @@ msgstr ""
 msgid "Performance limited"
 msgstr ""
 
-#: applet.js:1179 lib/sensors.js:37
+#: applet.js:1179 lib/panel-text.js:210 lib/panel-text.js:234
+#: lib/sensors.js:37
 msgid "Processor"
 msgstr ""
 
@@ -48,7 +49,7 @@ msgstr ""
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1202 lib/panel-text.js:179 lib/reading.js:139
+#: applet.js:1202 lib/panel-text.js:224 lib/reading.js:139
 msgid "Governor"
 msgstr ""
 
@@ -56,7 +57,7 @@ msgstr ""
 msgid "Energy preference"
 msgstr ""
 
-#: applet.js:1220
+#: applet.js:1220 lib/panel-text.js:261
 msgid "Devices"
 msgstr ""
 
@@ -81,11 +82,11 @@ msgstr ""
 msgid "an application"
 msgstr ""
 
-#: applet.js:1521
+#: applet.js:1521 lib/panel-text.js:247
 msgid "Connected"
 msgstr ""
 
-#: applet.js:1521
+#: applet.js:1521 lib/panel-text.js:247
 msgid "Disconnected"
 msgstr ""
 
@@ -104,7 +105,7 @@ msgstr ""
 
 #. metadata.json->name
 #: applet.js:1859 applet.js:2797 applet.js:2851 applet.js:2909 applet.js:2918
-#: applet.js:3073 lib/panel-text.js:226
+#: applet.js:3073
 msgid "Power Toys"
 msgstr ""
 
@@ -196,7 +197,7 @@ msgstr ""
 msgid "AC adapter"
 msgstr ""
 
-#: lib/format.js:104 lib/sensors.js:42
+#: lib/format.js:104 lib/panel-text.js:154 lib/sensors.js:42
 msgid "Battery"
 msgstr ""
 
@@ -364,7 +365,7 @@ msgstr ""
 msgid "Balanced performance"
 msgstr ""
 
-#: lib/format.js:289 lib/format.js:399 lib/format.js:417
+#: lib/format.js:289 lib/format.js:399 lib/format.js:417 lib/panel-text.js:260
 msgid "Performance"
 msgstr ""
 
@@ -464,7 +465,7 @@ msgstr ""
 msgid "Power saving"
 msgstr ""
 
-#: lib/format.js:441 lib/panel-text.js:181
+#: lib/format.js:441 lib/panel-text.js:236
 msgid "Temperature"
 msgstr ""
 
@@ -476,38 +477,45 @@ msgstr ""
 msgid "Power"
 msgstr ""
 
-#: lib/panel-text.js:152 lib/panel-text.js:158
+#: lib/panel-text.js:147 lib/panel-text.js:153
 msgid "Power status unavailable"
 msgstr ""
 
-#: lib/panel-text.js:153
+#: lib/panel-text.js:148
 msgid "On battery power"
 msgstr ""
 
-#: lib/panel-text.js:153
+#: lib/panel-text.js:148
 msgid "On AC power"
 msgstr ""
 
-#: lib/panel-text.js:159
-msgid "Running on battery power"
+#: lib/panel-text.js:154
+msgid "Power source"
 msgstr ""
 
-#: lib/panel-text.js:159
-msgid "Running on AC power"
+#: lib/panel-text.js:196
+msgid "Whole system (battery)"
 msgstr ""
 
-#: lib/panel-text.js:177
+#: lib/panel-text.js:198
+msgid "Processor package total"
+msgstr ""
+
+#: lib/panel-text.js:210 lib/sensors.js:39
+msgid "Graphics"
+msgstr ""
+
+#: lib/panel-text.js:222
 msgid "Profile"
 msgstr ""
 
-#. settings-schema.json->panel-show-power->description
-#: lib/panel-text.js:184
-msgid "Power draw"
+#: lib/panel-text.js:232
+#, javascript-format
+msgid "maximum %s"
 msgstr ""
 
-#: lib/panel-text.js:221
-#, javascript-format
-msgid "and %d more"
+#: lib/panel-text.js:259
+msgid "Consumption"
 msgstr ""
 
 #: lib/reading.js:41
@@ -540,10 +548,6 @@ msgstr ""
 
 #: lib/sensor-rows.js:209
 msgid "No sensors found"
-msgstr ""
-
-#: lib/sensors.js:39
-msgid "Graphics"
 msgstr ""
 
 #: lib/sensors.js:41 lib/sensors.js:516
@@ -704,6 +708,10 @@ msgstr ""
 
 #. settings-schema.json->panel-text->options
 msgid "Nothing"
+msgstr ""
+
+#. settings-schema.json->panel-show-power->description
+msgid "Power draw"
 msgstr ""
 
 #. settings-schema.json->menu-section->description

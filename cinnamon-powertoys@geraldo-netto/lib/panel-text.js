@@ -1,7 +1,7 @@
 /*
  * cinnamon-powertoys - what the panel says about a reading.
  *
- * The text beside the icon, the six lines of the tooltip, and which of the
+ * The text beside the icon, the grouped tooltip, and which of the
  * three things the icon is drawn from. Each is a function of one reading and
  * the options in force; none of them touches the panel, which is why they are
  * out here where they can be asked.
@@ -9,9 +9,9 @@
  * They were methods on the panel presenter in applet.js, which cannot be
  * loaded outside Cinnamon - so the rules in them, and they are rules rather
  * than formatting, went unexercised: when a profile is worth saying in words
- * beside a gauge that already says it, how many accessories fit in a tooltip
- * before the rest are counted instead, and what a machine with nothing to
- * report says.
+ * beside a gauge that already says it, how component consumption is named
+ * without passing it off as a whole-machine total, and what a machine with
+ * nothing to report says.
  */
 
 const UPowerGlib = imports.gi.UPowerGlib;
@@ -22,11 +22,6 @@ const Reading = require("./lib/reading.js");
 const Translate = require("./lib/gettext.js");
 
 const _ = Translate._;
-
-/* How many accessories the tooltip names before it starts counting them
- * instead. Three, plus the machine's own four or five lines, is about as much
- * as a tooltip is read in one glance. */
-var TOOLTIP_PERIPHERALS = 3;
 
 /*
  * What may be in the panel text, from one list rather than three switches.
@@ -156,73 +151,113 @@ function powerStatusLabel(data) {
 function powerStatusTooltip(data) {
     if (!data.upowerAvailable)
         return _("Power status unavailable");
-    return data.onBattery ? _("Running on battery power") : _("Running on AC power");
+    return _("Power source") + ": " + (data.onBattery ? _("Battery") : "AC");
+}
+
+/* A section of the tooltip, separated from the one before it and indented so
+ * its title and values remain recognisable in a plain-text Cinnamon tooltip.
+ * Empty sections take no space. */
+function appendSection(lines, title, entries) {
+    if (entries.length === 0)
+        return;
+    if (lines.length > 0)
+        lines.push("");
+    lines.push(title);
+    for (let entry of entries)
+        lines.push("  " + entry);
+}
+
+/* Charge, state and time, without an "Unknown" that says nothing. */
+function deviceStatus(device) {
+    let parts = [Format.batteryReading(device).text];
+    if (device.state !== undefined && device.state !== UPowerGlib.DeviceState.UNKNOWN)
+        parts.push(Format.deviceStateName(device.state));
+    parts.push(Device.remainingText(device));
+    return parts.filter(part => part !== "").join(" · ");
+}
+
+function namedStatus(name, device) {
+    let status = deviceStatus(device);
+    return name + (status ? ": " + status : "");
+}
+
+/*
+ * Every consumption figure the tooltip can identify honestly.
+ *
+ * Battery discharge is the closest thing available here to a whole-machine
+ * reading. RAPL is a processor-package total, and an hwmon meter belongs to
+ * the processor or graphics device that exported it. They are deliberately
+ * separate entries: adding them can double-count components, and calling any
+ * one of them simply "Power draw" promoted a GPU reading to a system total.
+ */
+function consumptionEntries(data) {
+    let entries = [];
+    if (data.systemWattsSource === "battery" && data.systemWatts !== null)
+        entries.push(_("Whole system (battery)") + ": " + Format.watts(data.systemWatts));
+    if (data.packageWatts !== undefined && data.packageWatts !== null)
+        entries.push(_("Processor package total") + ": " + Format.watts(data.packageWatts));
+
+    let meters = (data.powers || []).filter(meter =>
+        (meter.kind === "cpu" || meter.kind === "gpu") && meter.watts !== null);
+    let counts = {};
+    for (let meter of meters) {
+        let group = meter.group || meter.groupLabel || meter.label;
+        counts[group] = (counts[group] || 0) + 1;
+    }
+    for (let meter of meters) {
+        let group = meter.group || meter.groupLabel || meter.label;
+        let name = meter.groupLabel || meter.label ||
+                   (meter.kind === "gpu" ? _("Graphics") : _("Processor"));
+        if (counts[group] > 1 && meter.shortLabel)
+            name += " — " + meter.shortLabel;
+        entries.push(name + ": " + Format.watts(meter.watts));
+    }
+    return entries;
+}
+
+function performanceEntries(data, options) {
+    let entries = [];
+    let profile = Reading.shownProfile(data, options);
+    if (profile)
+        entries.push(_("Profile") + ": " + Format.profileLabel(profile));
+    if (data.cpu.governor)
+        entries.push(_("Governor") + ": " + Format.governorLabel(data.cpu.governor));
+
+    let current = Format.frequency(data.cpu.averageFrequency);
+    let maximum = Format.frequency(data.cpu.maxFrequency);
+    let processor = [];
+    if (current)
+        processor.push(current);
+    if (maximum)
+        processor.push(_("maximum %s").replace("%s", maximum));
+    if (processor.length > 0)
+        entries.push(_("Processor") + ": " + processor.join(" · "));
+    if (data.cpuTemperature !== null)
+        entries.push(_("Temperature") + ": " +
+                     Format.temperature(data.cpuTemperature, options.tempUnit, 1));
+    return entries;
+}
+
+/* Chargers and every charge-carrying device, without silently discarding
+ * devices that report no percentage. The primary above is UPower's composite
+ * display battery on most machines; the physical batteries remain devices of
+ * their own here, as they are in the menu. */
+function deviceEntries(data) {
+    let entries = (data.lines || []).map(line =>
+        Format.deviceTitle(line) + ": " + (line.online ? _("Connected") : _("Disconnected")));
+    for (let device of data.devices || [])
+        entries.push(namedStatus(Format.deviceTitle(device), device));
+    return entries;
 }
 
 function tooltipText(data, options) {
-    let lines = [];
+    let lines = [powerStatusTooltip(data)];
 
-    if (data.primary) {
-        lines.push(Format.deviceKindName(data.primary.kind) + " " +
-                   Format.batteryReading(data.primary).text + " - " +
-                   Format.deviceStateName(data.primary.state));
-        let remaining = Device.remainingText(data.primary);
-        if (remaining)
-            lines.push(remaining);
-    } else
-        lines.push(powerStatusTooltip(data));
+    if (data.primary)
+        lines.push(namedStatus(Format.deviceKindName(data.primary.kind), data.primary));
 
-    let profile = Reading.shownProfile(data, options);
-    if (profile)
-        lines.push(_("Profile") + ": " + Format.profileLabel(profile));
-    if (data.cpu.governor)
-        lines.push(_("Governor") + ": " + Format.governorLabel(data.cpu.governor));
-    if (data.cpuTemperature !== null)
-        lines.push(_("Temperature") + ": " +
-                   Format.temperature(data.cpuTemperature, options.tempUnit, 1));
-    if (data.systemWatts !== null)
-        lines.push(_("Power draw") + ": " + Reading.powerText(data));
-
-    /*
-     * The accessories, after a blank line and never more than a few.
-     *
-     * This was one line per connected thing with a charge in it, with
-     * nothing between them and the machine's own lines. A desk with a
-     * mouse, a keyboard, a headset and two controllers made an eleven line
-     * tooltip, which is not read at all: past about seven lines a list
-     * stops being something anybody takes in at a glance, and a tooltip
-     * only exists for the glance.
-     *
-     * The emptiest are the ones worth knowing about, so they are the ones
-     * that fit, and the rest are counted rather than dropped silently -
-     * the menu lists every one of them under Devices.
-     */
-    let peripherals = data.devices
-        .filter(device => !device.powerSupply && Format.batteryReading(device).text)
-        .slice()
-        .sort((first, second) => {
-            let a = Format.batteryReading(first);
-            let b = Format.batteryReading(second);
-            let rank = reading => {
-                if (reading.level === UPowerGlib.DeviceLevel.CRITICAL) return -2;
-                if (reading.level === UPowerGlib.DeviceLevel.LOW) return -1;
-                if (reading.precise) return reading.percentage;
-                return 101 + reading.level;
-            };
-            return rank(a) - rank(b);
-        });
-
-    if (peripherals.length > 0 && lines.length > 0)
-        lines.push("");
-    for (let device of peripherals.slice(0, TOOLTIP_PERIPHERALS))
-        lines.push(Format.deviceTitle(device) + ": " +
-                   Format.batteryReading(device).text);
-    if (peripherals.length > TOOLTIP_PERIPHERALS) {
-        lines.push(_("and %d more")
-            .replace("%d", String(peripherals.length - TOOLTIP_PERIPHERALS)));
-    }
-
-    if (lines.length === 0)
-        lines.push(_("Power Toys"));
+    appendSection(lines, _("Consumption"), consumptionEntries(data));
+    appendSection(lines, _("Performance"), performanceEntries(data, options));
+    appendSection(lines, _("Devices"), deviceEntries(data));
     return lines.join("\n");
 }
