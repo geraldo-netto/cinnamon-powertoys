@@ -681,8 +681,9 @@ function _raplName(raw, packages) {
  * simply means no package power readout. README says how to hand it back, and
  * what is being handed back with it.
  */
-function _energyCounters(entries, readString) {
+function _energyCounters(entries, readString, canRead) {
     let found = [];
+    let readable = canRead || (path => readString(path) !== null);
     let readNumber = path => IO.toNumber(readString(path));
     for (let entry of entries) {
         if (!/^(intel-rapl|amd-rapl|dtpm)/.test(entry))
@@ -691,9 +692,9 @@ function _energyCounters(entries, readString) {
         let energyPath = base + "/energy_uj";
         /* DTPM's native interface is an instantaneous power value. Prefer it
          * when present rather than exposing the same domain twice. */
-        if (/^dtpm/.test(entry) && readString(base + "/power_uw") !== null)
+        if (/^dtpm/.test(entry) && readable(base + "/power_uw"))
             continue;
-        if (readString(energyPath) === null)
+        if (!readable(energyPath))
             continue;
         found.push({
             entry: entry,
@@ -725,14 +726,15 @@ function _energyCounters(entries, readString) {
 /* DTPM domains expose instantaneous microwatts rather than an energy counter.
  * Only a root domain is a platform aggregate; its children remain individual
  * rows and are never added to it. */
-function _directPowercapSensors(entries, readString) {
+function _directPowercapSensors(entries, readString, canRead) {
     let found = [];
+    let readable = canRead || (path => readString(path) !== null);
     for (let entry of entries) {
         if (!/^dtpm(?::\d+)+$/.test(entry))
             continue;
         let base = POWERCAP_DIR + "/" + entry;
         let path = base + "/power_uw";
-        if (readString(path) === null)
+        if (!readable(path))
             continue;
         let topLevel = /^dtpm:\d+$/.test(entry);
         let raw = readString(base + "/name") || entry;
@@ -756,11 +758,11 @@ function _directPowercapSensors(entries, readString) {
 }
 
 function discoverDirectPowercapSensors() {
-    return _directPowercapSensors(IO.listDir(POWERCAP_DIR), IO.readString);
+    return _directPowercapSensors(IO.listDir(POWERCAP_DIR), IO.readString, IO.canRead);
 }
 
 function discoverEnergyCounters() {
-    return _energyCounters(IO.listDir(POWERCAP_DIR), IO.readString);
+    return _energyCounters(IO.listDir(POWERCAP_DIR), IO.readString, IO.canRead);
 }
 
 function _powercapTopology(entries, readable) {
@@ -866,14 +868,16 @@ function discoverSnapshotAsync(onDone, ioOptions) {
                 let labels = _nameGroupsFrom(scanned.groups, names.cpuName, names.pciNames);
                 onDone({
                     sensors: _finishSensors(scanned, labels),
-                    counters: _energyCounters(directories[POWERCAP_DIR] || [], read),
+                    counters: _energyCounters(
+                        directories[POWERCAP_DIR] || [], read, readable),
                     directPowers: _directPowercapSensors(
-                        directories[POWERCAP_DIR] || [], read),
+                        directories[POWERCAP_DIR] || [], read, readable),
                     topology: _topologyFromInventory(directories, read, readLink, readable),
                 });
             }, ioOptions);
         };
-        IO.readStringsAsync(_metadataPaths(directories), values => {
+        IO.readStringsAsync(_metadataPaths(directories).filter(path =>
+            !/\/(?:energy_uj|power_uw)$/.test(path)), values => {
             metadata = values;
             finish();
         }, 32, null, ioOptions);

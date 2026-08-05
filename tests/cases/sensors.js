@@ -353,6 +353,30 @@ cases["DTPM uses its direct platform power interface"] = function () {
     });
 };
 
+cases["powercap discovery depends on access rather than a moving sample"] = function () {
+    let entries = ["intel-rapl:0", "dtpm:0"];
+    let read = path => {
+        if (/\/(?:energy_uj|power_uw)$/.test(path))
+            return null;
+        if (/intel-rapl:0\/name$/.test(path))
+            return "package-0";
+        if (/dtpm:0\/name$/.test(path))
+            return "platform";
+        return null;
+    };
+    let readable = path => /intel-rapl:0\/energy_uj$/.test(path) ||
+                            /dtpm:0\/power_uw$/.test(path);
+
+    let counters = Sensors._energyCounters(entries, read, readable);
+    let direct = Sensors._directPowercapSensors(entries, read, readable);
+    Harness.ok(byId(counters, "rapl:intel-rapl:0"),
+               "a readable energy interface survives a failed first value");
+    Harness.ok(byId(direct, "dtpm-power:dtpm:0"),
+               "a readable direct-power interface survives a failed first value");
+    Harness.equal(byId(counters, "rapl:dtpm:0"), null,
+                  "DTPM still prefers its readable native power interface");
+};
+
 cases["one socket has no number to say"] = function () {
     on("one-socket", function () {
         let counters = Sensors.discoverEnergyCounters();
@@ -774,6 +798,32 @@ cases["asynchronous topology checks do not sample powercap counters"] = function
         } finally {
             IO.readStringsAsync = original;
             set.destroy();
+        }
+    });
+};
+
+cases["asynchronous discovery does not sample powercap counters"] = function () {
+    on("machine", function () {
+        let original = IO.readStringsAsync;
+        let sampled = [];
+        IO.readStringsAsync = function (paths, done, concurrency, factory, options) {
+            sampled = sampled.concat(paths.filter(path =>
+                /\/(?:energy_uj|power_uw)$/.test(path)));
+            return original(paths, done, concurrency, factory, options);
+        };
+        try {
+            let set = Harness.settle(function (done) {
+                let created = new Sensors.SensorSet({ asynchronous: true,
+                                                      onChanged: () => done(created) });
+            }, "value-independent sensor discovery");
+            Harness.deepEqual(sampled, [], "moving values are left to ordinary sampling");
+            Harness.equal(set.energyMeters.length, 3,
+                          "readable energy interfaces are still discovered");
+            Harness.ok(byId(set.powerSensors, "dtpm-power:dtpm:0"),
+                       "as is the direct platform power interface");
+            set.destroy();
+        } finally {
+            IO.readStringsAsync = original;
         }
     });
 };
