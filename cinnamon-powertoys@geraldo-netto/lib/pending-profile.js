@@ -66,6 +66,50 @@ var PendingProfile = class PendingProfile {
     }
 
     /*
+     * Starts a write and makes its synchronous acceptance part of the state
+     * transition.
+     *
+     * A backend may answer through the callback later, refuse by returning
+     * false now, or throw before it has started anything. Keeping all three
+     * exits here means a request is never left drawn merely because the
+     * transport failed before it could produce an asynchronous answer.
+     */
+    request(name, write, onResult) {
+        if (!this.ask(name))
+            return false;
+
+        let report = onResult || function () {};
+        let answered = false;
+        let done = error => {
+            if (answered)
+                return;
+            answered = true;
+            if (error)
+                this.failed(name);
+            else
+                this.written(name);
+            report(error || null);
+        };
+
+        let accepted;
+        try {
+            accepted = write(done);
+        } catch (error) {
+            done(error);
+            return false;
+        }
+
+        if (accepted === false) {
+            if (!answered)
+                done(new Error("profile request was refused"));
+            else
+                this.failed(name);
+            return false;
+        }
+        return true;
+    }
+
+    /*
      * The backend took the write. The machine is expected to adopt it now, so
      * this is where the waiting starts.
      *

@@ -2686,23 +2686,18 @@ class PowerToysApplet extends Applet.TextIconApplet {
                                          { pendingProfile: this._pending.value });
         if (name === shown)
             return false;
-        if (!this._pending.ask(name))
-            return false;
+        let accepted = this._pending.request(name,
+            done => this._profileBackend.setProfile(name, done), error => {
+                if (error) {
+                    /* Cancelling a password dialog is not news; the user did it. */
+                    if (error.message !== "cancelled")
+                        this._notifyProfileError(name, error);
+                }
+                this._scheduleUpdate();
+            });
 
-        this._profileBackend.setProfile(name, error => {
-            if (error) {
-                this._pending.failed(name);
-                /* Cancelling a password dialog is not news; the user did it. */
-                if (error.message !== "cancelled")
-                    this._notifyProfileError(name, error);
-            } else {
-                /* Taken. From here the machine is expected to adopt it, and
-                 * PendingProfile is what stops it being drawn for ever if
-                 * something else has other ideas. */
-                this._pending.written(name);
-            }
-            this._scheduleUpdate();
-        });
+        if (!accepted)
+            return false;
 
         /*
          * The menu stays open, and is redrawn now so that the segment fills

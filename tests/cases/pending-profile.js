@@ -66,6 +66,47 @@ cases["a refusal ends it"] = function () {
     Harness.equal(profile.value, null, "the panel goes back with the change");
 };
 
+cases["a write is pending only when its backend accepts it"] = function () {
+    let profile = pending();
+    let finish = null;
+    let result = "not answered";
+    let accepted = profile.request("performance", done => {
+        finish = done;
+        return true;
+    }, error => { result = error; });
+
+    Harness.equal(accepted, true, "the backend took the request");
+    Harness.equal(profile.value, "performance", "so it is drawn while the write is in flight");
+    finish(null);
+    Harness.equal(result, null, "the successful answer reaches the caller");
+    Harness.equal(profile.value, "performance", "and waits for the machine to adopt it");
+};
+
+cases["a synchronous backend refusal clears the request"] = function () {
+    let profile = pending();
+    let reported = null;
+    let accepted = profile.request("performance", done => {
+        done(new Error("daemon unavailable"));
+        return false;
+    }, error => { reported = error; });
+
+    Harness.equal(accepted, false, "nothing was started");
+    Harness.equal(profile.value, null, "the refused profile is not left drawn");
+    Harness.equal(reported.message, "daemon unavailable", "the reason reaches the caller");
+};
+
+cases["a backend throw clears the request"] = function () {
+    let profile = pending();
+    let reported = null;
+    let accepted = profile.request("performance", () => {
+        throw new Error("transport failed");
+    }, error => { reported = error; });
+
+    Harness.equal(accepted, false, "the throwing call was not accepted");
+    Harness.equal(profile.value, null, "the pending latch is cleared");
+    Harness.equal(reported.message, "transport failed", "the exception becomes an ordinary refusal");
+};
+
 cases["an older call's refusal does not clear a newer request"] = function () {
     /*
      * Two profiles asked for in quick succession, and the first one's answer
