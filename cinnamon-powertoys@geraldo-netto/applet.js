@@ -1689,7 +1689,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * daemon answered it. False until it has; see _onScreenBacklightKnown,
          * which is also where the difference between this and the control's own
          * `available` is set out. */
-        this._hasKernelBacklight = false;
+        this._kernelBacklightState = "unknown";
         /* A profile asked for and not yet arrived, which the panel and the
          * menu draw until it does - or until it is clear it will not. */
         this._pending = new PendingProfile.PendingProfile((asked, actual) => {
@@ -1958,16 +1958,18 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * constructor, before there is a field. See where the backlights are
          * built.
          */
-        if (control.available)
-            this._hasKernelBacklight = true;
+        this._kernelBacklightState = control.hardwareState ||
+            (control.available ? "present" : "absent");
         this._considerMonitorBacklight();
         this._onBacklightChanged();
     }
 
     _onScreenBacklightChanged() {
         let control = this._backlights.screen;
-        if (control.available && !this._hasKernelBacklight) {
-            this._hasKernelBacklight = true;
+        let state = control.hardwareState ||
+            (control.available ? "present" : "absent");
+        if (state !== this._kernelBacklightState) {
+            this._kernelBacklightState = state;
             this._considerMonitorBacklight();
         }
         this._onBacklightChanged();
@@ -1993,7 +1995,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     _externalDisplayMode() {
-        return this._hasKernelBacklight && this._lidClosed;
+        return this._kernelBacklightState === "present" && this._lidClosed;
     }
 
     /*
@@ -2130,7 +2132,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
      */
     _canProbeMonitors() {
         return Backlight.shouldUseMonitorBacklight(
-            this.monitorBrightness, this._hasKernelBacklight, this._lidClosed);
+            this.monitorBrightness, this._kernelBacklightState, this._lidClosed);
     }
 
     _stopProbingMonitors() {

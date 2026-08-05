@@ -109,6 +109,29 @@ function ownerWatcher() {
     return owner;
 }
 
+function retryTimers(owner) {
+    let timers = { next: 1, pending: {}, delays: [], removed: [] };
+    owner.timeoutAdd = function (delay, callback) {
+        let id = timers.next++;
+        timers.pending[id] = callback;
+        timers.delays.push(delay);
+        return id;
+    };
+    owner.removeTimer = function (id) {
+        timers.removed.push(id);
+        delete timers.pending[id];
+    };
+    timers.fire = function () {
+        let ids = Object.keys(timers.pending);
+        Harness.equal(ids.length, 1, "exactly one backlight retry is pending");
+        let id = Number(ids[0]);
+        let callback = timers.pending[id];
+        delete timers.pending[id];
+        callback();
+    };
+    return timers;
+}
+
 var cases = {};
 
 cases["the production ownership adapter preserves both callbacks"] = function () {
@@ -144,6 +167,14 @@ cases["monitor brightness follows the visible display topology"] = function () {
                   "an open laptop keeps using its built-in panel");
     Harness.equal(Backlight.shouldUseMonitorBacklight(true, true, true), true,
                   "a closed laptop gives its external monitors the controls");
+    Harness.equal(Backlight.shouldUseMonitorBacklight(true, "unknown", false), false,
+                  "unknown kernel state does not authorize an I2C probe");
+    Harness.equal(Backlight.shouldUseMonitorBacklight(true, "unknown", true), true,
+                  "explicit closed-lid topology authorizes the visible external screen");
+    Harness.equal(Backlight.shouldUseMonitorBacklight(true, "degraded", false), false,
+                  "a failed discovery does not masquerade as absent hardware");
+    Harness.equal(Backlight.shouldUseMonitorBacklight(true, "absent", false), true,
+                  "confirmed absence authorizes an external monitor probe");
 };
 
 cases["the brightness wheel follows the visible screen"] = function () {
@@ -238,12 +269,37 @@ cases["an interface with no backlight behind it is not available"] = function ()
     Harness.equal(screen.available, false, "nothing behind it");
     Harness.equal(screen.percentage, null, "so no value to show");
     Harness.equal(screen.readyCount(), 1, "and the caller is told, or it waits for ever");
+    Harness.equal(screen.hardwareState, "absent", "the wired daemon confirmed no hardware");
 };
 
 cases["a daemon that will not connect is not available"] = function () {
     let screen = control(Backlight.SCREEN, null, new Error("no such name"));
     Harness.equal(screen.available, false, "no proxy");
     Harness.equal(screen.readyCount(), 1, "still answered");
+    Harness.equal(screen.hardwareState, "degraded", "connection failure is not hardware absence");
+};
+
+cases["owned degraded backlight discovery retries until recovery"] = function () {
+    let owner = ownerWatcher();
+    let timers = retryTimers(owner);
+    let attempts = 0;
+    let screen = new Backlight.BacklightControl(
+        Backlight.SCREEN, null, null, (xml, onDone) => {
+            attempts++;
+            onDone(attempts < 3 ? null : proxy({ GetPercentage: 63 }),
+                   attempts < 3 ? new Error("proxy unavailable") : null);
+        }, owner);
+
+    Harness.equal(screen.hardwareState, "degraded", "the failed startup remains unknown");
+    Harness.deepEqual(timers.delays, [Backlight.RETRY_INITIAL_MS], "retry starts at its floor");
+    timers.fire();
+    Harness.equal(screen.hardwareState, "degraded", "another connection failure stays degraded");
+    Harness.deepEqual(timers.delays, [500, 1000], "retry backs off while ownership persists");
+    timers.fire();
+    Harness.equal(screen.hardwareState, "present", "a confirmed percentage recovers discovery");
+    Harness.equal(screen.percentage, 63, "the recovered value is published");
+    Harness.equal(Object.keys(timers.pending).length, 0, "success leaves no retry armed");
+    screen.destroy();
 };
 
 cases["a failed connection is retried on refresh"] = function () {

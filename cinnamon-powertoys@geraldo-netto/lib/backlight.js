@@ -10,6 +10,7 @@
  */
 
 const Gio = imports.gi.Gio;
+const GLib = imports.gi.GLib;
 
 const Log = require("./lib/log.js");
 
@@ -48,6 +49,8 @@ const KEYBOARD_XML = '<node>\
 
 var SCREEN = "screen";
 var KEYBOARD = "keyboard";
+var RETRY_INITIAL_MS = 500;
+var RETRY_MAX_MS = 8000;
 
 /*
  * Whether DDC/CI is the right way to reach the visible screen.
@@ -59,7 +62,14 @@ var KEYBOARD = "keyboard";
  * either D-Bus backend and needs to be checked without a laptop underneath.
  */
 function shouldUseMonitorBacklight(enabled, hasKernelBacklight, lidIsClosed) {
-    return !!enabled && (!hasKernelBacklight || !!lidIsClosed);
+    if (!enabled)
+        return false;
+    if (typeof hasKernelBacklight === "string") {
+        if (lidIsClosed)
+            return true;
+        return hasKernelBacklight === "absent";
+    }
+    return !hasKernelBacklight || !!lidIsClosed;
 }
 
 /* The panel wheel has no row to identify its target, so it must follow the
@@ -131,6 +141,7 @@ var BacklightControl = class BacklightControl {
         this.kind = kind;
         this.available = false;
         this.percentage = null;
+        this.hardwareState = "unknown";
         this.destroyed = false;
 
         this._onChanged = onChanged || function () {};
@@ -141,6 +152,9 @@ var BacklightControl = class BacklightControl {
         this._proxy = null;
         this._signalId = 0;
         this._watchId = 0;
+        this._ownerPresent = false;
+        this._retryTimerId = 0;
+        this._retryDelay = RETRY_INITIAL_MS;
         this._connecting = false;
         this._connectCancellable = null;
         this._connectWaiters = [];
@@ -153,6 +167,7 @@ var BacklightControl = class BacklightControl {
         this._mutationQueue = [];
 
         if (!this._xml) {
+            this.hardwareState = "absent";
             this._settleReady();
             return;
         }
@@ -231,6 +246,11 @@ var BacklightControl = class BacklightControl {
                     this._signalId = signalId;
                 }
             }
+            if (!this._proxy) {
+                if (this.hardwareState === "unknown")
+                    this.hardwareState = "degraded";
+                this._scheduleRetry();
+            }
             let waiters = this._connectWaiters.splice(0);
             for (let waiter of waiters)
                 waiter(this._proxy !== null);
@@ -270,6 +290,8 @@ var BacklightControl = class BacklightControl {
     _onOwnerAppeared() {
         if (this.destroyed)
             return;
+        this._ownerPresent = true;
+        this._cancelRetry();
         let before = this.available;
         this.refresh(() => {
             this._settleReady();
@@ -281,6 +303,8 @@ var BacklightControl = class BacklightControl {
     _onOwnerVanished() {
         if (this.destroyed)
             return;
+        this._ownerPresent = false;
+        this._cancelRetry();
         let changed = this.available || this._proxy !== null;
         this._dropProxy();
         this.available = false;
@@ -288,6 +312,39 @@ var BacklightControl = class BacklightControl {
         this._settleReady();
         if (changed)
             this._onChanged();
+    }
+
+    _scheduleRetry() {
+        if (this.destroyed || !this._ownerPresent || this._retryTimerId)
+            return;
+        let delay = this._retryDelay;
+        this._retryDelay = Math.min(delay * 2, RETRY_MAX_MS);
+        let callback = () => {
+            this._retryTimerId = 0;
+            if (this.destroyed || !this._ownerPresent)
+                return GLib.SOURCE_REMOVE;
+            this.refresh(() => {
+                if (!this.destroyed) {
+                    this._settleReady();
+                    this._onChanged();
+                }
+            });
+            return GLib.SOURCE_REMOVE;
+        };
+        this._retryTimerId = this._owner && this._owner.timeoutAdd
+            ? this._owner.timeoutAdd(delay, callback)
+            : GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback);
+    }
+
+    _cancelRetry() {
+        if (this._retryTimerId) {
+            if (this._owner && this._owner.removeTimer)
+                this._owner.removeTimer(this._retryTimerId);
+            else
+                GLib.source_remove(this._retryTimerId);
+            this._retryTimerId = 0;
+        }
+        this._retryDelay = RETRY_INITIAL_MS;
     }
 
     /* Asks the daemon where the backlight is now. An error here is the
@@ -371,12 +428,18 @@ var BacklightControl = class BacklightControl {
             if (error || !result) {
                 this.available = false;
                 this.percentage = null;
+                if (this.hardwareState === "unknown" ||
+                        this.hardwareState === "degraded")
+                    this.hardwareState = "absent";
+                this._cancelRetry();
                 /* A proxy tied to a vanished owner cannot recover its cached
                  * interface reliably. The next refresh builds a fresh one. */
                 this._dropProxy();
             } else {
                 this.available = true;
                 this.percentage = result[0];
+                this.hardwareState = "present";
+                this._cancelRetry();
             }
         }
         for (let waiter of operation.waiters)
@@ -599,6 +662,7 @@ var BacklightControl = class BacklightControl {
 
     destroy() {
         this.destroyed = true;
+        this._cancelRetry();
         if (this._watchId) {
             try {
                 if (this._owner && this._owner.unwatch)
