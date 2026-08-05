@@ -1356,7 +1356,7 @@ class MenuPresenter {
                 /* The limit rather than the overflow, because the limit is the
                  * part that is worth knowing: it is the same next time. */
                 label: _("Only the first %d monitors have a slider")
-                    .replace("%d", String(Ddc.MAX_DISPLAYS)),
+                    .replace("%d", String(this._monitors.limit)),
             });
 
         this._monitorList.sync(entries);

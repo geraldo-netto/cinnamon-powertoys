@@ -252,6 +252,8 @@ cases["a monitor that stops answering stops being available"] = function () {
 
 cases["more monitors than there are sliders is said rather than hidden"] = function () {
     let each = started(detectMany(Ddc.MAX_DISPLAYS + 2), 0);
+    Harness.equal(each.control.limit, Ddc.MAX_DISPLAYS,
+                  "the applied cap travels with the backend view state");
     Harness.equal(each.control.monitors.length, Ddc.MAX_DISPLAYS, "the cap holds");
     Harness.equal(each.control.hidden, 2, "and the two over it are counted");
 };

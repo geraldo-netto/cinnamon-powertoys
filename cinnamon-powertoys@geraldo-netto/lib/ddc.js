@@ -514,6 +514,10 @@ var DdcBacklight = class DdcBacklight {
         this.percentage = null;
         this.destroyed = false;
         this.monitors = [];
+        /* Part of the view state beside `hidden`: the presenter must describe
+         * the cap this backend actually applied, not import its implementation
+         * constant and hope an injected backend made the same choice. */
+        this.limit = MAX_DISPLAYS;
         /* How many were found beyond MAX_DISPLAYS, so the menu can say so. */
         this.hidden = 0;
 
