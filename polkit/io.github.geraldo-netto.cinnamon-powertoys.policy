@@ -4,26 +4,20 @@
  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
 
 <!--
-  Optional. Without this file every governor, energy preference, boost or
-  charge limit change asks for the administrator password again, because
-  pkexec falls back to org.freedesktop.policykit.exec, which never keeps an
-  authorisation. Changing three settings in one visit to the menu means three
-  password prompts.
-
-  With it, one authentication covers a run of changes: auth_admin_keep holds
-  for a few minutes, the same way a package manager session does.
+  The applet requires the root-owned helper installed with this action before
+  it will make a privileged change. One authentication then covers a run of
+  changes: auth_admin_keep holds for a few minutes, the same way a package
+  manager session does.
 
   The path below is deliberately not the helper inside the applet directory,
-  which lives under the user's home and which the user can rewrite. An action
-  that keeps its authorisation must point at a file its caller cannot change,
-  or those few minutes become a window in which anything running as that user
-  could put its own code in the helper and have pkexec run it as root without
-  asking again. `make install-policy` therefore installs a root owned copy of
-  the helper alongside this file, and the applet prefers that copy when it is
-  present.
+  which lives under the user's home and which the user can rewrite. Any
+  executable passed to pkexec must be outside the caller's control even for a
+  single authentication. `make install-policy` therefore installs a root-owned
+  copy of the helper alongside this file, and the applet verifies that file and
+  all of its parent directories before use.
 
-  To revoke: `make uninstall-policy`, or delete this file. The applet keeps
-  working and goes back to asking every time.
+  To revoke: `make uninstall-policy`. Monitoring and unprivileged controls keep
+  working; privileged changes are refused until the pair is installed again.
 -->
 
 <policyconfig>

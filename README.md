@@ -227,7 +227,7 @@ sudo apt install ddcutil hwdata power-profiles-daemon
 | `hwdata` | `pci.ids` and `pnp.ids`, the tables that name the hardware | sensor groups headed by the driver's name, monitors by their EDID code |
 | `power-profiles-daemon` | the **Power profile** control | falls back to the ACPI platform profile, and where the firmware has none the control is not shown |
 | `xapp-symbolic-icons` | the preferred battery and device icon names | falls back to standard freedesktop icon names |
-| polkit's `pkexec` and `flock` | authenticated writes to root-owned governor, energy preference, boost, firmware-profile and charge-limit files; `flock` serializes each helper transaction | monitoring and unprivileged controls work; privileged changes report that they could not be applied |
+| polkit's `pkexec` and `flock`, plus `sudo make install-policy` | authenticated writes to root-owned governor, energy preference, boost, firmware-profile and charge-limit files; the command installs the root-owned helper that may safely be elevated, and `flock` serializes each transaction | monitoring and unprivileged controls work; privileged changes explain how to install or repair the helper |
 
 `hwdata` depends on `pci.ids`, so it brings both tables; `ddcutil` and
 `pciutils` pull in `pci.ids` on their own but not `pnp.ids`. On Fedora and
@@ -258,8 +258,8 @@ cd cinnamon-powertoys
 It copies into `~/.local/share/cinnamon/applets/`, compiles any translations
 into `~/.local/share/locale/`, and touches nothing else — no root, and nothing
 written outside your home directory. `PREFIX` and `DESTDIR` are honoured if
-you are packaging it. The one part that does go to `/usr` is optional, asks
-for root explicitly and is described under
+you are packaging it. Privileged setting changes require a separate root-owned
+helper under `/usr`; install it explicitly as described under
 [One prompt instead of one per change](#one-prompt-instead-of-one-per-change).
 
 On a first install, restart Cinnamon (`Alt+F2`, `r`, Enter) and enable **Power
@@ -273,9 +273,9 @@ make uninstall
 ```
 
 That removes the per-user applet, its compiled translations and its panel
-entry. If you installed either optional system-wide grant, remove it separately
-with `sudo make uninstall-policy` and/or `sudo make uninstall-rapl`, as described
-in their sections below.
+entry. Remove the privileged helper/action pair and any optional RAPL grant
+separately with `sudo make uninstall-policy` and/or `sudo make uninstall-rapl`,
+as described in their sections below.
 
 ### To work on it
 
@@ -296,12 +296,17 @@ desktop this is written for.
 
 Reading is entirely unprivileged. Changing the CPU governor, energy preference,
 turbo boost, ACPI platform profile or charge limit writes to root owned files
-in `/sys`, so those actions call `powertoys-helper` through `pkexec` and an
-administrator password is requested. The helper accepts five fixed commands
-and validates every value against the list the kernel advertises, so it cannot
-be used to write arbitrary data. Turn the whole group off with *Allow changing
-privileged power settings* in the applet settings if you would rather not be
-asked; the firmware profile stays visible there as a read-only status.
+in `/sys`, so those actions call the root-owned `powertoys-helper` through
+`pkexec` and an administrator password is requested. Install that helper with
+`sudo make install-policy`; until then privileged changes are refused with that
+guidance. The applet verifies that the helper is a regular root-owned
+executable and that neither it nor any parent directory is writable by a group
+or another user. It never elevates the copy in the user-writable applet
+directory. The helper accepts five fixed commands and validates every value
+against the list the kernel advertises, so it cannot be used to write arbitrary
+data. Turn the whole group off with *Allow changing privileged power settings*
+in the applet settings if you would rather not be asked; the firmware profile
+stays visible there as a read-only status.
 
 The menu closes as one of those changes is made, and only those. An applet menu
 holds a modal grab for as long as it is open, and the password dialog belongs to
@@ -353,19 +358,14 @@ another application has its own powercap policy, that policy has the final say.
 
 ### One prompt instead of one per change
 
-Out of the box every one of those changes asks for the password again, because
-`pkexec` with no policy of its own never keeps an authorisation. Changing the
-governor, the energy preference and the charge limit is three prompts, and —
-since the menu has to close for each dialog to be answerable — three trips back
-to the menu.
-
-With the action installed the first change still asks and the ones within the
-next few minutes do not. The menu closes for each of them either way: whether
-the kept authorisation is still good is polkit's answer to give, and the applet
-has to have let go of the grab before it can ask.
+Privileged changes require the installed helper. The accompanying action also
+means the first change asks for the administrator password and changes within
+the next few minutes do not. The menu closes for each of them: whether the kept
+authorisation is still good is polkit's answer to give, and the applet has to
+have let go of the grab before it can ask.
 
 ```sh
-sudo make install-policy      # optional
+sudo make install-policy
 ```
 
 That installs two files:
@@ -387,11 +387,12 @@ inactive or connected remotely gets no keeping at all. It grants nothing else:
 the helper takes five fixed commands and checks every value against the list
 the kernel itself advertises.
 
-**Why the second file.** A kept authorisation applies to a path, so that path
-must be one its caller cannot rewrite while the authorisation is still valid.
-The copy inside the applet lives under your home directory; the action
-deliberately names a root owned copy instead. Re-run `sudo make install-policy`
-after upgrading the applet so the two stay the same script.
+**Why the second file.** Authentication makes the selected executable root, so
+that path must be one its caller cannot rewrite before or after authorisation.
+The copy inside the applet lives under your home directory and is never passed
+to `pkexec`; the action deliberately names a root-owned copy instead. Re-run
+`sudo make install-policy` after upgrading the applet so the two stay the same
+script.
 
 **To revoke it:**
 
@@ -399,8 +400,8 @@ after upgrading the applet so the two stay the same script.
 sudo make uninstall-policy
 ```
 
-Both files go, and the applet carries on asking for a password on every
-change.
+Both files go. Monitoring and unprivileged controls carry on working;
+privileged changes are refused with installation guidance.
 
 ### External monitor brightness
 

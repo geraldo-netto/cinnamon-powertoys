@@ -66,18 +66,11 @@ Format.setIconLookup(function (name) {
     return theme.has_icon(name + "-symbolic") || theme.has_icon(name);
 });
 
-const HELPER = "powertoys-helper";
-
 /*
- * Where `make install-policy` puts a root owned copy of the helper, and the
- * path the polkit action names. When it is there, one authentication covers a
- * run of changes; when it is not, the applet runs its own copy and pkexec
- * asks every time.
- *
- * The action deliberately does not name the copy inside the applet directory.
- * That one lives under the user's home, and an authorisation that is kept for
- * a few minutes must apply to a file its caller cannot rewrite in the
- * meantime.
+ * Where `make install-policy` puts the root-owned helper and the path the
+ * polkit action names. PrivilegedHelper verifies this file and every parent
+ * before asking pkexec to run it. The copy inside the applet is deliberately
+ * never elevated: its owner could replace it between validation and use.
  */
 const SYSTEM_HELPER = "/usr/local/lib/cinnamon-powertoys/powertoys-helper";
 
@@ -169,10 +162,8 @@ function defaultBackends() {
         monitorBacklight: onChanged => new Ddc.DdcBacklight(onChanged),
         bluetoothBatteries: onChanged => new Bluez.BluezBatteries(onChanged),
         upowerMonitor: (onChanged, onReady) => new UPower.UPowerMonitor(onChanged, onReady),
-        fileExists: path => IO.exists(path),
         notifications: () => new Notifications.NotificationCenter(Main),
-        privilegedHelper: (candidates, exists, repair) =>
-            new Privileged.PrivilegedHelper(candidates, exists, repair),
+        privilegedHelper: candidates => new Privileged.PrivilegedHelper(candidates),
     };
 }
 
@@ -1778,10 +1769,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         this._bindSettings();
 
-        this._helper = this._backends.privilegedHelper(
-            [SYSTEM_HELPER, metadata.path + "/" + HELPER],
-            path => this._backends.fileExists(path),
-            path => this._ensureExecutable(path));
+        this._helper = this._backends.privilegedHelper([SYSTEM_HELPER]);
 
         /* Discovery opens many metadata files and may load pci.ids. The
          * backend keeps its prior complete snapshot while doing that work and
@@ -3031,7 +3019,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
         case "rollback-failed":
             return _("The change failed and some previous settings could not be restored.");
         case "helper-not-found":
-            return _("The privileged helper could not be found.");
+        case "unsafe-system-helper":
+            return _("Install or repair the privileged helper with sudo make install-policy.");
         case "stale-system-helper":
             return _("The installed privileged helper is outdated. Re-run the policy installation.");
         case "helper-incompatible":
@@ -3195,20 +3184,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
             if (onDone)
                 onDone(outcome);
         });
-    }
-
-    /* A checkout or a zip download can lose the executable bit. */
-    _ensureExecutable(path) {
-        try {
-            let file = Gio.File.new_for_path(path);
-            let info = file.query_info("unix::mode", Gio.FileQueryInfoFlags.NONE, null);
-            let mode = info.get_attribute_uint32("unix::mode");
-            if ((mode & 0o111) !== 0o111)
-                file.set_attribute_uint32("unix::mode", (mode | 0o755) & 0o7777,
-                                          Gio.FileQueryInfoFlags.NONE, null);
-        } catch (error) {
-            /* read only install, the helper is most likely already executable */
-        }
     }
 
     /*

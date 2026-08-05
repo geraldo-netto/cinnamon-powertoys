@@ -17,17 +17,14 @@ const OWN = "/home/someone/.local/share/cinnamon/applets/x/powertoys-helper";
 
 /* Builds a helper over a pretend file system and a pretend pkexec. */
 function helperWith(present, answer) {
-    let repaired = [];
     let spawned = [];
     let helper = new Privileged.PrivilegedHelper(
         [SYSTEM, OWN],
         path => present.indexOf(path) >= 0,
-        path => repaired.push(path),
         function (argv, onDone) {
             spawned.push(argv.join(" "));
             onDone(answer[0], answer[1]);
         });
-    helper.repaired = repaired;
     helper.spawned = spawned;
     return helper;
 }
@@ -38,75 +35,94 @@ cases["the root owned helper is preferred"] = function () {
     let helper = helperWith([SYSTEM, OWN], [0, ""]);
     let path = Harness.settle(done => helper.path(done), "helper selection");
     Harness.equal(path, SYSTEM, "the one the polkit action names");
-    Harness.deepEqual(helper.repaired, [],
-                      "and it is not ours to chmod, so it is left alone");
 };
 
-cases["without it, the applet's own copy is used and repaired"] = function () {
-    let helper = helperWith([OWN], [0, ""]);
+cases["runtime trust accepts a protected root-owned executable"] = function () {
+    let inspection = Privileged.inspectTrustedHelper("/usr/bin/true");
+    Harness.equal(inspection.trusted, true,
+                  "the helper and every directory leading to it are protected");
+};
+
+cases["runtime trust rejects a helper below a user-owned directory"] = function () {
+    let directory = GLib.dir_make_tmp("powertoys-untrusted-helper-XXXXXX");
+    let path = directory + "/powertoys-helper";
+    try {
+        GLib.file_set_contents(path, "#!/bin/sh\nexit 0\n");
+        GLib.chmod(path, 0o755);
+        let inspection = Privileged.inspectTrustedHelper(path);
+        Harness.equal(inspection.trusted, false, "a user-owned helper is not trusted");
+        Harness.equal(inspection.code, "unsafe-system-helper",
+                      "the caller can provide repair guidance");
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
+    }
+};
+
+cases["without an installed helper no user-owned copy is selected"] = function () {
+    let helper = helperWith([], [0, ""]);
     let path = Harness.settle(done => helper.path(done), "helper selection");
-    Harness.equal(path, OWN, "ours");
-    Harness.deepEqual(helper.repaired, [OWN],
-                      "a checkout or a zip download can lose the executable bit");
+    Harness.equal(path, null, "a path below the applet is never a candidate");
 };
 
-cases["an incompatible system helper yields to the bundled helper"] = function () {
+cases["an incompatible system helper is not elevated"] = function () {
     let spawned = [];
     let helper = new Privileged.PrivilegedHelper(
-        [SYSTEM, OWN], () => true, () => {},
+        [SYSTEM], () => true,
         (argv, onDone) => { spawned.push(argv); onDone(0, ""); },
-        (path, onDone) => onDone(path === OWN,
-                                 path === OWN ? "" : "reported protocol 0"));
+        (path, onDone) => onDone(false, "reported protocol 0"));
     let outcome = null;
     helper.run(["boost", "1"], result => { outcome = result; });
 
-    Harness.equal(spawned.length, 1, "only the compatible helper is executed through pkexec");
-    Harness.equal(spawned[0][1], OWN, "the stale root-owned copy did not override the bundle");
-    Harness.equal(outcome.applied, true, "the requested change can still be applied");
-    Harness.equal(outcome.warningCode, "stale-system-helper",
-                  "and the installation problem is reported explicitly");
+    Harness.equal(spawned.length, 0, "pkexec never receives an unverified replacement");
+    Harness.equal(outcome.applied, false, "the requested change is refused");
+    Harness.equal(outcome.code, "stale-system-helper",
+                  "and the installation problem is actionable");
 };
 
 cases["helper selection follows live installation changes"] = function () {
-    let present = [OWN];
+    let present = [];
     let spawned = [];
     let helper = new Privileged.PrivilegedHelper(
-        [SYSTEM, OWN], path => present.indexOf(path) >= 0, () => {},
+        [SYSTEM], path => present.indexOf(path) >= 0,
         (argv, onDone) => { spawned.push(argv[1]); onDone(0, ""); },
         (path, onDone) => onDone(true, ""));
 
-    helper.run(["boost", "1"], () => {});
-    present.unshift(SYSTEM);
+    let missing = null;
+    helper.run(["boost", "1"], outcome => { missing = outcome; });
+    present = [SYSTEM];
     helper.run(["boost", "0"], () => {});
-    present = [OWN];
-    helper.run(["boost", "1"], () => {});
+    present = [];
+    let removed = null;
+    helper.run(["boost", "1"], outcome => { removed = outcome; });
 
-    Harness.deepEqual(spawned, [OWN, SYSTEM, OWN],
-                      "each job uses the highest-priority candidate that still exists");
+    Harness.deepEqual(spawned, [SYSTEM], "only the installed helper is run");
+    Harness.equal(missing.code, "helper-not-found", "absence is reported before installation");
+    Harness.equal(removed.code, "helper-not-found", "and after removal");
 };
 
-cases["helper protocol drift invalidates a cached candidate"] = function () {
+cases["helper protocol drift invalidates the installed candidate"] = function () {
     let systemCompatible = true;
     let spawned = [];
     let helper = new Privileged.PrivilegedHelper(
-        [SYSTEM, OWN], () => true, () => {},
+        [SYSTEM], () => true,
         (argv, onDone) => { spawned.push(argv[1]); onDone(0, ""); },
-        (path, onDone) => onDone(path === OWN || systemCompatible,
-                                 "reported an old protocol"));
+        (path, onDone) => onDone(systemCompatible, "reported an old protocol"));
 
     helper.run(["boost", "1"], () => {});
     systemCompatible = false;
-    helper.run(["boost", "0"], () => {});
+    let outcome = null;
+    helper.run(["boost", "0"], result => { outcome = result; });
 
-    Harness.deepEqual(spawned, [SYSTEM, OWN],
-                      "a newly incompatible installed helper yields to the bundle");
+    Harness.deepEqual(spawned, [SYSTEM], "an incompatible helper is not run");
+    Harness.equal(outcome.code, "stale-system-helper", "reinstallation is requested");
 };
 
 cases["a spawn failure forces helper reselection"] = function () {
     let probes = 0;
     let runs = 0;
     let helper = new Privileged.PrivilegedHelper(
-        [SYSTEM], () => true, () => {},
+        [SYSTEM], () => true,
         (argv, onDone) => onDone(runs++ === 0 ? -1 : 0, "spawn failed"),
         (path, onDone) => { probes++; onDone(true, ""); });
 
@@ -177,7 +193,7 @@ cases["a failure with nothing to say still reports a failure"] = function () {
 /* A helper whose spawn is held open until the case says to answer. */
 function deferredHelper() {
     let waiting = [];
-    let helper = new Privileged.PrivilegedHelper([SYSTEM], () => true, () => {},
+    let helper = new Privileged.PrivilegedHelper([SYSTEM], () => true,
                                                  (argv, onDone) => waiting.push({ argv: argv, onDone: onDone }));
     helper.waiting = waiting;
     helper.answer = function (status) {
@@ -262,7 +278,7 @@ cases["a helper probe does not spawn after the applet leaves"] = function () {
     let spawned = [];
     let outcome = null;
     let helper = new Privileged.PrivilegedHelper(
-        [SYSTEM], () => true, () => {},
+        [SYSTEM], () => true,
         (argv, onDone) => spawned.push({ argv: argv, onDone: onDone }),
         (path, onDone) => () => {
             probeCancelled++;
@@ -342,7 +358,7 @@ cases["a helper that was killed never exited, and is not asked what it exited wi
             done({ status: status, stderr: stderr })), "a process that was killed");
     Harness.equal(outcome.status, -1, "a failure of its own, not an exit status");
 
-    let helper = new Privileged.PrivilegedHelper(["/helper"], () => true, () => {},
+    let helper = new Privileged.PrivilegedHelper(["/helper"], () => true,
                                                  (argv, onDone) => Privileged._spawn(
                                                      ["sh", "-c", "kill -TERM $$"], onDone));
     let reported = Harness.settle(done => helper.run(["boost", "1"], done), "the outcome");
@@ -371,7 +387,7 @@ cases["a real helper run reaches the outcome the menu reads"] = function () {
      * screen - but everything this side of it is what runs in the applet.
      */
     let helper = new Privileged.PrivilegedHelper(
-        ["/bin/echo"], path => path === "/bin/echo", () => {},
+        ["/bin/echo"], path => path === "/bin/echo",
         (argv, onDone) => Privileged._spawn(argv.slice(1), onDone));
 
     let outcome = Harness.settle(done => helper.run(["governor", "performance"], done),
@@ -381,7 +397,7 @@ cases["a real helper run reaches the outcome the menu reads"] = function () {
 
 cases["what the helper prints is separated into code and diagnostic"] = function () {
     let helper = new Privileged.PrivilegedHelper(
-        ["/bin/sh"], () => true, () => {},
+        ["/bin/sh"], () => true,
         (argv, onDone) => Privileged._spawn(
             ["sh", "-c", "echo first line >&2; echo 'powertoys-helper-error unavailable no cpufreq policy found' >&2; exit 3"],
             onDone));
@@ -411,7 +427,7 @@ cases["a helper that prints something no text can hold is still an answer"] = fu
 
 cases["the structured failure works when it is the only line"] = function () {
     let helper = new Privileged.PrivilegedHelper(
-        [SYSTEM], () => true, () => {},
+        [SYSTEM], () => true,
         (argv, onDone) => onDone(1,
             "powertoys-helper-error invalid-value unknown governor: nonsense\n"));
     let outcome = null;
@@ -510,7 +526,7 @@ cases["a refusal is written to the log with its status and its reason"] = functi
     Log.setSink(line => lines.push(line));
     try {
         let helper = new Privileged.PrivilegedHelper(
-            [SYSTEM], () => true, () => {},
+            [SYSTEM], () => true,
             (argv, onDone) => onDone(3,
                 "powertoys-helper-error unavailable no cpufreq policy found\n"));
         helper.run(["governor", "x"], () => {});
@@ -521,7 +537,7 @@ cases["a refusal is written to the log with its status and its reason"] = functi
 
         lines.length = 0;
         let quiet = new Privileged.PrivilegedHelper(
-            [SYSTEM], () => true, () => {}, (argv, onDone) => onDone(9, ""));
+            [SYSTEM], () => true, (argv, onDone) => onDone(9, ""));
         quiet.run(["boost", "1"], () => {});
         Harness.equal(lines[0],
                       "[powertoys] helper failed with status 9 [helper-failed]: no reason given",

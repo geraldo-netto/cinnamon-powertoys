@@ -53,9 +53,9 @@ MUTANTS_ARGS ?=
 help:
 	@echo "make install          - install the applet for the current user"
 	@echo "make uninstall        - remove the installed applet"
-	@echo "make install-policy   - (root) one password prompt per few minutes"
-	@echo "                        instead of one per change; see README"
-	@echo "make uninstall-policy - (root) remove it and go back to asking"
+	@echo "make install-policy   - (root) enable safe privileged changes and keep"
+	@echo "                        authentication for a few minutes; see README"
+	@echo "make uninstall-policy - (root) disable privileged changes"
 	@echo "make install-rapl     - (root) let the applet read CPU package power,"
 	@echo "                        at the cost described in README; read it first"
 	@echo "make uninstall-rapl   - (root) make those counters root only again"
@@ -95,7 +95,7 @@ uninstall-policy:
 	@rm -f -- "$(HELPER_DEST)"
 	@rmdir "$(HELPER_DIR)" 2>/dev/null || true
 	@echo "removed the action and the root owned helper"
-	@echo "the applet keeps working and asks for a password on every change"
+	@echo "monitoring still works; privileged changes are disabled"
 
 # Reading, not writing, and still root's to give away: see the rule itself and
 # the README section on it. The counters that already exist are handed over

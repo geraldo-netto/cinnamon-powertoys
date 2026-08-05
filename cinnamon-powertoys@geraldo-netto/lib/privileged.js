@@ -25,6 +25,56 @@ var HELPER_PROTOCOL = 2;
 var HELPER_PROTOCOL_LINE = "cinnamon-powertoys-helper-protocol " + HELPER_PROTOCOL;
 var PROBE_TIMEOUT_MS = 2000;
 
+/*
+ * pkexec makes the selected program root. A compatible protocol is not a
+ * trust boundary: a helper below the caller's home can honestly answer the
+ * probe and then be replaced before the authenticated run. Accept only a
+ * regular, root-owned executable reached entirely through root-owned paths
+ * that no group or other user can write.
+ */
+var inspectTrustedHelper = function inspectTrustedHelper(path) {
+    if (!GLib.file_test(path, GLib.FileTest.EXISTS) &&
+            !GLib.file_test(path, GLib.FileTest.IS_SYMLINK)) {
+        return {
+            trusted: false,
+            code: "helper-not-found",
+            diagnostic: "the installed privileged helper could not be found",
+        };
+    }
+
+    let current = Gio.File.new_for_path(path);
+    let helper = true;
+    try {
+        while (current) {
+            let info = current.query_info(
+                "standard::type,unix::uid,unix::mode",
+                Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null);
+            let type = info.get_file_type();
+            let mode = info.get_attribute_uint32("unix::mode");
+            let uid = info.get_attribute_uint32("unix::uid");
+            let expected = helper ? Gio.FileType.REGULAR : Gio.FileType.DIRECTORY;
+            if (type !== expected || uid !== 0 || (mode & 0o022) !== 0 ||
+                    (helper && (mode & 0o111) === 0)) {
+                return {
+                    trusted: false,
+                    code: "unsafe-system-helper",
+                    diagnostic: "the privileged helper path is not safely root owned: " +
+                        current.get_path(),
+                };
+            }
+            helper = false;
+            current = current.get_parent();
+        }
+    } catch (error) {
+        return {
+            trusted: false,
+            code: "unsafe-system-helper",
+            diagnostic: "the privileged helper path could not be verified: " + String(error),
+        };
+    }
+    return { trusted: true };
+};
+
 function _spawn(argv, onDone) {
     let process;
     try {
@@ -143,15 +193,13 @@ function _failure(stderr) {
 
 var PrivilegedHelper = class PrivilegedHelper {
     /*
-     * `candidates` are the helper paths to try in order - in the applet, the
-     * root owned copy the polkit action names, then the one that shipped with
-     * the applet. `exists` and `repair` are how the caller reaches the file
-     * system, so this module needs none of its own.
+     * `candidates` are installed helper paths to try in order. `inspect` is
+     * injectable so selection can be checked without requiring root-owned
+     * fixtures; runtime uses inspectTrustedHelper above.
      */
-    constructor(candidates, exists, repair, spawn, probe) {
+    constructor(candidates, inspect, spawn, probe) {
         this._candidates = candidates || [];
-        this._exists = exists || (() => false);
-        this._repair = repair || function () {};
+        this._inspect = inspect || inspectTrustedHelper;
         this._spawn = spawn || _spawn;
         /* An injected spawn normally stands for pkexec in tests or another
          * integration and cannot execute a candidate directly. Such callers
@@ -200,9 +248,9 @@ var PrivilegedHelper = class PrivilegedHelper {
     }
 
     /*
-     * The helper that will actually be run, or null when there is none. The
-     * first candidate is the root owned one; only ours is ours to repair, so
-     * the executable bit is only ever put back on the later candidates.
+     * The trusted helper that will actually be run, or null when there is
+     * none. Selection is repeated for every job so an installation changed
+     * while Cinnamon is alive is adopted without reloading the applet.
      */
     path(onDone) {
         let done = onDone || function () {};
@@ -223,12 +271,13 @@ var PrivilegedHelper = class PrivilegedHelper {
         }
 
         let candidate = this._candidates[index];
-        if (!this._exists(candidate)) {
-            this._tryCandidate(index + 1, issue, onDone);
+        let inspection = this._inspect(candidate);
+        let trusted = inspection === true || (inspection && inspection.trusted === true);
+        if (!trusted) {
+            let rejected = inspection && inspection.code ? inspection : null;
+            this._tryCandidate(index + 1, issue || rejected, onDone);
             return;
         }
-        if (index > 0)
-            this._repair(candidate);
 
         let activeProbe = { cancel: null };
         this._activeProbe = activeProbe;

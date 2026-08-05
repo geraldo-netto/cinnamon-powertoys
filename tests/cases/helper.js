@@ -94,7 +94,7 @@ function run(tree, args, refusals) {
     GLib.chmod(tree.script, 0o700);
 
     let helper = new Privileged.PrivilegedHelper(
-        [tree.script], () => true, () => {},
+        [tree.script], () => true,
         (argv, done) => Privileged._spawn(argv.slice(1), done));
     return Harness.settle(done => helper.run(args.map(value => String(value)), done),
                           "the helper transaction");
