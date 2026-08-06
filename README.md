@@ -108,7 +108,10 @@ helper launched with `pkexec`.
 hwmon power meters (for example the amdgpu GPU package power), RAPL package
 power when the kernel allows reading it, and the temperature and consumption
 rate batteries report through UPower. Those live battery measurements appear
-only here rather than being repeated in Devices. Readings are grouped by the
+only here rather than being repeated in Devices. Where a hwmon channel exposes
+both averaged and instantaneous power, the driver-provided average is preferred
+and the instantaneous node is retained as a fallback for an unreadable average,
+without creating a second row. Readings are grouped by the
 thing they came off and it is named
 rather than addressed: the processor from `/proc/cpuinfo`, anything on the PCI
 bus from `pci.ids`, a battery by what UPower calls it. So two graphics cards

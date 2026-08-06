@@ -240,6 +240,36 @@ cases["the averaged power node wins over the instantaneous one"] = function () {
         Harness.equal(meters.length, 2, "power1 counted once, plus power2");
         Harness.equal(meters[0].path, "/sys/class/hwmon/hwmon4/power1_average",
                       "power1_input is skipped because power1_average exists");
+        Harness.equal(meters[0].fallbackPath,
+                      "/sys/class/hwmon/hwmon4/power1_input",
+                      "the instantaneous node remains attached as a read fallback");
+    });
+};
+
+cases["an unreadable averaged power node falls back without duplicating the channel"] = function () {
+    on("machine", function () {
+        let set = new Sensors.SensorSet();
+        let sensor = byId(set.powerSensors, "hwmon:hwmon4:power1");
+        let touched = [];
+        let result = set._powers(
+            () => true,
+            path => {
+                touched.push(path);
+                if (path === sensor.path)
+                    return null;
+                if (path === sensor.fallbackPath)
+                    return 5100000;
+                return null;
+            },
+            { meters: [], powers: [sensor] });
+
+        Harness.deepEqual(touched, [sensor.path, sensor.fallbackPath],
+                          "the average is tried before the instantaneous value");
+        Harness.equal(result.readings.length, 1, "one physical channel remains one row");
+        Harness.near(result.readings[0].watts, 5.1, 0.001,
+                     "the readable instantaneous value is retained");
+        Harness.ok(set._paths(() => true).indexOf(sensor.fallbackPath) >= 0,
+                   "asynchronous batches preload the fallback too");
     });
 };
 

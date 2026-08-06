@@ -553,6 +553,10 @@ function _scanSensors(directories, readString, readLink) {
                     rawLabel: _label(base, nodeKind.prefix, index, readString),
                     path: base + "/" + node,
                 };
+                if (nodeKind.prefix === "power" && match[2] === "average") {
+                    let input = base + "/power" + index + "_input";
+                    sensor.fallbackPath = exists(input) ? input : null;
+                }
                 let faultPath = base + "/" + nodeKind.prefix + index + "_fault";
                 sensor.faultPath = nodeKind.fault && exists(faultPath) ? faultPath : null;
                 if (nodeKind.extra)
@@ -1219,6 +1223,8 @@ var SensorSet = class SensorSet {
             if (!keep(sensor))
                 continue;
             let raw = readNumber(sensor.path);
+            if (raw === null && sensor.fallbackPath)
+                raw = readNumber(sensor.fallbackPath);
             if (raw === null)
                 continue;
             readings.push({
@@ -1350,8 +1356,11 @@ var SensorSet = class SensorSet {
             if (keep(meter))
                 paths.push(meter.counter.path);
         for (let sensor of found.powers)
-            if (keep(sensor))
+            if (keep(sensor)) {
                 paths.push(sensor.path);
+                if (sensor.fallbackPath)
+                    paths.push(sensor.fallbackPath);
+            }
         return paths;
     }
 
