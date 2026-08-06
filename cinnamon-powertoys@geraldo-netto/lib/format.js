@@ -128,16 +128,25 @@ function energy(wattHours) {
     return Translate.interpolate(_("%{value} Wh"), { value: number(wattHours, 1) });
 }
 
-/* Seconds to a compact "2h 05m" / "45m" form. */
+/* Seconds to a compact "2h 05m" / "45m" form.
+ *
+ * The two complete layouts go through gettext rather than translating the
+ * suffixes separately. A locale can therefore put minutes first, add spacing,
+ * or replace both abbreviations without inheriting English punctuation. */
 function duration(seconds) {
     if (!_figure(seconds) || seconds <= 0)
         return "";
     let minutes = Math.max(1, Math.round(seconds / 60));
     let hours = Math.floor(minutes / 60);
     minutes = minutes % 60;
-    if (hours > 0)
-        return hours + "h " + (minutes < 10 ? "0" : "") + minutes + "m";
-    return minutes + "m";
+    let minuteText = (minutes < 10 ? "0" : "") + minutes;
+    if (hours > 0) {
+        return Translate.interpolate(_("%{hours}h %{minutes}m"), {
+            hours: hours,
+            minutes: minuteText,
+        });
+    }
+    return Translate.interpolate(_("%{minutes}m"), { minutes: minutes });
 }
 
 function deviceKindName(kind) {

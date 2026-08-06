@@ -270,6 +270,25 @@ cases["a duration is hours and minutes, or just minutes"] = function () {
     Harness.equal(Format.duration(-60), "", "and nothing negative");
 };
 
+cases["a translation controls each complete compact duration layout"] = function () {
+    let original = Gettext.dgettext;
+    Gettext.dgettext = function (domain, message) {
+        if (message === "%{hours}h %{minutes}m")
+            return "%{minutes} min after %{hours} hr";
+        if (message === "%{minutes}m")
+            return "minutes=%{minutes}";
+        return original(domain, message);
+    };
+    try {
+        Harness.equal(Format.duration(7260), "01 min after 2 hr",
+                      "the locale owns the two-part order and abbreviations");
+        Harness.equal(Format.duration(2700), "minutes=45",
+                      "the minutes-only form is complete too");
+    } finally {
+        Gettext.dgettext = original;
+    }
+};
+
 /* ---------------------------------------------------------------- */
 /* names                                                             */
 

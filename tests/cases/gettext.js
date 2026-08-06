@@ -263,6 +263,8 @@ cases["dynamic name and value phrases use complete templates"] = function () {
         "%{kind} %{charge}",
         "%{state} · %{remaining}",
         "%{application} → %{profile}",
+        "%{duration} remaining",
+        "%{duration} until full",
     ]) {
         Harness.ok(source.indexOf("_(\"" + message + "\")") >= 0,
                    "the complete phrase is translatable: " + message);

@@ -40,7 +40,7 @@ msgstr ""
 msgid "Screen"
 msgstr ""
 
-#: applet.js:1159 lib/format.js:150
+#: applet.js:1159 lib/format.js:159
 msgid "Keyboard"
 msgstr ""
 
@@ -219,7 +219,7 @@ msgstr ""
 msgid "Battery low"
 msgstr ""
 
-#: lib/alerts.js:168 lib/format.js:492 lib/panel-text.js:249
+#: lib/alerts.js:168 lib/format.js:501 lib/panel-text.js:249
 msgid "Temperature"
 msgstr ""
 
@@ -232,34 +232,34 @@ msgid "Display %{number}"
 msgstr ""
 
 #: lib/device.js:97
-msgid "remaining"
+msgid "%{duration} remaining"
 msgstr ""
 
-#: lib/device.js:99
-msgid "until full"
+#: lib/device.js:102
+msgid "%{duration} until full"
 msgstr ""
 
-#: lib/device.js:124
+#: lib/device.js:130
 msgid "health %{percent}"
 msgstr ""
 
-#: lib/device.js:127
+#: lib/device.js:133
 msgid "cycles"
 msgstr ""
 
-#: lib/device.js:144
+#: lib/device.js:150
 msgid "A battery is present, but its status is unavailable"
 msgstr ""
 
-#: lib/device.js:146
+#: lib/device.js:152
 msgid "Device status is unavailable"
 msgstr ""
 
-#: lib/device.js:147
+#: lib/device.js:153
 msgid "Nothing with a battery is connected"
 msgstr ""
 
-#: lib/device.js:160
+#: lib/device.js:166
 msgid "%{device}  %{charge}"
 msgstr ""
 
@@ -303,291 +303,299 @@ msgstr ""
 msgid "%{value} Wh"
 msgstr ""
 
-#: lib/format.js:145
-msgid "AC adapter"
-msgstr ""
-
-#: lib/format.js:146 lib/panel-text.js:155 lib/sensors.js:42
-msgid "Battery"
-msgstr ""
-
-#: lib/format.js:147
-msgid "UPS"
-msgstr ""
-
-#: lib/format.js:148
-msgid "Monitor"
+#: lib/format.js:144
+msgid "%{hours}h %{minutes}m"
 msgstr ""
 
 #: lib/format.js:149
-msgid "Mouse"
-msgstr ""
-
-#: lib/format.js:151
-msgid "PDA"
-msgstr ""
-
-#: lib/format.js:152
-msgid "Phone"
-msgstr ""
-
-#: lib/format.js:153
-msgid "Media player"
+msgid "%{minutes}m"
 msgstr ""
 
 #: lib/format.js:154
-msgid "Tablet"
+msgid "AC adapter"
 msgstr ""
 
-#: lib/format.js:155
-msgid "Computer"
+#: lib/format.js:155 lib/panel-text.js:155 lib/sensors.js:42
+msgid "Battery"
 msgstr ""
 
 #: lib/format.js:156
-msgid "Game controller"
+msgid "UPS"
 msgstr ""
 
 #: lib/format.js:157
-msgid "Pen"
+msgid "Monitor"
 msgstr ""
 
 #: lib/format.js:158
-msgid "Touchpad"
-msgstr ""
-
-#: lib/format.js:159
-msgid "Modem"
+msgid "Mouse"
 msgstr ""
 
 #: lib/format.js:160
-msgid "Network device"
+msgid "PDA"
 msgstr ""
 
 #: lib/format.js:161
-msgid "Headset"
+msgid "Phone"
 msgstr ""
 
 #: lib/format.js:162
-msgid "Speakers"
+msgid "Media player"
 msgstr ""
 
 #: lib/format.js:163
-msgid "Headphones"
+msgid "Tablet"
 msgstr ""
 
 #: lib/format.js:164
-msgid "Video device"
+msgid "Computer"
 msgstr ""
 
 #: lib/format.js:165
-msgid "Audio device"
+msgid "Game controller"
 msgstr ""
 
 #: lib/format.js:166
-msgid "Remote control"
+msgid "Pen"
 msgstr ""
 
 #: lib/format.js:167
-msgid "Printer"
+msgid "Touchpad"
 msgstr ""
 
 #: lib/format.js:168
-msgid "Scanner"
+msgid "Modem"
 msgstr ""
 
 #: lib/format.js:169
-msgid "Camera"
+msgid "Network device"
 msgstr ""
 
 #: lib/format.js:170
-msgid "Wearable"
+msgid "Headset"
 msgstr ""
 
 #: lib/format.js:171
-msgid "Toy"
+msgid "Speakers"
 msgstr ""
 
 #: lib/format.js:172
-msgid "Bluetooth device"
+msgid "Headphones"
+msgstr ""
+
+#: lib/format.js:173
+msgid "Video device"
+msgstr ""
+
+#: lib/format.js:174
+msgid "Audio device"
+msgstr ""
+
+#: lib/format.js:175
+msgid "Remote control"
+msgstr ""
+
+#: lib/format.js:176
+msgid "Printer"
 msgstr ""
 
 #: lib/format.js:177
-msgid "Device"
+msgid "Scanner"
 msgstr ""
 
-#: lib/format.js:184
-msgid "Charging"
+#: lib/format.js:178
+msgid "Camera"
 msgstr ""
 
-#: lib/format.js:185
-msgid "Discharging"
+#: lib/format.js:179
+msgid "Wearable"
+msgstr ""
+
+#: lib/format.js:180
+msgid "Toy"
+msgstr ""
+
+#: lib/format.js:181
+msgid "Bluetooth device"
 msgstr ""
 
 #: lib/format.js:186
+msgid "Device"
+msgstr ""
+
+#: lib/format.js:193
+msgid "Charging"
+msgstr ""
+
+#: lib/format.js:194
+msgid "Discharging"
+msgstr ""
+
+#: lib/format.js:195
 msgid "Empty"
 msgstr ""
 
-#: lib/format.js:187
+#: lib/format.js:196
 msgid "Fully charged"
 msgstr ""
 
-#: lib/format.js:188
+#: lib/format.js:197
 msgid "Pending charge"
 msgstr ""
 
-#: lib/format.js:189
+#: lib/format.js:198
 msgid "Pending discharge"
 msgstr ""
 
-#: lib/format.js:190 lib/format.js:202
+#: lib/format.js:199 lib/format.js:211
 msgid "Unknown"
 msgstr ""
 
-#: lib/format.js:197
+#: lib/format.js:206
 msgid "Full"
 msgstr ""
 
-#: lib/format.js:198
+#: lib/format.js:207
 msgid "High"
 msgstr ""
 
-#: lib/format.js:199
+#: lib/format.js:208
 msgid "Normal"
 msgstr ""
 
-#: lib/format.js:200
+#: lib/format.js:209
 msgid "Low"
 msgstr ""
 
-#: lib/format.js:201
+#: lib/format.js:210
 msgid "Critical"
 msgstr ""
 
-#: lib/format.js:328
+#: lib/format.js:337
 msgid "Power saver"
 msgstr ""
 
-#: lib/format.js:329
+#: lib/format.js:338
 msgid "Balanced"
 msgstr ""
 
-#: lib/format.js:330
+#: lib/format.js:339
 msgid "Balanced performance"
 msgstr ""
 
-#: lib/format.js:331 lib/format.js:450 lib/format.js:468 lib/panel-text.js:282
+#: lib/format.js:340 lib/format.js:459 lib/format.js:477 lib/panel-text.js:282
 msgid "Performance"
 msgstr ""
 
-#: lib/format.js:332
+#: lib/format.js:341
 msgid "Quiet"
 msgstr ""
 
-#: lib/format.js:333
+#: lib/format.js:342
 msgid "Low power"
 msgstr ""
 
-#: lib/format.js:334
+#: lib/format.js:343
 msgid "Cool"
 msgstr ""
 
-#: lib/format.js:395 lib/format.js:396
+#: lib/format.js:404 lib/format.js:405
 msgid "AMD"
 msgstr ""
 
-#: lib/format.js:397
+#: lib/format.js:406
 msgid "ACPI"
 msgstr ""
 
-#: lib/format.js:398
+#: lib/format.js:407
 msgid "Intel"
 msgstr ""
 
-#: lib/format.js:399
+#: lib/format.js:408
 msgid "Intel, kernel managed"
 msgstr ""
 
-#: lib/format.js:400
+#: lib/format.js:409
 msgid "ACPI hardware managed"
 msgstr ""
 
-#: lib/format.js:401
+#: lib/format.js:410
 msgid "Intel SpeedStep"
 msgstr ""
 
-#: lib/format.js:402
+#: lib/format.js:411
 msgid "AMD PowerNow"
 msgstr ""
 
-#: lib/format.js:403
+#: lib/format.js:412
 msgid "Processor Clocking Control"
 msgstr ""
 
-#: lib/format.js:412
+#: lib/format.js:421
 msgid "hardware managed"
 msgstr ""
 
-#: lib/format.js:413
+#: lib/format.js:422
 msgid "guided"
 msgstr ""
 
-#: lib/format.js:414
+#: lib/format.js:423
 msgid "kernel managed"
 msgstr ""
 
-#: lib/format.js:428
+#: lib/format.js:437
 msgid "unknown"
 msgstr ""
 
-#: lib/format.js:437
+#: lib/format.js:446
 msgid "%{label}, %{mode} (%{driver})"
 msgstr ""
 
-#: lib/format.js:443
+#: lib/format.js:452
 msgid "%{label} (%{driver})"
 msgstr ""
 
-#: lib/format.js:451
+#: lib/format.js:460
 msgid "Power save"
 msgstr ""
 
-#: lib/format.js:452
+#: lib/format.js:461
 msgid "On demand"
 msgstr ""
 
-#: lib/format.js:453
+#: lib/format.js:462
 msgid "Conservative"
 msgstr ""
 
-#: lib/format.js:454
+#: lib/format.js:463
 msgid "Scheduler guided"
 msgstr ""
 
-#: lib/format.js:455
+#: lib/format.js:464
 msgid "Userspace"
 msgstr ""
 
-#: lib/format.js:467
+#: lib/format.js:476
 msgid "Default"
 msgstr ""
 
-#: lib/format.js:469
+#: lib/format.js:478
 msgid "Balance performance"
 msgstr ""
 
-#: lib/format.js:470
+#: lib/format.js:479
 msgid "Balance power"
 msgstr ""
 
-#: lib/format.js:471
+#: lib/format.js:480
 msgid "Power saving"
 msgstr ""
 
-#: lib/format.js:493
+#: lib/format.js:502
 msgid "Fan"
 msgstr ""
 
-#: lib/format.js:494 lib/sensors.js:224
+#: lib/format.js:503 lib/sensors.js:224
 msgid "Power"
 msgstr ""
 

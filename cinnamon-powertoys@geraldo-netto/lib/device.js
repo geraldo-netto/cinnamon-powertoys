@@ -93,10 +93,16 @@ function chargeRecovered(device, threshold, hysteresis) {
 
 /* How long it has left, or how long until it is full. */
 function remainingText(device) {
-    if (device.state === UPDeviceState.DISCHARGING && device.timeToEmpty)
-        return Format.duration(device.timeToEmpty) + " " + _("remaining");
-    if (device.state === UPDeviceState.CHARGING && device.timeToFull)
-        return Format.duration(device.timeToFull) + " " + _("until full");
+    if (device.state === UPDeviceState.DISCHARGING && device.timeToEmpty) {
+        return Translate.interpolate(_("%{duration} remaining"), {
+            duration: Format.duration(device.timeToEmpty),
+        });
+    }
+    if (device.state === UPDeviceState.CHARGING && device.timeToFull) {
+        return Translate.interpolate(_("%{duration} until full"), {
+            duration: Format.duration(device.timeToFull),
+        });
+    }
     return "";
 }
 

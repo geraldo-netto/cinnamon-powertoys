@@ -10,6 +10,7 @@ const Harness = imports.harness;
 const Fuzz = imports.fuzz;
 
 const Device = Harness.requireXlet("./lib/device.js");
+const Gettext = imports.gettext;
 const UPowerGlib = imports.gi.UPowerGlib;
 
 const State = UPowerGlib.DeviceState;
@@ -100,6 +101,27 @@ cases["time remaining is shown for the direction it is going"] = function () {
                   "", "the wrong estimate for the direction is not shown");
     Harness.equal(Device.remainingText(battery({ state: State.DISCHARGING, timeToEmpty: 0 })),
                   "", "no estimate at all");
+};
+
+cases["a translation controls each complete remaining-time phrase"] = function () {
+    let original = Gettext.dgettext;
+    Gettext.dgettext = function (domain, message) {
+        if (message === "%{duration} remaining")
+            return "remaining: %{duration}";
+        if (message === "%{duration} until full")
+            return "full after %{duration}";
+        return original(domain, message);
+    };
+    try {
+        Harness.equal(Device.remainingText(
+            battery({ state: State.DISCHARGING, timeToEmpty: 5400 })),
+            "remaining: 1h 30m", "the discharge sentence can move the duration");
+        Harness.equal(Device.remainingText(
+            battery({ state: State.CHARGING, timeToFull: 2700 })),
+            "full after 45m", "the charge sentence has its own complete template");
+    } finally {
+        Gettext.dgettext = original;
+    }
 };
 
 /* ---------------------------------------------------------------- */
