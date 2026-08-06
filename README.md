@@ -248,6 +248,7 @@ command-line utilities.
 | Uninstall from a live session | `flock`, `gdbus`, `gsettings` and `python3`, so the script can disable the exact panel entry, verify that Cinnamon unloaded it and roll back on failure. A `DESTDIR` package-image uninstall does not touch the session and does not need the last three. |
 | Install source translations | gettext's `msgfmt`, but only when one or more `.po` files exist; this repository currently carries only the `.pot` template. |
 | Develop and check | `make`, `cjs` and `python3`; gettext for translation work, and Cinnamon's `cinnamon-xlet-makepot` for `make pot`. |
+| Install or remove privileged changes | root, `flock` and `python3`; gettext's `msgfmt` when the source tree contains one or more completed `.po` catalogues, so their policy-dialog strings can be embedded. |
 | Install or remove optional RAPL access | root, `getent` for live group validation and `udevadm` to reload and replay the powercap rules. |
 
 ### The applet
@@ -380,6 +381,11 @@ That installs two files:
 |------|------------|
 | `/usr/share/polkit-1/actions/io.github.geraldo-netto.cinnamon-powertoys.policy` | the action |
 | `/usr/local/lib/cinnamon-powertoys/powertoys-helper` | a root owned copy of the helper |
+
+Before publication, the policy is built deterministically from its English
+fallback and every completed `.po` catalogue in the applet's `po/` directory.
+Each translated description and authentication message is embedded as an
+`xml:lang` entry, which is the localization format polkit agents consume.
 
 Both copies are staged before either installed file changes. If publication is
 interrupted or the second copy fails, the installer restores the previous pair
@@ -556,6 +562,9 @@ msginit -l pt_BR -i cinnamon-powertoys@geraldo-netto.pot -o pt_BR.po
 
 Then `./install.sh` or `make install`, which compiles every `.po` in that
 directory into `~/.local/share/locale` where the applet looks for it.
+The same catalogue also owns the polkit description and authentication
+message. Re-run `sudo make install-policy` after adding or updating a
+translation to rebuild those system-dialog `xml:lang` entries.
 
 After changing any translatable string, `make pot` regenerates the template;
 `msgmerge -U <lang>.po cinnamon-powertoys@geraldo-netto.pot` carries an

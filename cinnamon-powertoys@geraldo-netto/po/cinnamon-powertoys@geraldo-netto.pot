@@ -126,8 +126,7 @@ msgid "The batteries have different charge limits."
 msgstr ""
 
 #: applet.js:1650
-msgid ""
-"Some battery limits could not be read; choosing one sets all batteries."
+msgid "Some battery limits could not be read; choosing one sets all batteries."
 msgstr ""
 
 #: applet.js:1651
@@ -144,8 +143,7 @@ msgstr ""
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "
-"the keyboard backlight. Right click to configure those, and to set "
-"shortcuts."
+"the keyboard backlight. Right click to configure those, and to set shortcuts."
 msgstr ""
 
 #: applet.js:2985 applet.js:3141
@@ -1079,4 +1077,14 @@ msgstr ""
 
 #. settings-schema.json->high-temp-threshold-fahrenheit->units
 msgid "°F"
+msgstr ""
+
+#: polkit/io.github.geraldo-netto.cinnamon-powertoys.policy:29
+msgid "Apply a power setting"
+msgstr ""
+
+#: polkit/io.github.geraldo-netto.cinnamon-powertoys.policy:31
+msgid ""
+"Authentication is required to change the CPU governor, energy performance "
+"preference, turbo boost, platform profile or battery charge limit."
 msgstr ""

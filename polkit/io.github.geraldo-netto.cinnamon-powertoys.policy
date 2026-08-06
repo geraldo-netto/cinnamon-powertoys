@@ -27,7 +27,9 @@
 
   <action id="io.github.geraldo-netto.cinnamon-powertoys.apply">
     <description>Apply a power setting</description>
+    <?powertoys-description-translations?>
     <message>Authentication is required to change the CPU governor, energy performance preference, turbo boost, platform profile or battery charge limit.</message>
+    <?powertoys-message-translations?>
     <icon_name>cs-power</icon_name>
     <defaults>
       <allow_any>auth_admin</allow_any>

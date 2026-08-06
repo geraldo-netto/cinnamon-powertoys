@@ -197,6 +197,48 @@ cases["the staged Make target publishes the runtime policy pair"] = function () 
     }
 };
 
+cases["policy build embeds completed catalogue translations"] = function () {
+    let directory = GLib.dir_make_tmp("powertoys-policy-i18n-XXXXXX");
+    try {
+        let po = directory + "/po";
+        let output = directory + "/localized.policy";
+        let root = Harness.testsDir() + "/..";
+        GLib.mkdir_with_parents(po, 0o755);
+        GLib.file_set_contents(po + "/it.po",
+            'msgid ""\n' +
+            'msgstr ""\n' +
+            '"Project-Id-Version: Power Toys 1.0.0\\n"\n' +
+            '"Language: it\\n"\n' +
+            '"MIME-Version: 1.0\\n"\n' +
+            '"Content-Type: text/plain; charset=UTF-8\\n"\n' +
+            '"Content-Transfer-Encoding: 8bit\\n"\n' +
+            '\n' +
+            'msgid "Apply a power setting"\n' +
+            'msgstr "Applica un’impostazione energetica"\n' +
+            '\n' +
+            'msgid "Authentication is required to change the CPU governor, energy performance preference, turbo boost, platform profile or battery charge limit."\n' +
+            'msgstr "È richiesta l’autenticazione per modificare le impostazioni energetiche."\n');
+
+        let outcome = Harness.settle(done => Privileged._spawn(
+            ["python3", root + "/tools/build-policy.py",
+             root + "/polkit/io.github.geraldo-netto.cinnamon-powertoys.policy",
+             po, output],
+            (status, stderr) => done({ status: status, stderr: stderr })),
+        "the localized policy build");
+        Harness.equal(outcome.status, 0, "the catalogue compiles: " + outcome.stderr);
+        let policy = Harness.readFile(output);
+        Harness.ok(policy.indexOf(
+            '<description xml:lang="it">Applica un’impostazione energetica</description>') >= 0,
+            "the localized action description is embedded");
+        Harness.ok(policy.indexOf(
+            '<message xml:lang="it">È richiesta l’autenticazione per modificare le impostazioni energetiche.</message>') >= 0,
+            "the authentication prompt uses the same catalogue");
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
+    }
+};
+
 cases["RAPL Make targets share one transition implementation"] = function () {
     let source = Harness.readFile(Harness.testsDir() + "/../Makefile");
     Harness.ok(source.indexOf('sh "$(RAPL_TOOL)" install') >= 0,

@@ -21,6 +21,7 @@ POT_URL      = $(shell python3 -c "import json;print(json.load(open('$(METADATA)
 POLICY      := io.github.geraldo-netto.cinnamon-powertoys.policy
 POLICY_DIR  := $(DESTDIR)/usr/share/polkit-1/actions
 POLICY_TOOL := tools/install-policy.sh
+POLICY_BUILDER := tools/build-policy.py
 POLICY_LOCK := $(if $(DESTDIR),$(DESTDIR),/run/cinnamon-powertoys-policy.lock)
 HELPER_PATH := /usr/local/lib/cinnamon-powertoys/powertoys-helper
 HELPER_DEST := $(DESTDIR)$(HELPER_PATH)
@@ -83,8 +84,11 @@ uninstall:
 install-policy:
 	@[ -n "$(DESTDIR)" ] || [ "$$(id -u)" = 0 ] || \
 		{ echo "needs root: sudo make install-policy"; exit 1; }
-	@sh "$(POLICY_TOOL)" install "$(UUID)/powertoys-helper" "$(HELPER_DEST)" \
-		"polkit/$(POLICY)" "$(POLICY_DIR)/$(POLICY)" "$(POLICY_LOCK)"
+	@built_policy=$$(mktemp); \
+		trap 'rm -f -- "$$built_policy"' EXIT HUP INT TERM; \
+		python3 "$(POLICY_BUILDER)" "polkit/$(POLICY)" "$(UUID)/po" "$$built_policy"; \
+		sh "$(POLICY_TOOL)" install "$(UUID)/powertoys-helper" "$(HELPER_DEST)" \
+			"$$built_policy" "$(POLICY_DIR)/$(POLICY)" "$(POLICY_LOCK)"
 	@echo "installed $(HELPER_DEST)"
 	@echo "installed $(POLICY_DIR)/$(POLICY)"
 	@echo "re-run this after upgrading the applet, so the root owned copy of"
@@ -207,6 +211,8 @@ mutants:
 # sources and the workflow's check can still be a plain diff.
 pot:
 	@cinnamon-xlet-makepot $(UUID)
+	@xgettext --its=polkit/policy.its --join-existing --from-code=UTF-8 \
+		-o $(POT) polkit/$(POLICY)
 	@sed -i '/^"POT-Creation-Date:/d' $(POT)
 	@sed -i \
 		-e 's|^# SOME DESCRIPTIVE TITLE\.$$|# Translation template for $(POT_NAME), a Cinnamon applet.|' \
