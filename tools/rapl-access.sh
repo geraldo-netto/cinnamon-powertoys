@@ -43,7 +43,7 @@ install_rule() {
         return 1
     }
     case "$GROUP" in
-        ""|*[!A-Za-z0-9_-]*)
+        ""|-*|*[!A-Za-z0-9_-]*)
             echo "invalid RAPL group: $GROUP" >&2
             return 1;;
         *) :;;

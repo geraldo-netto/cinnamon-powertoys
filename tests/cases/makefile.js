@@ -563,11 +563,17 @@ function stagedRapl(group) {
 cases["a staged RAPL rule accepts a target-only group"] = function () {
     let outcome = stagedRapl("powertoys-target-only-pt225");
     Harness.equal(outcome.status, 0, "the build host needs no matching account");
-    Harness.ok(outcome.rule.indexOf("/usr/bin/chgrp powertoys-target-only-pt225") >= 0,
-               "the validated target group is written into the staged rule");
+    Harness.ok(outcome.rule.indexOf(
+        "/usr/bin/chgrp -- powertoys-target-only-pt225") >= 0,
+        "the validated target group follows an option terminator");
 };
 
 cases["a staged RAPL rule rejects unsafe group syntax"] = function () {
     let outcome = stagedRapl("bad/group");
     Harness.ok(outcome.status !== 0, "a value that would corrupt the rule is rejected");
+};
+
+cases["a staged RAPL rule rejects an option-shaped group"] = function () {
+    let outcome = stagedRapl("-R");
+    Harness.ok(outcome.status !== 0, "a group cannot become a chgrp option");
 };

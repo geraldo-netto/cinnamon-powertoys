@@ -113,7 +113,7 @@ install-rapl:
 		{ echo "needs root: sudo make install-rapl"; exit 1; }
 	@[ -z "$(DESTDIR)" ] || install -d "$(DESTDIR)"
 	@case "$(RAPL_GROUP)" in \
-		""|*[!A-Za-z0-9_-]*) echo "invalid group name: $(RAPL_GROUP)"; exit 1;; \
+		""|-*|*[!A-Za-z0-9_-]*) echo "invalid group name: $(RAPL_GROUP)"; exit 1;; \
 		*) :;; \
 	esac
 	@[ -n "$(DESTDIR)" ] || getent group "$(RAPL_GROUP)" >/dev/null || \
