@@ -1188,6 +1188,10 @@ class MenuPresenter {
         this._degradedRow.setWarning(true);
         this._degradedRow.actor.hide();
         this._profileGroup.menu.addMenuItem(this._degradedRow);
+
+        this._holdsRow = new InfoRow(_("Profile holds"), "");
+        this._holdsRow.actor.hide();
+        this._profileGroup.menu.addMenuItem(this._holdsRow);
     }
 
     /*
@@ -1547,22 +1551,31 @@ class MenuPresenter {
             ? Format.profileLabel(active || data.profile.list[0]) : "");
         this._profileValueRow.actor.visible = single;
 
-        let notes = [];
-        if (data.profile.degraded)
-            notes.push(Format.performanceDegradedLabel(data.profile.degraded));
+        /* Degradation is a hardware constraint; a hold is an application's
+         * deliberate request. Mixing both under a warning made a performance
+         * request read as though performance itself had been limited. */
+        if (show && data.profile.degraded) {
+            this._degradedRow.setValue(
+                Format.performanceDegradedLabel(data.profile.degraded));
+            this._degradedRow.actor.show();
+        } else {
+            this._degradedRow.actor.hide();
+        }
+
+        let holds = [];
         for (let hold of data.profile.holds) {
             let application = hold.application || _("an application");
-            notes.push(Translate.interpolate(
+            holds.push(Translate.interpolate(
                 _("%{application} → %{profile}"), {
                     application: application,
                     profile: Format.profileLabel(hold.profile),
                 }));
         }
-        if (show && notes.length > 0) {
-            this._degradedRow.setValue(notes.join(", "));
-            this._degradedRow.actor.show();
+        if (show && holds.length > 0) {
+            this._holdsRow.setValue(holds.join(", "));
+            this._holdsRow.actor.show();
         } else {
-            this._degradedRow.actor.hide();
+            this._holdsRow.actor.hide();
         }
     }
 
