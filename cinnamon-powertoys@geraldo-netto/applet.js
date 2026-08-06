@@ -1542,7 +1542,7 @@ class MenuPresenter {
 
         let notes = [];
         if (data.profile.degraded)
-            notes.push(data.profile.degraded.replace(/-/g, " "));
+            notes.push(Format.performanceDegradedLabel(data.profile.degraded));
         for (let hold of data.profile.holds) {
             let application = hold.application || _("an application");
             notes.push(Translate.interpolate(

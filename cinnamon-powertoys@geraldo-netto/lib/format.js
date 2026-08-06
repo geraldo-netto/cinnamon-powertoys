@@ -351,6 +351,19 @@ function profileLabel(name) {
     return capitalize(name.replace(/[-_]/g, " "));
 }
 
+/* power-profiles-daemon's documented degradation tokens, as words for a
+ * person. Its API explicitly allows future reasons, so an unknown token is
+ * kept visible after conservative identifier tidying rather than discarded. */
+function performanceDegradedLabel(reason) {
+    switch (reason) {
+        case "lap-detected": return _("Lap detected");
+        case "high-operating-temperature": return _("High operating temperature");
+        default:
+            return capitalize(String(reason || "").replace(/[-_]+/g, " ")
+                .replace(/\s+/g, " ").trim());
+    }
+}
+
 /*
  * Whether this profile's icon tells it apart from the rest on offer.
  *

@@ -220,7 +220,7 @@ msgstr ""
 msgid "Battery low"
 msgstr ""
 
-#: lib/alerts.js:168 lib/format.js:501 lib/panel-text.js:249
+#: lib/alerts.js:168 lib/format.js:514 lib/panel-text.js:249
 msgid "Temperature"
 msgstr ""
 
@@ -486,7 +486,7 @@ msgstr ""
 msgid "Balanced performance"
 msgstr ""
 
-#: lib/format.js:340 lib/format.js:459 lib/format.js:477 lib/panel-text.js:282
+#: lib/format.js:340 lib/format.js:472 lib/format.js:490 lib/panel-text.js:282
 msgid "Performance"
 msgstr ""
 
@@ -502,103 +502,111 @@ msgstr ""
 msgid "Cool"
 msgstr ""
 
-#: lib/format.js:404 lib/format.js:405
+#: lib/format.js:359
+msgid "Lap detected"
+msgstr ""
+
+#: lib/format.js:360
+msgid "High operating temperature"
+msgstr ""
+
+#: lib/format.js:417 lib/format.js:418
 msgid "AMD"
 msgstr ""
 
-#: lib/format.js:406
+#: lib/format.js:419
 msgid "ACPI"
 msgstr ""
 
-#: lib/format.js:407
+#: lib/format.js:420
 msgid "Intel"
 msgstr ""
 
-#: lib/format.js:408
+#: lib/format.js:421
 msgid "Intel, kernel managed"
 msgstr ""
 
-#: lib/format.js:409
+#: lib/format.js:422
 msgid "ACPI hardware managed"
 msgstr ""
 
-#: lib/format.js:410
+#: lib/format.js:423
 msgid "Intel SpeedStep"
 msgstr ""
 
-#: lib/format.js:411
+#: lib/format.js:424
 msgid "AMD PowerNow"
 msgstr ""
 
-#: lib/format.js:412
+#: lib/format.js:425
 msgid "Processor Clocking Control"
 msgstr ""
 
-#: lib/format.js:421
+#: lib/format.js:434
 msgid "hardware managed"
 msgstr ""
 
-#: lib/format.js:422
+#: lib/format.js:435
 msgid "guided"
 msgstr ""
 
-#: lib/format.js:423
+#: lib/format.js:436
 msgid "kernel managed"
 msgstr ""
 
-#: lib/format.js:437
+#: lib/format.js:450
 msgid "unknown"
 msgstr ""
 
-#: lib/format.js:446
+#: lib/format.js:459
 msgid "%{label}, %{mode} (%{driver})"
 msgstr ""
 
-#: lib/format.js:452
+#: lib/format.js:465
 msgid "%{label} (%{driver})"
 msgstr ""
 
-#: lib/format.js:460
+#: lib/format.js:473
 msgid "Power save"
 msgstr ""
 
-#: lib/format.js:461
+#: lib/format.js:474
 msgid "On demand"
 msgstr ""
 
-#: lib/format.js:462
+#: lib/format.js:475
 msgid "Conservative"
 msgstr ""
 
-#: lib/format.js:463
+#: lib/format.js:476
 msgid "Scheduler guided"
 msgstr ""
 
-#: lib/format.js:464
+#: lib/format.js:477
 msgid "Userspace"
 msgstr ""
 
-#: lib/format.js:476
+#: lib/format.js:489
 msgid "Default"
 msgstr ""
 
-#: lib/format.js:478
+#: lib/format.js:491
 msgid "Balance performance"
 msgstr ""
 
-#: lib/format.js:479
+#: lib/format.js:492
 msgid "Balance power"
 msgstr ""
 
-#: lib/format.js:480
+#: lib/format.js:493
 msgid "Power saving"
 msgstr ""
 
-#: lib/format.js:502
+#: lib/format.js:515
 msgid "Fan"
 msgstr ""
 
-#: lib/format.js:503 lib/sensors.js:224
+#: lib/format.js:516 lib/sensors.js:224
 msgid "Power"
 msgstr ""
 

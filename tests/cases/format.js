@@ -306,6 +306,30 @@ cases["the profile and governor names are translated where known"] = function ()
                   "unknown, with the underscores taken out");
 };
 
+cases["performance degradation reasons are user-facing and future-safe"] = function () {
+    Harness.equal(Format.performanceDegradedLabel("lap-detected"), "Lap detected",
+                  "the documented proximity reason");
+    Harness.equal(Format.performanceDegradedLabel("high-operating-temperature"),
+                  "High operating temperature", "the documented thermal reason");
+    Harness.equal(Format.performanceDegradedLabel("vendor_thermal-limit"),
+                  "Vendor thermal limit", "a future machine token remains readable");
+    Harness.equal(Format.performanceDegradedLabel(""), "", "no reason stays empty");
+};
+
+cases["known performance degradation reasons are translatable"] = function () {
+    let original = Gettext.dgettext;
+    Gettext.dgettext = function (domain, message) {
+        return message === "Lap detected" ? "translated lap reason"
+                                           : original(domain, message);
+    };
+    try {
+        Harness.equal(Format.performanceDegradedLabel("lap-detected"),
+                      "translated lap reason", "the label follows the xlet catalogue");
+    } finally {
+        Gettext.dgettext = original;
+    }
+};
+
 cases["a device is named by vendor and model, or by what it is"] = function () {
     Harness.equal(Format.deviceTitle({ vendor: "Logitech", model: "MX", kind: Kind.MOUSE }),
                   "Logitech MX", "both");
