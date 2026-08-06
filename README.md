@@ -111,7 +111,9 @@ rate batteries report through UPower. Those live battery measurements appear
 only here rather than being repeated in Devices. Where a hwmon channel exposes
 both averaged and instantaneous power, the driver-provided average is preferred
 and the instantaneous node is retained as a fallback for an unreadable average,
-without creating a second row. Readings are grouped by the
+without creating a second row. Where hwmon and a thermal zone identify the same
+device, hwmon is likewise preferred while readable and the thermal-zone path is
+retained as its fallback. Readings are grouped by the
 thing they came off and it is named
 rather than addressed: the processor from `/proc/cpuinfo`, anything on the PCI
 bus from `pci.ids`, a battery by what UPower calls it. So two graphics cards

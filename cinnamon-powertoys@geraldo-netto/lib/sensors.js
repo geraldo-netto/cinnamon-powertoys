@@ -550,6 +550,7 @@ function _scanSensors(directories, readString, readLink) {
                     group: group,
                     index: index,
                     identity: identity,
+                    deviceIdentity: device,
                     rawLabel: _label(base, nodeKind.prefix, index, readString),
                     path: base + "/" + node,
                 };
@@ -590,7 +591,7 @@ function _scanSensors(directories, readString, readLink) {
         let base = THERMAL_DIR + "/" + entry;
         let type = readString(base + "/type");
         let device = deviceIdentity(base, link);
-        if (!type || (device && hwmonTemperatureDevices.has(device)))
+        if (!type)
             continue;
         groups.push({ key: "thermal:" + entry, chip: type, kind: classifyChip(type),
                       identity: entry, pciAddress: null });
@@ -604,6 +605,9 @@ function _scanSensors(directories, readString, readLink) {
             index: "1",
             siblings: 1,
             identity: entry,
+            deviceIdentity: device,
+            fallbackForDevice: device && hwmonTemperatureDevices.has(device)
+                ? device : null,
             rawLabel: null,
             path: base + "/temp",
             critical: _criticalTripPoint(base, list, readString),
@@ -1169,6 +1173,41 @@ var SensorSet = class SensorSet {
         };
     }
 
+    _temperatureSelection(keep, sensors) {
+        let fallbackDevices = new Set();
+        for (let sensor of sensors) {
+            if (sensor.fallbackForDevice && keep(sensor))
+                fallbackDevices.add(sensor.fallbackForDevice);
+        }
+        let primary = sensors.filter(sensor => !sensor.fallbackForDevice &&
+            (keep(sensor) || (sensor.deviceIdentity &&
+                              fallbackDevices.has(sensor.deviceIdentity))));
+        let primaryDevices = new Set(primary
+            .map(sensor => sensor.deviceIdentity)
+            .filter(device => !!device));
+        let fallbacks = sensors.filter(sensor => sensor.fallbackForDevice &&
+            (keep(sensor) || primaryDevices.has(sensor.fallbackForDevice)));
+        return { primary: primary, fallbacks: fallbacks };
+    }
+
+    _temperatures(keep, readNumber, lists) {
+        let found = lists || this._lists();
+        let selected = this._temperatureSelection(keep, found.temperatures);
+        let readings = selected.primary.map(sensor => ({
+            sensor: sensor,
+            reading: this._temperature(sensor, readNumber),
+        }));
+        let validDevices = new Set(readings
+            .filter(item => item.reading.celsius !== null && item.sensor.deviceIdentity)
+            .map(item => item.sensor.deviceIdentity));
+        let result = readings.map(item => item.reading);
+        for (let sensor of selected.fallbacks) {
+            if (!validDevices.has(sensor.fallbackForDevice))
+                result.push(this._temperature(sensor, readNumber));
+        }
+        return result;
+    }
+
     _fan(sensor, readNumber) {
         let fault = sensor.faultPath ? readNumber(sensor.faultPath) : 0;
         let rpm = fault !== null && fault > 0 ? null : readNumber(sensor.path);
@@ -1340,12 +1379,12 @@ var SensorSet = class SensorSet {
     _paths(keep, lists) {
         let found = lists || this._lists();
         let paths = [];
-        for (let sensor of found.temperatures)
-            if (keep(sensor)) {
-                paths.push(sensor.path);
-                if (sensor.faultPath)
-                    paths.push(sensor.faultPath);
-            }
+        let temperatures = this._temperatureSelection(keep, found.temperatures);
+        for (let sensor of temperatures.primary.concat(temperatures.fallbacks)) {
+            paths.push(sensor.path);
+            if (sensor.faultPath)
+                paths.push(sensor.faultPath);
+        }
         for (let sensor of found.fans)
             if (keep(sensor)) {
                 paths.push(sensor.path);
@@ -1368,8 +1407,7 @@ var SensorSet = class SensorSet {
         let found = lists || this._lists();
         let powers = this._powers(keep, readNumber, found);
         return {
-            temperatures: found.temperatures.filter(keep)
-                .map(sensor => this._temperature(sensor, readNumber)),
+            temperatures: this._temperatures(keep, readNumber, found),
             fans: found.fans.filter(keep).map(sensor => this._fan(sensor, readNumber)),
             powers: powers.readings,
             packageWatts: powers.packageWatts,

@@ -210,6 +210,31 @@ cases["a thermal zone is not deduplicated by its display name"] = function () {
     });
 };
 
+cases["a shared thermal zone is retained as its hwmon device fallback"] = function () {
+    let hwmon = "/sys/class/hwmon";
+    let thermal = "/sys/class/thermal";
+    let powercap = "/sys/class/powercap";
+    let directories = {};
+    directories[hwmon] = ["hwmon0"];
+    directories[hwmon + "/hwmon0"] = ["name", "temp1_input"];
+    directories[hwmon + "/hwmon0/device/block"] = [];
+    directories[thermal] = ["thermal_zone0"];
+    directories[thermal + "/thermal_zone0"] = ["temp", "type"];
+    directories[powercap] = [];
+
+    let strings = {};
+    strings[hwmon + "/hwmon0/name"] = "coretemp";
+    strings[thermal + "/thermal_zone0/type"] = "x86_pkg_temp";
+    let link = path => /\/device$/.test(path) ? "/sys/devices/platform/package0" : null;
+    let scanned = Sensors._scanSensors(
+        directories, path => strings[path] || null, link).found.temperatures;
+
+    Harness.equal(scanned.length, 2, "both class interfaces survive discovery");
+    Harness.equal(byId(scanned, "thermal:thermal_zone0").fallbackForDevice,
+                  "/sys/devices/platform/package0",
+                  "the thermal zone is associated with the hwmon device");
+};
+
 cases["class links compare as canonical device identities"] = function () {
     let realLink = IO.readLink;
     let realResolve = IO.resolve;
@@ -270,6 +295,49 @@ cases["an unreadable averaged power node falls back without duplicating the chan
                      "the readable instantaneous value is retained");
         Harness.ok(set._paths(() => true).indexOf(sensor.fallbackPath) >= 0,
                    "asynchronous batches preload the fallback too");
+    });
+};
+
+cases["an unreadable hwmon temperature falls back to its thermal zone"] = function () {
+    on("inverted-boost", function () {
+        let set = new Sensors.SensorSet();
+        let device = "/sys/devices/platform/package0";
+        let hwmon = {
+            id: "hwmon:hwmon0:temp1", measure: "temperature", chip: "coretemp",
+            kind: "cpu", group: "hwmon:hwmon0", groupLabel: "Processor",
+            short: "Package", rawLabel: "Package id 0", critical: null,
+            path: "/hwmon/temp1_input", faultPath: null, deviceIdentity: device,
+        };
+        let thermal = {
+            id: "thermal:thermal_zone0", measure: "temperature", chip: "x86_pkg_temp",
+            kind: "cpu", group: "thermal:thermal_zone0", groupLabel: "Processor",
+            short: "Temperature", rawLabel: null, critical: null,
+            path: "/thermal/temp", faultPath: null, deviceIdentity: device,
+            fallbackForDevice: device,
+        };
+        let lists = { temperatures: [hwmon, thermal], fans: [], meters: [], powers: [] };
+        let touched = [];
+        let readable = set._temperatures(() => true, path => {
+            touched.push(path);
+            return path === hwmon.path ? 55000 : 42000;
+        }, lists);
+        Harness.deepEqual(readable.map(entry => entry.id), [hwmon.id],
+                          "a valid hwmon reading suppresses its duplicate");
+        Harness.deepEqual(touched, [hwmon.path],
+                          "the synchronous path does not read an unnecessary fallback");
+
+        touched = [];
+        let fallback = set._temperatures(() => true, path => {
+            touched.push(path);
+            return path === thermal.path ? 42000 : null;
+        }, lists);
+        Harness.deepEqual(fallback.filter(entry => entry.celsius !== null)
+            .map(entry => entry.id), [thermal.id],
+        "the readable thermal zone replaces the failed hwmon device");
+        Harness.deepEqual(touched, [hwmon.path, thermal.path],
+                          "the fallback is tried only after the primary fails");
+        Harness.deepEqual(set._paths(() => true, lists), [hwmon.path, thermal.path],
+                          "asynchronous batches preload both possible paths");
     });
 };
 
