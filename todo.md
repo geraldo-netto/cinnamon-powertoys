@@ -22,7 +22,6 @@ categories.
 
 | id | category | status | effort | severity | description |
 | --- | --- | --- | --- | --- | --- |
-| PT-354 | Performance and resource use | open | S | low | `lib/hardware.js` caches every resolved PCI name by address in `_pciNames`, but only evicts an entry if that same address is queried later with different IDs. Devices removed by a dock/eGPU hotplug disappear from subsequent discovery input, so their cached identity and name remain for the rest of the module's lifetime and repeated address churn grows the object. Prune the cache against each complete current PCI inventory or use a bounded cache. |
 
 ## Rejected, deferred and won't-fix findings
 

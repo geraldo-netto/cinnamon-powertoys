@@ -457,6 +457,54 @@ cases["one address asked about twice is looked up once"] = function () {
     });
 };
 
+cases["a complete PCI inventory prunes removed devices"] = function () {
+    on("machine", function () {
+        let first = Hardware.pciDeviceNames(["0000:03:00.0", "0000:07:00.0"]);
+        Harness.ok(first["0000:03:00.0"] && first["0000:07:00.0"],
+                   "both present devices are cached");
+        Hardware.pciDeviceNames(["0000:03:00.0"]);
+
+        let readString = IO.readString;
+        IO.readString = function (path) {
+            return path.indexOf("pci.ids") >= 0 ? null : readString(path);
+        };
+        try {
+            Harness.equal(Hardware.pciDeviceNames(["0000:07:00.0"])["0000:07:00.0"],
+                          undefined, "the removed device has no stale cached name");
+        } finally {
+            IO.readString = readString;
+        }
+    });
+};
+
+cases["asynchronous PCI inventories prune removed devices"] = function () {
+    on("machine", function () {
+        let first = Harness.settle(done => Hardware.machineNamesAsync(
+            ["0000:03:00.0", "0000:07:00.0"], done), "initial PCI inventory");
+        Harness.ok(first.pciNames["0000:03:00.0"] && first.pciNames["0000:07:00.0"],
+                   "both present devices are cached asynchronously");
+        Harness.settle(done => Hardware.machineNamesAsync(
+            ["0000:03:00.0"], done), "PCI inventory after removal");
+
+        let readStrings = IO.readStringsAsync;
+        IO.readStringsAsync = function (paths, done) {
+            if (paths.every(path => path.indexOf("pci.ids") >= 0)) {
+                done({});
+                return;
+            }
+            return readStrings.apply(IO, arguments);
+        };
+        try {
+            let returned = Harness.settle(done => Hardware.machineNamesAsync(
+                ["0000:07:00.0"], done), "removed PCI device lookup");
+            Harness.equal(returned.pciNames["0000:07:00.0"], undefined,
+                          "the asynchronous cache retained no removed name");
+        } finally {
+            IO.readStringsAsync = readStrings;
+        }
+    });
+};
+
 cases["an address that is nothing at all is not looked up"] = function () {
     on("machine", function () {
         let names = Hardware.pciDeviceNames([null, "", undefined]);

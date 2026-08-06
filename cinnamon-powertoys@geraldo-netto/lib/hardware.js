@@ -39,6 +39,7 @@ var CPUINFO = "/proc/cpuinfo";
 var PCI_ADDRESS = /[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f]/gi;
 
 let _pciNames = {};
+let _pciInventoryGeneration = 0;
 let _pnpNames = null;
 let _pnpLoad = null;
 let _pnpWaiters = [];
@@ -48,6 +49,8 @@ let _cpuName;
  * the applet runs, so this exists for the tests, which change the machine. */
 function forget() {
     _pciNames = {};
+    /* An asynchronous inventory begun before forget() must not restore it. */
+    _pciInventoryGeneration++;
     if (_pnpLoad && _pnpLoad.active)
         _pnpLoad.cancel();
     _pnpLoad = null;
@@ -198,6 +201,25 @@ function _rememberPciName(address, ids, name) {
     _pciNames[address] = { identity: _pciIdentity(ids), name: name };
 }
 
+/* Sensor discovery hands over every PCI address in its complete current
+ * snapshot. Entries absent from that inventory name removed hardware and are
+ * retired immediately. The generation prevents an older asynchronous sweep
+ * from restoring them after a newer dock or eGPU topology has been adopted. */
+function _beginPciInventory(addresses) {
+    let unique = [];
+    let current = new Set();
+    for (let address of addresses) {
+        if (!address || current.has(address))
+            continue;
+        current.add(address);
+        unique.push(address);
+    }
+    for (let address of Object.keys(_pciNames))
+        if (!current.has(address))
+            delete _pciNames[address];
+    return { addresses: unique, generation: ++_pciInventoryGeneration };
+}
+
 /*
  * One vendor's whole entry, from its own line to the line before the next
  * vendor. Vendor lines start at column zero; devices are indented by one tab
@@ -315,19 +337,18 @@ function _resolve(text, ids) {
  * than present and null, so a caller can ask with `names[address] ||
  * something-else`.
  *
- * Only answers tied to the four current PCI IDs are remembered. An external
- * card, dock or bus rescan can put a different device at the same address;
- * missing IDs and unresolved names are not cached.
+ * `addresses` is the complete current sensor inventory. Cached devices absent
+ * from it are pruned, and answers retained for present devices are tied to the
+ * four current PCI IDs. An external card, dock or bus rescan can put a
+ * different device at the same address; missing IDs and unresolved names are
+ * not cached.
  */
 function pciDeviceNames(addresses) {
     let names = {};
     let wanted = [];
-    let seen = new Set();
+    let inventory = _beginPciInventory(addresses);
 
-    for (let address of addresses) {
-        if (!address || seen.has(address))
-            continue;
-        seen.add(address);
+    for (let address of inventory.addresses) {
         let ids = _pciIds(address);
         if (!ids) {
             delete _pciNames[address];
@@ -364,11 +385,8 @@ function pciDeviceNames(addresses) {
  */
 function machineNamesAsync(addresses, onDone, ioOptions) {
     let names = {};
-    let unique = [];
-    for (let address of addresses) {
-        if (address && unique.indexOf(address) < 0)
-            unique.push(address);
-    }
+    let inventory = _beginPciInventory(addresses);
+    let unique = inventory.addresses;
 
     let paths = [];
     if (_cpuName === undefined)
@@ -387,13 +405,15 @@ function machineNamesAsync(addresses, onDone, ioOptions) {
         }
 
         let wanted = [];
+        let current = inventory.generation === _pciInventoryGeneration;
         for (let address of unique) {
             let ids = _pciIdsFrom(address, path => values[path] || null);
             if (!ids) {
-                delete _pciNames[address];
+                if (current)
+                    delete _pciNames[address];
                 continue;
             }
-            let cached = _cachedPciName(address, ids);
+            let cached = current ? _cachedPciName(address, ids) : null;
             if (cached)
                 names[address] = cached;
             else
@@ -419,7 +439,8 @@ function machineNamesAsync(addresses, onDone, ioOptions) {
                     let name = _resolve(table, item.ids);
                     if (!name)
                         continue;
-                    _rememberPciName(item.address, item.ids, name);
+                    if (inventory.generation === _pciInventoryGeneration)
+                        _rememberPciName(item.address, item.ids, name);
                     names[item.address] = name;
                 }
             }
