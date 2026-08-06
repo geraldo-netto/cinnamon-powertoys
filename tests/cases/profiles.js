@@ -157,6 +157,53 @@ function retryTimers(system) {
 
 var cases = {};
 
+cases["the production profile bus preserves Gio operations"] = function () {
+    let calls = { unwatched: [] };
+    let proxy = { kind: "profile proxy" };
+    let connection = {};
+    let gio = {
+        BusType: { SYSTEM: "system bus" },
+        BusNameWatcherFlags: { NONE: "no flags" },
+        DBusCallFlags: { NONE: "no call flags" },
+        DBus: { system: connection },
+        DBusProxy: { makeProxyWrapper: function (xml) {
+            calls.xml = xml;
+            return function (busConnection, name, path, onDone, cancellable) {
+                calls.proxy = [busConnection, name, path, cancellable];
+                onDone(proxy, null);
+            };
+        } },
+        Cancellable: function () { this.kind = "cancellable"; },
+        bus_watch_name: function (type, name, flags, onAppeared, onVanished) {
+            calls.watch = [type, name, flags, onAppeared, onVanished];
+            return 37;
+        },
+        bus_unwatch_name: id => calls.unwatched.push(id),
+    };
+    let system = Profiles.systemBus(gio);
+    let appeared = function () {};
+    let vanished = function () {};
+    let token = system.cancellable();
+    let answer = null;
+
+    Harness.equal(system.watchReportsInitialState, true,
+                  "the adapter declares Gio's initial owner-state callback");
+    Harness.equal(system.watch(HADESS, appeared, vanished), 37, "the watch id is returned");
+    Harness.deepEqual(calls.watch, ["system bus", HADESS, "no flags", appeared, vanished],
+                      "the name watch keeps its bus, flags and callbacks");
+    system.unwatch(37);
+    Harness.deepEqual(calls.unwatched, [37], "the same registration is released");
+    Harness.equal(token.kind, "cancellable", "Gio supplies the cancellation token");
+
+    system.proxy({ name: HADESS, path: "/net/hadess/PowerProfiles" },
+                 (value, error) => { answer = [value, error]; }, token);
+    Harness.ok(calls.xml.indexOf(HADESS) >= 0, "the wrapper describes the selected interface");
+    Harness.deepEqual(calls.proxy,
+                      [connection, HADESS, "/net/hadess/PowerProfiles", token],
+                      "proxy construction preserves every D-Bus argument");
+    Harness.deepEqual(answer, [proxy, null], "the asynchronous proxy answer is forwarded");
+};
+
 cases["the daemon is found under either of the two names"] = function () {
     let old = new Profiles.PowerProfilesClient(null, bus({ [HADESS]: daemon() }));
     Harness.equal(old.available, true, "0.13 and older");

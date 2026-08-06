@@ -168,8 +168,10 @@ function _unpackVariantDict(entry) {
  * Three calls rather than one, because they are three different moments: the
  * proxy is built once per name, the watches outlive the proxy, and the write
  * is a call in its own right whose reply the caller needs - see setProfile.
+ * `gio` is replaceable so this adapter can be checked without a live bus.
  */
-function systemBus() {
+function systemBus(gio) {
+    gio = gio || Gio;
     return {
         /* Gio invokes exactly one of appeared/vanished with the current state
          * after each watch is installed. This lets the client avoid probing
@@ -191,19 +193,19 @@ function systemBus() {
          * nothing blocks the shell. This was the one place that did.
          */
         proxy: function (backend, onDone, cancellable) {
-            let wrapper = Gio.DBusProxy.makeProxyWrapper(_interfaceXml(backend.name));
-            new wrapper(Gio.DBus.system, backend.name, backend.path,
+            let wrapper = gio.DBusProxy.makeProxyWrapper(_interfaceXml(backend.name));
+            new wrapper(gio.DBus.system, backend.name, backend.path,
                         (proxy, error) => onDone(proxy, error), cancellable || null);
         },
         watch: function (name, onAppeared, onVanished) {
-            return Gio.bus_watch_name(Gio.BusType.SYSTEM, name,
-                                      Gio.BusNameWatcherFlags.NONE, onAppeared, onVanished);
+            return gio.bus_watch_name(gio.BusType.SYSTEM, name,
+                                      gio.BusNameWatcherFlags.NONE, onAppeared, onVanished);
         },
         unwatch: function (id) {
-            Gio.bus_unwatch_name(id);
+            gio.bus_unwatch_name(id);
         },
         cancellable: function () {
-            return new Gio.Cancellable();
+            return new gio.Cancellable();
         },
         setProperty: function (name, path, property, value, cancellable, onDone) {
             /* Keep the direct helper useful to callers that do not need
@@ -214,8 +216,8 @@ function systemBus() {
             }
             let target = new GLib.Variant("(ssv)",
                                           [name, property, new GLib.Variant("s", value)]);
-            Gio.DBus.system.call(name, path, "org.freedesktop.DBus.Properties", "Set", target,
-                                 null, Gio.DBusCallFlags.NONE, -1, cancellable,
+            gio.DBus.system.call(name, path, "org.freedesktop.DBus.Properties", "Set", target,
+                                 null, gio.DBusCallFlags.NONE, -1, cancellable,
                                  (connection, result) => {
                                      try {
                                          connection.call_finish(result);

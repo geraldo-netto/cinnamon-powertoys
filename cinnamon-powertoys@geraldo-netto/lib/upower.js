@@ -186,27 +186,32 @@ function reportedDevices(devices) {
  * Both are asynchronous, and deliberately: a proxy wrapper called without a
  * callback is the synchronous form, which is a connection and a GetAll round
  * trip taken on the thread that draws the desktop.
+ * Gio and the wrappers are replaceable so this adapter can be checked without
+ * a live bus.
  */
-function systemBus() {
+function systemBus(gio, managerProxy, deviceProxy) {
+    gio = gio || Gio;
+    managerProxy = managerProxy || ManagerProxy;
+    deviceProxy = deviceProxy || DeviceProxy;
     return {
         watch: function (onAppeared, onVanished) {
-            return Gio.bus_watch_name(Gio.BusType.SYSTEM, BUS_NAME,
-                                      Gio.BusNameWatcherFlags.AUTO_START,
+            return gio.bus_watch_name(gio.BusType.SYSTEM, BUS_NAME,
+                                      gio.BusNameWatcherFlags.AUTO_START,
                                       onAppeared, onVanished);
         },
         unwatch: function (id) {
-            Gio.bus_unwatch_name(id);
+            gio.bus_unwatch_name(id);
         },
         cancellable: function () {
-            return new Gio.Cancellable();
+            return new gio.Cancellable();
         },
         manager: function (onDone, cancellable) {
-            new ManagerProxy(Gio.DBus.system, BUS_NAME, MANAGER_PATH,
+            new managerProxy(gio.DBus.system, BUS_NAME, MANAGER_PATH,
                              (proxy, error) => onDone(proxy, error),
                              cancellable || null);
         },
         device: function (path, onDone, cancellable) {
-            new DeviceProxy(Gio.DBus.system, BUS_NAME, path,
+            new deviceProxy(gio.DBus.system, BUS_NAME, path,
                             (proxy, error) => onDone(proxy, error),
                             cancellable || null);
         },

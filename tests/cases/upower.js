@@ -207,6 +207,59 @@ const DISPLAY = "/org/freedesktop/UPower/devices/DisplayDevice";
 const BAT0 = "/org/freedesktop/UPower/devices/battery_BAT0";
 const MOUSE = "/org/freedesktop/UPower/devices/mouse_dev";
 
+cases["the production UPower bus preserves Gio operations"] = function () {
+    let calls = { unwatched: [] };
+    let connection = {};
+    let manager = { kind: "manager" };
+    let deviceProxy = { kind: "device" };
+    let gio = {
+        BusType: { SYSTEM: "system bus" },
+        BusNameWatcherFlags: { AUTO_START: "auto start" },
+        DBus: { system: connection },
+        Cancellable: function () { this.kind = "cancellable"; },
+        bus_watch_name: function (type, name, flags, onAppeared, onVanished) {
+            calls.watch = [type, name, flags, onAppeared, onVanished];
+            return 41;
+        },
+        bus_unwatch_name: id => calls.unwatched.push(id),
+    };
+    let managerWrapper = function (busConnection, name, path, onDone, cancellable) {
+        calls.manager = [busConnection, name, path, cancellable];
+        onDone(manager, null);
+    };
+    let deviceWrapper = function (busConnection, name, path, onDone, cancellable) {
+        calls.device = [busConnection, name, path, cancellable];
+        onDone(deviceProxy, null);
+    };
+    let system = UPower.systemBus(gio, managerWrapper, deviceWrapper);
+    let appeared = function () {};
+    let vanished = function () {};
+    let token = system.cancellable();
+    let managerAnswer = null;
+    let deviceAnswer = null;
+
+    Harness.equal(system.watch(appeared, vanished), 41, "the watch id is returned");
+    Harness.deepEqual(calls.watch,
+                      ["system bus", "org.freedesktop.UPower", "auto start",
+                       appeared, vanished],
+                      "the owner watch keeps its bus, name, flags and callbacks");
+    system.unwatch(41);
+    Harness.deepEqual(calls.unwatched, [41], "the same registration is released");
+    Harness.equal(token.kind, "cancellable", "Gio supplies the cancellation token");
+
+    system.manager((value, error) => { managerAnswer = [value, error]; }, token);
+    Harness.deepEqual(calls.manager,
+                      [connection, "org.freedesktop.UPower", "/org/freedesktop/UPower", token],
+                      "manager construction preserves every D-Bus argument");
+    Harness.deepEqual(managerAnswer, [manager, null], "the manager answer is forwarded");
+
+    system.device(BAT0, (value, error) => { deviceAnswer = [value, error]; }, token);
+    Harness.deepEqual(calls.device,
+                      [connection, "org.freedesktop.UPower", BAT0, token],
+                      "device construction preserves every D-Bus argument");
+    Harness.deepEqual(deviceAnswer, [deviceProxy, null], "the device answer is forwarded");
+};
+
 /* A device as a proxy hands it over: UPower's own property names, which are
  * not the ones the descriptions carry. */
 function proxyFor(overrides) {
