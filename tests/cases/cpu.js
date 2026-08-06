@@ -98,6 +98,19 @@ cases["a machine with no cpufreq at all offers nothing"] = function () {
     });
 };
 
+cases["an empty dynamic CPU sample remains unknown"] = function () {
+    scratch({}, function () {
+        let cpu = new Cpu.CpuControl(() => {});
+        let state = cpu._dynamicFrom([], [], null, false, () => {
+            throw new Error("an empty sample must not read a node");
+        });
+        Harness.equal(state.governor, null, "there is no governor to claim");
+        Harness.equal(state.energyPreference, null, "there is no preference to claim");
+        Harness.equal(state.averageFrequency, null, "there is no partial average");
+        Harness.equal(state.boostEnabled, null, "there is no turbo state");
+    });
+};
+
 cases["heterogeneous policies expose only shared choices and agreed values"] = function () {
     scratch({
         "/sys/devices/system/cpu/cpufreq/policy0/scaling_available_governors":

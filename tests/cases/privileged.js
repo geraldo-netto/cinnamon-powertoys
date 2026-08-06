@@ -43,6 +43,14 @@ cases["runtime trust accepts a protected root-owned executable"] = function () {
                   "the helper and every directory leading to it are protected");
 };
 
+cases["runtime trust identifies a missing helper"] = function () {
+    let inspection = Privileged.inspectTrustedHelper(
+        "/definitely/not/an/installed/powertoys-helper");
+    Harness.equal(inspection.trusted, false, "absence is not trusted");
+    Harness.equal(inspection.code, "helper-not-found",
+                  "absence remains distinct from unsafe permissions");
+};
+
 cases["runtime trust rejects a helper below a user-owned directory"] = function () {
     let directory = GLib.dir_make_tmp("powertoys-untrusted-helper-XXXXXX");
     let path = directory + "/powertoys-helper";
@@ -63,6 +71,32 @@ cases["without an installed helper no user-owned copy is selected"] = function (
     let helper = helperWith([], [0, ""]);
     let path = Harness.settle(done => helper.path(done), "helper selection");
     Harness.equal(path, null, "a path below the applet is never a candidate");
+};
+
+cases["a trusted fallback preserves the primary warning"] = function () {
+    let helper = new Privileged.PrivilegedHelper(
+        ["/unsafe-helper", SYSTEM],
+        path => path === SYSTEM ? true : {
+            trusted: false,
+            code: "unsafe-system-helper",
+            diagnostic: "the primary helper is unsafe",
+        },
+        (argv, onDone) => onDone(0, ""));
+    let outcome = null;
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    try {
+        helper.run(["boost", "1"], result => { outcome = result; });
+    } finally {
+        Log.setSink(null);
+    }
+
+    Harness.equal(outcome.applied, true, "the trusted fallback applies the change");
+    Harness.equal(outcome.warningCode, "unsafe-system-helper",
+                  "the rejected primary candidate is still reported");
+    Harness.equal(outcome.warningDiagnostic, "the primary helper is unsafe",
+                  "the original trust diagnostic is retained");
+    Harness.equal(lines.length, 1, "the fallback is also visible in the log");
 };
 
 cases["an incompatible system helper is not elevated"] = function () {
