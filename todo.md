@@ -22,7 +22,6 @@ categories.
 
 | id | category | status | effort | severity | description |
 | --- | --- | --- | --- | --- | --- |
-| PT-353 | Reliability, lifecycle and concurrency | open | S | low | `lib/ddc.js` keeps timeout suppression in the module-global `_commandFailures` set, keyed by each complete `ddcutil` argument vector. A timed-out read or write is recovered only by a later successful command with the exact same bus, operation and value; if that monitor disappears, changing I2C/display identities and timed-out slider values can accumulate stale command strings for the rest of the module's lifetime. Give timeout failure state a bounded owner or explicitly forget obsolete command keys. |
 | PT-354 | Performance and resource use | open | S | low | `lib/hardware.js` caches every resolved PCI name by address in `_pciNames`, but only evicts an entry if that same address is queried later with different IDs. Devices removed by a dock/eGPU hotplug disappear from subsequent discovery input, so their cached identity and name remain for the rest of the module's lifetime and repeated address churn grows the object. Prune the cache against each complete current PCI inventory or use a bounded cache. |
 
 ## Rejected, deferred and won't-fix findings

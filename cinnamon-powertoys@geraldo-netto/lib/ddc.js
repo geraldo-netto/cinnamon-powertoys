@@ -53,10 +53,18 @@ var MAX_DISPLAYS = 10;
 var MISSING_CONFIRMATIONS = 2;
 var FAILURE_GRACE = 3;
 
-/* A timeout belongs to the command that reached one monitor, not to DDC as a
- * whole: another display answering between retries must not make a sleeping
- * one look like a fresh failure every second. */
-let _commandFailures = new Log.FailureLog();
+/* A timeout belongs to one operation on one ddcutil display number. The value
+ * of a write is deliberately absent: dragging a slider can ask for every
+ * integer, while the failure is still the same monitor not answering. */
+function _commandFailureKey(argv) {
+    let displayAt = argv.indexOf("--display");
+    let display = displayAt >= 0 && displayAt + 1 < argv.length
+        ? argv[displayAt + 1] : "all";
+    let operation = ["detect", "getvcp", "setvcp"].find(name => argv.indexOf(name) >= 0);
+    if (!operation)
+        operation = argv.length > 0 ? argv[0] : "command";
+    return "timeout:" + display + ":" + operation;
+}
 
 /*
  * Runs a command and hands back its output. Gio.Subprocess rather than
@@ -64,11 +72,12 @@ let _commandFailures = new Log.FailureLog();
  * and with a timer behind it because ddcutil can hang on a monitor that
  * accepts the connection and then says nothing.
  */
-function runCommand(argv, onDone) {
+function runCommand(argv, onDone, failureLog) {
     let done = false;
     let timeoutId = 0;
     let process;
-    let failureKey = "timeout:" + argv.join("\u0000");
+    let failures = failureLog || new Log.FailureLog();
+    let failureKey = _commandFailureKey(argv);
 
     function finish(output, status) {
         if (done)
@@ -91,14 +100,14 @@ function runCommand(argv, onDone) {
         process.init(null);
     } catch (error) {
         /* ddcutil is not installed, which is the ordinary case. */
-        _commandFailures.recover(failureKey);
+        failures.recover(failureKey);
         finish("", -1);
         return;
     }
 
     timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, CALL_TIMEOUT_MS, () => {
         timeoutId = 0;
-        _commandFailures.report(
+        failures.report(
             failureKey, "ddcutil did not answer in time, giving up on it");
         try {
             process.force_exit();
@@ -111,7 +120,7 @@ function runCommand(argv, onDone) {
 
     process.communicate_utf8_async(null, null, (source, result) => {
         if (!done)
-            _commandFailures.recover(failureKey);
+            failures.recover(failureKey);
         try {
             let [, stdout] = source.communicate_utf8_finish(result);
             /* A process that was killed never exited, and asking one for an
@@ -526,7 +535,11 @@ var DdcBacklight = class DdcBacklight {
         this.hidden = 0;
 
         this._onChanged = onChanged || function () {};
-        this._runCommand = run || runCommand;
+        /* Timeout suppression belongs to this control and dies with it. It is
+         * also bounded by _commandFailureKey's operation/display vocabulary. */
+        this._commandFailures = new Log.FailureLog();
+        this._runCommand = run || ((argv, onDone) =>
+            runCommand(argv, onDone, this._commandFailures));
         /* The scheduler owns every accepted command. The count includes its
          * active job and queue, independently of monitor lifetimes. */
         this._commandsInFlight = 0;
@@ -591,6 +604,7 @@ var DdcBacklight = class DdcBacklight {
         this._missingSignature = null;
         this._missingConfirmations = 0;
         this._redetectPending = false;
+        this._commandFailures.clear();
         /* The transport may already own one process, which is allowed to
          * finish. Nothing still waiting has touched a bus yet, so settle those
          * jobs now instead of running obsolete reads after DDC was disabled. */
@@ -976,6 +990,7 @@ var DdcBacklight = class DdcBacklight {
         this.available = false;
         this._redetectPending = false;
         this._nameLoad = null;
+        this._commandFailures.clear();
         for (let monitor of this.monitors)
             monitor.destroy();
         this.monitors = [];

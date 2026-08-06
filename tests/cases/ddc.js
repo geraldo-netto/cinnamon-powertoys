@@ -162,6 +162,32 @@ cases["a monitor keeps its local scheduling state private"] = function () {
     Harness.equal(monitor.available, true, "private serialization still completes the read");
 };
 
+cases["timeout suppression is bounded to one DDC owner"] = function () {
+    Harness.equal(
+        Ddc._commandFailureKey(["ddcutil", "--display", "7", "setvcp", "10", "35"]),
+        Ddc._commandFailureKey(["ddcutil", "--display", "7", "setvcp", "10", "90"]),
+        "slider values share one write failure");
+    Harness.ok(
+        Ddc._commandFailureKey(["ddcutil", "--display", "7", "getvcp", "10"]) !==
+        Ddc._commandFailureKey(["ddcutil", "--display", "7", "setvcp", "10", "90"]),
+        "reads and writes retain independent recovery");
+
+    logging(function () {
+        let first = new Ddc.DdcBacklight(null, () => {});
+        let second = new Ddc.DdcBacklight(null, () => {});
+        Harness.ok(first._commandFailures !== second._commandFailures,
+                   "controls do not share module-lifetime failure state");
+        Harness.equal(first._commandFailures.report("stale", "stale"), true,
+                      "the owner records one failure");
+        Harness.equal(first._commandFailures.report("stale", "stale"), false,
+                      "and suppresses its continuation");
+        first.destroy();
+        Harness.equal(first._commandFailures.report("stale", "stale"), true,
+                      "teardown forgot every obsolete key");
+        second.destroy();
+    });
+};
+
 cases["the shared DDC command boundary settles throws and duplicate replies"] = function () {
     let lines = [];
     Log.setSink(line => lines.push(line));
@@ -1417,12 +1443,13 @@ cases["a monitor that never answers is given up on without repeated logs"] = fun
      */
     logging(function (lines) {
         let answers = [];
+        let failures = new Log.FailureLog();
         for (let attempt = 0; attempt < 2; attempt++) {
             let outcome = hurried(10, () => Harness.settle(done => Ddc.runCommand(
                 ["sleep", "30"], function (output, status) {
                     answers.push(status);
                     done({ output: output, status: status });
-                }), "a command that never answers"));
+                }, failures), "a command that never answers"));
 
             Harness.equal(outcome.status, -1, "given up on");
             Harness.equal(outcome.output, "", "with nothing to parse");
