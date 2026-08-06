@@ -197,6 +197,29 @@ cases["the staged Make target publishes the runtime policy pair"] = function () 
     }
 };
 
+cases["staged system transitions lock new package roots as directories"] = function () {
+    let directory = GLib.dir_make_tmp("powertoys-new-package-roots-XXXXXX");
+    try {
+        for (let target of ["install-policy", "uninstall-policy",
+                            "install-rapl", "uninstall-rapl"]) {
+            let root = directory + "/" + target;
+            Harness.equal(GLib.file_test(root, GLib.FileTest.EXISTS), false,
+                          target + " starts with no package root");
+            let outcome = Harness.settle(done => Privileged._spawn(
+                ["make", "-s", target, "DESTDIR=" + root],
+                (status, stderr) => done({ status: status, stderr: stderr })),
+            "the " + target + " target over a new package root");
+            Harness.equal(outcome.status, 0,
+                          target + " completes without occupying DESTDIR: " + outcome.stderr);
+            Harness.equal(GLib.file_test(root, GLib.FileTest.IS_DIR), true,
+                          target + " retains DESTDIR as a directory");
+        }
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
+    }
+};
+
 cases["policy build embeds completed catalogue translations"] = function () {
     let directory = GLib.dir_make_tmp("powertoys-policy-i18n-XXXXXX");
     try {

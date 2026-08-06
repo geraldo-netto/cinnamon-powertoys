@@ -84,6 +84,7 @@ uninstall:
 install-policy:
 	@[ -n "$(DESTDIR)" ] || [ "$$(id -u)" = 0 ] || \
 		{ echo "needs root: sudo make install-policy"; exit 1; }
+	@[ -z "$(DESTDIR)" ] || install -d "$(DESTDIR)"
 	@built_policy=$$(mktemp); \
 		trap 'rm -f -- "$$built_policy"' EXIT HUP INT TERM; \
 		python3 "$(POLICY_BUILDER)" "polkit/$(POLICY)" "$(UUID)/po" "$$built_policy"; \
@@ -97,6 +98,7 @@ install-policy:
 uninstall-policy:
 	@[ -n "$(DESTDIR)" ] || [ "$$(id -u)" = 0 ] || \
 		{ echo "needs root: sudo make uninstall-policy"; exit 1; }
+	@[ -z "$(DESTDIR)" ] || install -d "$(DESTDIR)"
 	@sh "$(POLICY_TOOL)" uninstall "$(UUID)/powertoys-helper" "$(HELPER_DEST)" \
 		"polkit/$(POLICY)" "$(POLICY_DIR)/$(POLICY)" "$(POLICY_LOCK)"
 	@echo "removed the action and the root owned helper"
@@ -109,6 +111,7 @@ uninstall-policy:
 install-rapl:
 	@[ -n "$(DESTDIR)" ] || [ "$$(id -u)" = 0 ] || \
 		{ echo "needs root: sudo make install-rapl"; exit 1; }
+	@[ -z "$(DESTDIR)" ] || install -d "$(DESTDIR)"
 	@case "$(RAPL_GROUP)" in \
 		""|*[!A-Za-z0-9_-]*) echo "invalid group name: $(RAPL_GROUP)"; exit 1;; \
 		*) :;; \
@@ -123,6 +126,7 @@ install-rapl:
 uninstall-rapl:
 	@[ -n "$(DESTDIR)" ] || [ "$$(id -u)" = 0 ] || \
 		{ echo "needs root: sudo make uninstall-rapl"; exit 1; }
+	@[ -z "$(DESTDIR)" ] || install -d "$(DESTDIR)"
 	@DESTDIR="$(DESTDIR)" sh "$(RAPL_TOOL)" uninstall "udev/$(RAPL_RULE)" \
 		"$(RAPL_DIR)/$(RAPL_RULE)" "$(RAPL_GROUP)" "$(RAPL_LOCK)"
 	@echo "removed $(RAPL_DIR)/$(RAPL_RULE)"
