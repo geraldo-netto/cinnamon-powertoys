@@ -11,6 +11,7 @@ const Harness = imports.harness;
 const Fuzz = imports.fuzz;
 
 const Format = Harness.requireXlet("./lib/format.js");
+const Gettext = imports.gettext;
 const UPowerGlib = imports.gi.UPowerGlib;
 
 const Kind = UPowerGlib.DeviceKind;
@@ -171,6 +172,27 @@ cases["a scaling driver is named in words, with the kernel's own name kept"] = f
     Harness.equal(Format.driverLabel("intel_pstate", null),
                   "Intel (intel_pstate)", "no pstate mode to add");
     Harness.equal(Format.driverLabel("acpi-cpufreq", null), "ACPI (acpi-cpufreq)", "acpi");
+};
+
+cases["a translation can reorder a complete scaling driver phrase"] = function () {
+    let original = Gettext.dgettext;
+    Gettext.dgettext = function (domain, message) {
+        if (message === "%{label}, %{mode} (%{driver})")
+            return "%{driver} ← %{mode} ← %{label}";
+        if (message === "%{label} (%{driver})")
+            return "%{driver} ← %{label}";
+        return original(domain, message);
+    };
+    try {
+        Harness.equal(Format.driverLabel("amd-pstate", "passive"),
+                      "amd-pstate ← kernel managed ← AMD",
+                      "the catalogue controls mode order and punctuation");
+        Harness.equal(Format.driverLabel("acpi-cpufreq", null),
+                      "acpi-cpufreq ← ACPI",
+                      "the no-mode phrase is complete too");
+    } finally {
+        Gettext.dgettext = original;
+    }
 };
 
 cases["a driver nobody has heard of is shown as it is"] = function () {

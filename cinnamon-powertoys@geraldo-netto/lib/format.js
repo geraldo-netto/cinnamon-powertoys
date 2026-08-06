@@ -427,14 +427,23 @@ function driverLabel(name, pstateMode) {
     if (!name)
         return _("unknown");
 
-    let text = DRIVER_LABELS[name] || name;
+    let label = DRIVER_LABELS[name];
+    if (!label)
+        return name;
+
     let impliedByName = /-epp$/.test(name);
-    if (!impliedByName && pstateMode && PSTATE_MODES[pstateMode] &&
-        text.indexOf(PSTATE_MODES[pstateMode]) < 0)
-        text += ", " + PSTATE_MODES[pstateMode];
-    if (text !== name)
-        text += " (" + name + ")";
-    return text;
+    let mode = !impliedByName && pstateMode ? PSTATE_MODES[pstateMode] : null;
+    if (mode && label.indexOf(mode) < 0) {
+        return Translate.interpolate(_("%{label}, %{mode} (%{driver})"), {
+            label: label,
+            mode: mode,
+            driver: name,
+        });
+    }
+    return Translate.interpolate(_("%{label} (%{driver})"), {
+        label: label,
+        driver: name,
+    });
 }
 
 var GOVERNOR_LABELS = {

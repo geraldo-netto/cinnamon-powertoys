@@ -219,7 +219,7 @@ msgstr ""
 msgid "Battery low"
 msgstr ""
 
-#: lib/alerts.js:168 lib/format.js:483 lib/panel-text.js:249
+#: lib/alerts.js:168 lib/format.js:492 lib/panel-text.js:249
 msgid "Temperature"
 msgstr ""
 
@@ -475,7 +475,7 @@ msgstr ""
 msgid "Balanced performance"
 msgstr ""
 
-#: lib/format.js:331 lib/format.js:441 lib/format.js:459 lib/panel-text.js:282
+#: lib/format.js:331 lib/format.js:450 lib/format.js:468 lib/panel-text.js:282
 msgid "Performance"
 msgstr ""
 
@@ -539,47 +539,55 @@ msgstr ""
 msgid "unknown"
 msgstr ""
 
-#: lib/format.js:442
-msgid "Power save"
+#: lib/format.js:437
+msgid "%{label}, %{mode} (%{driver})"
 msgstr ""
 
 #: lib/format.js:443
+msgid "%{label} (%{driver})"
+msgstr ""
+
+#: lib/format.js:451
+msgid "Power save"
+msgstr ""
+
+#: lib/format.js:452
 msgid "On demand"
 msgstr ""
 
-#: lib/format.js:444
+#: lib/format.js:453
 msgid "Conservative"
 msgstr ""
 
-#: lib/format.js:445
+#: lib/format.js:454
 msgid "Scheduler guided"
 msgstr ""
 
-#: lib/format.js:446
+#: lib/format.js:455
 msgid "Userspace"
 msgstr ""
 
-#: lib/format.js:458
+#: lib/format.js:467
 msgid "Default"
 msgstr ""
 
-#: lib/format.js:460
+#: lib/format.js:469
 msgid "Balance performance"
 msgstr ""
 
-#: lib/format.js:461
+#: lib/format.js:470
 msgid "Balance power"
 msgstr ""
 
-#: lib/format.js:462
+#: lib/format.js:471
 msgid "Power saving"
 msgstr ""
 
-#: lib/format.js:484
+#: lib/format.js:493
 msgid "Fan"
 msgstr ""
 
-#: lib/format.js:485 lib/sensors.js:224
+#: lib/format.js:494 lib/sensors.js:224
 msgid "Power"
 msgstr ""
 
@@ -716,7 +724,7 @@ msgstr ""
 msgid "No sensors found"
 msgstr ""
 
-#: lib/sensors.js:41 lib/sensors.js:674
+#: lib/sensors.js:41 lib/sensors.js:682
 msgid "Package"
 msgstr ""
 
@@ -760,7 +768,7 @@ msgstr ""
 msgid "Hotspot"
 msgstr ""
 
-#: lib/sensors.js:221 lib/sensors.js:666
+#: lib/sensors.js:221 lib/sensors.js:674
 msgid "Memory"
 msgstr ""
 
@@ -772,23 +780,23 @@ msgstr ""
 msgid "SoC voltage"
 msgstr ""
 
-#: lib/sensors.js:664
+#: lib/sensors.js:672
 msgid "Cores"
 msgstr ""
 
-#: lib/sensors.js:665
+#: lib/sensors.js:673
 msgid "Uncore"
 msgstr ""
 
-#: lib/sensors.js:667
+#: lib/sensors.js:675
 msgid "Whole board"
 msgstr ""
 
-#: lib/sensors.js:674
+#: lib/sensors.js:682
 msgid "Package %{number}"
 msgstr ""
 
-#: lib/sensors.js:745
+#: lib/sensors.js:753
 msgid "Total"
 msgstr ""
 
