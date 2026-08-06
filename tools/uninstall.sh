@@ -12,14 +12,7 @@ TARGET_PARENT=$(dirname "$TARGET_DIR")
 
 . "$SOURCE_ROOT/tools/deployment-lock.sh"
 acquire_deployment_lock "$TARGET_DIR"
-
-running_xlet() {
-    output=$(gdbus call --session \
-        --dest org.Cinnamon \
-        --object-path /org/Cinnamon \
-        --method org.Cinnamon.GetRunningXletUUIDs applet 2>/dev/null) || return 2
-    printf '%s\n' "$output" | grep -Fq "$UUID"
-}
+. "$SOURCE_ROOT/tools/cinnamon-xlets.sh"
 
 active_xlet_path() {
     eval_result=$(gdbus call --session \
@@ -150,7 +143,7 @@ if [ -z "${DESTDIR:-}" ]; then
         }
     done
 
-    if running_xlet; then
+    if cinnamon_xlet_running "$UUID"; then
         was_running=yes
     else
         running_status=$?
@@ -204,7 +197,7 @@ if [ -z "${DESTDIR:-}" ]; then
         attempts=0
         unloaded=no
         while [ "$attempts" -lt 5 ]; do
-            if running_xlet; then
+            if cinnamon_xlet_running "$UUID"; then
                 attempts=$((attempts + 1))
                 [ "$attempts" -ge 5 ] || sleep 0.2
                 continue

@@ -41,6 +41,9 @@ function scratch(options, body) {
         GLib.file_set_contents(tools + "/deployment-lock.sh",
                                Harness.readFile(Harness.testsDir() +
                                                 "/../tools/deployment-lock.sh"));
+        GLib.file_set_contents(tools + "/cinnamon-xlets.sh",
+                               Harness.readFile(Harness.testsDir() +
+                                                "/../tools/cinnamon-xlets.sh"));
 
         for (let name of ["applet.js", "metadata.json", "settings-schema.json",
                           "powertoys-helper"])
@@ -256,6 +259,51 @@ cases["every applet asset publisher acquires the deployment lock"] = function ()
                    relative + " sources the shared lock");
         Harness.ok(source.indexOf("acquire_deployment_lock") >= 0,
                    relative + " acquires it before mutation");
+    }
+};
+
+cases["install and uninstall share exact running UUID membership"] = function () {
+    let root = Harness.testsDir() + "/..";
+    for (let relative of ["install.sh", "tools/uninstall.sh"]) {
+        let source = Harness.readFile(root + "/" + relative);
+        Harness.ok(source.indexOf("cinnamon-xlets.sh") >= 0,
+                   relative + " sources the shared Cinnamon query");
+        Harness.ok(source.indexOf('grep -Fq "$UUID"') < 0,
+                   relative + " does not search serialized output by substring");
+    }
+};
+
+cases["running xlet membership compares decoded array elements"] = function () {
+    let directory = GLib.dir_make_tmp("powertoys-running-xlets-XXXXXX");
+    try {
+        let bin = directory + "/bin";
+        let gdbus = bin + "/gdbus";
+        let tool = Harness.testsDir() + "/../tools/cinnamon-xlets.sh";
+        GLib.mkdir_with_parents(bin, 0o755);
+
+        function query(reply) {
+            GLib.file_set_contents(
+                gdbus, "#!/bin/sh\nprintf '%s\\n' \"" + reply + "\"\n");
+            GLib.chmod(gdbus, 0o700);
+            return Harness.settle(done => Privileged._spawn(
+                ["env", "PATH=" + bin + ":" + (GLib.getenv("PATH") || "/usr/bin:/bin"),
+                 "sh", "-c", '. "$1"; cinnamon_xlet_running "$2"',
+                 "running-xlet-test", tool, UUID],
+                (status, stderr) => done({ status: status, stderr: stderr })),
+            "the decoded running-xlet query");
+        }
+
+        Harness.equal(query("(['prefix-" + UUID + "-suffix'],)").status, 1,
+                      "a UUID that merely contains the target is not a match");
+        Harness.equal(query("(['menu@cinnamon.org', '" + UUID + "'],)").status, 0,
+                      "the exact array member is a match");
+        Harness.equal(query("(@as [],)").status, 1,
+                      "the annotated empty GVariant is a valid absent answer");
+        Harness.equal(query("not a variant").status, 2,
+                      "malformed serialized state is an observation failure");
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
     }
 };
 

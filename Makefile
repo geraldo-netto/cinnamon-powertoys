@@ -129,7 +129,8 @@ check:
 	@cjs tools/parse-check.js $(UUID)/applet.js $(UUID)/lib/*.js
 	@cjs tests/run.js
 	@sh -n $(UUID)/powertoys-helper install.sh tools/install-translations.sh \
-		tools/uninstall.sh tools/deployment-lock.sh tools/transition-lock.sh \
+		tools/uninstall.sh tools/deployment-lock.sh tools/cinnamon-xlets.sh \
+		tools/transition-lock.sh \
 		tools/rapl-access.sh tools/install-policy.sh \
 		&& echo "shell ok     helper and install scripts"
 	@python3 -c "import json; [json.load(open(f)) for f in ['$(UUID)/metadata.json','$(UUID)/settings-schema.json']]" \

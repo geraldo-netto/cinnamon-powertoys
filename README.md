@@ -244,7 +244,7 @@ command-line utilities.
 | workflow | commands it additionally requires |
 |----------|------------------------------------|
 | Clone the repository | `git`; a source archive can be downloaded instead and the installed applet does not use Git. |
-| Install or upgrade | `flock` for the deployment transaction. `gdbus` is required to observe, replace and reload an existing live install safely; without it, only a first or staged install can proceed. |
+| Install or upgrade | `flock` for the deployment transaction. `gdbus` and `python3` are required to parse exact running-applet membership, replace and reload an existing live install safely; without `gdbus`, only a first or staged install can proceed. |
 | Uninstall from a live session | `flock`, `gdbus`, `gsettings` and `python3`, so the script can disable the exact panel entry, verify that Cinnamon unloaded it and roll back on failure. A `DESTDIR` package-image uninstall does not touch the session and does not need the last three. |
 | Install source translations | gettext's `msgfmt`, but only when one or more `.po` files exist; this repository currently carries only the `.pot` template. |
 | Develop and check | `make`, `cjs` and `python3`; gettext for translation work, and Cinnamon's `cinnamon-xlet-makepot` for `make pot`. |

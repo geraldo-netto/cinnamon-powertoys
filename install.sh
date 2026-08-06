@@ -21,6 +21,7 @@ TARGET_PARENT=$(dirname "$TARGET_DIR")
 mkdir -p "$TARGET_PARENT"
 . "$(dirname "$0")/tools/deployment-lock.sh"
 acquire_deployment_lock "$TARGET_DIR"
+. "$(dirname "$0")/tools/cinnamon-xlets.sh"
 
 # Build the complete replacement beside the live applet. A failed or
 # interrupted copy can then touch only this private directory, not the version
@@ -36,18 +37,10 @@ TRANSLATION_BACKUP=
 TRANSLATION_BACKUP_READY=no
 TRANSLATION_BACKUP_RETAINED=no
 
-running_xlet() {
-    output=$(gdbus call --session \
-        --dest org.Cinnamon \
-        --object-path /org/Cinnamon \
-        --method org.Cinnamon.GetRunningXletUUIDs applet 2>/dev/null) || return 2
-    printf '%s\n' "$output" | grep -Fq "$UUID"
-}
-
 wait_for_running_xlet() {
     attempts=0
     while [ "$attempts" -lt 5 ]; do
-        if running_xlet; then
+        if cinnamon_xlet_running "$UUID"; then
             return 0
         else
             result=$?
@@ -169,7 +162,11 @@ trap 'exit 1' HUP INT TERM
 was_running=no
 if [ -z "${DESTDIR:-}" ]; then
     if command -v gdbus >/dev/null 2>&1; then
-        if running_xlet; then
+        command -v python3 >/dev/null 2>&1 || {
+            echo "python3 is required to inspect the running Cinnamon applets safely" >&2
+            exit 1
+        }
+        if cinnamon_xlet_running "$UUID"; then
             was_running=yes
         else
             running_status=$?
