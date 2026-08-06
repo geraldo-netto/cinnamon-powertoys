@@ -158,13 +158,15 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 
-# Remember whether this operation is replacing a live panel instance. Absence
-# is a valid answer; a failed query is not. Proceeding after an observation
-# error could publish a replacement that failed to reload while treating it as
-# a disabled or first install.
+# An existing target might be the source of a live panel instance. Absence is a
+# valid answer there; a failed query is not, because publishing a replacement
+# without verifying its reload could leave the panel on files that were moved
+# away. A genuinely absent target cannot be that live source, so a first install
+# does not depend on reaching a Cinnamon session at all.
 was_running=no
 TARGET_SOURCE=
-if [ -z "${DESTDIR:-}" ]; then
+if [ -z "${DESTDIR:-}" ] &&
+        { [ -e "$TARGET_DIR" ] || [ -L "$TARGET_DIR" ]; }; then
     if command -v gdbus >/dev/null 2>&1; then
         command -v python3 >/dev/null 2>&1 || {
             echo "python3 is required to inspect the running Cinnamon applets safely" >&2
@@ -184,7 +186,7 @@ if [ -z "${DESTDIR:-}" ]; then
                 exit 1
             fi
         fi
-    elif [ -e "$TARGET_DIR" ] || [ -L "$TARGET_DIR" ]; then
+    else
         echo "gdbus is required to replace an existing live install safely" >&2
         exit 1
     fi

@@ -385,6 +385,18 @@ cases["a failed running-state query leaves an upgrade untouched"] = function () 
     });
 };
 
+cases["an unreachable Cinnamon session does not block a first install"] = function () {
+    scratch({ firstInstall: true, runningQueryFailure: true }, tree => {
+        let outcome = install(tree, true);
+        Harness.equal(outcome.status, 0,
+                      "an absent target needs no live-state observation: " + outcome.stderr);
+        Harness.equal(read(tree.target + "/applet.js"), "new applet.js",
+                      "the first applet tree was published");
+        Harness.deepEqual(temporaryEntries(tree), [],
+                          "the completed first install left no transaction tree");
+    });
+};
+
 cases["a failed backup reservation cannot replace the live applet"] = function () {
     scratch({ rmdirStatus: 9 }, tree => {
         let outcome = install(tree);
