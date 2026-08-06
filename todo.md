@@ -7,8 +7,8 @@ comfort · **low** polish, tidying, convenience.
 Effort: **XS** minutes · **S** under an hour · **M** an hour or a few · **L** a day or more.
 
 Review scope: runtime source, configuration, install/uninstall paths, policy,
-udev rules, styles, icons and documentation. Cache, build output, generated
-artifacts, tests and test-only tooling were excluded as requested.
+udev rules, styles, icons and documentation. Cache, build output, tests and
+test-only tooling were excluded as requested.
 
 Review categories: functional correctness; reliability, lifecycle and
 concurrency; security and permissions; performance and resource use; UX and
@@ -20,7 +20,7 @@ categories.
 
 | id | category | status | effort | severity | description |
 | --- | --- | --- | --- | --- | --- |
-| PT-198 | Internationalization | open | S | low | `Format.duration()` hardcodes English-style `h` and `m` suffixes and hour-before-minute ordering, then inserts that result beside translated remaining-time text. Locales that use different abbreviations or ordering therefore cannot translate a visible part of battery status. Format durations through translatable templates, including the hours-only/minutes-only variants needed to preserve the compact display. |
+| PT-198 | Internationalization | open | S | low | `Format.duration()` hardcodes English-style `h` and `m` suffixes and hour-before-minute ordering, and `Device.remainingText()` then fixes that duration before separately translated “remaining”/“until full” fragments. Locales cannot choose the abbreviations, duration layout or complete sentence order. Format the compact duration variants and each complete remaining-time phrase through translatable templates. |
 | PT-221 | Internationalization | open | S | low | `Device.describe()` renders charge cycles as `device.cycles + " " + _("cycles")`, so a battery with one cycle is shown as “1 cycles” and languages cannot select their own plural forms. Add gettext plural support and format the complete singular/plural cycle phrase through it. |
 | PT-222 | Internationalization | open | XS | low | `PanelText.powerStatusTooltip()` translates “Power source” and “Battery” but hardcodes the visible AC value as `"AC"`. Locales that use another abbreviation cannot translate the tooltip completely. Put the AC label through gettext with the rest of the power-source values. |
 | PT-223 | Internationalization | open | S | low | `_updateProfiles()` exposes power-profiles-daemon's `PerformanceDegraded` machine token by only replacing hyphens with spaces. Values such as `lap-detected` remain lower-case English in an otherwise translated “Performance limited” row. Map known reasons to translatable user-facing labels and retain a readable fallback for future daemon values. |
