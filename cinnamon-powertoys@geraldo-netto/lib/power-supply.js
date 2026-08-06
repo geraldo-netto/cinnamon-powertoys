@@ -290,7 +290,9 @@ var PlatformProfileClient = class PlatformProfileClient {
         this._scope = new IO.AsyncScope();
         this._ioOptions = { scope: this._scope };
         this._destroyed = false;
-        this._refreshGeneration = 0;
+        this._readGeneration = 0;
+        this._refreshesInFlight = 0;
+        this._sampleWaiters = [];
     }
 
     /* Read every time: the firmware moves this on its own - a lid closed, a
@@ -309,14 +311,17 @@ var PlatformProfileClient = class PlatformProfileClient {
             done(false);
             return;
         }
-        let generation = ++this._refreshGeneration;
+        let generation = ++this._readGeneration;
+        ++this._refreshesInFlight;
         IO.readStringsAsync([PLATFORM_PROFILE, PLATFORM_PROFILE_CHOICES], values => {
+            --this._refreshesInFlight;
             if (this._destroyed) {
                 done(false);
                 return;
             }
-            if (generation !== this._refreshGeneration) {
+            if (generation !== this._readGeneration) {
                 done(false);
+                this._startDeferredSample();
                 return;
             }
             let active = values[PLATFORM_PROFILE];
@@ -330,6 +335,7 @@ var PlatformProfileClient = class PlatformProfileClient {
             done(true);
             if (changed)
                 this._onChanged();
+            this._startDeferredSample();
         }, 2, null, this._ioOptions);
     }
 
@@ -343,21 +349,41 @@ var PlatformProfileClient = class PlatformProfileClient {
             done(false);
             return;
         }
+        if (this._refreshesInFlight > 0) {
+            this._sampleWaiters.push(done);
+            return;
+        }
+        this._startSample([done]);
+    }
+
+    _startDeferredSample() {
+        if (this._destroyed || this._refreshesInFlight > 0 ||
+                this._sampleWaiters.length === 0)
+            return;
+        this._startSample(this._sampleWaiters.splice(0));
+    }
+
+    _startSample(waiters) {
         if (this._profile === null) {
-            done(true);
+            for (let waiter of waiters)
+                waiter(true);
             return;
         }
         let profile = this._profile;
+        let generation = ++this._readGeneration;
         IO.readStringsAsync([PLATFORM_PROFILE], values => {
-            if (this._destroyed || profile !== this._profile) {
-                done(false);
+            if (this._destroyed || generation !== this._readGeneration ||
+                    profile !== this._profile) {
+                for (let waiter of waiters)
+                    waiter(false);
                 return;
             }
             this._profile = {
                 active: values[PLATFORM_PROFILE],
                 choices: profile.choices,
             };
-            done(true);
+            for (let waiter of waiters)
+                waiter(true);
         }, 1, null, this._ioOptions);
     }
 
@@ -434,8 +460,11 @@ var PlatformProfileClient = class PlatformProfileClient {
         if (this._destroyed)
             return;
         this._destroyed = true;
-        this._refreshGeneration++;
+        ++this._readGeneration;
         this._scope.cancel();
+        let waiters = this._sampleWaiters.splice(0);
+        for (let waiter of waiters)
+            waiter(false);
         this._onChanged = function () {};
     }
 };

@@ -490,20 +490,37 @@ cases["firmware refreshes reject superseded and teardown replies"] = function ()
                           "the superseded topology is rejected and the newest is adopted");
 
         client._profile = { active: "balanced", choices: ["quiet", "balanced"] };
+        client.refresh(value => results.push(value));
+        client.sample(value => results.push(value));
+        Harness.equal(pending.length, 3,
+                      "an active sample waits for the in-flight topology refresh");
+        pending[2]({
+            "/sys/firmware/acpi/platform_profile": "balanced",
+            "/sys/firmware/acpi/platform_profile_choices": "quiet balanced performance",
+        });
+        Harness.equal(pending.length, 4, "the newer active read starts after topology lands");
+        pending[3]({ "/sys/firmware/acpi/platform_profile": "performance" });
+        Harness.deepEqual(results.slice(3, 5), [true, true],
+                          "the ordered refresh and sample both settle");
+        Harness.equal(client.active, "performance", "the later active value wins");
+        Harness.deepEqual(client.profiles, ["quiet", "balanced", "performance"],
+                          "and the refresh still updates profile topology");
+
+        client._profile = { active: "balanced", choices: ["quiet", "balanced"] };
         client.sample(value => results.push(value));
         client._profile = { active: "quiet", choices: ["quiet", "balanced"] };
-        pending[2]({ "/sys/firmware/acpi/platform_profile": "balanced" });
-        Harness.equal(results[3], false, "a sample cannot overwrite newer profile topology");
+        pending[4]({ "/sys/firmware/acpi/platform_profile": "balanced" });
+        Harness.equal(results[5], false, "a sample cannot overwrite newer profile topology");
 
         client.refresh(value => results.push(value));
         client.destroy();
-        pending[3]({
+        pending[5]({
             "/sys/firmware/acpi/platform_profile": "quiet",
             "/sys/firmware/acpi/platform_profile_choices": "quiet balanced",
         });
-        Harness.equal(results[4], false, "a topology reply after teardown is rejected");
+        Harness.equal(results[6], false, "a topology reply after teardown is rejected");
         client.refresh(value => results.push(value));
-        Harness.equal(results[5], false, "new refreshes after teardown are rejected");
+        Harness.equal(results[7], false, "new refreshes after teardown are rejected");
     } finally {
         IO.readStringsAsync = real;
     }
