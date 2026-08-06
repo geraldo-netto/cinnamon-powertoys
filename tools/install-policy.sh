@@ -40,10 +40,138 @@ acquire_transition_lock "$LOCK_TARGET" policy
 helper_directory=$(dirname "$HELPER_DESTINATION")
 policy_directory=$(dirname "$POLICY_DESTINATION")
 
+uninstall_pair() {
+    uninstall_helper_existed=no
+    uninstall_policy_existed=no
+    uninstall_helper_removed=no
+    uninstall_policy_removed=no
+    uninstall_helper_recovery=
+    uninstall_policy_recovery=
+    uninstall_helper_backup=
+    uninstall_policy_backup=
+    uninstall_retain_helper=no
+    uninstall_retain_policy=no
+    uninstall_committed=no
+
+    if [ -e "$HELPER_DESTINATION" ] || [ -L "$HELPER_DESTINATION" ]; then
+        uninstall_helper_existed=yes
+    fi
+    if [ -e "$POLICY_DESTINATION" ] || [ -L "$POLICY_DESTINATION" ]; then
+        uninstall_policy_existed=yes
+    fi
+
+    uninstall_cleanup() {
+        uninstall_status=$?
+        trap - EXIT HUP INT TERM
+        set +e
+
+        if [ "$uninstall_committed" != yes ]; then
+            # Restore the action first. A failed helper restoration then leaves
+            # no privileged executable exposed; the action can be withdrawn
+            # again to complete the safe removal.
+            uninstall_policy_ready=yes
+            if [ "$uninstall_policy_removed" = yes ]; then
+                if mv -- "$uninstall_policy_backup" "$POLICY_DESTINATION"; then
+                    uninstall_policy_removed=no
+                else
+                    echo "could not restore the previous polkit action from $uninstall_policy_backup" >&2
+                    uninstall_policy_ready=no
+                    uninstall_retain_policy=yes
+                    uninstall_status=1
+                fi
+            fi
+
+            if [ "$uninstall_helper_removed" = yes ]; then
+                if [ "$uninstall_policy_existed" = yes ] &&
+                        [ "$uninstall_policy_ready" != yes ]; then
+                    echo "the policy pair remains safely removed; helper recovery retained at $uninstall_helper_backup" >&2
+                    uninstall_retain_helper=yes
+                    uninstall_status=1
+                elif mv -- "$uninstall_helper_backup" "$HELPER_DESTINATION"; then
+                    uninstall_helper_removed=no
+                else
+                    echo "could not restore the previous policy helper from $uninstall_helper_backup" >&2
+                    uninstall_retain_helper=yes
+                    uninstall_status=1
+                    # Do not leave the successfully restored (or never moved)
+                    # action naming a helper that could not be restored.
+                    if [ "$uninstall_policy_existed" = yes ] &&
+                            { [ -e "$POLICY_DESTINATION" ] || [ -L "$POLICY_DESTINATION" ]; }; then
+                        if [ -n "$uninstall_policy_backup" ] &&
+                                mv -- "$POLICY_DESTINATION" "$uninstall_policy_backup"; then
+                            uninstall_policy_removed=yes
+                            uninstall_retain_policy=yes
+                            echo "the policy pair was safely removed after restoration failed" >&2
+                        else
+                            echo "the helper is removed, but the stale polkit action could not be withdrawn" >&2
+                        fi
+                    fi
+                fi
+            fi
+        fi
+
+        if [ "$uninstall_retain_helper" != yes ] &&
+                [ -n "$uninstall_helper_recovery" ] &&
+                ! rm -rf -- "$uninstall_helper_recovery"; then
+            echo "policy helper recovery remains in protected directory $uninstall_helper_recovery" >&2
+            uninstall_status=1
+        fi
+        if [ "$uninstall_retain_policy" != yes ] &&
+                [ -n "$uninstall_policy_recovery" ] &&
+                ! rm -rf -- "$uninstall_policy_recovery"; then
+            echo "polkit action recovery remains in protected directory $uninstall_policy_recovery" >&2
+            uninstall_status=1
+        fi
+        if [ "$uninstall_committed" = yes ]; then
+            rmdir "$helper_directory" 2>/dev/null || true
+        fi
+        exit "$uninstall_status"
+    }
+    trap uninstall_cleanup EXIT
+    trap 'exit 1' HUP INT TERM
+
+    # Reserve every recovery location before moving either live file. Each
+    # directory is root-only, so a removed executable retained after an
+    # exceptional cleanup cannot be invoked through the old public path. The
+    # trap is already armed in case the second reservation cannot be made.
+    if [ "$uninstall_helper_existed" = yes ]; then
+        uninstall_helper_recovery=$(mktemp -d \
+            "$helper_directory/.powertoys-helper.remove.XXXXXX")
+        chmod 0700 "$uninstall_helper_recovery"
+        uninstall_helper_backup=$uninstall_helper_recovery/powertoys-helper
+    fi
+    if [ "$uninstall_policy_existed" = yes ]; then
+        uninstall_policy_recovery=$(mktemp -d \
+            "$policy_directory/.powertoys-policy.remove.XXXXXX")
+        chmod 0700 "$uninstall_policy_recovery"
+        uninstall_policy_backup=$uninstall_policy_recovery/action.policy
+    fi
+
+    # Withdraw the executable first. The brief intermediate state is an action
+    # naming no helper, never an unreferenced privileged executable. Each move
+    # and marker is indivisible to the signal trap; any later failure restores
+    # the exact prior pair in cleanup.
+    if [ "$uninstall_helper_existed" = yes ]; then
+        trap '' HUP INT TERM
+        mv -- "$HELPER_DESTINATION" "$uninstall_helper_backup"
+        uninstall_helper_removed=yes
+        trap 'exit 1' HUP INT TERM
+    fi
+    if [ "$uninstall_policy_existed" = yes ]; then
+        trap '' HUP INT TERM
+        mv -- "$POLICY_DESTINATION" "$uninstall_policy_backup"
+        uninstall_policy_removed=yes
+        trap 'exit 1' HUP INT TERM
+    fi
+
+    # Both public paths now represent the requested safe state. Recovery-copy
+    # cleanup may still report a protected leftover, but must never roll the
+    # committed removal back.
+    uninstall_committed=yes
+}
+
 if [ "$ACTION" = uninstall ]; then
-    rm -f -- "$POLICY_DESTINATION"
-    rm -f -- "$HELPER_DESTINATION"
-    rmdir "$helper_directory" 2>/dev/null || true
+    uninstall_pair
     exit 0
 fi
 

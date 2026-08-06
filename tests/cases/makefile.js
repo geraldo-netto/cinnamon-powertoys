@@ -90,11 +90,109 @@ function policyInstall(options) {
     }
 }
 
+function policyUninstall(options) {
+    let directory = GLib.dir_make_tmp("powertoys-policy-uninstall-XXXXXX");
+    try {
+        let source = directory + "/source";
+        let helperSource = source + "/helper";
+        let policySource = source + "/action.policy";
+        let helper = directory + "/root/usr/local/lib/powertoys/helper";
+        let policy = directory + "/root/usr/share/polkit-1/actions/action.policy";
+        GLib.mkdir_with_parents(source, 0o755);
+        GLib.mkdir_with_parents(GLib.path_get_dirname(helper), 0o755);
+        GLib.mkdir_with_parents(GLib.path_get_dirname(policy), 0o755);
+        GLib.file_set_contents(helperSource, "source helper\n");
+        GLib.file_set_contents(policySource, "source policy\n");
+        GLib.file_set_contents(helper, "installed helper\n");
+        GLib.file_set_contents(policy, "installed policy\n");
+
+        let path = GLib.getenv("PATH") || "/usr/bin:/bin";
+        if (options.failPolicyRemoval || options.failRemovalAndRestore ||
+                options.signalHelperRemoval) {
+            let bin = directory + "/bin";
+            GLib.mkdir_with_parents(bin, 0o755);
+            let wrapper = "#!/bin/sh\n";
+            if (options.failPolicyRemoval) {
+                wrapper +=
+                    "if [ \"$2\" = \"" + policy + "\" ]; then exit 19; fi\n";
+            }
+            if (options.failRemovalAndRestore) {
+                let failed = directory + "/policy-removal-failed";
+                wrapper +=
+                    "if [ \"$2\" = \"" + policy + "\" ] && " +
+                    "[ ! -e \"" + failed + "\" ]; then\n" +
+                    "  touch \"" + failed + "\"\n" +
+                    "  exit 19\n" +
+                    "fi\n" +
+                    "case \"$2\" in *'.powertoys-helper.remove.'*) exit 20;; esac\n";
+            }
+            if (options.signalHelperRemoval) {
+                wrapper +=
+                    "if [ \"$2\" = \"" + helper + "\" ]; then\n" +
+                    "  /bin/mv \"$@\" || exit $?\n" +
+                    "  kill -TERM \"$PPID\"\n" +
+                    "  exit 0\n" +
+                    "fi\n";
+            }
+            wrapper += "exec /bin/mv \"$@\"\n";
+            writeExecutable(bin + "/mv", wrapper);
+            path = bin + ":" + path;
+        }
+
+        let tool = Harness.testsDir() + "/../tools/install-policy.sh";
+        return Harness.settle(done => Privileged._spawn(
+            ["env", "PATH=" + path, "sh", tool,
+             "uninstall", helperSource, helper, policySource, policy, directory],
+            (status, stderr) => done({
+                status: status,
+                stderr: stderr,
+                helper: GLib.file_test(helper, GLib.FileTest.EXISTS)
+                    ? Harness.readFile(helper).trim() : null,
+                policy: GLib.file_test(policy, GLib.FileTest.EXISTS)
+                    ? Harness.readFile(policy).trim() : null,
+            })), "the paired policy uninstall");
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
+    }
+}
+
 cases["a failed policy publication restores the previous pair"] = function () {
     let outcome = policyInstall({ existing: true, failPolicyPublish: true });
     Harness.equal(outcome.status, 17, "the publication failure is preserved");
     Harness.equal(outcome.helper, "old helper", "the old helper is restored");
     Harness.equal(outcome.policy, "old policy", "the old action remains in force");
+};
+
+cases["a failed policy uninstall restores the previous pair"] = function () {
+    let outcome = policyUninstall({ failPolicyRemoval: true });
+    Harness.equal(outcome.status, 19, "the removal failure is preserved");
+    Harness.equal(outcome.helper, "installed helper", "the helper is restored");
+    Harness.equal(outcome.policy, "installed policy", "the action remains in force");
+};
+
+cases["a policy uninstall removes the complete pair"] = function () {
+    let outcome = policyUninstall({});
+    Harness.equal(outcome.status, 0, "the removal commits");
+    Harness.equal(outcome.helper, null, "the privileged helper is absent");
+    Harness.equal(outcome.policy, null, "the matching action is absent");
+};
+
+cases["an unrestorable uninstall completes a safe removal"] = function () {
+    let outcome = policyUninstall({ failRemovalAndRestore: true });
+    Harness.ok(outcome.status !== 0, "the failed restoration is reported");
+    Harness.equal(outcome.helper, null, "no orphan privileged helper is exposed");
+    Harness.equal(outcome.policy, null, "the action is withdrawn with it");
+    Harness.ok(outcome.stderr.indexOf("safely removed") >= 0,
+               "the deliberately completed state is named: " + outcome.stderr);
+};
+
+cases["a helper removal signal cannot expose half an uninstall"] = function () {
+    let outcome = policyUninstall({ signalHelperRemoval: true });
+    Harness.equal(outcome.status, 0,
+                  "the signal inside the protected removal is deferred");
+    Harness.equal(outcome.helper, null, "the helper stays removed");
+    Harness.equal(outcome.policy, null, "and the action is removed with it");
 };
 
 cases["policy uninstall waits for an in-flight installation"] = function () {
