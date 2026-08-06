@@ -2221,9 +2221,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * One look for monitors, from wherever the reason came from.
      *
      * A probe that lands while ddcutil is already talking to this machine is
-     * dropped by the control itself rather than queued (PT-145c, PT-146), so
-     * nothing here has to know how long ddcutil is taking or what else is on
-     * the bus.
+     * retained by the control as one coalesced follow-up. Repeated requests do
+     * not grow a queue, so nothing here has to know how long ddcutil is taking
+     * or what else is on the bus.
      */
     _probeMonitors() {
         if (this._canProbeMonitors())
