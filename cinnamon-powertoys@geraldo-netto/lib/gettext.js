@@ -58,6 +58,19 @@ function _(text) {
 }
 
 /*
+ * The plural equivalent of _(). Keep the xlet domain first and the shell's
+ * catalogue as the same useful fallback, while leaving plural selection to
+ * gettext rather than assuming that every language has English's two forms.
+ */
+function ngettext(singular, plural, count) {
+    let translated = Gettext.dngettext(UUID, singular, plural, count);
+    let untranslated = Number(count) === 1 ? singular : plural;
+    if (translated !== untranslated)
+        return translated;
+    return Gettext.ngettext(singular, plural, count);
+}
+
+/*
  * Substitute named values only after gettext has translated the complete
  * sentence. A translator can move a placeholder with its punctuation instead
  * of being constrained by the English order of separately translated pieces.

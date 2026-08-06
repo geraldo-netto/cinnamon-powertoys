@@ -13,6 +13,7 @@ const Format = require("./lib/format.js");
 const Translate = require("./lib/gettext.js");
 
 const _ = Translate._;
+const ngettext = Translate.ngettext;
 
 const UPDeviceState = UPowerGlib.DeviceState;
 const UPDeviceKind = UPowerGlib.DeviceKind;
@@ -129,8 +130,11 @@ function describe(device) {
     if (device.capacity && device.capacity < 100)
         parts.push(Translate.interpolate(_("health %{percent}"),
                                          { percent: Format.percent(device.capacity) }));
-    if (device.cycles && device.cycles > 0)
-        parts.push(device.cycles + " " + _("cycles"));
+    if (device.cycles && device.cycles > 0) {
+        parts.push(Translate.interpolate(
+            ngettext("%{count} cycle", "%{count} cycles", device.cycles),
+            { count: Format.number(device.cycles, 0) }));
+    }
     if (device.energy && device.energyFull)
         parts.push(Format.energy(device.energy) + " / " + Format.energy(device.energyFull));
 

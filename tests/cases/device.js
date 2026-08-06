@@ -361,8 +361,10 @@ cases["a figure is only shown where the device really reported one"] = function 
     let options = { tempUnit: "celsius", lowLevel: 20, peripheralLevel: 15 };
     let details = extra => Device.viewModel(battery(extra), options).details;
 
-    Harness.ok(details({ cycles: 1 }).indexOf("1 cycles") >= 0,
+    Harness.ok(details({ cycles: 1 }).indexOf("1 cycle") >= 0,
                "one charge cycle is a cycle: " + details({ cycles: 1 }));
+    Harness.ok(details({ cycles: 2 }).indexOf("2 cycles") >= 0,
+               "more than one charge cycle uses the plural: " + details({ cycles: 2 }));
     Harness.equal(details({ cycles: 0 }).indexOf("cycles"), -1,
                   "and none at all is a battery that does not count them");
     Harness.equal(details({ cycles: -3 }).indexOf("cycles"), -1,

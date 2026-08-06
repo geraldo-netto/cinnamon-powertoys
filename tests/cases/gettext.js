@@ -240,6 +240,33 @@ cases["a string with no translation is the string"] = function () {
     Harness.equal(Translate._("Governor"), "Governor", "a word the shell also uses");
 };
 
+cases["plural lookup selects singular and plural source forms"] = function () {
+    Harness.equal(Translate.ngettext("%{count} cycle", "%{count} cycles", 1),
+                  "%{count} cycle", "one uses the singular form");
+    Harness.equal(Translate.ngettext("%{count} cycle", "%{count} cycles", 2),
+                  "%{count} cycles", "another count uses the plural form");
+};
+
+cases["plural lookup falls back from the xlet to the shell catalogue"] = function () {
+    let originalDomain = imports.gettext.dngettext;
+    let originalShell = imports.gettext.ngettext;
+    imports.gettext.dngettext = function (domain, singular, plural, count) {
+        return count === 1 ? singular : plural;
+    };
+    imports.gettext.ngettext = function (singular, plural, count) {
+        return count === 1 ? "shell singular" : "shell plural";
+    };
+    try {
+        Harness.equal(Translate.ngettext("one", "many", 1), "shell singular",
+                      "an untranslated singular reaches the shell domain");
+        Harness.equal(Translate.ngettext("one", "many", 4), "shell plural",
+                      "an untranslated plural reaches the shell domain");
+    } finally {
+        imports.gettext.dngettext = originalDomain;
+        imports.gettext.ngettext = originalShell;
+    }
+};
+
 cases["named values are inserted after the complete message is translated"] = function () {
     Harness.equal(Translate.interpolate("Could not switch to %{profile}: %{detail}", {
         profile: "Power saver",
@@ -273,6 +300,9 @@ cases["dynamic name and value phrases use complete templates"] = function () {
                   "profile holds no longer fix the application before the profile");
     Harness.equal(source.indexOf(' + " - " + '), -1,
                   "alert punctuation is no longer outside gettext");
+    Harness.ok(source.indexOf(
+        'ngettext("%{count} cycle", "%{count} cycles"') >= 0,
+        "the complete cycle count is a plural-aware translatable phrase");
 };
 
 cases["asking for the translation of anything at all answers with text"] = function () {
