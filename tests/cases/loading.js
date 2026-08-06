@@ -547,3 +547,12 @@ cases["slow rediscovery includes CPU topology"] = function () {
     Harness.equal(opened[1].indexOf("for (let name in this._backlights)"), -1,
                   "external monitors stay on their separate DDC probe lifecycle");
 };
+
+cases["a monitor overflow note cannot create an empty brightness group"] = function () {
+    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let sync = /    _syncMonitors\(\) \{([\s\S]*?)\n    \}/.exec(source);
+    Harness.ok(sync, "the monitor presentation method can be isolated");
+    Harness.ok(
+        /if \(entries\.length > 0 && this\._monitors\.hidden > 0\)/.test(sync[1]),
+        "overflow is shown only beside at least one available monitor slider");
+};

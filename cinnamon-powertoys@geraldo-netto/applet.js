@@ -1389,10 +1389,10 @@ class MenuPresenter {
      * so this runs on every backlight change and the list only tears itself
      * down when the monitors are really different.
      *
-     * A monitor past the tenth gets a line saying so rather than nothing.
-     * Silently showing nine of eleven sliders looks exactly like a monitor
-     * that does not do DDC/CI, and the two want different things done about
-     * them.
+     * A monitor past the tenth gets a line saying so beside the sliders that
+     * can actually be presented. The note cannot stand alone: detection can
+     * find more than ten displays while every one probed for brightness fails,
+     * and a Brightness group containing only a limit note offers no control.
      */
     _syncMonitors() {
         if (!this._monitors)
@@ -1403,7 +1403,7 @@ class MenuPresenter {
             .map(monitor => ({ key: "monitor:" + monitor.id, label: monitor.name,
                                control: monitor }));
 
-        if (this._monitors.hidden > 0)
+        if (entries.length > 0 && this._monitors.hidden > 0)
             entries.push({
                 key: "hidden",
                 note: true,
