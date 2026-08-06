@@ -201,7 +201,7 @@ Two things are required for the applet itself to load:
 
 | required runtime | why it is required |
 |------------------|--------------------|
-| Cinnamon 5.4 or newer | Supplies CJS, the applet/menu/settings APIs and the ATK, Clutter, Gio, GLib, Gtk, Pango and St introspection namespaces imported when `applet.js` loads. |
+| Cinnamon 5.4 through 6.6 | Supplies CJS, the applet/menu/settings APIs and the ATK, Clutter, Gio, GLib, Gtk, Pango and St introspection namespaces imported when `applet.js` loads. These are the series declared in `metadata.json`. |
 | The UPowerGlib introspection typelib | `UPowerGlib` is imported unconditionally by the device, formatting, reading, panel, UPower and BlueZ modules. On Debian, Ubuntu and Mint the package is `gir1.2-upowerglib-1.0`; the applet cannot load without it even when no UPower daemon is running. |
 
 The repository's CI installs the typelib explicitly instead of assuming that
@@ -466,13 +466,14 @@ settings.
 The dependency tables above are the install checklist. This section records
 the exact compatibility floor behind the two load-critical requirements.
 
-- Cinnamon 5.4 or newer. Only 6.6 has been run. The claim is kept honest by
-  reading the Cinnamon sources rather than by trying it: whenever this applet
-  starts using something of Cinnamon's that a 5.4 desktop might not have had,
-  that call is looked up in the 5.4.0 sources before the change lands. Those
-  are the ones named below; the rest of what an applet touches — a menu item,
-  a separator, an icon by name — is older than any version this supports and
-  is not tracked here.
+- Cinnamon 5.4 through 6.6, matching the series declared in `metadata.json`.
+  Only 6.6 has been run. The 5.4 compatibility floor is kept honest by reading
+  the Cinnamon sources rather than by trying it: whenever this applet starts
+  using something of Cinnamon's that a 5.4 desktop might not have had, that
+  call is looked up in the 5.4.0 sources before the change lands. Those are the
+  ones named below; the rest of what an applet touches — a menu item, a
+  separator, an icon by name — is older than any version this supports and is
+  not tracked here.
 
   The xlet `require()` loader. `PopupMenuSection` and the fact that its actor
   *is* its box, which is what lets the three menu columns sit side by side.
