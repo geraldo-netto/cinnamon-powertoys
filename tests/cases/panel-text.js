@@ -10,6 +10,7 @@
  */
 
 const Harness = imports.harness;
+const Gettext = imports.gettext;
 const UPowerGlib = imports.gi.UPowerGlib;
 
 const PanelText = Harness.requireXlet("./lib/panel-text.js");
@@ -252,6 +253,19 @@ cases["UPower establishes the source without a primary device"] = function () {
                   "Power source: Battery", "and it can say battery without a display device");
     Harness.equal(PanelText.powerStatusLabel(reading({ onBattery: true })),
                   "On battery power", "the menu uses the same source");
+};
+
+cases["the AC source value is translatable"] = function () {
+    let original = Gettext.dgettext;
+    Gettext.dgettext = function (domain, message) {
+        return message === "AC" ? "mains" : original(domain, message);
+    };
+    try {
+        Harness.equal(PanelText.tooltipText(reading({ onBattery: false }), options()),
+                      "Power source: mains", "the value follows the xlet catalogue");
+    } finally {
+        Gettext.dgettext = original;
+    }
 };
 
 cases["a machine with no battery says it is on the mains"] = function () {

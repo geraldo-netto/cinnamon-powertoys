@@ -618,6 +618,10 @@ msgstr ""
 msgid "Power source: %{source}"
 msgstr ""
 
+#: lib/panel-text.js:155
+msgid "AC"
+msgstr ""
+
 #: lib/panel-text.js:182
 msgid "%{name}: %{status}"
 msgstr ""

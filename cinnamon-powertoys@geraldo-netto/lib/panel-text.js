@@ -152,7 +152,7 @@ function powerStatusTooltip(data) {
     if (!data.upowerAvailable)
         return _("Power status unavailable");
     return Translate.interpolate(_("Power source: %{source}"),
-        { source: data.onBattery ? _("Battery") : "AC" });
+        { source: data.onBattery ? _("Battery") : _("AC") });
 }
 
 /* A section of the tooltip, separated from the one before it and indented so
