@@ -106,6 +106,7 @@ var AsyncChargeControl = class AsyncChargeControl {
         this._refreshPending = false;
         this._refreshChanged = false;
         this._refreshWaiters = [];
+        this._stateGeneration = 0;
         this._destroyed = false;
     }
 
@@ -178,6 +179,7 @@ var AsyncChargeControl = class AsyncChargeControl {
     _finishRefresh(batteries, values) {
         if (this._destroyed)
             return;
+        ++this._stateGeneration;
         let previous = JSON.stringify([this.batteries, this._reading]);
         this.batteries = batteries;
         this._reading = _chargeReading(values);
@@ -204,6 +206,7 @@ var AsyncChargeControl = class AsyncChargeControl {
             return;
         }
         let batteries = this.batteries.slice();
+        let generation = this._stateGeneration;
         this._sampleBatteries(batteries, values => {
             if (this._destroyed) {
                 done(false);
@@ -211,7 +214,8 @@ var AsyncChargeControl = class AsyncChargeControl {
             }
             /* A topology refresh may have landed while these values were in
              * flight. Its complete newer snapshot wins. */
-            if (batteries.length !== this.batteries.length ||
+            if (generation !== this._stateGeneration ||
+                    batteries.length !== this.batteries.length ||
                     batteries.some((battery, index) =>
                         battery.path !== this.batteries[index].path)) {
                 done(false);

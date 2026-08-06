@@ -269,14 +269,23 @@ cases["runtime charge work coalesces and rejects stale lifecycle replies"] = fun
     sampleDone([80]);
     Harness.equal(results[2], false, "a sample for replaced topology is rejected");
 
+    client.batteries = [{ name: "BAT0", path: "/same" }];
+    client._reading = { limit: 60 };
+    client.sample(value => results.push(value));
+    client._finishRefresh([{ name: "BAT0", path: "/same" }], [75]);
+    sampleDone([50]);
+    Harness.equal(results[3], false,
+                  "a sample cannot overwrite a newer same-topology refresh");
+    Harness.equal(client.limit, 75, "the refresh snapshot remains current");
+
     client.batteries = [{ name: "BAT0", path: "/old" }];
     client.sample(value => results.push(value));
     client.destroy();
     sampleDone([70]);
-    Harness.equal(results[3], false, "an in-flight sample settles false at teardown");
+    Harness.equal(results[4], false, "an in-flight sample settles false at teardown");
     client.refresh(value => results.push(value));
     client.refresh();
-    Harness.equal(results[4], false, "later discovery is rejected too");
+    Harness.equal(results[5], false, "later discovery is rejected too");
 
     let writeResult = null;
     let writer = new PowerSupply.AsyncChargeControl((args, done) => {
