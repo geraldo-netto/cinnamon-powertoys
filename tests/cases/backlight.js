@@ -265,6 +265,39 @@ cases["a failed backlight owner watch is restored"] = function () {
     Harness.deepEqual(owner.unwatched, [19], "the recovered watch is released");
 };
 
+cases["degraded backlight discovery retries without ownership edges"] = function () {
+    let owner = ownerWatcher();
+    let timers = retryTimers(owner);
+    let attempts = 0;
+    let ready = 0;
+    owner.watch = function () { throw new Error("owner watch failed"); };
+    let screen = new Backlight.BacklightControl(
+        Backlight.SCREEN, null, () => ready++, (xml, onDone) => {
+            attempts++;
+            onDone(proxy({ GetPercentage: attempts === 1 ? null : 61 }), null);
+        }, owner);
+
+    Harness.equal(screen._ownerPresent, null,
+                  "failed lifecycle wiring does not invent an absent owner");
+    Harness.equal(screen.hardwareState, "degraded",
+                  "one fallback read failure is not hardware absence");
+    Harness.equal(ready, 1, "degraded startup still settles readiness");
+    Harness.deepEqual(timers.delays, [1000, Backlight.RETRY_INITIAL_MS],
+                      "ownership and direct discovery retain recovery paths");
+
+    let pending = Object.keys(timers.pending).map(Number);
+    Harness.equal(pending.length, 2, "both degraded paths remain scheduled");
+    let directRetry = Math.max.apply(null, pending);
+    let retry = timers.pending[directRetry];
+    delete timers.pending[directRetry];
+    retry();
+
+    Harness.equal(attempts, 2, "direct discovery retries without an owner edge");
+    Harness.equal(screen.hardwareState, "present", "a later value confirms hardware");
+    Harness.equal(screen.percentage, 61, "the recovered value is published");
+    screen.destroy();
+};
+
 cases["teardown cancels an in-flight proxy initialization"] = function () {
     let owner = ownerWatcher();
     let pending = null;

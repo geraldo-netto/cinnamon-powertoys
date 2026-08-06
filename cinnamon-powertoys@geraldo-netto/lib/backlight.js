@@ -181,6 +181,11 @@ var BacklightControl = class BacklightControl {
          * permanent hardware decision. */
         let watching = false;
         if (!connect || owner) {
+            /* Until a working name watch reports an edge, ownership is
+             * unknown rather than absent. Direct discovery remains useful in
+             * that degraded state, but one failed read must not become a
+             * hardware-absence decision. */
+            this._ownerPresent = null;
             let install = owner ? owner.watch : watchOwner;
             this._ownerWatch = new OwnerWatch.ResilientOwnerWatch({
                 install: (appeared, vanished) => install(appeared, vanished),
@@ -340,13 +345,13 @@ var BacklightControl = class BacklightControl {
     }
 
     _scheduleRetry() {
-        if (this.destroyed || !this._ownerPresent || this._retryTimerId)
+        if (this.destroyed || this._ownerPresent === false || this._retryTimerId)
             return;
         let delay = this._retryDelay;
         this._retryDelay = Math.min(delay * 2, RETRY_MAX_MS);
         let callback = () => {
             this._retryTimerId = 0;
-            if (this.destroyed || !this._ownerPresent)
+            if (this.destroyed || this._ownerPresent === false)
                 return GLib.SOURCE_REMOVE;
             this.refresh(() => {
                 if (!this.destroyed) {
@@ -457,10 +462,13 @@ var BacklightControl = class BacklightControl {
                 let confirmAbsence = false;
                 this.available = false;
                 this.percentage = null;
-                if (!knownPresent && this._ownerPresent) {
+                if (!knownPresent && this._ownerPresent === true) {
                     this._absenceConfirmations++;
                     confirmAbsence = this._absenceConfirmations < ABSENCE_CONFIRMATIONS;
                     this.hardwareState = confirmAbsence ? "degraded" : "absent";
+                } else if (!knownPresent && this._ownerPresent === null) {
+                    this.hardwareState = "degraded";
+                    confirmAbsence = true;
                 } else if (!knownPresent) {
                     this.hardwareState = "absent";
                 }
