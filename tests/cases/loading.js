@@ -185,11 +185,12 @@ cases["a late collection stops when its applet is destroyed"] = function () {
      * shell-free runner. Exercise its collection method with only the two
      * asynchronous backend contracts it uses. */
     let source = Harness.readFile(Harness.xletDir() + "/applet.js");
-    let match = /    _collect\(onDone\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* The sensor readings/.exec(source);
+    let match = /    _collect\(onDone, sampleCpu\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* The sensor readings/.exec(source);
     Harness.ok(match, "the collection method can be isolated");
 
     let logged = [];
-    let collect = Function("Log", "return function (onDone) {" + match[1] + "\n};")({
+    let collect = Function("Log", "return function (onDone, sampleCpu) {" +
+        match[1] + "\n};")({
         error: message => logged.push(message),
     });
     let sensorDone = null;
@@ -224,9 +225,10 @@ cases["a late collection stops when its applet is destroyed"] = function () {
 
 cases["collection waits for asynchronous charge and firmware samples"] = function () {
     let source = Harness.readFile(Harness.xletDir() + "/applet.js");
-    let match = /    _collect\(onDone\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* The sensor readings/.exec(source);
+    let match = /    _collect\(onDone, sampleCpu\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* The sensor readings/.exec(source);
     Harness.ok(match, "the collection method can be isolated");
-    let collect = Function("Log", "return function (onDone) {" + match[1] + "\n};")({
+    let collect = Function("Log", "return function (onDone, sampleCpu) {" +
+        match[1] + "\n};")({
         error: message => { throw new Error(message); },
     });
     let pending = {};
@@ -261,14 +263,64 @@ cases["collection waits for asynchronous charge and firmware samples"] = functio
     Harness.equal(answers[0].profile.generation, 4, "from the same backend generation");
 };
 
+cases["hidden collections skip live CPU sampling"] = function () {
+    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let match = /    _collect\(onDone, sampleCpu\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* The sensor readings/.exec(source);
+    Harness.ok(match, "the collection method can be isolated");
+    let collect = Function("Log", "return function (onDone, sampleCpu) {" +
+        match[1] + "\n};")({ error: message => { throw new Error(message); } });
+    let sampled = 0;
+    let answer = null;
+    let backend = { snapshot: () => ({ active: "balanced" }) };
+    let applet = {
+        _destroyed: false,
+        _failures: new (Harness.requireXlet("./lib/log.js").FailureLog)(),
+        _profileBackend: backend,
+        _profileBackendGeneration: 1,
+        _sensorFilter: () => function () { return true; },
+        _sensors: { readAsync: (wanted, done) => done({ temperatures: [] }) },
+        _cpu: { sample: () => sampled++ },
+        _collectProfile: () => ({}),
+        _assemble: readings => readings,
+    };
+
+    collect.call(applet, value => { answer = value; }, false);
+    Harness.equal(sampled, 0, "no moving CPU node is requested");
+    Harness.deepEqual(answer, { temperatures: [] }, "the cached CPU snapshot can assemble");
+};
+
+cases["CPU sampling follows visible consumers"] = function () {
+    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let match = /    _cpuSampleWanted\(\) \{([\s\S]*?)\n    \}/.exec(source);
+    Harness.ok(match, "the CPU visibility policy can be isolated");
+    let wanted = Function("return function () {" + match[1] + "\n};")();
+    let applet = {
+        menu: { isOpen: false },
+        showCpu: true,
+        showSensors: true,
+        _panel: { tooltipNeedsFreshData: false },
+    };
+
+    Harness.equal(wanted.call(applet), false, "a hidden menu and tooltip need no sample");
+    applet.menu.isOpen = true;
+    Harness.equal(wanted.call(applet), true, "an open CPU menu needs current values");
+    applet.showCpu = false;
+    applet.showSensors = false;
+    Harness.equal(wanted.call(applet), false, "a menu with no CPU reading does not");
+    applet.menu.isOpen = false;
+    applet._panel.tooltipNeedsFreshData = true;
+    Harness.equal(wanted.call(applet), true, "a visible tooltip needs current values");
+};
+
 cases["profile collections and controls reject a backend transition"] = function () {
     let source = Harness.readFile(Harness.xletDir() + "/applet.js");
-    let collectMatch = /    _collect\(onDone\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* The sensor readings/.exec(source);
+    let collectMatch = /    _collect\(onDone, sampleCpu\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* The sensor readings/.exec(source);
     let chooseMatch = /    _chooseProfileBackend\(\) \{([\s\S]*?)\n    \}\n\n    \/\* One look/.exec(source);
     let stateMatch = /    _profileState\(\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* One step/.exec(source);
     Harness.ok(collectMatch && chooseMatch && stateMatch, "the profile wiring can be isolated");
 
-    let collect = Function("Log", "return function (onDone) {" + collectMatch[1] + "\n};")({
+    let collect = Function("Log", "return function (onDone, sampleCpu) {" +
+        collectMatch[1] + "\n};")({
         error: message => { throw new Error(message); },
     });
     let choose = Function("return function () {" + chooseMatch[1] + "\n};")();

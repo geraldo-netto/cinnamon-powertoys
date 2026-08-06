@@ -436,13 +436,24 @@ cases["an asynchronous control adopts one complete CPU snapshot"] = function () 
         Hardware.forget();
         IO.setRoot(Harness.fixture("machine"));
         let before = null;
-        let cpu = Harness.settle(function (done) {
-            let created = new Cpu.CpuControl(() => {}, {
-                asynchronous: true,
-                onChanged: () => done(created),
-            });
-            before = created.snapshot();
-        }, "asynchronous CPU discovery");
+        let requested = [];
+        let readStrings = IO.readStringsAsync;
+        IO.readStringsAsync = function (paths) {
+            requested = requested.concat(paths);
+            return readStrings.apply(IO, arguments);
+        };
+        let cpu;
+        try {
+            cpu = Harness.settle(function (done) {
+                let created = new Cpu.CpuControl(() => {}, {
+                    asynchronous: true,
+                    onChanged: () => done(created),
+                });
+                before = created.snapshot();
+            }, "asynchronous CPU discovery");
+        } finally {
+            IO.readStringsAsync = readStrings;
+        }
 
         Harness.equal(before.available, false, "construction exposes no partial policy list");
         let after = cpu.snapshot();
@@ -450,9 +461,11 @@ cases["an asynchronous control adopts one complete CPU snapshot"] = function () 
         Harness.deepEqual(after.governors, ["performance", "powersave"], "with its choices");
         Harness.deepEqual(after.energyPreferences, ["default", "performance", "power"],
                           "including every shared energy preference");
-        Harness.equal(after.governor, "powersave", "current values were loaded off-thread too");
-        Harness.equal(after.energyPreference, "power", "with the current EPP");
-        Harness.near(after.averageFrequency, 3500, 0.001, "including every policy frequency");
+        Harness.equal(after.governor, null, "moving values await a visible consumer");
+        Harness.equal(after.energyPreference, null, "including the current EPP");
+        Harness.equal(after.averageFrequency, null, "and every policy frequency");
+        Harness.equal(requested.some(path => /(?:scaling_governor|cpuinfo_avg_freq|scaling_cur_freq|energy_performance_preference|\/boost|\/no_turbo)$/.test(path)),
+                      false, "topology discovery never opens moving CPU nodes");
         Harness.near(after.maxFrequency, 5462.711, 0.001, "and the valid hardware ceiling");
         cpu.destroy();
     } finally {
@@ -482,8 +495,8 @@ cases["an asynchronous CPU refresh performs no synchronous file access"] = funct
         try {
             let after = Harness.settle(done => cpu.refresh(() => done(cpu.snapshot())),
                                        "non-blocking CPU refresh");
-            Harness.equal(after.governor, "powersave", "the replacement snapshot is complete");
-            Harness.near(after.averageFrequency, 3500, 0.001, "and contains dynamic values");
+            Harness.equal(after.governor, null, "the replacement omits moving values");
+            Harness.equal(after.averageFrequency, null, "until a visible consumer samples them");
         } finally {
             IO.listDir = listDir;
             IO.readString = readString;

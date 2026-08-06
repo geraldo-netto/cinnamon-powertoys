@@ -276,6 +276,13 @@ class PanelPresenter {
             this._shell.setTooltip(PanelText.tooltipText(this._reading, this._readingOptions));
     }
 
+    /* On supported Cinnamon versions this is exact. The compatibility path
+     * cannot observe tooltip lifecycle, so it conservatively keeps data fresh
+     * for a tooltip the shell may already be showing. */
+    get tooltipNeedsFreshData() {
+        return this._shell.tooltipVisible || !this._shell.hasTooltipLifecycle;
+    }
+
     _updateIcon(data, source, profile) {
         if (source === "battery" && data.primary) {
             let icon = data.primary.icon;
@@ -1763,7 +1770,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         /* A hover gets one prefetch so a later menu is ready; only an open
          * menu keeps probing. The tooltip itself names no monitor. */
         this._panel = new PanelPresenter(this, metadata.path + "/icons",
-                                         shown => this._watchMonitors("tooltip", shown));
+                                         shown => this._onTooltipChanged(shown));
         this._hotkeyIds = [];
         this._normalizingAlertLevels = false;
 
@@ -2131,6 +2138,14 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._considerProbing();
     }
 
+    _onTooltipChanged(shown) {
+        this._watchMonitors("tooltip", shown);
+        /* beforeTooltip paints the cached reading synchronously; this replaces
+         * its moving CPU fields as soon as the asynchronous sample answers. */
+        if (shown)
+            this._update();
+    }
+
     /*
      * Arm the timer, or drop it, from what is true now.
      *
@@ -2363,7 +2378,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
     /* Answers exactly once, with the reading or with null when there is not
      * one. The caller has an in-flight flag riding on that promise. */
-    _collect(onDone) {
+    _collect(onDone, sampleCpu) {
         let readings = null;
         let profileBackend = this._profileBackend;
         let profileGeneration = this._profileBackendGeneration;
@@ -2405,10 +2420,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
             sensorsReady = true;
             finish();
         });
-        this._cpu.sample(() => {
+        if (sampleCpu !== false) {
+            this._cpu.sample(() => {
+                cpuReady = true;
+                finish();
+            });
+        } else {
             cpuReady = true;
             finish();
-        });
+        }
         if (this.menu && this.menu.isOpen && this._chargeControl &&
                 typeof this._chargeControl.sample === "function") {
             this._chargeControl.sample(() => {
@@ -2529,6 +2549,17 @@ class PowerToysApplet extends Applet.TextIconApplet {
         if (!this.menu || !this.menu.isOpen)
             return { available: available, limit: null, state: null, divided: false };
         return Object.assign({ available: true }, this._chargeControl.reading());
+    }
+
+    /* Governor, energy preference, boost and current frequency are useful
+     * only in the menu and tooltip. Static CPU topology stays in every
+     * reading, but these live sysfs nodes are sampled only for a consumer that
+     * can display them. */
+    _cpuSampleWanted() {
+        let menuUsesCpu = this.menu && this.menu.isOpen &&
+                          (this.showCpu || this.showSensors);
+        return !!menuUsesCpu ||
+               !!(this._panel && this._panel.tooltipNeedsFreshData);
     }
 
     /*
@@ -2782,7 +2813,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         this._collecting = true;
         try {
-            this._collect(finished);
+            this._collect(finished, this._cpuSampleWanted());
             this._failures.recover("reading-start");
         } catch (error) {
             /* Thrown before the read was even started, so nothing is coming. */

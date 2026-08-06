@@ -198,20 +198,14 @@ var CpuControl = class CpuControl {
         IO.listDirAsync(CPUFREQ_DIR, entries => {
             let policies = entries.filter(name => /^policy\d+$/.test(name))
                 .map(name => CPUFREQ_DIR + "/" + name);
-            let valuePaths = [CPU_DIR + "/amd_pstate/status",
-                              CPUFREQ_DIR + "/boost",
-                              CPU_DIR + "/intel_pstate/no_turbo"];
+            let valuePaths = [CPU_DIR + "/amd_pstate/status"];
             let existencePaths = [CPUFREQ_DIR + "/boost",
                                   CPU_DIR + "/intel_pstate/no_turbo"];
             for (let policy of policies) {
                 valuePaths.push(policy + "/scaling_driver",
                                 policy + "/scaling_available_governors",
-                                policy + "/scaling_governor",
-                                policy + "/energy_performance_preference",
                                 policy + "/energy_performance_available_preferences",
-                                policy + "/cpuinfo_max_freq",
-                                policy + "/cpuinfo_avg_freq",
-                                policy + "/scaling_cur_freq");
+                                policy + "/cpuinfo_max_freq");
                 existencePaths.push(policy + "/energy_performance_preference");
             }
 
@@ -231,8 +225,8 @@ var CpuControl = class CpuControl {
                 existence = answer;
                 finish();
             }, 32, null, this._ioOptions);
-            Hardware.machineNamesAsync([], answer => {
-                names = answer;
+            Hardware.cpuModelNameAsync(answer => {
+                names = { cpuName: answer };
                 finish();
             }, this._ioOptions);
         }, null, this._ioOptions);
@@ -262,7 +256,7 @@ var CpuControl = class CpuControl {
             boostInverted = true;
         }
         let drivers = _policyDrivers(policies, read);
-        return Object.assign({
+        return {
             policies: policies,
             reference: policies.length > 0 ? policies[0] : null,
             driver: drivers.length === 1 ? drivers[0] : null,
@@ -277,7 +271,7 @@ var CpuControl = class CpuControl {
             maxFrequency: maximum,
             boostPath: boostPath,
             boostInverted: boostInverted,
-        }, this._dynamicFrom(policies, energyPolicies, boostPath, boostInverted, read));
+        };
     }
 
     _dynamicPaths(policies, energyPolicies, boostPath) {
@@ -338,10 +332,12 @@ var CpuControl = class CpuControl {
         this._maxFrequency = state.maxFrequency;
         this.boostPath = state.boostPath;
         this.boostInverted = state.boostInverted;
-        this._governor = state.governor;
-        this._energyPreference = state.energyPreference;
-        this._boostEnabled = state.boostEnabled;
-        this._averageFrequency = state.averageFrequency;
+        /* Moving values belong to sample(), not to topology discovery. A new
+         * policy set invalidates any values sampled from the previous paths. */
+        this._governor = null;
+        this._energyPreference = null;
+        this._boostEnabled = null;
+        this._averageFrequency = null;
     }
 
     _adoptDynamic(state) {

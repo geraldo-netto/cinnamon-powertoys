@@ -121,6 +121,25 @@ function cpuModelName() {
     return _cpuName;
 }
 
+/* The asynchronous CPU discovery path needs the same retry semantics without
+ * opening /proc on Cinnamon's compositor thread. Kept separate from
+ * machineNamesAsync because an empty PCI list is not a PCI inventory: CPU
+ * topology checks must not affect the cache owned by sensor discovery. */
+function cpuModelNameAsync(onDone, ioOptions) {
+    if (_cpuName !== undefined) {
+        onDone(_cpuName);
+        return;
+    }
+
+    IO.readStringsAsync([CPUINFO], values => {
+        let text = values[CPUINFO];
+        /* A concurrent successful lookup wins over a failed or older one. */
+        if (_cpuName === undefined && text !== null && text !== undefined)
+            _cpuName = _cpuNameFrom(text);
+        onDone(_cpuName === undefined ? null : _cpuName);
+    }, 1, null, ioOptions);
+}
+
 /* --------------------------------------------------------------------- PCI */
 
 /*

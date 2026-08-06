@@ -161,7 +161,7 @@ over I2C is not.
 
 | data | timing or event |
 |------|-----------------|
-| Sensor values, CPU state and the visible presentation | Every **4 seconds** by default; *Refresh interval* accepts **1–60 seconds**. Primary temperature, fan and power sensors plus an explicitly selected sensor are read in the background. The complete *Show all sensors* set is read only while that list is visible in the open menu. |
+| Sensor values and the visible presentation | Every **4 seconds** by default; *Refresh interval* accepts **1–60 seconds**. Primary temperature, fan and power sensors plus an explicitly selected sensor are read in the background. The complete *Show all sensors* set is read only while that list is visible in the open menu. Moving CPU state—governor, energy preference, boost and current frequency—is sampled only while the open menu or panel tooltip can show it, including an immediate sample when either becomes visible. |
 | Batteries, line power and lid state | UPower manager, device and display-device property signals, and device-added/device-removed signals schedule a reading immediately. The regular reading also consumes the current proxy cache; it does not issue a second D-Bus request for every property. |
 | Bluetooth batteries | BlueZ interface-added, interface-removed and relevant device/battery property signals update the cache and schedule a reading. Invalidated or incomplete signal data is repaired with one coalesced snapshot after **250 ms**. |
 | Power profiles | Either supported daemon name appearing, disappearing or changing properties schedules a reading. The daemon snapshot is unpacked once and cached until one of those events. The firmware fallback samples `/sys/firmware/acpi/platform_profile` with each regular reading. |
