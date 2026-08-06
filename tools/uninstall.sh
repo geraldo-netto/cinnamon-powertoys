@@ -14,35 +14,6 @@ TARGET_PARENT=$(dirname "$TARGET_DIR")
 acquire_deployment_lock "$TARGET_DIR"
 . "$SOURCE_ROOT/tools/cinnamon-xlets.sh"
 
-active_xlet_path() {
-    eval_result=$(gdbus call --session \
-        --dest org.Cinnamon \
-        --object-path /org/Cinnamon \
-        --method org.Cinnamon.Eval \
-        "imports.ui.appletManager.appletMeta['$UUID'] ? imports.ui.appletManager.appletMeta['$UUID'].path : null" \
-        2>/dev/null) || return 1
-
-    # Eval returns JSON inside gdbus's textual GVariant tuple. Parse both
-    # layers rather than trimming quotes in shell, where a valid path may
-    # itself contain quotes, backslashes or parentheses.
-    POWERTOYS_EVAL_RESULT=$eval_result python3 -c '
-import ast
-import json
-import os
-import re
-
-raw = os.environ["POWERTOYS_EVAL_RESULT"]
-match = re.fullmatch(r"\(true,\s*(.+)\)\s*", raw, re.S)
-if match is None:
-    raise SystemExit(1)
-encoded = ast.literal_eval(match.group(1))
-path = json.loads(encoded)
-if not isinstance(path, str) or not path:
-    raise SystemExit(1)
-print(os.path.realpath(path))
-'
-}
-
 reload_theme() {
     command -v gdbus >/dev/null 2>&1 || return 1
     gdbus call --session \
@@ -154,7 +125,7 @@ if [ -z "${DESTDIR:-}" ]; then
     fi
 
     if [ "$was_running" = yes ]; then
-        active_source=$(active_xlet_path) || {
+        active_source=$(cinnamon_xlet_live_path "$UUID") || {
             echo "could not determine where the running $UUID was loaded from; uninstall was not changed" >&2
             exit 1
         }

@@ -82,6 +82,7 @@ function scratch(options, body) {
 
         let path = GLib.getenv("PATH") || "/usr/bin:/bin";
         if (options.rmdirStatus || options.signalPublish || options.failedReload ||
+                options.mismatchedReload ||
                 options.runningQueryFailure ||
                 options.uninstallRuntime || options.uninstallQueryFailure ||
                 options.uninstallThemeFailure) {
@@ -97,7 +98,7 @@ function scratch(options, body) {
                     "#!/bin/sh\n/bin/mv \"$@\"\nkill -TERM \"$PPID\"\n");
                 GLib.chmod(bin + "/mv", 0o700);
             }
-            if (options.failedReload) {
+            if (options.failedReload || options.mismatchedReload) {
                 let state = directory + "/reload-count";
                 let themeState = directory + "/theme-count";
                 GLib.file_set_contents(state, "0\n");
@@ -106,16 +107,21 @@ function scratch(options, body) {
                     "#!/bin/sh\n" +
                     "case \"$*\" in\n" +
                     "  *GetRunningXletUUIDs*)\n" +
-                    "    count=$(cat '" + state + "')\n" +
-                    "    if [ \"$count\" = 1 ]; then echo '(@as [],)';\n" +
-                    "    else echo \"(['" + UUID + "'],)\"; fi;;\n" +
+                    "    echo \"(['" + UUID + "'],)\";;\n" +
                     "  *ReloadXlet*)\n" +
                     "    count=$(cat '" + state + "')\n" +
                     "    echo $((count + 1)) > '" + state + "';;\n" +
-                    "  *Eval*)\n" +
+                    "  *_changeTheme*)\n" +
                     "    themes=$(cat '" + themeState + "')\n" +
                     "    echo $((themes + 1)) > '" + themeState + "'\n" +
                     "    echo \"(true, '')\";;\n" +
+                    "  *Eval*)\n" +
+                    "    count=$(cat '" + state + "')\n" +
+                    "    if [ \"$count\" = 1 ]; then\n" +
+                    (options.failedReload
+                        ? "      echo \"(true, 'null')\"\n"
+                        : "      echo \"(true, '\\\"/opt/other/" + UUID + "\\\"')\"\n") +
+                    "    else echo \"(true, '\\\"" + target + "\\\"')\"; fi;;\n" +
                     "esac\n");
                 GLib.chmod(bin + "/gdbus", 0o700);
                 options.themeState = themeState;
@@ -307,6 +313,47 @@ cases["running xlet membership compares decoded array elements"] = function () {
     }
 };
 
+cases["live xlet paths require an instantiated applet answer"] = function () {
+    let directory = GLib.dir_make_tmp("powertoys-live-xlet-XXXXXX");
+    try {
+        let bin = directory + "/bin";
+        let gdbus = bin + "/gdbus";
+        let tool = Harness.testsDir() + "/../tools/cinnamon-xlets.sh";
+        GLib.mkdir_with_parents(bin, 0o755);
+
+        function query(reply) {
+            GLib.file_set_contents(gdbus,
+                                   "#!/bin/sh\nprintf '%s\\n' \"$POWERTOYS_TEST_REPLY\"\n");
+            GLib.chmod(gdbus, 0o700);
+            return Harness.settle(done => Privileged._spawn(
+                ["env", "POWERTOYS_TEST_REPLY=" + reply,
+                 "PATH=" + bin + ":" + (GLib.getenv("PATH") || "/usr/bin:/bin"),
+                 "sh", "-c", '. "$1"; cinnamon_xlet_live_path "$2"',
+                 "live-xlet-test", tool, UUID],
+                (status, stderr, stdout) => done({
+                    status: status,
+                    stderr: stderr,
+                    stdout: stdout.trim(),
+                })), "the live xlet source query");
+        }
+
+        let path = query("(true, '\"/tmp/powertoys/../live-xlet\"')");
+        Harness.equal(path.status, 0, "an instantiated applet path is present");
+        Harness.equal(path.stdout, "/tmp/live-xlet", "the loaded source path is normalized");
+        let absent = query("(true, 'null')");
+        Harness.equal(absent.status, 1,
+                      "a null applet definition is valid absence: " +
+                      absent.stdout + " " + absent.stderr);
+        Harness.equal(query("(true, '42')").status, 2,
+                      "a non-path Eval result is an observation failure");
+        Harness.equal(query("(false, '\"failed\"')").status, 2,
+                      "a failed Eval cannot prove a live instance");
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
+    }
+};
+
 cases["an incomplete staged applet leaves the live install untouched"] = function () {
     scratch({ incomplete: true }, tree => {
         let outcome = install(tree);
@@ -389,6 +436,19 @@ cases["a failed live reload restores and reactivates the previous applet"] = fun
         Harness.equal(read(options.themeState), "2",
                       "the theme was loaded once forward and once after CSS rollback");
         Harness.deepEqual(temporaryEntries(tree), [], "the rollback left no private trees");
+    });
+};
+
+cases["a reload from another source restores the previous applet"] = function () {
+    let options = { mismatchedReload: true };
+    scratch(options, tree => {
+        let outcome = install(tree, true);
+        Harness.ok(outcome.status !== 0, "a foreign replacement source fails the upgrade");
+        Harness.equal(read(tree.target + "/marker"), "old", "the prior tree was restored");
+        Harness.equal(read(tree.target + "/applet.js"), null,
+                      "the replacement loaded elsewhere was removed");
+        Harness.ok(outcome.stderr.indexOf("Restored and reloaded") >= 0,
+                   "the restored target is reactivated: " + outcome.stderr);
     });
 };
 

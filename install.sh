@@ -38,10 +38,13 @@ TRANSLATION_BACKUP_READY=no
 TRANSLATION_BACKUP_RETAINED=no
 
 wait_for_running_xlet() {
+    expected_source=$1
     attempts=0
     while [ "$attempts" -lt 5 ]; do
-        if cinnamon_xlet_running "$UUID"; then
-            return 0
+        if running_source=$(cinnamon_xlet_live_path "$UUID"); then
+            if [ "$running_source" = "$expected_source" ]; then
+                return 0
+            fi
         else
             result=$?
             if [ "$result" -eq 2 ]; then
@@ -127,7 +130,7 @@ cleanup() {
                 --dest org.Cinnamon \
                 --object-path /org/Cinnamon \
                 --method org.Cinnamon.ReloadXlet "$UUID" APPLET >/dev/null 2>&1 &&
-                wait_for_running_xlet; then
+                wait_for_running_xlet "$TARGET_SOURCE"; then
             echo "Restored and reloaded the previous applet." >&2
         else
             echo "restored the previous files but could not reload the applet" >&2
@@ -160,10 +163,16 @@ trap 'exit 1' HUP INT TERM
 # error could publish a replacement that failed to reload while treating it as
 # a disabled or first install.
 was_running=no
+TARGET_SOURCE=
 if [ -z "${DESTDIR:-}" ]; then
     if command -v gdbus >/dev/null 2>&1; then
         command -v python3 >/dev/null 2>&1 || {
             echo "python3 is required to inspect the running Cinnamon applets safely" >&2
+            exit 1
+        }
+        TARGET_SOURCE=$(python3 -c \
+            'import os, sys; print(os.path.realpath(sys.argv[1]))' "$TARGET_DIR") || {
+            echo "could not resolve the requested applet target" >&2
             exit 1
         }
         if cinnamon_xlet_running "$UUID"; then
@@ -269,7 +278,7 @@ if command -v gdbus > /dev/null 2>&1; then
             --dest org.Cinnamon \
             --object-path /org/Cinnamon \
             --method org.Cinnamon.ReloadXlet "$UUID" APPLET > /dev/null 2>&1; then
-        if wait_for_running_xlet; then
+        if wait_for_running_xlet "$TARGET_SOURCE"; then
             reloaded=yes
         fi
     fi
