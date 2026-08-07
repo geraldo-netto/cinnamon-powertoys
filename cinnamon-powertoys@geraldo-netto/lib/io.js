@@ -28,7 +28,7 @@ var AsyncScope = class AsyncScope {
     }
 
     track(operation) {
-        if (!operation || !operation.active)
+        if (!operation?.active)
             return operation;
         if (this._cancelled)
             operation.cancel();
@@ -435,12 +435,15 @@ function listDirAsync(path, onDone, fileFactory, options) {
     };
     let operation = _asyncOperation(() => {
         closeCancelled(enumerator);
-        onDone(names.sort(naturalCompare));
+        names.sort(naturalCompare);
+        onDone(names);
     }, options);
 
     let finish = () => {
-        if (operation.finish())
-            onDone(names.sort(naturalCompare));
+        if (operation.finish()) {
+            names.sort(naturalCompare);
+            onDone(names);
+        }
     };
     let close = handle => {
         if (!handle || closeStarted) {
@@ -525,9 +528,9 @@ function listDirAsync(path, onDone, fileFactory, options) {
 function listDirsAsync(paths, onDone, concurrency, fileFactory, options) {
     return _batchAsync(paths, onDone, concurrency, [],
         (path, cancellable, settle) => {
-            let childOptions = Object.assign({}, options || {}, {
+            let childOptions = { ...(options || {}),
                 cancellable: cancellable,
-            });
+            };
             listDirAsync(path, settle, fileFactory, childOptions);
         }, options);
 }

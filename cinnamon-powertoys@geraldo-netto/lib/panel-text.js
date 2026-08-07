@@ -80,7 +80,9 @@ function iconSource(data, wanted, profile) {
     let source = wanted || "auto";
     if (source !== "auto")
         return source;
-    return data.primary ? "battery" : (profile ? "profile" : "static");
+    if (data.primary)
+        return "battery";
+    return profile ? "profile" : "static";
 }
 
 /*
@@ -273,7 +275,7 @@ function deviceEntries(data) {
 function tooltipText(data, options) {
     let lines = [powerStatusTooltip(data)];
 
-    let primaryInDevices = data.primary && data.primary.path &&
+    let primaryInDevices = data.primary?.path &&
         (data.devices || []).some(device => device.path === data.primary.path);
     if (data.primary && !primaryInDevices)
         lines.push(namedStatus(Format.deviceKindName(data.primary.kind), data.primary));

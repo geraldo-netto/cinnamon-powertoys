@@ -60,7 +60,7 @@ function _commandFailureKey(argv) {
     let displayAt = argv.indexOf("--display");
     let display = displayAt >= 0 && displayAt + 1 < argv.length
         ? argv[displayAt + 1] : "all";
-    let operation = ["detect", "getvcp", "setvcp"].find(name => argv.indexOf(name) >= 0);
+    let operation = ["detect", "getvcp", "setvcp"].find(name => argv.includes(name));
     if (!operation)
         operation = argv.length > 0 ? argv[0] : "command";
     return "timeout:" + display + ":" + operation;
@@ -169,15 +169,17 @@ function parseDisplays(output) {
         if (!current)
             continue;
 
-        let field = /^\s+([^:]+):\s+(.*?)\s*$/.exec(line);
-        if (!field)
+        let separator = line.indexOf(":");
+        if (separator < 0)
             continue;
-        if (field[1] === "I2C bus")
-            current.bus = field[2];
-        else if (field[1] === "DRM connector")
-            current.connector = field[2];
-        else if (field[1] === "Monitor") {
-            let parts = field[2].split(":");
+        let field = line.slice(0, separator).trim();
+        let value = line.slice(separator + 1).trim();
+        if (field === "I2C bus")
+            current.bus = value;
+        else if (field === "DRM connector")
+            current.connector = value;
+        else if (field === "Monitor") {
+            let parts = value.split(":");
             current.manufacturer = (parts[0] || "").trim();
             current.model = (parts[1] || "").trim();
             current.serial = (parts[2] || "").trim();
@@ -203,7 +205,7 @@ function _connectorName(connector) {
  * monitors on the desk is which. Which socket it is plugged into is.
  */
 function nameDisplays(displays) {
-    let named = displays.map(display => Object.assign({}, display, {
+    let named = displays.map(display => ({ ...display,
         name: Hardware.monitorName(display.manufacturer, display.model) ||
               _connectorName(display.connector) ||
               Translate.interpolate(_("Display %{number}"), { number: display.number }),
@@ -217,7 +219,7 @@ function nameDisplays(displays) {
         if (counts[display.name] < 2)
             return display;
         let apart = _connectorName(display.connector) || display.number;
-        return Object.assign({}, display, { name: display.name + " (" + apart + ")" });
+        return { ...display, name: display.name + " (" + apart + ")" };
     });
 }
 
@@ -279,7 +281,7 @@ var DdcMonitor = class DdcMonitor {
         this.id = display.bus || ("display:" + display.number);
         this.number = display.number;
         this.name = display.name;
-        this._display = Object.assign({}, display);
+        this._display = { ...display };
         this.available = false;
         this.percentage = null;
         this.maximum = null;
@@ -309,12 +311,12 @@ var DdcMonitor = class DdcMonitor {
                 this._identity[field] = identity[field];
         this.number = display.number;
         this.name = display.name;
-        this._display = Object.assign({}, display);
+        this._display = { ...display };
         return true;
     }
 
     get display() {
-        return Object.assign({}, this._display);
+        return { ...this._display };
     }
 
     /*
@@ -505,6 +507,17 @@ var DdcMonitor = class DdcMonitor {
  * would otherwise have picked.
  */
 var DdcBacklight = class DdcBacklight {
+    available = false;
+    percentage = null;
+    destroyed = false;
+    monitors = [];
+    /* Part of the view state beside `hidden`: the presenter must describe the
+     * cap this backend actually applied, not import its implementation constant
+     * and hope an injected backend made the same choice. */
+    limit = MAX_DISPLAYS;
+    /* How many were found beyond MAX_DISPLAYS, so the menu can say so. */
+    hidden = 0;
+
     /*
      * onChanged is called whenever the set of monitors or their values changes
      * under this class's own hand: a probe finishing, a re-detection finding
@@ -521,19 +534,8 @@ var DdcBacklight = class DdcBacklight {
      * BacklightControl keeps its own onReady, and there the difference does
      * earn its keep: whether the screen has a kernel backlight is exactly what
      * decides whether this class is ever asked to probe.
-     */
+    */
     constructor(onChanged, run) {
-        this.available = false;
-        this.percentage = null;
-        this.destroyed = false;
-        this.monitors = [];
-        /* Part of the view state beside `hidden`: the presenter must describe
-         * the cap this backend actually applied, not import its implementation
-         * constant and hope an injected backend made the same choice. */
-        this.limit = MAX_DISPLAYS;
-        /* How many were found beyond MAX_DISPLAYS, so the menu can say so. */
-        this.hidden = 0;
-
         this._onChanged = onChanged || function () {};
         /* Timeout suppression belongs to this control and dies with it. It is
          * also bounded by _commandFailureKey's operation/display vocabulary. */
@@ -802,7 +804,9 @@ var DdcBacklight = class DdcBacklight {
             return true;
         }
 
-        let signature = Array.from(ids).sort().join("\u0000");
+        let signature = Array.from(ids)
+            .sort((a, b) => a < b ? -1 : 1)
+            .join("\u0000");
         if (signature === this._missingSignature)
             this._missingConfirmations++;
         else {

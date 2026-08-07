@@ -400,8 +400,8 @@ class NoteRow extends PopupMenu.PopupBaseMenuItem {
         this.actor.set_accessible_name(text || "");
     }
 
-    setText(text) {
-        text = text || "";
+    setText(value) {
+        let text = value || "";
         this._label.set_text(text);
         this.tooltip.set_text(text);
         this.actor.set_accessible_name(text);
@@ -1043,7 +1043,7 @@ class Column {
      */
     group(title, options) {
         let heading = headingItem(title);
-        if (options && options.spaced)
+        if (options?.spaced)
             heading.actor.add_style_class_name("powertoys-group-spaced");
         this._section.addMenuItem(heading);
         let section = new PopupMenu.PopupMenuSection();
@@ -2053,7 +2053,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     _syncLidState() {
-        let closed = !!(this._upower && this._upower.lidIsClosed);
+        let closed = !!this._upower?.lidIsClosed;
         if (closed === this._lidClosed)
             return;
         this._lidClosed = closed;
@@ -2442,8 +2442,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
             cpuReady = true;
             finish();
         }
-        if (this.menu && this.menu.isOpen && this._chargeControl &&
-                typeof this._chargeControl.sample === "function") {
+        if (this.menu?.isOpen &&
+                typeof this._chargeControl?.sample === "function") {
             this._chargeControl.sample(() => {
                 chargeReady = true;
                 finish();
@@ -2559,9 +2559,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
         let available = !!this._chargeControl && this._chargeControl.available;
         if (!available)
             return { available: available, limit: null, state: null, divided: false };
-        if (!this.menu || !this.menu.isOpen)
+        if (!this.menu?.isOpen)
             return { available: available, limit: null, state: null, divided: false };
-        return Object.assign({ available: true }, this._chargeControl.reading());
+        return { available: true, ...this._chargeControl.reading() };
     }
 
     /* Governor, energy preference, boost and current frequency are useful
@@ -2569,10 +2569,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * reading, but these live sysfs nodes are sampled only for a consumer that
      * can display them. */
     _cpuSampleWanted() {
-        let menuUsesCpu = this.menu && this.menu.isOpen &&
+        let menuUsesCpu = this.menu?.isOpen &&
                           (this.showCpu || this.showSensors);
         return !!menuUsesCpu ||
-               !!(this._panel && this._panel.tooltipNeedsFreshData);
+               !!this._panel?.tooltipNeedsFreshData;
     }
 
     /*
@@ -2589,7 +2589,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * while that list can actually be seen. Primary and explicitly
          * hinted sensors still feed the panel, alerts and power selection. */
         let all = this.showSensors && this.showAllSensors &&
-                  this.menu && this.menu.isOpen;
+                  this.menu?.isOpen;
         let hint = (this.cpuSensorHint || "").trim();
         return function (sensor) {
             if (all || Sensors.isPrimaryKind(sensor.kind))
@@ -2863,7 +2863,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * well. The menu is brought up to date when it opens, which is the
          * only moment its contents can be looked at.
          */
-        if (this._menuPresenter && this.menu && this.menu.isOpen)
+        if (this._menuPresenter && this.menu?.isOpen)
             present("menu presentation", () =>
                 this._menuPresenter.update(data, this._menuOptions()));
 
@@ -3015,7 +3015,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * pkexec is asked for.
      */
     _closeMenuForAuthentication() {
-        if (this.menu && this.menu.isOpen)
+        if (this.menu?.isOpen)
             this.menu.close(false);
     }
 
@@ -3037,8 +3037,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._cpu.refresh();
             this._update();
             if (!outcome.applied && !outcome.cancelled)
-                outcome = Object.assign({}, outcome,
-                                        { error: this._helperErrorMessage(outcome) });
+                outcome = { ...outcome, error: this._helperErrorMessage(outcome) };
             onDone(outcome);
         });
     }
@@ -3048,7 +3047,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * these messages can be translated without coupling the catalogue to a
      * shell, driver or path. */
     _helperErrorMessage(outcome) {
-        switch (outcome && outcome.code) {
+        switch (outcome?.code) {
         case "invalid-invocation":
         case "invalid-value":
             return _("The requested value is not valid for this control.");
@@ -3075,7 +3074,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     _reportHelperWarning(outcome) {
-        if (!outcome || outcome.warningCode !== "stale-system-helper")
+        if (outcome?.warningCode !== "stale-system-helper")
             return;
         this._notifications.error(
             _("Power Toys"),
@@ -3085,7 +3084,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
     /* Gio prefixes a remote error with the D-Bus error name, which means
      * nothing to the person reading the notification. */
     _notifyProfileError(name, error) {
-        let detail = error && error.message ? error.message : String(error);
+        let detail = error?.message ? error.message : String(error);
         detail = detail.replace(/^GDBus\.Error:[^\s:]+:\s*/, "").trim();
         let values = { profile: Format.profileLabel(name), detail: detail };
         let message = detail ?
@@ -3109,7 +3108,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         if (state.source !== this._profileBackend ||
                 state.generation !== this._profileBackendGeneration)
             return null;
-        if (state.source === this._platformProfiles && this._helper && this._helper.busy)
+        if (state.source === this._platformProfiles && this._helper?.busy)
             return null;
         if (!Reading.profileCanChange(this._latest, this.enablePrivilegedControls))
             return null;

@@ -43,22 +43,22 @@ function profileWriteError(outcome) {
 }
 
 function _interfaceXml(name) {
-    return '<node>\
-<interface name="' + name + '">\
-    <method name="HoldProfile">\
-        <arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="s" direction="in"/>\
-        <arg type="u" direction="out"/>\
-    </method>\
-    <method name="ReleaseProfile"><arg type="u" direction="in"/></method>\
-    <property name="ActiveProfile" type="s" access="readwrite"/>\
-    <property name="PerformanceDegraded" type="s" access="read"/>\
-    <property name="PerformanceInhibited" type="s" access="read"/>\
-    <property name="Profiles" type="aa{sv}" access="read"/>\
-    <property name="ActiveProfileHolds" type="aa{sv}" access="read"/>\
-    <property name="Actions" type="as" access="read"/>\
-    <property name="Version" type="s" access="read"/>\
-</interface>\
-</node>';
+    return '<node>' +
+        '<interface name="' + name + '">' +
+            '<method name="HoldProfile">' +
+                '<arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="s" direction="in"/>' +
+                '<arg type="u" direction="out"/>' +
+            '</method>' +
+            '<method name="ReleaseProfile"><arg type="u" direction="in"/></method>' +
+            '<property name="ActiveProfile" type="s" access="readwrite"/>' +
+            '<property name="PerformanceDegraded" type="s" access="read"/>' +
+            '<property name="PerformanceInhibited" type="s" access="read"/>' +
+            '<property name="Profiles" type="aa{sv}" access="read"/>' +
+            '<property name="ActiveProfileHolds" type="aa{sv}" access="read"/>' +
+            '<property name="Actions" type="as" access="read"/>' +
+            '<property name="Version" type="s" access="read"/>' +
+        '</interface>' +
+        '</node>';
 }
 
 /*
@@ -194,8 +194,8 @@ function systemBus(gio) {
          */
         proxy: function (backend, onDone, cancellable) {
             let wrapper = gio.DBusProxy.makeProxyWrapper(_interfaceXml(backend.name));
-            new wrapper(gio.DBus.system, backend.name, backend.path,
-                        (proxy, error) => onDone(proxy, error), cancellable || null);
+            return new wrapper(gio.DBus.system, backend.name, backend.path,
+                               (proxy, error) => onDone(proxy, error), cancellable || null);
         },
         watch: function (name, onAppeared, onVanished) {
             return gio.bus_watch_name(gio.BusType.SYSTEM, name,
@@ -350,7 +350,7 @@ var PowerProfilesClient = class PowerProfilesClient {
     _connect() {
         if (this.destroyed || this._proxy)
             return;
-        if (this._ownerAware && this._ownerStates.some(state => state === null))
+        if (this._ownerAware && this._ownerStates.includes(null))
             return;
         if (this._connecting) {
             /* Name watches are edges, not a state that will be repeated. If
@@ -419,7 +419,7 @@ var PowerProfilesClient = class PowerProfilesClient {
                 /* An absent or unusable candidate is not a reason to stop
                  * looking at the other name. Only a watcher-confirmed owner
                  * makes that failed candidate a diagnostic incident. */
-                let reason = error || null;
+                let reason = error;
                 let names = [];
                 if (!reason && !proxy)
                     reason = new Error("proxy construction returned no proxy");
@@ -479,7 +479,7 @@ var PowerProfilesClient = class PowerProfilesClient {
         this._connectCall = null;
         this._connecting = false;
         this._connectPending = false;
-        if (operation && operation.cancellable) {
+        if (operation?.cancellable) {
             try {
                 operation.cancellable.cancel();
             } catch (e) {
@@ -537,7 +537,7 @@ var PowerProfilesClient = class PowerProfilesClient {
         let queued = this._setQueued;
         this._setCall = null;
         this._setQueued = null;
-        if (current && current.cancellable) {
+        if (current?.cancellable) {
             try {
                 current.cancellable.cancel();
             } catch (e) {
@@ -605,7 +605,7 @@ var PowerProfilesClient = class PowerProfilesClient {
      * of them, and undefined is not a profile name - it is a value's insides,
      * and it reaches the menu. */
     get active() {
-        return (this._proxy && this._proxy.ActiveProfile) || null;
+        return this._proxy?.ActiveProfile || null;
     }
 
     /* Non-empty when the firmware is throttling, e.g. "lap-detected". */

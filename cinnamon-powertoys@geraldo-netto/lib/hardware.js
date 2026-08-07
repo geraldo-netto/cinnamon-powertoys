@@ -51,7 +51,7 @@ function forget() {
     _pciNames = {};
     /* An asynchronous inventory begun before forget() must not restore it. */
     _pciInventoryGeneration++;
-    if (_pnpLoad && _pnpLoad.active)
+    if (_pnpLoad?.active)
         _pnpLoad.cancel();
     _pnpLoad = null;
     _pnpWaiters = [];
@@ -71,7 +71,7 @@ function _firstReadable(paths) {
 /* ---------------------------------------------------------------- processor */
 
 function _cpuInfoValue(text, key) {
-    let match = new RegExp("^" + key + "\\s*:\\s*(.+)$", "mi").exec(text);
+    let match = new RegExp(String.raw`^${key}\s*:\s*(.+)$`, "mi").exec(text);
     return match ? match[1].trim() : null;
 }
 
@@ -94,13 +94,25 @@ function tidyCpuName(raw) {
         return null;
     let name = String(raw)
         .replace(/\((?:R|TM|C)\)/gi, "")
-        .replace(/\s+@.*$/, "")
-        .replace(/\s+with\s+.*\bGraphics\b.*$/i, "")
-        .replace(/\s+\d+-Core\s+Processor\b.*$/i, "")
-        .replace(/\s+Processor\s*$/i, "")
-        .replace(/\s+CPU\s*$/i, "")
         .replace(/\s+/g, " ")
         .trim();
+
+    let clock = /\s+@/.exec(name);
+    if (clock)
+        name = name.slice(0, clock.index);
+
+    let graphics = /\s+with\s+/i.exec(name);
+    if (graphics && /\bGraphics\b/i.test(name.slice(graphics.index)))
+        name = name.slice(0, graphics.index);
+
+    let cores = /\s+\d+-Core\s+Processor\b/i.exec(name);
+    if (cores)
+        name = name.slice(0, cores.index);
+
+    for (let suffix of [" processor", " cpu"]) {
+        if (name.toLowerCase().endsWith(suffix))
+            name = name.slice(0, -suffix.length).trim();
+    }
     return name || null;
 }
 
@@ -191,7 +203,7 @@ function _pciIdentity(ids) {
 
 function _cachedPciName(address, ids) {
     let cached = _pciNames[address];
-    if (cached && cached.identity === _pciIdentity(ids))
+    if (cached?.identity === _pciIdentity(ids))
         return cached.name;
     delete _pciNames[address];
     return null;
@@ -253,9 +265,10 @@ function _blockName(block) {
 function vendorShortName(name) {
     if (!name)
         return "";
-    let bracket = /\[([^\]]+)\]/.exec(name);
-    if (bracket)
-        return bracket[1].split("/")[0].trim();
+    let bracketStart = name.indexOf("[");
+    let bracketEnd = name.indexOf("]", bracketStart + 1);
+    if (bracketStart >= 0 && bracketEnd > bracketStart + 1)
+        return name.slice(bracketStart + 1, bracketEnd).split("/")[0].trim();
     return name.split(/[\s,]+/)[0];
 }
 
@@ -273,9 +286,11 @@ function vendorShortName(name) {
 function deviceDisplayName(deviceName, vendorName) {
     if (!deviceName)
         return null;
-    let bracket = /\[([^\]]+)\]\s*$/.exec(deviceName);
-    if (bracket)
-        return bracket[1].trim();
+    let bracketStart = deviceName.indexOf("[");
+    let bracketEnd = deviceName.indexOf("]", bracketStart + 1);
+    if (bracketStart >= 0 && bracketEnd > bracketStart + 1 &&
+        deviceName.slice(bracketEnd + 1).trim() === "")
+        return deviceName.slice(bracketStart + 1, bracketEnd).trim();
     let vendor = vendorShortName(vendorName);
     return vendor ? vendor + " " + deviceName : deviceName;
 }
@@ -293,7 +308,7 @@ function _deviceBlock(block, device) {
 }
 
 function _subsystemName(deviceBlock, subVendor, subDevice) {
-    let match = new RegExp("^\\t\\t" + subVendor + " " + subDevice + "  (.*)$", "m")
+    let match = new RegExp(String.raw`^\t\t${subVendor} ${subDevice}  (.*)$`, "m")
         .exec(deviceBlock);
     return match ? match[1].trim() : null;
 }
@@ -383,69 +398,70 @@ function pciDeviceNames(addresses) {
  * the main loop. pci.ids is the expensive member of that batch; loading it
  * asynchronously is what keeps a first sensor sweep from pausing the panel.
  */
+function _machineNameAnswer(names) {
+    return {
+        cpuName: _cpuName === undefined ? null : _cpuName,
+        pciNames: names,
+    };
+}
+
+function _machineNameCandidates(inventory, values, names) {
+    let wanted = [];
+    let current = inventory.generation === _pciInventoryGeneration;
+    for (let address of inventory.addresses) {
+        let ids = _pciIdsFrom(address, path => values[path] || null);
+        if (!ids) {
+            if (current)
+                delete _pciNames[address];
+            continue;
+        }
+        let cached = current ? _cachedPciName(address, ids) : null;
+        if (cached)
+            names[address] = cached;
+        else
+            wanted.push({ address: address, ids: ids });
+    }
+    return wanted;
+}
+
+function _resolveMachineNames(tables, wanted, inventory, names) {
+    let table = PCI_IDS_PATHS.map(path => tables[path]).find(text => !!text);
+    if (!table)
+        return;
+    for (let item of wanted) {
+        let name = _resolve(table, item.ids);
+        if (!name)
+            continue;
+        if (inventory.generation === _pciInventoryGeneration)
+            _rememberPciName(item.address, item.ids, name);
+        names[item.address] = name;
+    }
+}
+
 function machineNamesAsync(addresses, onDone, ioOptions) {
     let names = {};
     let inventory = _beginPciInventory(addresses);
-    let unique = inventory.addresses;
-
     let paths = [];
     if (_cpuName === undefined)
         paths.push(CPUINFO);
-    for (let address of unique) {
+    for (let address of inventory.addresses) {
         let base = PCI_DEVICE_DIR + "/" + address;
         paths.push(base + "/vendor", base + "/device",
                    base + "/subsystem_vendor", base + "/subsystem_device");
     }
 
     IO.readStringsAsync(paths, values => {
-        if (_cpuName === undefined) {
-            let text = values[CPUINFO];
-            if (text !== null && text !== undefined)
-                _cpuName = _cpuNameFrom(text);
-        }
+        if (_cpuName === undefined && values[CPUINFO] !== null && values[CPUINFO] !== undefined)
+            _cpuName = _cpuNameFrom(values[CPUINFO]);
 
-        let wanted = [];
-        let current = inventory.generation === _pciInventoryGeneration;
-        for (let address of unique) {
-            let ids = _pciIdsFrom(address, path => values[path] || null);
-            if (!ids) {
-                if (current)
-                    delete _pciNames[address];
-                continue;
-            }
-            let cached = current ? _cachedPciName(address, ids) : null;
-            if (cached)
-                names[address] = cached;
-            else
-                wanted.push({ address: address, ids: ids });
-        }
-
+        let wanted = _machineNameCandidates(inventory, values, names);
         if (wanted.length === 0) {
-            onDone({ cpuName: _cpuName === undefined ? null : _cpuName,
-                     pciNames: names });
+            onDone(_machineNameAnswer(names));
             return;
         }
-
         IO.readStringsAsync(PCI_IDS_PATHS, tables => {
-            let table = null;
-            for (let path of PCI_IDS_PATHS) {
-                if (tables[path]) {
-                    table = tables[path];
-                    break;
-                }
-            }
-            if (table) {
-                for (let item of wanted) {
-                    let name = _resolve(table, item.ids);
-                    if (!name)
-                        continue;
-                    if (inventory.generation === _pciInventoryGeneration)
-                        _rememberPciName(item.address, item.ids, name);
-                    names[item.address] = name;
-                }
-            }
-            onDone({ cpuName: _cpuName === undefined ? null : _cpuName,
-                     pciNames: names });
+            _resolveMachineNames(tables, wanted, inventory, names);
+            onDone(_machineNameAnswer(names));
         }, PCI_IDS_PATHS.length, null, ioOptions);
     }, undefined, null, ioOptions);
 }
@@ -494,9 +510,11 @@ function _pnpTableFrom(values) {
             continue;
         readable = true;
         for (let line of text.split("\n")) {
-            let match = /^([A-Za-z]{3})\s+(.+)$/.exec(line);
-            if (match)
-                names[match[1].toUpperCase()] = match[2].trim();
+            let code = line.slice(0, 3);
+            let description = line.slice(3);
+            if (/^[A-Za-z]{3}$/.test(code) && /^\s/.test(description) &&
+                description.trim() !== "")
+                names[code.toUpperCase()] = description.trim();
         }
         if (Object.keys(names).length > 0)
             break;
@@ -530,7 +548,7 @@ function loadPnpNamesAsync(onDone, ioOptions) {
             waiter(answer.readable);
     }, PNP_IDS_PATHS.length, null, ioOptions);
     if (_pnpLoad === marker)
-        _pnpLoad = operation && operation.active ? operation : null;
+        _pnpLoad = operation?.active ? operation : null;
     return operation;
 }
 

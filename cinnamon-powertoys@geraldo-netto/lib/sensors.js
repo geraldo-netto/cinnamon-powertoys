@@ -56,7 +56,7 @@ function _kind(name) {
 
 function classifyChip(name) {
     for (let entry of KINDS) {
-        if (entry.pattern && entry.pattern.test(name))
+        if (entry.pattern?.test(name))
             return entry.kind;
     }
     return "other";
@@ -92,8 +92,8 @@ function sensorMatches(sensor, fragment) {
     if (!fragment)
         return false;
     let wanted = fragment.toLowerCase();
-    return (sensor.rawLabel || "").toLowerCase().indexOf(wanted) >= 0 ||
-           (sensor.chip || "").toLowerCase().indexOf(wanted) >= 0;
+    return (sensor.rawLabel || "").toLowerCase().includes(wanted) ||
+           (sensor.chip || "").toLowerCase().includes(wanted);
 }
 
 /*
@@ -268,7 +268,7 @@ function _displayName(entry) {
  * longer; they are already told apart by being in RPM and in watts.
  */
 function _finalizeNames(entries) {
-    let named = entries.map(entry => Object.assign({}, entry, {
+    let named = entries.map(entry => ({ ...entry,
         display: _displayName(entry),
         short: _shortName(entry),
     }));
@@ -282,7 +282,7 @@ function _finalizeNames(entries) {
     return named.map(function (entry) {
         let key = entry.measure + "\u0000" + entry.display;
         if (counts[key] > 1 && entry.identity)
-            return Object.assign({}, entry, { display: entry.display + " (" + entry.identity + ")" });
+            return { ...entry, display: entry.display + " (" + entry.identity + ")" };
         return entry;
     });
 }
@@ -317,7 +317,7 @@ function _groupName(entry, pciNames, cpuName) {
  * block device, the thermal zone.
  */
 function _nameGroupsFrom(groups, cpuName, pciNames) {
-    let named = groups.map(group => Object.assign({}, group, {
+    let named = groups.map(group => ({ ...group,
         label: _groupName(group, pciNames, cpuName),
     }));
 
@@ -454,9 +454,8 @@ function _directoryInventoryAsync(onDone, ioOptions) {
     }, ioOptions);
 }
 
-function _metadataPaths(directories) {
+function _hwmonMetadataPaths(list) {
     let paths = [];
-    let list = path => directories[path] || [];
     for (let entry of list(HWMON_DIR)) {
         let base = HWMON_DIR + "/" + entry;
         paths.push(base + "/name");
@@ -475,6 +474,11 @@ function _metadataPaths(directories) {
             }
         }
     }
+    return paths;
+}
+
+function _thermalMetadataPaths(list) {
+    let paths = [];
     for (let entry of list(THERMAL_DIR)) {
         if (!/^thermal_zone\d+$/.test(entry))
             continue;
@@ -487,6 +491,11 @@ function _metadataPaths(directories) {
                            base + "/trip_point_" + match[1] + "_temp");
         }
     }
+    return paths;
+}
+
+function _powercapMetadataPaths(list) {
+    let paths = [];
     for (let entry of list(POWERCAP_DIR)) {
         if (!/^(intel-rapl|amd-rapl|dtpm)/.test(entry))
             continue;
@@ -494,6 +503,13 @@ function _metadataPaths(directories) {
         paths.push(base + "/energy_uj", base + "/power_uw", base + "/name",
                    base + "/max_energy_range_uj");
     }
+    return paths;
+}
+
+function _metadataPaths(directories) {
+    let list = path => directories[path] || [];
+    let paths = _hwmonMetadataPaths(list)
+        .concat(_thermalMetadataPaths(list), _powercapMetadataPaths(list));
     return Array.from(new Set(paths));
 }
 
@@ -506,122 +522,139 @@ function _linkPaths(directories) {
     return paths;
 }
 
-function _scanSensors(directories, readString, readLink) {
-    let found = { temperatures: [], fans: [], powerMeters: [] };
-    let hwmonTemperatureDevices = new Set();
-    let groups = [];
-    let list = path => directories[path] || [];
-    let link = readLink || IO.readLink;
-    let readNumber = path => IO.toNumber(readString(path));
-    let exists = path => {
-        let parent = GLib.path_get_dirname(path);
-        return list(parent).indexOf(GLib.path_get_basename(path)) >= 0;
+function _hwmonNodeSensor(node, context) {
+    for (let nodeKind of NODE_KINDS) {
+        let match = node.match(nodeKind.pattern);
+        if (!match)
+            continue;
+        let index = match[1];
+        if (nodeKind.skip?.(context.base, index, match, context.exists))
+            return null;
+
+        let sensor = {
+            id: "hwmon:" + context.entry + ":" + nodeKind.prefix + index,
+            measure: nodeKind.measure,
+            source: "hwmon",
+            chip: context.chip,
+            kind: context.kind,
+            group: context.group,
+            index: index,
+            identity: context.identity,
+            deviceIdentity: context.device,
+            rawLabel: _label(context.base, nodeKind.prefix, index, context.readString),
+            path: context.base + "/" + node,
+        };
+        if (nodeKind.prefix === "power" && match[2] === "average") {
+            let input = context.base + "/power" + index + "_input";
+            sensor.fallbackPath = context.exists(input) ? input : null;
+        }
+        let faultPath = context.base + "/" + nodeKind.prefix + index + "_fault";
+        sensor.faultPath = nodeKind.fault && context.exists(faultPath) ? faultPath : null;
+        if (nodeKind.extra)
+            Object.assign(sensor, nodeKind.extra(context.base, index, context.readNumber));
+        return { list: nodeKind.list, sensor: sensor };
+    }
+    return null;
+}
+
+function _scanHwmonEntry(entry, state) {
+    let base = HWMON_DIR + "/" + entry;
+    let chip = state.readString(base + "/name") || entry;
+    let kind = classifyChip(chip);
+    let identity = _hwmonIdentity(base, state.list, state.link);
+    let device = deviceIdentity(base, state.link);
+    let group = "hwmon:" + entry;
+    state.groups.push({
+        key: group,
+        chip: chip,
+        kind: kind,
+        identity: identity,
+        pciAddress: Hardware.pciAddressIn(state.link(base + "/device")),
+    });
+
+    let ofThisChip = { temperatures: [], fans: [], powerMeters: [] };
+    let context = {
+        entry: entry, base: base, chip: chip, kind: kind, group: group,
+        identity: identity, device: device, exists: state.exists,
+        readString: state.readString, readNumber: state.readNumber,
     };
-
-    for (let entry of list(HWMON_DIR)) {
-        let base = HWMON_DIR + "/" + entry;
-        let chip = readString(base + "/name") || entry;
-        let kind = classifyChip(chip);
-        let identity = _hwmonIdentity(base, list, link);
-        let device = deviceIdentity(base, link);
-        let pciAddress = Hardware.pciAddressIn(link(base + "/device"));
-        let group = "hwmon:" + entry;
-        groups.push({ key: group, chip: chip, kind: kind, identity: identity,
-                      pciAddress: pciAddress });
-
-        let ofThisChip = { temperatures: [], fans: [], powerMeters: [] };
-
-        for (let node of list(base)) {
-            for (let nodeKind of NODE_KINDS) {
-                let match = node.match(nodeKind.pattern);
-                if (!match)
-                    continue;
-
-                let index = match[1];
-                if (nodeKind.skip && nodeKind.skip(base, index, match, exists))
-                    break;
-
-                let sensor = {
-                    id: "hwmon:" + entry + ":" + nodeKind.prefix + index,
-                    measure: nodeKind.measure,
-                    source: "hwmon",
-                    chip: chip,
-                    kind: kind,
-                    group: group,
-                    index: index,
-                    identity: identity,
-                    deviceIdentity: device,
-                    rawLabel: _label(base, nodeKind.prefix, index, readString),
-                    path: base + "/" + node,
-                };
-                if (nodeKind.prefix === "power" && match[2] === "average") {
-                    let input = base + "/power" + index + "_input";
-                    sensor.fallbackPath = exists(input) ? input : null;
-                }
-                let faultPath = base + "/" + nodeKind.prefix + index + "_fault";
-                sensor.faultPath = nodeKind.fault && exists(faultPath) ? faultPath : null;
-                if (nodeKind.extra)
-                    Object.assign(sensor, nodeKind.extra(base, index, readNumber));
-
-                ofThisChip[nodeKind.list].push(sensor);
-                break;
-            }
-        }
-
-        if (kind === "gpu") {
-            let total = gpuDeviceTotal(ofThisChip.powerMeters);
-            for (let meter of ofThisChip.powerMeters)
-                meter.deviceTotal = meter === total;
-        }
-
-        /* How many of its own kind this chip has, which decides whether an
-         * unlabelled sensor needs its index in the name. */
-        for (let list in ofThisChip) {
-            for (let sensor of ofThisChip[list])
-                sensor.siblings = ofThisChip[list].length;
-            found[list] = found[list].concat(ofThisChip[list]);
-        }
-        if (device && ofThisChip.temperatures.length > 0)
-            hwmonTemperatureDevices.add(device);
+    for (let node of state.list(base)) {
+        let found = _hwmonNodeSensor(node, context);
+        if (found)
+            ofThisChip[found.list].push(found.sensor);
     }
 
-    for (let entry of list(THERMAL_DIR)) {
-        if (!/^thermal_zone\d+$/.test(entry))
-            continue;
-        let base = THERMAL_DIR + "/" + entry;
-        let type = readString(base + "/type");
-        let device = deviceIdentity(base, link);
-        if (!type)
-            continue;
-        groups.push({ key: "thermal:" + entry, chip: type, kind: classifyChip(type),
-                      identity: entry, pciAddress: null });
-        found.temperatures.push({
-            id: "thermal:" + entry,
-            measure: "temperature",
-            source: "thermal",
-            chip: type,
-            kind: classifyChip(type),
-            group: "thermal:" + entry,
-            index: "1",
-            siblings: 1,
-            identity: entry,
-            deviceIdentity: device,
-            fallbackForDevice: device && hwmonTemperatureDevices.has(device)
-                ? device : null,
-            rawLabel: null,
-            path: base + "/temp",
-            critical: _criticalTripPoint(base, list, readString),
-        });
+    if (kind === "gpu") {
+        let total = gpuDeviceTotal(ofThisChip.powerMeters);
+        for (let meter of ofThisChip.powerMeters)
+            meter.deviceTotal = meter === total;
     }
+    /* How many of its own kind this chip has, which decides whether an
+     * unlabelled sensor needs its index in the name. */
+    for (let listName in ofThisChip) {
+        for (let sensor of ofThisChip[listName])
+            sensor.siblings = ofThisChip[listName].length;
+        state.found[listName] = state.found[listName].concat(ofThisChip[listName]);
+    }
+    if (device && ofThisChip.temperatures.length > 0)
+        state.hwmonTemperatureDevices.add(device);
+}
 
-    return { found: found, groups: groups };
+function _scanThermalEntry(entry, state) {
+    if (!/^thermal_zone\d+$/.test(entry))
+        return;
+    let base = THERMAL_DIR + "/" + entry;
+    let type = state.readString(base + "/type");
+    if (!type)
+        return;
+    let device = deviceIdentity(base, state.link);
+    state.groups.push({ key: "thermal:" + entry, chip: type, kind: classifyChip(type),
+                        identity: entry, pciAddress: null });
+    state.found.temperatures.push({
+        id: "thermal:" + entry,
+        measure: "temperature",
+        source: "thermal",
+        chip: type,
+        kind: classifyChip(type),
+        group: "thermal:" + entry,
+        index: "1",
+        siblings: 1,
+        identity: entry,
+        deviceIdentity: device,
+        fallbackForDevice: device && state.hwmonTemperatureDevices.has(device)
+            ? device : null,
+        rawLabel: null,
+        path: base + "/temp",
+        critical: _criticalTripPoint(base, state.list, state.readString),
+    });
+}
+
+function _scanSensors(directories, readString, readLink) {
+    let state = {
+        found: { temperatures: [], fans: [], powerMeters: [] },
+        hwmonTemperatureDevices: new Set(),
+        groups: [],
+        list: path => directories[path] || [],
+        link: readLink || IO.readLink,
+        readString: readString,
+        readNumber: path => IO.toNumber(readString(path)),
+    };
+    state.exists = path => {
+        let parent = GLib.path_get_dirname(path);
+        return state.list(parent).includes(GLib.path_get_basename(path));
+    };
+    for (let entry of state.list(HWMON_DIR))
+        _scanHwmonEntry(entry, state);
+    for (let entry of state.list(THERMAL_DIR))
+        _scanThermalEntry(entry, state);
+    return { found: state.found, groups: state.groups };
 }
 
 function _finishSensors(scanned, groupLabels) {
     let found = scanned.found;
     /* One pass over everything, then split back out by what it measures. */
     let named = _finalizeNames(found.temperatures.concat(found.fans, found.powerMeters))
-        .map(entry => Object.assign({}, entry, { groupLabel: groupLabels[entry.group] || "" }));
+        .map(entry => ({ ...entry, groupLabel: groupLabels[entry.group] || "" }));
     return {
         temperatures: named.filter(entry => entry.measure === "temperature"),
         fans: named.filter(entry => entry.measure === "fan"),
@@ -704,7 +737,7 @@ function _energyCounters(entries, readString, canRead) {
         let energyPath = base + "/energy_uj";
         /* DTPM's native interface is an instantaneous power value. Prefer it
          * when present rather than exposing the same domain twice. */
-        if (/^dtpm/.test(entry) && readable(base + "/power_uw"))
+        if (entry.startsWith("dtpm") && readable(base + "/power_uw"))
             continue;
         if (!readable(energyPath))
             continue;
@@ -1375,31 +1408,28 @@ var SensorSet = class SensorSet {
         };
     }
 
+    _appendPaths(paths, sensors, keep, secondary) {
+        for (let sensor of sensors) {
+            if (!keep(sensor))
+                continue;
+            paths.push(sensor.path);
+            if (secondary && sensor[secondary])
+                paths.push(sensor[secondary]);
+        }
+    }
+
     /* Every node one reading touches, for whoever wants to load them first. */
     _paths(keep, lists) {
         let found = lists || this._lists();
         let paths = [];
         let temperatures = this._temperatureSelection(keep, found.temperatures);
-        for (let sensor of temperatures.primary.concat(temperatures.fallbacks)) {
-            paths.push(sensor.path);
-            if (sensor.faultPath)
-                paths.push(sensor.faultPath);
-        }
-        for (let sensor of found.fans)
-            if (keep(sensor)) {
-                paths.push(sensor.path);
-                if (sensor.faultPath)
-                    paths.push(sensor.faultPath);
-            }
+        this._appendPaths(paths, temperatures.primary.concat(temperatures.fallbacks),
+                          () => true, "faultPath");
+        this._appendPaths(paths, found.fans, keep, "faultPath");
         for (let meter of found.meters)
             if (keep(meter))
                 paths.push(meter.counter.path);
-        for (let sensor of found.powers)
-            if (keep(sensor)) {
-                paths.push(sensor.path);
-                if (sensor.fallbackPath)
-                    paths.push(sensor.fallbackPath);
-            }
+        this._appendPaths(paths, found.powers, keep, "fallbackPath");
         return paths;
     }
 

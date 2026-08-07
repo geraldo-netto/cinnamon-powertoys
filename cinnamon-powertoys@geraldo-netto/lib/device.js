@@ -19,7 +19,7 @@ const UPDeviceState = UPowerGlib.DeviceState;
 const UPDeviceKind = UPowerGlib.DeviceKind;
 
 function isSystemPowerDevice(device) {
-    return device && device.powerSupply === true &&
+    return device?.powerSupply === true &&
            (device.kind === UPDeviceKind.BATTERY || device.kind === UPDeviceKind.UPS);
 }
 

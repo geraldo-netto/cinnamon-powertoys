@@ -162,7 +162,7 @@ jobs:
           MAKEPOT_SHA256: 09f3ab35ad02e9ed3a164231fb12aaf64635a558b7bacfd9812f810177220486
         run: |
           sudo apt-get install --no-install-recommends -y python3-polib python3-tz
-          curl -fsSL -o makepot.py \
+          curl --proto '=https' --proto-redir '=https' -fsSL -o makepot.py \
             "https://raw.githubusercontent.com/linuxmint/cinnamon/$MAKEPOT_COMMIT/files/usr/bin/cinnamon-xlet-makepot"
           echo "$MAKEPOT_SHA256  makepot.py" | sha256sum -c -
           sudo install -m 0755 makepot.py /usr/local/bin/cinnamon-xlet-makepot

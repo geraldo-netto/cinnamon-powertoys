@@ -164,7 +164,13 @@ function parseObjects(objects) {
         if (device)
             devices.push(device);
     }
-    devices.sort((a, b) => (a.model < b.model ? -1 : a.model > b.model ? 1 : 0));
+    devices.sort((a, b) => {
+        if (a.model < b.model)
+            return -1;
+        if (a.model > b.model)
+            return 1;
+        return 0;
+    });
     return devices;
 }
 
@@ -193,18 +199,20 @@ systemNameWatcher.reportsInitialState = true;
  * BlueZ emits as devices come, go and change, so a poll costs nothing.
  */
 var BluezBatteries = class BluezBatteries {
-    constructor(onChanged, call, watchName, signalBus, timers) {
-        this.available = false;
-        this.destroyed = false;
-        this.devices = [];
+    available = false;
+    destroyed = false;
+    devices = [];
 
+    constructor(onChanged, call, watchName, signalBus, timers) {
         this._onChanged = onChanged || function () {};
         this._call = call || ((path, iface, method, onDone, cancellable) =>
             this._dbusCall(path, iface, method, onDone, cancellable));
         /* A custom call owns its own environment unless it supplies the
          * matching name watcher too. Production supplies neither. */
-        this._watchName = watchName === undefined
-            ? (call ? null : systemNameWatcher) : watchName;
+        if (watchName !== undefined)
+            this._watchName = watchName;
+        else
+            this._watchName = call ? null : systemNameWatcher;
         this._signalBus = signalBus || null;
         this._timers = timers || GLib;
         this._ownerWatch = null;
@@ -247,8 +255,7 @@ var BluezBatteries = class BluezBatteries {
         this._ownerPresent = null;
 
         let signalsReady = this._watch();
-        let ownerDriven = this._watchName &&
-                          this._watchName.reportsInitialState === true;
+        let ownerDriven = this._watchName?.reportsInitialState === true;
         let watching = this._watchOwner();
         /* Production gets its first read from the owner's initial appeared
          * callback. Injected transports and a failed watch retain the direct
@@ -324,39 +331,7 @@ var BluezBatteries = class BluezBatteries {
         }
         let operation = { epoch: this._ownerEpoch, cancellable: cancellable };
         this._read = operation;
-        let finish = (objects, error) => {
-            if (this._read !== operation)
-                return;
-            this._read = null;
-            if (this.destroyed)
-                return;
-            let failed = false;
-            if (operation.epoch === this._ownerEpoch) {
-                let valid = objects && typeof objects === "object" &&
-                            !Array.isArray(objects);
-                this.available = !!valid;
-                this._objects = valid ? objects : {};
-                this._cacheReady = !!valid;
-                this._settle(valid ? parseObjects(this._objects) : []);
-                if (valid) {
-                    this._failures.recover("snapshot");
-                    this._cancelRetry();
-                } else {
-                    if (this._ownerPresent === true) {
-                        this._failures.report(
-                            "snapshot", "cannot read BlueZ object tree: " +
-                            (error || "invalid reply"));
-                    }
-                    failed = true;
-                }
-            }
-            let again = this._readAgain;
-            this._readAgain = false;
-            if (again)
-                this._refresh();
-            else if (failed)
-                this._scheduleRetry();
-        };
+        let finish = (objects, error) => this._finishRefresh(operation, objects, error);
         try {
             this._call("/", "org.freedesktop.DBus.ObjectManager",
                        "GetManagedObjects", finish, cancellable);
@@ -365,11 +340,47 @@ var BluezBatteries = class BluezBatteries {
         }
     }
 
+    _finishRefresh(operation, objects, error) {
+        if (this._read !== operation)
+            return;
+        this._read = null;
+        if (this.destroyed)
+            return;
+
+        let failed = operation.epoch === this._ownerEpoch &&
+            !this._adoptSnapshot(objects, error);
+        let again = this._readAgain;
+        this._readAgain = false;
+        if (again)
+            this._refresh();
+        else if (failed)
+            this._scheduleRetry();
+    }
+
+    _adoptSnapshot(objects, error) {
+        let valid = objects && typeof objects === "object" && !Array.isArray(objects);
+        this.available = !!valid;
+        this._objects = valid ? objects : {};
+        this._cacheReady = !!valid;
+        this._settle(valid ? parseObjects(this._objects) : []);
+        if (valid) {
+            this._failures.recover("snapshot");
+            this._cancelRetry();
+            return true;
+        }
+        if (this._ownerPresent === true) {
+            this._failures.report(
+                "snapshot", "cannot read BlueZ object tree: " +
+                (error || "invalid reply"));
+        }
+        return false;
+    }
+
     _cancelRead() {
         let operation = this._read;
         this._read = null;
         this._readAgain = false;
-        if (operation && operation.cancellable) {
+        if (operation?.cancellable) {
             try {
                 operation.cancellable.cancel();
             } catch (error) {
@@ -527,7 +538,7 @@ var BluezBatteries = class BluezBatteries {
         let path = args[0];
         let removed = args[1];
         if (typeof path !== "string" || !Array.isArray(removed) ||
-            !removed.some(iface => WATCHED_INTERFACES.indexOf(iface) >= 0))
+            !removed.some(iface => WATCHED_INTERFACES.includes(iface)))
             return;
         if (!this._cacheReady) {
             this._needSnapshot();
@@ -554,7 +565,7 @@ var BluezBatteries = class BluezBatteries {
         invalidated = Array.isArray(invalidated) ? invalidated : [];
         let relevant = watched.some(property =>
             Object.prototype.hasOwnProperty.call(changed, property) ||
-            invalidated.indexOf(property) >= 0);
+            invalidated.includes(property));
         if (!relevant)
             return;
         if (!this._cacheReady) {
@@ -562,7 +573,7 @@ var BluezBatteries = class BluezBatteries {
             return;
         }
         let interfaces = this._objects[path];
-        if (!interfaces || !interfaces[iface]) {
+        if (!interfaces?.[iface]) {
             this._needSnapshot();
             return;
         }
@@ -571,7 +582,7 @@ var BluezBatteries = class BluezBatteries {
         for (let property of watched) {
             if (Object.prototype.hasOwnProperty.call(changed, property))
                 properties[property] = changed[property];
-            if (invalidated.indexOf(property) >= 0)
+            if (invalidated.includes(property))
                 needsRepair = true;
         }
         this._settle(parseObjects(this._objects));

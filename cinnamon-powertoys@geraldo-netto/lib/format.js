@@ -181,7 +181,7 @@ function deviceKindName(kind) {
         case UPDeviceKind.BLUETOOTH_GENERIC: return _("Bluetooth device");
         default:
             try {
-                return capitalize(UPowerGlib.Device.kind_to_string(kind).replace(/-/g, " "));
+                return capitalize(UPowerGlib.Device.kind_to_string(kind).replaceAll("-", " "));
             } catch (e) {
                 return _("Device");
             }
@@ -453,9 +453,9 @@ function driverLabel(name, pstateMode) {
     if (!label)
         return name;
 
-    let impliedByName = /-epp$/.test(name);
+    let impliedByName = name.endsWith("-epp");
     let mode = !impliedByName && pstateMode ? PSTATE_MODES[pstateMode] : null;
-    if (mode && label.indexOf(mode) < 0) {
+    if (mode && !label.includes(mode)) {
         return Translate.interpolate(_("%{label}, %{mode} (%{driver})"), {
             label: label,
             mode: mode,
@@ -498,7 +498,7 @@ function energyPreferenceLabel(name) {
         return "";
     if (EPP_LABELS[name])
         return EPP_LABELS[name];
-    return capitalize(name.replace(/_/g, " "));
+    return capitalize(name.replaceAll("_", " "));
 }
 
 /*

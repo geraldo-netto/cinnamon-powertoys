@@ -86,7 +86,7 @@ function panelPowerText(data) {
  * an error too, so a change that is refused takes the panel back with it.
  */
 function shownProfile(data, options) {
-    return (options && options.pendingProfile) || data.profile.active;
+    return options?.pendingProfile || data.profile.active;
 }
 
 /*

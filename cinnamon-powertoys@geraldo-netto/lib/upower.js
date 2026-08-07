@@ -20,45 +20,45 @@ var DISPLAY_DEVICE_PATH = "/org/freedesktop/UPower/devices/DisplayDevice";
 var RETRY_INITIAL_MS = 500;
 var RETRY_MAX_MS = 8000;
 
-const MANAGER_XML = '<node>\
-<interface name="org.freedesktop.UPower">\
-    <method name="EnumerateDevices">\
-        <arg type="ao" direction="out" name="devices"/>\
-    </method>\
-    <method name="GetDisplayDevice">\
-        <arg type="o" direction="out" name="device"/>\
-    </method>\
-    <signal name="DeviceAdded"><arg type="o" name="device"/></signal>\
-    <signal name="DeviceRemoved"><arg type="o" name="device"/></signal>\
-    <property name="OnBattery" type="b" access="read"/>\
-    <property name="LidIsClosed" type="b" access="read"/>\
-    <property name="LidIsPresent" type="b" access="read"/>\
-</interface>\
-</node>';
+const MANAGER_XML = '<node>' +
+    '<interface name="org.freedesktop.UPower">' +
+        '<method name="EnumerateDevices">' +
+            '<arg type="ao" direction="out" name="devices"/>' +
+        '</method>' +
+        '<method name="GetDisplayDevice">' +
+            '<arg type="o" direction="out" name="device"/>' +
+        '</method>' +
+        '<signal name="DeviceAdded"><arg type="o" name="device"/></signal>' +
+        '<signal name="DeviceRemoved"><arg type="o" name="device"/></signal>' +
+        '<property name="OnBattery" type="b" access="read"/>' +
+        '<property name="LidIsClosed" type="b" access="read"/>' +
+        '<property name="LidIsPresent" type="b" access="read"/>' +
+    '</interface>' +
+    '</node>';
 
-const DEVICE_XML = '<node>\
-<interface name="org.freedesktop.UPower.Device">\
-    <property name="Vendor" type="s" access="read"/>\
-    <property name="Model" type="s" access="read"/>\
-    <property name="Type" type="u" access="read"/>\
-    <property name="PowerSupply" type="b" access="read"/>\
-    <property name="Online" type="b" access="read"/>\
-    <property name="Energy" type="d" access="read"/>\
-    <property name="EnergyFull" type="d" access="read"/>\
-    <property name="EnergyRate" type="d" access="read"/>\
-    <property name="Voltage" type="d" access="read"/>\
-    <property name="ChargeCycles" type="i" access="read"/>\
-    <property name="Temperature" type="d" access="read"/>\
-    <property name="TimeToEmpty" type="x" access="read"/>\
-    <property name="TimeToFull" type="x" access="read"/>\
-    <property name="Percentage" type="d" access="read"/>\
-    <property name="IsPresent" type="b" access="read"/>\
-    <property name="State" type="u" access="read"/>\
-    <property name="Capacity" type="d" access="read"/>\
-    <property name="BatteryLevel" type="u" access="read"/>\
-    <property name="IconName" type="s" access="read"/>\
-</interface>\
-</node>';
+const DEVICE_XML = '<node>' +
+    '<interface name="org.freedesktop.UPower.Device">' +
+        '<property name="Vendor" type="s" access="read"/>' +
+        '<property name="Model" type="s" access="read"/>' +
+        '<property name="Type" type="u" access="read"/>' +
+        '<property name="PowerSupply" type="b" access="read"/>' +
+        '<property name="Online" type="b" access="read"/>' +
+        '<property name="Energy" type="d" access="read"/>' +
+        '<property name="EnergyFull" type="d" access="read"/>' +
+        '<property name="EnergyRate" type="d" access="read"/>' +
+        '<property name="Voltage" type="d" access="read"/>' +
+        '<property name="ChargeCycles" type="i" access="read"/>' +
+        '<property name="Temperature" type="d" access="read"/>' +
+        '<property name="TimeToEmpty" type="x" access="read"/>' +
+        '<property name="TimeToFull" type="x" access="read"/>' +
+        '<property name="Percentage" type="d" access="read"/>' +
+        '<property name="IsPresent" type="b" access="read"/>' +
+        '<property name="State" type="u" access="read"/>' +
+        '<property name="Capacity" type="d" access="read"/>' +
+        '<property name="BatteryLevel" type="u" access="read"/>' +
+        '<property name="IconName" type="s" access="read"/>' +
+    '</interface>' +
+    '</node>';
 
 const ManagerProxy = Gio.DBusProxy.makeProxyWrapper(MANAGER_XML);
 const DeviceProxy = Gio.DBusProxy.makeProxyWrapper(DEVICE_XML);
@@ -206,14 +206,14 @@ function systemBus(gio, managerProxy, deviceProxy) {
             return new gio.Cancellable();
         },
         manager: function (onDone, cancellable) {
-            new managerProxy(gio.DBus.system, BUS_NAME, MANAGER_PATH,
-                             (proxy, error) => onDone(proxy, error),
-                             cancellable || null);
+            return new managerProxy(gio.DBus.system, BUS_NAME, MANAGER_PATH,
+                                    (proxy, error) => onDone(proxy, error),
+                                    cancellable || null);
         },
         device: function (path, onDone, cancellable) {
-            new deviceProxy(gio.DBus.system, BUS_NAME, path,
-                            (proxy, error) => onDone(proxy, error),
-                            cancellable || null);
+            return new deviceProxy(gio.DBus.system, BUS_NAME, path,
+                                   (proxy, error) => onDone(proxy, error),
+                                   cancellable || null);
         },
     };
 }
@@ -327,6 +327,33 @@ var UPowerMonitor = class UPowerMonitor {
         }
         this._failures.recover("manager");
 
+        let signals = this._connectManagerSignals(proxy, generation);
+        if (!signals) {
+            this._settleReady();
+            this._scheduleRetry();
+            return;
+        }
+        this._failures.recover("manager-signals");
+
+        /* Publish only the fully wired proxy. _disconnectManager can now
+         * always tear down every handler belonging to a visible manager. */
+        this._manager = proxy;
+        this._busSignalIds = signals.bus;
+        this._propSignalId = signals.properties;
+        this.managerAvailable = true;
+        this.available = false;
+        let initialized = this._managerInitialization(generation);
+        this._connectDisplay(generation, initialized);
+        let enumerated = (result, error) =>
+            this._onEnumerated(result, error, generation, initialized);
+        try {
+            proxy.EnumerateDevicesRemote(enumerated);
+        } catch (error) {
+            enumerated(null, error);
+        }
+    }
+
+    _connectManagerSignals(proxy, generation) {
         let busSignalIds = [];
         let propSignalId = 0;
         try {
@@ -345,38 +372,18 @@ var UPowerMonitor = class UPowerMonitor {
                     this._onChanged();
             });
         } catch (signalError) {
-            for (let id of busSignalIds) {
-                try {
-                    proxy.disconnectSignal(id);
-                } catch (e) {
-                    /* The failed setup may already have removed it. */
-                }
-            }
-            if (propSignalId) {
-                try {
-                    proxy.disconnect(propSignalId);
-                } catch (e) {
-                    /* Likewise. */
-                }
-            }
+            this._disconnectSignals(proxy, busSignalIds, propSignalId);
             this._failures.report(
                 "manager-signals", "cannot subscribe to UPower manager: " + signalError);
-            this._settleReady();
-            this._scheduleRetry();
-            return;
+            return null;
         }
-        this._failures.recover("manager-signals");
+        return { bus: busSignalIds, properties: propSignalId };
+    }
 
-        /* Publish only the fully wired proxy. _disconnectManager can now
-         * always tear down every handler belonging to a visible manager. */
-        this._manager = proxy;
-        this._busSignalIds = busSignalIds;
-        this._propSignalId = propSignalId;
-        this.managerAvailable = true;
-        this.available = false;
+    _managerInitialization(generation) {
         let initialPending = 2;
         let initialFailed = false;
-        let initialized = success => {
+        return success => {
             if (this.destroyed || generation !== this._generation)
                 return;
             if (!success)
@@ -388,7 +395,9 @@ var UPowerMonitor = class UPowerMonitor {
             else
                 this._cancelRetry();
         };
+    }
 
+    _connectDisplay(generation, initialized) {
         /*
          * The composite battery, which is the one the panel speaks for.
          *
@@ -428,55 +437,53 @@ var UPowerMonitor = class UPowerMonitor {
             this._onChanged();
             initialized(true);
         });
+    }
 
-        let enumerated = (result, enumError) => {
-            if (this.destroyed || generation !== this._generation)
-                return;
-            let paths = result && Array.isArray(result[0]) ? result[0] : null;
-            if (enumError || !paths) {
-                this.available = false;
-                this._failures.report(
-                    "enumerate",
-                    "EnumerateDevices failed: " +
-                    (enumError ? enumError.message : "invalid reply"));
-                this._settleReady();
-                this._onChanged();
-                initialized(false);
-                return;
-            }
-            this._failures.recover("enumerate");
-            let pending = paths.length;
-            if (pending === 0) {
-                this.available = true;
-                this._settleReady();
-                this._onChanged();
-                initialized(true);
-                return;
-            }
-            let failed = false;
-            for (let path of paths)
-                this._addDevice(path, success => {
-                    if (!success)
-                        failed = true;
-                    if (--pending > 0)
-                        return;
-                    /* The applet can be removed while the enumeration is still
-                     * being answered, and the last answer arriving is not a
-                     * reason to call back into a menu that has been taken
-                     * down. Every other guard in here says the same. */
-                    if (this.destroyed || generation !== this._generation)
-                        return;
-                    this.available = !failed;
-                    this._settleReady();
-                    this._onChanged();
-                    initialized(!failed);
-                }, generation);
-        };
-        try {
-            proxy.EnumerateDevicesRemote(enumerated);
-        } catch (error) {
-            enumerated(null, error);
+    _onEnumerated(result, error, generation, initialized) {
+        if (this.destroyed || generation !== this._generation)
+            return;
+        let paths = result && Array.isArray(result[0]) ? result[0] : null;
+        if (error || !paths) {
+            this.available = false;
+            this._failures.report(
+                "enumerate",
+                "EnumerateDevices failed: " +
+                (error ? error.message : "invalid reply"));
+            this._settleReady();
+            this._onChanged();
+            initialized(false);
+            return;
         }
+        this._failures.recover("enumerate");
+        this._adoptEnumeratedPaths(paths, generation, initialized);
+    }
+
+    _adoptEnumeratedPaths(paths, generation, initialized) {
+        let pending = paths.length;
+        if (pending === 0) {
+            this.available = true;
+            this._settleReady();
+            this._onChanged();
+            initialized(true);
+            return;
+        }
+        let failed = false;
+        for (let path of paths)
+            this._addDevice(path, success => {
+                if (!success)
+                    failed = true;
+                if (--pending > 0)
+                    return;
+                /* The applet can be removed while the enumeration is still
+                 * being answered, and the last answer arriving is not a reason
+                 * to call back into a menu that has been taken down. */
+                if (this.destroyed || generation !== this._generation)
+                    return;
+                this.available = !failed;
+                this._settleReady();
+                this._onChanged();
+                initialized(!failed);
+            }, generation);
     }
 
     _onNameAppeared() {
@@ -562,7 +569,7 @@ var UPowerMonitor = class UPowerMonitor {
         let operation = this._managerRequest;
         this._managerRequest = null;
         this._connecting = false;
-        if (operation && operation.cancellable) {
+        if (operation?.cancellable) {
             try {
                 operation.cancellable.cancel();
             } catch (e) {
@@ -802,28 +809,21 @@ var UPowerMonitor = class UPowerMonitor {
         };
     }
 
-    _disconnectManager() {
-        ++this._generation;
-        this._cancelManagerRequest();
-        this._cancelProxyRequests();
-        this.managerAvailable = false;
-        this.available = false;
-        if (this._manager) {
-            for (let id of this._busSignalIds) {
-                try {
-                    this._manager.disconnectSignal(id);
-                } catch (e) {
-                    /* already gone */
-                }
-            }
-            if (this._propSignalId) {
-                try {
-                    this._manager.disconnect(this._propSignalId);
-                } catch (e) {
-                    /* already gone */
-                }
-            }
+    _disconnectSignals(proxy, busSignalIds, propSignalId) {
+        for (let id of busSignalIds) {
+            try { proxy.disconnectSignal(id); } catch (e) { /* already gone */ }
         }
+        if (propSignalId) {
+            try { proxy.disconnect(propSignalId); } catch (e) { /* already gone */ }
+        }
+    }
+
+    _disconnectManagerHandlers() {
+        if (this._manager)
+            this._disconnectSignals(this._manager, this._busSignalIds, this._propSignalId);
+    }
+
+    _disconnectDisplayHandler() {
         if (this._display && this._displaySignalId) {
             try {
                 this._display.disconnect(this._displaySignalId);
@@ -831,6 +831,16 @@ var UPowerMonitor = class UPowerMonitor {
                 /* already gone */
             }
         }
+    }
+
+    _disconnectManager() {
+        ++this._generation;
+        this._cancelManagerRequest();
+        this._cancelProxyRequests();
+        this.managerAvailable = false;
+        this.available = false;
+        this._disconnectManagerHandlers();
+        this._disconnectDisplayHandler();
 
         this._busSignalIds = [];
         this._propSignalId = 0;

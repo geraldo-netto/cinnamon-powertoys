@@ -46,14 +46,14 @@ function _intersection(lists) {
         return [];
     return lists[0].filter((value, index) =>
         lists[0].indexOf(value) === index &&
-        lists.every(list => list.indexOf(value) >= 0));
+        lists.every(list => list.includes(value)));
 }
 
 function _agreed(paths, node) {
     if (paths.length === 0)
         return null;
     let values = paths.map(path => IO.readString(path + "/" + node));
-    if (values.some(value => value === null))
+    if (values.includes(null))
         return null;
     return values.every(value => value === values[0]) ? values[0] : null;
 }
@@ -63,7 +63,7 @@ function _agreed(paths, node) {
  * stand in for the whole processor. */
 function _policyDrivers(policies, readString) {
     let values = policies.map(policy => readString(policy + "/scaling_driver"));
-    if (values.some(value => value === null))
+    if (values.includes(null))
         return [];
     return values.filter((value, index) => values.indexOf(value) === index);
 }
@@ -292,7 +292,7 @@ var CpuControl = class CpuControl {
             if (targets.length === 0)
                 return null;
             let answers = targets.map(path => read(path + "/" + node));
-            if (answers.some(value => value === null))
+            if (answers.includes(null))
                 return null;
             return answers.every(value => value === answers[0]) ? answers[0] : null;
         };
@@ -308,11 +308,13 @@ var CpuControl = class CpuControl {
             }
         }
         let boostValue = boostPath ? IO.toNumber(read(boostPath)) : null;
+        let boostEnabled = null;
+        if (boostValue !== null)
+            boostEnabled = boostInverted ? boostValue === 0 : boostValue === 1;
         return {
             governor: agreed(policies, "scaling_governor"),
             energyPreference: agreed(energyPolicies, "energy_performance_preference"),
-            boostEnabled: boostValue === null ? null
-                : (boostInverted ? boostValue === 0 : boostValue === 1),
+            boostEnabled: boostEnabled,
             averageFrequency: count > 0 && count === policies.length
                 ? (total / count) / 1000 : null,
         };

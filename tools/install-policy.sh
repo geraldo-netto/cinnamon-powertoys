@@ -40,6 +40,10 @@ acquire_transition_lock "$LOCK_TARGET" policy
 helper_directory=$(dirname "$HELPER_DESTINATION")
 policy_directory=$(dirname "$POLICY_DESTINATION")
 
+arm_failure_trap() {
+    trap 'exit 1' HUP INT TERM
+}
+
 uninstall_pair() {
     uninstall_helper_existed=no
     uninstall_policy_existed=no
@@ -128,7 +132,7 @@ uninstall_pair() {
         exit "$uninstall_status"
     }
     trap uninstall_cleanup EXIT
-    trap 'exit 1' HUP INT TERM
+    arm_failure_trap
 
     # Reserve every recovery location before moving either live file. Each
     # directory is root-only, so a removed executable retained after an
@@ -155,13 +159,13 @@ uninstall_pair() {
         trap '' HUP INT TERM
         mv -- "$HELPER_DESTINATION" "$uninstall_helper_backup"
         uninstall_helper_removed=yes
-        trap 'exit 1' HUP INT TERM
+        arm_failure_trap
     fi
     if [ "$uninstall_policy_existed" = yes ]; then
         trap '' HUP INT TERM
         mv -- "$POLICY_DESTINATION" "$uninstall_policy_backup"
         uninstall_policy_removed=yes
-        trap 'exit 1' HUP INT TERM
+        arm_failure_trap
     fi
 
     # Both public paths now represent the requested safe state. Recovery-copy
@@ -255,7 +259,7 @@ cleanup() {
     exit "$status"
 }
 trap cleanup EXIT
-trap 'exit 1' HUP INT TERM
+arm_failure_trap
 
 install -d "$helper_directory" "$policy_directory"
 helper_staging=$(mktemp "$helper_directory/.powertoys-helper.new.XXXXXX")
@@ -286,13 +290,13 @@ trap '' HUP INT TERM
 mv -f -- "$helper_staging" "$HELPER_DESTINATION"
 helper_staging=
 helper_published=yes
-trap 'exit 1' HUP INT TERM
+arm_failure_trap
 
 trap '' HUP INT TERM
 mv -f -- "$policy_staging" "$POLICY_DESTINATION"
 policy_staging=
 policy_published=yes
-trap 'exit 1' HUP INT TERM
+arm_failure_trap
 
 # Nothing fallible follows as part of the transaction. Cleanup removes the
 # recovery copies without ever rolling back a committed pair.

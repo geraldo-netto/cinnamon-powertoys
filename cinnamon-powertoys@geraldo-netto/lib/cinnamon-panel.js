@@ -41,7 +41,7 @@ var PanelAdapter = class PanelAdapter {
     }
 
     _installPrivateTooltip() {
-        let tooltip = this._applet && this._applet._applet_tooltip;
+        let tooltip = this._applet?._applet_tooltip;
         if (!tooltip)
             return false;
 
@@ -50,18 +50,28 @@ var PanelAdapter = class PanelAdapter {
 
         let originalShow = tooltip.show;
         let originalHide = tooltip.hide;
-        let self = this;
         this._wrappedShow = function () {
-            self._beforeTooltip();
+            this._beforeTooltip();
             let result = originalShow.apply(tooltip, arguments);
-            self._publishTooltip(self._visibleAfter(true));
+            this._publishTooltip(this._visibleAfter(true));
             return result;
-        };
+        }.bind(this);
         this._wrappedHide = function () {
             let result = originalHide.apply(tooltip, arguments);
-            self._publishTooltip(self._visibleAfter(false));
+            this._publishTooltip(this._visibleAfter(false));
             return result;
-        };
+        }.bind(this);
+        if (!this._replaceTooltipHooks(tooltip, originalShow, originalHide))
+            return false;
+
+        this._tooltip = tooltip;
+        this._originalShow = originalShow;
+        this._originalHide = originalHide;
+        this._stylePrivateTooltip(tooltip);
+        return true;
+    }
+
+    _replaceTooltipHooks(tooltip, originalShow, originalHide) {
         /* Some shell revisions expose these members without allowing them to
          * be replaced. Publish no partial integration if either assignment is
          * unusable. In particular, the actor has not been touched yet. */
@@ -71,15 +81,14 @@ var PanelAdapter = class PanelAdapter {
             if (tooltip.show !== this._wrappedShow || tooltip.hide !== this._wrappedHide)
                 throw new Error("tooltip lifecycle hooks are not writable");
         } catch (error) {
-            try { tooltip.show = originalShow; } catch (ignored) {}
-            try { tooltip.hide = originalHide; } catch (ignored) {}
+            try { tooltip.show = originalShow; } catch (error_) {}
+            try { tooltip.hide = originalHide; } catch (error_) {}
             return false;
         }
+        return true;
+    }
 
-        this._tooltip = tooltip;
-        this._originalShow = originalShow;
-        this._originalHide = originalHide;
-
+    _stylePrivateTooltip(tooltip) {
         /* Alignment is optional decoration on a now-working integration.
          * Preserve every declaration Cinnamon or the theme already supplied,
          * append our override, and retain the exact original for teardown. */
@@ -98,16 +107,15 @@ var PanelAdapter = class PanelAdapter {
             } catch (error) {
                 /* Lifecycle hooks remain useful when styling is unavailable. */
                 if (styleRead) {
-                    try { actor.set_style(originalStyle); } catch (ignored) {}
+                    try { actor.set_style(originalStyle); } catch (error_) {}
                 }
             }
         }
-        return true;
     }
 
     /* Public actor events keep tooltip text current if private hooks disappear. */
     _installHoverFallback() {
-        let actor = this._applet && this._applet.actor;
+        let actor = this._applet?.actor;
         if (!actor || typeof actor.connect !== "function" ||
             typeof actor.disconnect !== "function")
             return false;
@@ -129,7 +137,7 @@ var PanelAdapter = class PanelAdapter {
             signals.push(leave);
         } catch (error) {
             for (let id of signals) {
-                try { actor.disconnect(id); } catch (ignored) {}
+                try { actor.disconnect(id); } catch (error_) {}
             }
             return false;
         }
@@ -187,7 +195,7 @@ var PanelAdapter = class PanelAdapter {
                     /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(sourceName)
             ? sourceName.replace(/-symbolic$/, "") : "";
         this.setSymbolicIcon(named || fallbackName);
-        let actor = this._applet && this._applet._applet_icon;
+        let actor = this._applet?._applet_icon;
         if (!actor || !icon)
             return false;
         try {
@@ -198,43 +206,54 @@ var PanelAdapter = class PanelAdapter {
         }
     }
 
+    _restoreTooltipHooks() {
+        if (!this._tooltip)
+            return;
+        try {
+            if (this._tooltip.show === this._wrappedShow)
+                this._tooltip.show = this._originalShow;
+        } catch (e) {
+            /* Cinnamon may freeze a private member before teardown. */
+        }
+        try {
+            if (this._tooltip.hide === this._wrappedHide)
+                this._tooltip.hide = this._originalHide;
+        } catch (e) {
+            /* Restore every independent hook best-effort. */
+        }
+    }
+
+    _restoreTooltipStyle() {
+        if (!this._changedTooltipStyle || !this._tooltipActor ||
+            typeof this._tooltipActor.set_style !== "function")
+            return;
+        try {
+            this._tooltipActor.set_style(this._originalTooltipStyle);
+        } catch (e) {
+            /* The actor may already be final. */
+        }
+    }
+
+    _disconnectHover() {
+        if (!this._hoverActor)
+            return;
+        for (let id of this._hoverSignals) {
+            try {
+                this._hoverActor.disconnect(id);
+            } catch (e) {
+                /* The actor may already have been destroyed by Cinnamon. */
+            }
+        }
+    }
+
     destroy() {
         if (this._destroyed)
             return;
         this._destroyed = true;
 
-        if (this._tooltip) {
-            try {
-                if (this._tooltip.show === this._wrappedShow)
-                    this._tooltip.show = this._originalShow;
-            } catch (e) {
-                /* Cinnamon may freeze a private member before teardown. */
-            }
-            try {
-                if (this._tooltip.hide === this._wrappedHide)
-                    this._tooltip.hide = this._originalHide;
-            } catch (e) {
-                /* Restore every independent hook best-effort. */
-            }
-        }
-        if (this._changedTooltipStyle && this._tooltipActor &&
-            typeof this._tooltipActor.set_style === "function") {
-            try {
-                this._tooltipActor.set_style(this._originalTooltipStyle);
-            } catch (e) {
-                /* The actor may already be final. */
-            }
-        }
-
-        if (this._hoverActor) {
-            for (let id of this._hoverSignals) {
-                try {
-                    this._hoverActor.disconnect(id);
-                } catch (e) {
-                    /* The actor may already have been destroyed by Cinnamon. */
-                }
-            }
-        }
+        this._restoreTooltipHooks();
+        this._restoreTooltipStyle();
+        this._disconnectHover();
         this._hoverSignals = [];
         this._publishTooltip(false);
         this._beforeTooltip = function () {};

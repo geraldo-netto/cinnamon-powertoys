@@ -21,8 +21,10 @@ var UUID = __meta.uuid;
  * is a checkout rather than an installed Cinnamon path. */
 function localeDirectory(path) {
     let suffix = "/cinnamon/applets/" + UUID;
-    let clean = String(path || "").replace(/\/+$/, "");
-    if (clean.slice(-suffix.length) === suffix)
+    let clean = String(path || "");
+    while (clean.endsWith("/"))
+        clean = clean.slice(0, -1);
+    if (clean.endsWith(suffix))
         return clean.slice(0, -suffix.length) + "/locale";
     return GLib.get_user_data_dir() + "/locale";
 }
@@ -77,7 +79,7 @@ function ngettext(singular, plural, count) {
  */
 function interpolate(text, values) {
     let fields = values || {};
-    return String(text).replace(/%\{([A-Za-z][A-Za-z0-9_]*)\}/g,
+    return String(text).replace(/%\{([A-Za-z]\w*)\}/g,
         function (placeholder, name) {
             return Object.prototype.hasOwnProperty.call(fields, name)
                 ? String(fields[name]) : placeholder;

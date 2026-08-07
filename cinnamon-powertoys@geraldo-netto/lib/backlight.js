@@ -23,30 +23,30 @@ var OBJECT_PATH = "/org/cinnamon/SettingsDaemon/Power";
  * StepUp and StepDown answer, and in the keyboard's toggle. Only the parts
  * used here are declared.
  */
-const SCREEN_XML = '<node>\
-<interface name="org.cinnamon.SettingsDaemon.Power.Screen">\
-    <method name="StepUp">\
-        <arg type="u" direction="out"/><arg type="i" direction="out"/><arg type="i" direction="out"/>\
-    </method>\
-    <method name="StepDown">\
-        <arg type="u" direction="out"/><arg type="i" direction="out"/><arg type="i" direction="out"/>\
-    </method>\
-    <method name="GetPercentage"><arg type="u" direction="out"/></method>\
-    <method name="SetPercentage"><arg type="u" direction="in"/><arg type="u" direction="out"/></method>\
-    <signal name="Changed"/>\
-</interface>\
-</node>';
+const SCREEN_XML = '<node>' +
+    '<interface name="org.cinnamon.SettingsDaemon.Power.Screen">' +
+        '<method name="StepUp">' +
+            '<arg type="u" direction="out"/><arg type="i" direction="out"/><arg type="i" direction="out"/>' +
+        '</method>' +
+        '<method name="StepDown">' +
+            '<arg type="u" direction="out"/><arg type="i" direction="out"/><arg type="i" direction="out"/>' +
+        '</method>' +
+        '<method name="GetPercentage"><arg type="u" direction="out"/></method>' +
+        '<method name="SetPercentage"><arg type="u" direction="in"/><arg type="u" direction="out"/></method>' +
+        '<signal name="Changed"/>' +
+    '</interface>' +
+    '</node>';
 
-const KEYBOARD_XML = '<node>\
-<interface name="org.cinnamon.SettingsDaemon.Power.Keyboard">\
-    <method name="StepUp"><arg type="u" direction="out"/></method>\
-    <method name="StepDown"><arg type="u" direction="out"/></method>\
-    <method name="Toggle"><arg type="u" direction="out"/></method>\
-    <method name="GetPercentage"><arg type="u" direction="out"/></method>\
-    <method name="SetPercentage"><arg type="u" direction="in"/><arg type="u" direction="out"/></method>\
-    <signal name="Changed"/>\
-</interface>\
-</node>';
+const KEYBOARD_XML = '<node>' +
+    '<interface name="org.cinnamon.SettingsDaemon.Power.Keyboard">' +
+        '<method name="StepUp"><arg type="u" direction="out"/></method>' +
+        '<method name="StepDown"><arg type="u" direction="out"/></method>' +
+        '<method name="Toggle"><arg type="u" direction="out"/></method>' +
+        '<method name="GetPercentage"><arg type="u" direction="out"/></method>' +
+        '<method name="SetPercentage"><arg type="u" direction="in"/><arg type="u" direction="out"/></method>' +
+        '<signal name="Changed"/>' +
+    '</interface>' +
+    '</node>';
 
 var SCREEN = "screen";
 var KEYBOARD = "keyboard";
@@ -79,10 +79,10 @@ function shouldUseMonitorBacklight(enabled, hasKernelBacklight, lidIsClosed) {
  * answer means no brightness control—not a silent write to the hidden panel. */
 function visibleBacklightControl(screen, monitor, externalDisplayMode) {
     if (externalDisplayMode)
-        return monitor && monitor.available ? monitor : null;
-    if (screen && screen.available)
+        return monitor?.available ? monitor : null;
+    if (screen?.available)
         return screen;
-    return monitor && monitor.available ? monitor : null;
+    return monitor?.available ? monitor : null;
 }
 
 const INTERFACES = {};
@@ -190,7 +190,7 @@ var BacklightControl = class BacklightControl {
             this._ownerWatch = new OwnerWatch.ResilientOwnerWatch({
                 install: (appeared, vanished) => install(appeared, vanished),
                 release: id => {
-                    if (owner && owner.unwatch)
+                    if (owner?.unwatch)
                         owner.unwatch(id);
                     else
                         unwatchOwner(id);
@@ -201,10 +201,10 @@ var BacklightControl = class BacklightControl {
                 failureKey: "owner-watch",
                 failureMessage: "cannot watch backlight service ownership",
                 timers: {
-                    add: (delay, callback) => owner && owner.timeoutAdd
+                    add: (delay, callback) => owner?.timeoutAdd
                         ? owner.timeoutAdd(delay, callback)
                         : GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback),
-                    remove: id => owner && owner.removeTimer
+                    remove: id => owner?.removeTimer
                         ? owner.removeTimer(id) : GLib.source_remove(id),
                 },
             });
@@ -361,14 +361,14 @@ var BacklightControl = class BacklightControl {
             });
             return GLib.SOURCE_REMOVE;
         };
-        this._retryTimerId = this._owner && this._owner.timeoutAdd
+        this._retryTimerId = this._owner?.timeoutAdd
             ? this._owner.timeoutAdd(delay, callback)
             : GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback);
     }
 
     _cancelRetry() {
         if (this._retryTimerId) {
-            if (this._owner && this._owner.removeTimer)
+            if (this._owner?.removeTimer)
                 this._owner.removeTimer(this._retryTimerId);
             else
                 GLib.source_remove(this._retryTimerId);
@@ -456,39 +456,43 @@ var BacklightControl = class BacklightControl {
             return;
         }
 
-        if (sameProxy && operation.valueGeneration === this._valueGeneration) {
-            if (error || !result) {
-                let knownPresent = this.hardwareState === "present";
-                let confirmAbsence = false;
-                this.available = false;
-                this.percentage = null;
-                if (!knownPresent && this._ownerPresent === true) {
-                    this._absenceConfirmations++;
-                    confirmAbsence = this._absenceConfirmations < ABSENCE_CONFIRMATIONS;
-                    this.hardwareState = confirmAbsence ? "degraded" : "absent";
-                } else if (!knownPresent && this._ownerPresent === null) {
-                    this.hardwareState = "degraded";
-                    confirmAbsence = true;
-                } else if (!knownPresent) {
-                    this.hardwareState = "absent";
-                }
-                /* A proxy tied to a vanished owner cannot recover its cached
-                 * interface reliably. The next refresh builds a fresh one. */
-                this._dropProxy();
-                if (knownPresent || confirmAbsence)
-                    this._scheduleRetry();
-                else
-                    this._cancelRetry();
-            } else {
-                this.available = true;
-                this.percentage = result[0];
-                this.hardwareState = "present";
-                this._absenceConfirmations = 0;
-                this._cancelRetry();
-            }
-        }
+        if (sameProxy && operation.valueGeneration === this._valueGeneration)
+            this._adoptRead(result, error);
         for (let waiter of operation.waiters)
             waiter();
+    }
+
+    _adoptRead(result, error) {
+        if (!error && result) {
+            this.available = true;
+            this.percentage = result[0];
+            this.hardwareState = "present";
+            this._absenceConfirmations = 0;
+            this._cancelRetry();
+            return;
+        }
+
+        let knownPresent = this.hardwareState === "present";
+        let confirmAbsence = false;
+        this.available = false;
+        this.percentage = null;
+        if (!knownPresent && this._ownerPresent === true) {
+            this._absenceConfirmations++;
+            confirmAbsence = this._absenceConfirmations < ABSENCE_CONFIRMATIONS;
+            this.hardwareState = confirmAbsence ? "degraded" : "absent";
+        } else if (!knownPresent && this._ownerPresent === null) {
+            this.hardwareState = "degraded";
+            confirmAbsence = true;
+        } else if (!knownPresent) {
+            this.hardwareState = "absent";
+        }
+        /* A proxy tied to a vanished owner cannot recover its cached interface
+         * reliably. The next refresh builds a fresh one. */
+        this._dropProxy();
+        if (knownPresent || confirmAbsence)
+            this._scheduleRetry();
+        else
+            this._cancelRetry();
     }
 
     _once(callback) {
@@ -542,7 +546,7 @@ var BacklightControl = class BacklightControl {
         ++this._valueGeneration;
 
         let last = this._mutationQueue[this._mutationQueue.length - 1];
-        if (operation.type === "set" && last && last.type === "set") {
+        if (operation.type === "set" && last?.type === "set") {
             last.settle({ ok: false, superseded: true });
             this._mutationQueue[this._mutationQueue.length - 1] = operation;
         } else {

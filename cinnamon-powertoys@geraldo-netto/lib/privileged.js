@@ -182,9 +182,18 @@ function _probeHelper(path, onDone, timeoutMs) {
 function _failure(stderr) {
     let lines = (stderr || "").split("\n").map(line => line.trim()).filter(line => line !== "");
     let last = lines.length > 0 ? lines[lines.length - 1] : "";
-    let structured = /^powertoys-helper-error\s+([a-z0-9-]+)(?:\s+(.*))?$/.exec(last);
-    if (structured)
-        return { code: structured[1], diagnostic: structured[2] || "" };
+    let prefix = "powertoys-helper-error";
+    if (last.startsWith(prefix) && /^\s/.test(last.slice(prefix.length))) {
+        let structured = last.slice(prefix.length).trim();
+        let separator = structured.search(/\s/);
+        let code = separator < 0 ? structured : structured.slice(0, separator);
+        if (/^[a-z0-9-]+$/.test(code)) {
+            return {
+                code: code,
+                diagnostic: separator < 0 ? "" : structured.slice(separator).trim(),
+            };
+        }
+    }
     return {
         code: "helper-failed",
         diagnostic: last.replace(/^powertoys-helper:\s*/, ""),
@@ -243,7 +252,7 @@ var PrivilegedHelper = class PrivilegedHelper {
         this._queue = [];
         let activeProbe = this._activeProbe;
         this._activeProbe = null;
-        if (activeProbe && activeProbe.cancel)
+        if (activeProbe?.cancel)
             activeProbe.cancel();
     }
 
@@ -272,9 +281,9 @@ var PrivilegedHelper = class PrivilegedHelper {
 
         let candidate = this._candidates[index];
         let inspection = this._inspect(candidate);
-        let trusted = inspection === true || (inspection && inspection.trusted === true);
+        let trusted = inspection === true || inspection?.trusted === true;
         if (!trusted) {
-            let rejected = inspection && inspection.code ? inspection : null;
+            let rejected = inspection?.code ? inspection : null;
             this._tryCandidate(index + 1, issue || rejected, onDone);
             return;
         }
@@ -365,7 +374,7 @@ var PrivilegedHelper = class PrivilegedHelper {
                 return;
             }
 
-            let argv = ["pkexec", helper].concat(job.args.map(argument => String(argument)));
+            let argv = ["pkexec", helper].concat(job.args.map(String));
             this._spawn(argv, (status, stderr) => {
                 this._running = false;
                 /* Failure before a helper could report its own structured
@@ -375,10 +384,10 @@ var PrivilegedHelper = class PrivilegedHelper {
                     this._selection = null;
                 let outcome = this._outcome(status, stderr);
                 if (issue)
-                    outcome = Object.assign({}, outcome, {
+                    outcome = { ...outcome,
                         warningCode: issue.code,
                         warningDiagnostic: issue.diagnostic,
-                    });
+                    };
                 job.done(outcome);
                 this._next();
             });

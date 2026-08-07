@@ -114,12 +114,11 @@ cleanup() {
             restored=yes
         fi
     fi
-    if [ "$COMMITTED" != yes ] && [ "$TRANSLATION_BACKUP_READY" = yes ]; then
-        if ! restore_translations; then
-            echo "could not restore every previous translation; backup retained at $TRANSLATION_BACKUP" >&2
-            TRANSLATION_BACKUP_RETAINED=yes
-            status=1
-        fi
+    if [ "$COMMITTED" != yes ] && [ "$TRANSLATION_BACKUP_READY" = yes ] &&
+            ! restore_translations; then
+        echo "could not restore every previous translation; backup retained at $TRANSLATION_BACKUP" >&2
+        TRANSLATION_BACKUP_RETAINED=yes
+        status=1
     fi
     if [ "$ROLLBACK_RELOAD" = yes ] && [ "$restored" = yes ]; then
         if [ "$THEME_CHANGED" = yes ] && ! reload_theme; then
@@ -275,15 +274,13 @@ fi
 # Reloading only works once the applet is enabled on a panel; on a first
 # install the call fails and the instructions below apply.
 reloaded=no
-if command -v gdbus > /dev/null 2>&1; then
-    if gdbus call --session \
-            --dest org.Cinnamon \
-            --object-path /org/Cinnamon \
-            --method org.Cinnamon.ReloadXlet "$UUID" APPLET > /dev/null 2>&1; then
-        if wait_for_running_xlet "$TARGET_SOURCE"; then
-            reloaded=yes
-        fi
-    fi
+if command -v gdbus > /dev/null 2>&1 &&
+        gdbus call --session \
+        --dest org.Cinnamon \
+        --object-path /org/Cinnamon \
+        --method org.Cinnamon.ReloadXlet "$UUID" APPLET > /dev/null 2>&1 &&
+        wait_for_running_xlet "$TARGET_SOURCE"; then
+    reloaded=yes
 fi
 
 if [ "$was_running" = yes ] && [ "$reloaded" != yes ]; then

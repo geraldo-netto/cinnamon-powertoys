@@ -136,20 +136,21 @@ var AlertPolicy = class AlertPolicy {
         }
 
         if (system && Device.chargeIsCritical(device, limits.criticalLevel)) {
-            if (level !== "critical") {
-                if (this._deliver(true, _("Battery critically low"),
-                                  readingText(Format.deviceTitle(device), charge.text)))
-                    this._alerted.set(device.path, "critical");
-            }
-        } else if (Device.chargeIsLow(device, threshold)) {
-            if (level === "") {
-                if (this._deliver(false, _("Battery low"),
-                                  readingText(Format.deviceTitle(device), charge.text)))
-                    this._alerted.set(device.path, "low");
-            }
-        } else if (Device.chargeRecovered(device, threshold, HYSTERESIS)) {
-            this._alerted.delete(device.path);
+            if (level !== "critical" &&
+                this._deliver(true, _("Battery critically low"),
+                              readingText(Format.deviceTitle(device), charge.text)))
+                this._alerted.set(device.path, "critical");
+            return;
         }
+        if (Device.chargeIsLow(device, threshold)) {
+            if (level === "" &&
+                this._deliver(false, _("Battery low"),
+                              readingText(Format.deviceTitle(device), charge.text)))
+                this._alerted.set(device.path, "low");
+            return;
+        }
+        if (Device.chargeRecovered(device, threshold, HYSTERESIS))
+            this._alerted.delete(device.path);
     }
 
     _checkTemperature(sensor, limits) {

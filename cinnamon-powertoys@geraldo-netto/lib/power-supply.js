@@ -27,10 +27,15 @@ function _chargeReading(values) {
                  readable.every(value => value === readable[0]);
     let incomplete = readable.length !== values.length || values.length === 0;
     let divided = !incomplete && !agreed;
+    let state = "incomplete";
+    if (agreed)
+        state = "agreed";
+    else if (divided)
+        state = "divided";
     return {
         limits: values,
         limit: agreed ? readable[0] : null,
-        state: agreed ? "agreed" : divided ? "divided" : "incomplete",
+        state: state,
         agreed: agreed,
         divided: divided,
         incomplete: incomplete,
