@@ -550,8 +550,7 @@ function _hwmonNodeSensor(node, context) {
         }
         let faultPath = context.base + "/" + nodeKind.prefix + index + "_fault";
         sensor.faultPath = nodeKind.fault && context.exists(faultPath) ? faultPath : null;
-        if (nodeKind.extra)
-            Object.assign(sensor, nodeKind.extra(context.base, index, context.readNumber));
+        Object.assign(sensor, nodeKind.extra?.(context.base, index, context.readNumber));
         return { list: nodeKind.list, sensor: sensor };
     }
     return null;

@@ -528,7 +528,7 @@ function listDirAsync(path, onDone, fileFactory, options) {
 function listDirsAsync(paths, onDone, concurrency, fileFactory, options) {
     return _batchAsync(paths, onDone, concurrency, [],
         (path, cancellable, settle) => {
-            let childOptions = { ...(options || {}),
+            let childOptions = { ...options,
                 cancellable: cancellable,
             };
             listDirAsync(path, settle, fileFactory, childOptions);

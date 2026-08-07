@@ -97,15 +97,15 @@ function tidyCpuName(raw) {
         .replace(/\s+/g, " ")
         .trim();
 
-    let clock = /\s+@/.exec(name);
-    if (clock)
-        name = name.slice(0, clock.index);
+    let clockAt = name.indexOf(" @");
+    if (clockAt >= 0)
+        name = name.slice(0, clockAt);
 
-    let graphics = /\s+with\s+/i.exec(name);
-    if (graphics && /\bGraphics\b/i.test(name.slice(graphics.index)))
-        name = name.slice(0, graphics.index);
+    let graphicsAt = name.toLowerCase().indexOf(" with ");
+    if (graphicsAt >= 0 && /\bGraphics\b/i.test(name.slice(graphicsAt)))
+        name = name.slice(0, graphicsAt);
 
-    let cores = /\s+\d+-Core\s+Processor\b/i.exec(name);
+    let cores = / \d+-Core Processor\b/i.exec(name);
     if (cores)
         name = name.slice(0, cores.index);
 
@@ -334,7 +334,7 @@ function _resolve(text, ids) {
         if (board) {
             let subVendorName = vendorShortName(_blockName(_vendorBlock(text, ids.subVendor) || ""));
             if (!subVendorName ||
-                board.toLowerCase().indexOf(subVendorName.toLowerCase()) === 0)
+                board.toLowerCase().startsWith(subVendorName.toLowerCase()))
                 return board;
             return subVendorName + " " + board;
         }
@@ -486,7 +486,7 @@ const COMPANY_WORDS = [
 function tidyVendorName(name) {
     let words = String(name || "").trim().split(/\s+/);
     while (words.length > 1 &&
-           COMPANY_WORDS.indexOf(words[words.length - 1].toLowerCase().replace(/,$/, "")) >= 0)
+           COMPANY_WORDS.includes(words[words.length - 1].toLowerCase().replace(/,$/, "")))
         words.pop();
     return words.join(" ").replace(/,$/, "");
 }
@@ -587,7 +587,7 @@ function monitorName(code, model) {
     if (first.toUpperCase() === vendorFirst.toUpperCase() ||
         first.toUpperCase() === String(code).toUpperCase())
         return vendor + name.slice(first.length);
-    if (name.toLowerCase().indexOf(vendor.toLowerCase()) === 0)
+    if (name.toLowerCase().startsWith(vendor.toLowerCase()))
         return name;
     return vendor + " " + name;
 }

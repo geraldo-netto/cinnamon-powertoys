@@ -400,8 +400,7 @@ class NoteRow extends PopupMenu.PopupBaseMenuItem {
         this.actor.set_accessible_name(text || "");
     }
 
-    setText(value) {
-        let text = value || "";
+    setText(text = "") {
         this._label.set_text(text);
         this.tooltip.set_text(text);
         this.actor.set_accessible_name(text);
@@ -3103,7 +3102,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
      */
     _profileState() {
         let state = this._latest ? this._latest.profile : null;
-        if (!state || !state.available || state.list.length === 0)
+        if (!state?.available || state.list.length === 0)
             return null;
         if (state.source !== this._profileBackend ||
                 state.generation !== this._profileBackendGeneration)
