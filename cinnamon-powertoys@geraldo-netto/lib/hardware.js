@@ -20,23 +20,23 @@ const IO = require("./lib/io.js");
  * Where pci.ids ends up. Debian and Ubuntu put it in misc and symlink hwdata at
  * it, Fedora and Arch do the reverse, and a few older trees have neither.
  */
-var PCI_IDS_PATHS = [
+const PCI_IDS_PATHS = [
     "/usr/share/misc/pci.ids",
     "/usr/share/hwdata/pci.ids",
     "/usr/share/pci.ids",
 ];
 
 /* The monitor equivalent: three letter EDID manufacturer codes. */
-var PNP_IDS_PATHS = [
+const PNP_IDS_PATHS = [
     "/usr/share/hwdata/pnp.ids",
     "/usr/share/misc/pnp.ids",
 ];
 
-var PCI_DEVICE_DIR = "/sys/bus/pci/devices";
-var CPUINFO = "/proc/cpuinfo";
+const PCI_DEVICE_DIR = "/sys/bus/pci/devices";
+const CPUINFO = "/proc/cpuinfo";
 
 /* 0000:03:00.0 - domain, bus, device, function. */
-var PCI_ADDRESS = /[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f]/gi;
+const PCI_ADDRESS = /[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f]/gi;
 
 let _pciNames = {};
 let _pciInventoryGeneration = 0;

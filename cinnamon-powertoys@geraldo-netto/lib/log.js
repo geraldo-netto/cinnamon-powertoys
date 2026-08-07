@@ -44,7 +44,7 @@ function error(message) {
  * daemon disappears, so a later daemon instance gets one useful diagnostic of
  * its own rather than inheriting the old one's silence.
  */
-var FailureLog = class FailureLog {
+const FailureLog = class FailureLog {
     constructor() {
         this._active = new Set();
     }

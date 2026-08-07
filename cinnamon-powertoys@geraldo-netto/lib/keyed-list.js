@@ -14,7 +14,7 @@
  * section that is not a menu at all.
  */
 
-var KeyedList = class KeyedList {
+const KeyedList = class KeyedList {
     constructor(section, create, update) {
         this._section = section;
         this._create = create;

@@ -30,9 +30,9 @@
  * there for the case where the answer is never going to come: firmware that
  * takes a platform profile and quietly reverts on its own thermal policy.
  */
-var READINGS_BEFORE_LAPSING = 3;
+const READINGS_BEFORE_LAPSING = 3;
 
-var PendingProfile = class PendingProfile {
+const PendingProfile = class PendingProfile {
     /*
      * `onLapse` is called as (asked, actual) when a profile that was written
      * has been waited out. It is the only trace there is - the panel simply

@@ -9,9 +9,9 @@
 
 const IO = require("./lib/io.js");
 
-var POWER_SUPPLY_DIR = "/sys/class/power_supply";
-var PLATFORM_PROFILE = "/sys/firmware/acpi/platform_profile";
-var PLATFORM_PROFILE_CHOICES = "/sys/firmware/acpi/platform_profile_choices";
+const POWER_SUPPLY_DIR = "/sys/class/power_supply";
+const PLATFORM_PROFILE = "/sys/firmware/acpi/platform_profile";
+const PLATFORM_PROFILE_CHOICES = "/sys/firmware/acpi/platform_profile_choices";
 
 /*
  * What this backend answers when a reading asks where its profiles came from.
@@ -19,7 +19,7 @@ var PLATFORM_PROFILE_CHOICES = "/sys/firmware/acpi/platform_profile_choices";
  * never touches cpufreq, so unlike power-profiles-daemon it does not own the
  * governor or the energy preference, and the menu has to be able to tell.
  */
-var PLATFORM_BACKEND = "acpi-platform-profile";
+const PLATFORM_BACKEND = "acpi-platform-profile";
 
 function _chargeReading(values) {
     let readable = values.filter(value => value !== null);
@@ -62,7 +62,7 @@ function _chargeReading(values) {
  * applet, the pkexec helper - which keeps the read and the write of one
  * setting in the same place.
  */
-var ChargeControl = class ChargeControl {
+const ChargeControl = class ChargeControl {
     /* `batteries` is every battery that exposes an end threshold, as
      * { name, path }, in the order they were found. */
     constructor(batteries, runner) {
@@ -99,7 +99,7 @@ var ChargeControl = class ChargeControl {
 /* The runtime charge backend keeps topology and values in complete cached
  * snapshots. Discovery and sampling both use Gio through IO, so opening the
  * menu never asks a power-supply driver a question on Cinnamon's thread. */
-var AsyncChargeControl = class AsyncChargeControl {
+const AsyncChargeControl = class AsyncChargeControl {
     constructor(runner, onChanged) {
         this.batteries = [];
         this._runner = runner || function () {};
@@ -285,7 +285,7 @@ function platformProfile() {
  * that flag back to decide how to write. Given the same surface, it does not
  * have to: it holds one of these and asks it.
  */
-var PlatformProfileClient = class PlatformProfileClient {
+const PlatformProfileClient = class PlatformProfileClient {
     constructor(runner, options) {
         let configuration = options || {};
         this._runner = runner || function () {};

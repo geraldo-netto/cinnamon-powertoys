@@ -28,7 +28,7 @@ const UPDeviceState = UPowerGlib.DeviceState;
  * package: AMD's Tctl and Tdie, Intel's "Package id 0", and the SoC thermal
  * zones that have only a type. In order of preference.
  */
-var PREFERRED_CPU_SENSORS = ["tctl", "tdie", "package id 0", "cpu"];
+const PREFERRED_CPU_SENSORS = ["tctl", "tdie", "package id 0", "cpu"];
 
 /*
  * The power figure is not one thing: on battery it is what the battery is

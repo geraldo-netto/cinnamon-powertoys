@@ -2,7 +2,7 @@
 
 const Log = require("./lib/log.js");
 
-var NotificationCenter = class NotificationCenter {
+const NotificationCenter = class NotificationCenter {
     constructor(shell) {
         this._shell = shell || {};
         this._failures = new Log.FailureLog();

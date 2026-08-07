@@ -23,13 +23,13 @@ const BACKENDS = [
  * distinct from both the pending initial edge (null) and confirmed absence
  * (false), so direct discovery can cover the missing observation. */
 const OWNER_WATCH_FAILED = "watch-failed";
-var RETRY_INITIAL_MS = 500;
-var RETRY_MAX_MS = 8000;
+const RETRY_INITIAL_MS = 500;
+const RETRY_MAX_MS = 8000;
 
 /* A queued write that is replaced by a newer choice was not refused and did
  * not reach the daemon. Keep that normal coalescing outcome out of Error so a
  * caller can settle its state without presenting a failure to the user. */
-var PROFILE_SUPERSEDED = Object.freeze({ status: "superseded" });
+const PROFILE_SUPERSEDED = Object.freeze({ status: "superseded" });
 
 function isProfileSuperseded(outcome) {
     return outcome === PROFILE_SUPERSEDED;
@@ -230,7 +230,7 @@ function systemBus(gio) {
     };
 }
 
-var PowerProfilesClient = class PowerProfilesClient {
+const PowerProfilesClient = class PowerProfilesClient {
     constructor(onChanged, bus) {
         this._onChanged = onChanged || function () {};
         this._bus = bus || systemBus();

@@ -19,11 +19,11 @@ const Log = require("./lib/log.js");
 
 /* pkexec's own exit codes: the dialog was closed, or the password did not
  * check out. Both mean the user knows perfectly well nothing happened. */
-var PKEXEC_DISMISSED = 126;
-var PKEXEC_UNAUTHORISED = 127;
-var HELPER_PROTOCOL = 2;
-var HELPER_PROTOCOL_LINE = "cinnamon-powertoys-helper-protocol " + HELPER_PROTOCOL;
-var PROBE_TIMEOUT_MS = 2000;
+const PKEXEC_DISMISSED = 126;
+const PKEXEC_UNAUTHORISED = 127;
+const HELPER_PROTOCOL = 2;
+const HELPER_PROTOCOL_LINE = "cinnamon-powertoys-helper-protocol " + HELPER_PROTOCOL;
+const PROBE_TIMEOUT_MS = 2000;
 
 /*
  * pkexec makes the selected program root. A compatible protocol is not a
@@ -32,7 +32,7 @@ var PROBE_TIMEOUT_MS = 2000;
  * regular, root-owned executable reached entirely through root-owned paths
  * that no group or other user can write.
  */
-var inspectTrustedHelper = function inspectTrustedHelper(path) {
+const inspectTrustedHelper = function inspectTrustedHelper(path) {
     if (!GLib.file_test(path, GLib.FileTest.EXISTS) &&
             !GLib.file_test(path, GLib.FileTest.IS_SYMLINK)) {
         return {
@@ -200,7 +200,7 @@ function _failure(stderr) {
     };
 }
 
-var PrivilegedHelper = class PrivilegedHelper {
+const PrivilegedHelper = class PrivilegedHelper {
     /*
      * `candidates` are installed helper paths to try in order. `inspect` is
      * injectable so selection can be checked without requiring root-owned

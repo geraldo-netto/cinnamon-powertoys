@@ -15,9 +15,9 @@ const Translate = require("./lib/gettext.js");
 
 const _ = Translate._;
 
-var HWMON_DIR = "/sys/class/hwmon";
-var THERMAL_DIR = "/sys/class/thermal";
-var POWERCAP_DIR = "/sys/class/powercap";
+const HWMON_DIR = "/sys/class/hwmon";
+const THERMAL_DIR = "/sys/class/thermal";
+const POWERCAP_DIR = "/sys/class/powercap";
 
 /*
  * What a sensor can be, said once.
@@ -33,7 +33,7 @@ var POWERCAP_DIR = "/sys/class/powercap";
  * kinds without a pattern are never guessed from a chip name: "package" is
  * what the powercap counters report, "other" is what is left.
  */
-var KINDS = [
+const KINDS = [
     { kind: "cpu",     primary: true,  label: _("Processor"),
       pattern: /^(k10temp|zenpower|coretemp|cpu_thermal|cpu-thermal|x86_pkg_temp|soc_thermal|cpu\d*_thermal)/i },
     { kind: "gpu",     primary: true,  label: _("Graphics"),
@@ -942,7 +942,7 @@ function discoverSensorsAsync(onDone, ioOptions) {
 }
 
 /* Turns a monotonic microjoule counter into watts. */
-var EnergyMeter = class EnergyMeter {
+const EnergyMeter = class EnergyMeter {
     constructor(counter) {
         this.counter = counter;
         this.id = counter.id;
@@ -1016,7 +1016,7 @@ var EnergyMeter = class EnergyMeter {
  * and the result is kept. read() is the cheap half, one file per sensor, and
  * is what a poll calls.
  */
-var SensorSet = class SensorSet {
+const SensorSet = class SensorSet {
     constructor(options) {
         let configuration = options || {};
         this._topology = null;

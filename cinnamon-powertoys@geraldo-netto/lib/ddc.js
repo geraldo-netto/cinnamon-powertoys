@@ -28,14 +28,14 @@ const _ = Translate._;
 
 /* The DDC/CI feature code for backlight. Every monitor that supports any of
  * this supports 0x10. */
-var BRIGHTNESS_FEATURE = "10";
+const BRIGHTNESS_FEATURE = "10";
 
 /* Long enough for a slow monitor, short enough that a monitor which never
  * answers does not leave a process behind for the session. */
-var CALL_TIMEOUT_MS = 8000;
+const CALL_TIMEOUT_MS = 8000;
 
 /* One notch, matching what the brightness keys do elsewhere. */
-var STEP = 5;
+const STEP = 5;
 
 /*
  * How many monitors get a slider of their own.
@@ -45,13 +45,13 @@ var STEP = 5;
  * limit. Ten is past any desk and short of a video wall, and the menu says
  * when it has been reached rather than quietly dropping what is over it.
  */
-var MAX_DISPLAYS = 10;
+const MAX_DISPLAYS = 10;
 
 /* Removal needs confirmation; command failures get one extra chance because
  * they say nothing about topology at all. Both bounds are deliberately small
  * while the menu probes once a second. */
-var MISSING_CONFIRMATIONS = 2;
-var FAILURE_GRACE = 3;
+const MISSING_CONFIRMATIONS = 2;
+const FAILURE_GRACE = 3;
 
 /* A timeout belongs to one operation on one ddcutil display number. The value
  * of a write is deliberately absent: dragging a slider can ask for every
@@ -276,7 +276,7 @@ function _sameDisplay(first, second) {
  * available, percentage, refresh, setPercentage, step - so a slider does not
  * know or care which kind of screen it is moving.
  */
-var DdcMonitor = class DdcMonitor {
+const DdcMonitor = class DdcMonitor {
     constructor(display, run, onIdle) {
         this.id = display.bus || ("display:" + display.number);
         this.number = display.number;
@@ -506,7 +506,7 @@ var DdcMonitor = class DdcMonitor {
  * happens with the menu shut and nothing on screen to say which monitor it
  * would otherwise have picked.
  */
-var DdcBacklight = class DdcBacklight {
+const DdcBacklight = class DdcBacklight {
     available = false;
     percentage = null;
     destroyed = false;

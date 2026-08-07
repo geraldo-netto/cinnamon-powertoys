@@ -31,7 +31,7 @@ const _ = Translate._;
  * again. Without it, a battery resting exactly on the threshold alternates
  * between reported and forgotten for as long as it sits there.
  */
-var HYSTERESIS = 5;
+const HYSTERESIS = 5;
 
 function readingText(source, reading) {
     return Translate.interpolate(
@@ -61,7 +61,7 @@ function criticalBelow(critical, low) {
     return Math.max(1, Math.min(critical, low - 1));
 }
 
-var AlertPolicy = class AlertPolicy {
+const AlertPolicy = class AlertPolicy {
     /* `notify` is called as (urgent, title, body). */
     constructor(notify) {
         this._notify = notify || function () { return false; };

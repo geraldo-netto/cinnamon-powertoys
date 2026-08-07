@@ -16,8 +16,8 @@
 const Hardware = require("./lib/hardware.js");
 const IO = require("./lib/io.js");
 
-var CPU_DIR = "/sys/devices/system/cpu";
-var CPUFREQ_DIR = CPU_DIR + "/cpufreq";
+const CPU_DIR = "/sys/devices/system/cpu";
+const CPUFREQ_DIR = CPU_DIR + "/cpufreq";
 
 /*
  * A field that is only worked out if somebody reads it, and then only once.
@@ -68,7 +68,7 @@ function _policyDrivers(policies, readString) {
     return values.filter((value, index) => values.indexOf(value) === index);
 }
 
-var CpuControl = class CpuControl {
+const CpuControl = class CpuControl {
     constructor(runner, options) {
         let configuration = options || {};
         this._runner = runner || function () {};

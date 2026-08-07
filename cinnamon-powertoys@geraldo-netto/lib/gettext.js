@@ -13,7 +13,7 @@
 const Gettext = imports.gettext;
 const GLib = imports.gi.GLib;
 
-var UUID = __meta.uuid;
+const UUID = __meta.uuid;
 
 /* An installed applet lives below <data root>/cinnamon/applets/<uuid>, while
  * install-translations.sh puts its catalogues below <data root>/locale. Keep
@@ -29,7 +29,7 @@ function localeDirectory(path) {
     return GLib.get_user_data_dir() + "/locale";
 }
 
-var LOCALE_DIR = localeDirectory(__meta.path);
+const LOCALE_DIR = localeDirectory(__meta.path);
 
 function bindDomain() {
     Gettext.bindtextdomain(UUID, LOCALE_DIR);

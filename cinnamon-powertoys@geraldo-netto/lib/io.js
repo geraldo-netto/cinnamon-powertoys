@@ -16,12 +16,12 @@ const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 
 let _root = "";
-var ASYNC_TIMEOUT_MS = 5000;
+const ASYNC_TIMEOUT_MS = 5000;
 
 /* A backend owns one scope and gives it to every asynchronous filesystem
  * operation it starts. Destroying the backend can then cancel the complete
  * tree of work, including operations started by discovery helpers. */
-var AsyncScope = class AsyncScope {
+const AsyncScope = class AsyncScope {
     constructor() {
         this._operations = new Set();
         this._cancelled = false;

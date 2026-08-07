@@ -22,7 +22,7 @@ const Translate = require("./lib/gettext.js");
 const _ = Translate._;
 
 /* How close to the chip's own limit a temperature is flagged at. */
-var WARN_WITHIN = 5;
+const WARN_WITHIN = 5;
 
 /*
  * A menu key unique across the three lists. Ids are unique within one of

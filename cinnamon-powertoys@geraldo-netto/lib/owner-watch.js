@@ -11,10 +11,10 @@
 const GLib = imports.gi.GLib;
 const Log = require("./lib/log.js");
 
-var RETRY_INITIAL_MS = 1000;
-var RETRY_MAX_MS = 30000;
+const RETRY_INITIAL_MS = 1000;
+const RETRY_MAX_MS = 30000;
 
-var ResilientOwnerWatch = class ResilientOwnerWatch {
+const ResilientOwnerWatch = class ResilientOwnerWatch {
     constructor(options) {
         options = options || {};
         this._install = options.install;

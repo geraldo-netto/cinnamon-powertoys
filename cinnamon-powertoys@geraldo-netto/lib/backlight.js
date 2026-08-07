@@ -15,8 +15,8 @@ const GLib = imports.gi.GLib;
 const Log = require("./lib/log.js");
 const OwnerWatch = require("./lib/owner-watch.js");
 
-var BUS_NAME = "org.cinnamon.SettingsDaemon.Power";
-var OBJECT_PATH = "/org/cinnamon/SettingsDaemon/Power";
+const BUS_NAME = "org.cinnamon.SettingsDaemon.Power";
+const OBJECT_PATH = "/org/cinnamon/SettingsDaemon/Power";
 
 /*
  * The two are the same control with the same calls; they differ only in what
@@ -48,11 +48,11 @@ const KEYBOARD_XML = '<node>' +
     '</interface>' +
     '</node>';
 
-var SCREEN = "screen";
-var KEYBOARD = "keyboard";
-var RETRY_INITIAL_MS = 500;
-var RETRY_MAX_MS = 8000;
-var ABSENCE_CONFIRMATIONS = 3;
+const SCREEN = "screen";
+const KEYBOARD = "keyboard";
+const RETRY_INITIAL_MS = 500;
+const RETRY_MAX_MS = 8000;
+const ABSENCE_CONFIRMATIONS = 3;
 
 /*
  * Whether DDC/CI is the right way to reach the visible screen.
@@ -124,7 +124,7 @@ function unwatchOwner(id, bus) {
     (bus || Gio).bus_unwatch_name(id);
 }
 
-var BacklightControl = class BacklightControl {
+const BacklightControl = class BacklightControl {
     /*
      * onChanged fires when anything else moves this backlight - a function
      * key, the stock applet, the daemon dimming on idle. onReady fires once,

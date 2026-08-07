@@ -18,7 +18,7 @@ const UPowerGlib = imports.gi.UPowerGlib;
 const Log = require("./lib/log.js");
 const OwnerWatch = require("./lib/owner-watch.js");
 
-var BUS_NAME = "org.bluez";
+const BUS_NAME = "org.bluez";
 
 /*
  * The interfaces this module reads, and so the only ones worth waking for.
@@ -46,11 +46,11 @@ const WATCHED_PROPERTIES = {
  * long enough to gather a burst into one read, short enough that nobody
  * watching the menu sees the wait.
  */
-var REFRESH_SETTLE_MS = 250;
-var RETRY_INITIAL_MS = 500;
-var RETRY_MAX_MS = 8000;
-var DEGRADED_INITIAL_MS = 1000;
-var DEGRADED_MAX_MS = 30000;
+const REFRESH_SETTLE_MS = 250;
+const RETRY_INITIAL_MS = 500;
+const RETRY_MAX_MS = 8000;
+const DEGRADED_INITIAL_MS = 1000;
+const DEGRADED_MAX_MS = 30000;
 
 const UPDeviceKind = UPowerGlib.DeviceKind;
 const UPDeviceState = UPowerGlib.DeviceState;
@@ -198,7 +198,7 @@ systemNameWatcher.reportsInitialState = true;
  * The object tree is asked for once and then kept in step by the signals
  * BlueZ emits as devices come, go and change, so a poll costs nothing.
  */
-var BluezBatteries = class BluezBatteries {
+const BluezBatteries = class BluezBatteries {
     available = false;
     destroyed = false;
     devices = [];

@@ -247,7 +247,7 @@ function reportsPrecisePercentage(device) {
  * blank. The second name in each pair is the freedesktop one, which has been
  * in every icon theme for twenty years.
  */
-var DEVICE_ICONS = {};
+const DEVICE_ICONS = {};
 DEVICE_ICONS[UPDeviceKind.MONITOR] = ["xsi-video-display", "video-display"];
 DEVICE_ICONS[UPDeviceKind.MOUSE] = ["xsi-input-mouse", "input-mouse"];
 DEVICE_ICONS[UPDeviceKind.KEYBOARD] = ["xsi-input-keyboard", "input-keyboard"];
@@ -266,7 +266,7 @@ DEVICE_ICONS[UPDeviceKind.CAMERA] = ["xsi-camera-photo", "camera-photo"];
 DEVICE_ICONS[UPDeviceKind.UPS] = ["xsi-uninterruptible-power-supply",
                                   "uninterruptible-power-supply"];
 
-var BATTERY_ICON = ["xsi-battery-level-100", "battery-full"];
+const BATTERY_ICON = ["xsi-battery-level-100", "battery-full"];
 
 /*
  * Whether a name is in the icon theme. Only the applet can answer that, so it
@@ -333,7 +333,7 @@ function deviceTitle(device) {
     return name;
 }
 
-var PROFILE_LABELS = {
+const PROFILE_LABELS = {
     "power-saver": _("Power saver"),
     "balanced": _("Balanced"),
     "balanced-performance": _("Balanced performance"),
@@ -413,7 +413,7 @@ function profileIconName(name) {
  * because it is the thing to search for when something goes wrong, but it is
  * no longer the whole of what the row says.
  */
-var DRIVER_LABELS = {
+const DRIVER_LABELS = {
     "amd-pstate-epp": _("AMD"),
     "amd-pstate": _("AMD"),
     "acpi-cpufreq": _("ACPI"),
@@ -430,7 +430,7 @@ var DRIVER_LABELS = {
  * hardware chooses the frequency and the energy preference is what steers it,
  * "guided" and "passive" leave more of the decision to the kernel.
  */
-var PSTATE_MODES = {
+const PSTATE_MODES = {
     "active": _("hardware managed"),
     "guided": _("guided"),
     "passive": _("kernel managed"),
@@ -468,7 +468,7 @@ function driverLabel(name, pstateMode) {
     });
 }
 
-var GOVERNOR_LABELS = {
+const GOVERNOR_LABELS = {
     "performance": _("Performance"),
     "powersave": _("Power save"),
     "ondemand": _("On demand"),
@@ -485,7 +485,7 @@ function governorLabel(name) {
     return capitalize(name);
 }
 
-var EPP_LABELS = {
+const EPP_LABELS = {
     "default": _("Default"),
     "performance": _("Performance"),
     "balance_performance": _("Balance performance"),
@@ -510,7 +510,7 @@ function energyPreferenceLabel(name) {
  * battery's temperature, what it is drawing - are grouped the same way and
  * have to use the same words for it.
  */
-var MEASURE_NAMES = {
+const MEASURE_NAMES = {
     temperature: _("Temperature"),
     fan: _("Fan"),
     power: _("Power"),

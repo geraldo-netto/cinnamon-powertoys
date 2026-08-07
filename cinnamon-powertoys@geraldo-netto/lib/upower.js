@@ -14,11 +14,11 @@ const Format = require("./lib/format.js");
 const Log = require("./lib/log.js");
 const OwnerWatch = require("./lib/owner-watch.js");
 
-var BUS_NAME = "org.freedesktop.UPower";
-var MANAGER_PATH = "/org/freedesktop/UPower";
-var DISPLAY_DEVICE_PATH = "/org/freedesktop/UPower/devices/DisplayDevice";
-var RETRY_INITIAL_MS = 500;
-var RETRY_MAX_MS = 8000;
+const BUS_NAME = "org.freedesktop.UPower";
+const MANAGER_PATH = "/org/freedesktop/UPower";
+const DISPLAY_DEVICE_PATH = "/org/freedesktop/UPower/devices/DisplayDevice";
+const RETRY_INITIAL_MS = 500;
+const RETRY_MAX_MS = 8000;
 
 const MANAGER_XML = '<node>' +
     '<interface name="org.freedesktop.UPower">' +
@@ -218,7 +218,7 @@ function systemBus(gio, managerProxy, deviceProxy) {
     };
 }
 
-var UPowerMonitor = class UPowerMonitor {
+const UPowerMonitor = class UPowerMonitor {
     /*
      * onChanged is called whenever the device set or any device property
      * changes; onReady once the initial enumeration is complete. `bus` is how

@@ -15,7 +15,7 @@ function _leftAlignedStyle(style) {
     return original + (/;\s*$/.test(original) ? " " : "; ") + "text-align: left;";
 }
 
-var PanelAdapter = class PanelAdapter {
+const PanelAdapter = class PanelAdapter {
     constructor(applet, callbacks) {
         callbacks = callbacks || {};
         this._applet = applet;
