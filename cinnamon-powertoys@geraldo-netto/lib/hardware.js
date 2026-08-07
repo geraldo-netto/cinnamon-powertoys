@@ -474,19 +474,19 @@ function machineNamesAsync(addresses, onDone, ioOptions) {
  * dropped are the ones that appear in hundreds of these entries and identify
  * nothing.
  */
-const COMPANY_WORDS = [
+const COMPANY_WORDS = new Set([
     "inc", "inc.", "llc", "ltd", "ltd.", "limited", "co", "co.", "corp",
     "corp.", "corporation", "company", "gmbh", "ag", "sa", "s.a.", "bv",
     "b.v.", "plc", "electronics", "electronic", "electric", "technologies",
     "technology", "tech", "international", "industries", "industrial",
     "group", "computer", "computers", "display", "displays", "optronics",
     "america", "usa",
-];
+]);
 
 function tidyVendorName(name) {
     let words = String(name || "").trim().split(/\s+/);
     while (words.length > 1 &&
-           COMPANY_WORDS.includes(words[words.length - 1].toLowerCase().replace(/,$/, "")))
+           COMPANY_WORDS.has(words[words.length - 1].toLowerCase().replace(/,$/, "")))
         words.pop();
     return words.join(" ").replace(/,$/, "");
 }
