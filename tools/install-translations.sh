@@ -15,7 +15,7 @@ UUID=cinnamon-powertoys@geraldo-netto
 ACTION=${1:-install}
 LOCALE_DIR=${2:-${XDG_DATA_HOME:-$HOME/.local/share}/locale}
 SOURCE_ROOT=$(cd "$(dirname "$0")/.." && pwd)
-PO_DIR=$SOURCE_ROOT/$UUID/po
+PO_DIR=$SOURCE_ROOT/files/$UUID/po
 
 case "$ACTION" in
     install|uninstall) ;;

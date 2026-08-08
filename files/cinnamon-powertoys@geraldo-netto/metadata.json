@@ -2,7 +2,6 @@
     "uuid": "cinnamon-powertoys@geraldo-netto",
     "name": "Power Toys",
     "description": "Monitor and configure system power management: brightness for every screen, batteries of every device type, power profiles, processor settings, temperatures and power draw.",
-    "icon": "cs-power",
     "version": "1.0.0",
     "url": "https://github.com/geraldo-netto/cinnamon-powertoys",
     "max-instances": 1,

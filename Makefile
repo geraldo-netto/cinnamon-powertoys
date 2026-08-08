@@ -1,4 +1,6 @@
 UUID    := cinnamon-powertoys@geraldo-netto
+FILES_DIR := files
+XLET_DIR  := $(FILES_DIR)/$(UUID)
 DESTDIR ?=
 PREFIX  ?= $(if $(XDG_DATA_HOME),$(XDG_DATA_HOME),$(HOME)/.local/share)
 TARGET  := $(DESTDIR)$(PREFIX)/cinnamon/applets/$(UUID)
@@ -7,8 +9,8 @@ TARGET  := $(DESTDIR)$(PREFIX)/cinnamon/applets/$(UUID)
 # out in three places - here, in the action, and in applet.js - and `make
 # check` fails if they stop agreeing, because a mismatch would quietly mean
 # the action never applies and every change asks for a password again.
-POT         := $(UUID)/po/$(UUID).pot
-METADATA    := $(UUID)/metadata.json
+POT         := $(XLET_DIR)/po/$(UUID).pot
+METADATA    := $(XLET_DIR)/metadata.json
 
 # What the template says about itself, read out of metadata.json rather than
 # written here, so the two cannot come to disagree about the applet's name,
@@ -87,8 +89,8 @@ install-policy:
 	@[ -z "$(DESTDIR)" ] || install -d "$(DESTDIR)"
 	@built_policy=$$(mktemp); \
 		trap 'rm -f -- "$$built_policy"' EXIT HUP INT TERM; \
-		python3 "$(POLICY_BUILDER)" "polkit/$(POLICY)" "$(UUID)/po" "$$built_policy"; \
-		sh "$(POLICY_TOOL)" install "$(UUID)/powertoys-helper" "$(HELPER_DEST)" \
+		python3 "$(POLICY_BUILDER)" "polkit/$(POLICY)" "$(XLET_DIR)/po" "$$built_policy"; \
+		sh "$(POLICY_TOOL)" install "$(XLET_DIR)/powertoys-helper" "$(HELPER_DEST)" \
 			"$$built_policy" "$(POLICY_DIR)/$(POLICY)" "$(POLICY_LOCK)"
 	@echo "installed $(HELPER_DEST)"
 	@echo "installed $(POLICY_DIR)/$(POLICY)"
@@ -99,7 +101,7 @@ uninstall-policy:
 	@[ -n "$(DESTDIR)" ] || [ "$$(id -u)" = 0 ] || \
 		{ echo "needs root: sudo make uninstall-policy"; exit 1; }
 	@[ -z "$(DESTDIR)" ] || install -d "$(DESTDIR)"
-	@sh "$(POLICY_TOOL)" uninstall "$(UUID)/powertoys-helper" "$(HELPER_DEST)" \
+	@sh "$(POLICY_TOOL)" uninstall "$(XLET_DIR)/powertoys-helper" "$(HELPER_DEST)" \
 		"polkit/$(POLICY)" "$(POLICY_DIR)/$(POLICY)" "$(POLICY_LOCK)"
 	@echo "removed the action and the root owned helper"
 	@echo "monitoring still works; privileged changes are disabled"
@@ -134,18 +136,20 @@ uninstall-rapl:
 
 check:
 	@command -v cjs >/dev/null 2>&1 || { echo "cjs not found, install the cjs package"; exit 1; }
-	@cjs tools/parse-check.js $(UUID)/applet.js $(UUID)/lib/*.js
+	@sh tools/check-layout.sh "$(UUID)" "$(FILES_DIR)"
+	@cjs tools/parse-check.js $(XLET_DIR)/applet.js $(XLET_DIR)/lib/*.js
 	@cjs tests/run.js
-	@sh -n $(UUID)/powertoys-helper install.sh tools/install-translations.sh \
+	@sh -n $(XLET_DIR)/powertoys-helper install.sh tools/check-layout.sh \
+		tools/install-translations.sh \
 		tools/uninstall.sh tools/deployment-lock.sh tools/cinnamon-xlets.sh \
 		tools/transition-lock.sh \
 		tools/rapl-access.sh tools/install-policy.sh \
 		&& echo "shell ok     helper and install scripts"
-	@python3 -c "import json; [json.load(open(f)) for f in ['$(UUID)/metadata.json','$(UUID)/settings-schema.json']]" \
-		&& echo "json ok      $(UUID)/metadata.json $(UUID)/settings-schema.json"
+	@python3 -c "import json; [json.load(open(f)) for f in ['$(XLET_DIR)/metadata.json','$(XLET_DIR)/settings-schema.json','info.json']]" \
+		&& echo "json ok      runtime metadata, settings and Spices info"
 	@python3 -c "import xml.dom.minidom; xml.dom.minidom.parse('polkit/$(POLICY)')" \
 		&& echo "policy ok    polkit/$(POLICY)"
-	@grep -q '"$(HELPER_PATH)"' $(UUID)/applet.js \
+	@grep -q '"$(HELPER_PATH)"' $(XLET_DIR)/applet.js \
 		&& grep -q '>$(HELPER_PATH)<' polkit/$(POLICY) \
 		&& echo "paths ok     $(HELPER_PATH)"
 
@@ -214,7 +218,7 @@ mutants:
 # Nothing here reads a clock, so the template is still a function of the
 # sources and the workflow's check can still be a plain diff.
 pot:
-	@cinnamon-xlet-makepot $(UUID)
+	@cinnamon-xlet-makepot $(XLET_DIR)
 	@xgettext --its=polkit/policy.its --join-existing --from-code=UTF-8 \
 		-o $(POT) polkit/$(POLICY)
 	@sed -i '/^"POT-Creation-Date:/d' $(POT)

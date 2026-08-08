@@ -37,6 +37,7 @@ function scriptDir() {
 const TOOLS = scriptDir();
 const ROOT = GLib.path_get_dirname(TOOLS);
 const UUID = "cinnamon-powertoys@geraldo-netto";
+const XLET = ROOT + "/files/" + UUID;
 
 imports.searchPath.unshift(TOOLS);
 const Loader = imports.loader;
@@ -185,8 +186,8 @@ function run(argv, environment) {
  * A mutant that breaks a callback does not fail a case, it stops one
  * answering - and the harness waits five seconds before calling that a
  * failure. At one whole suite run per mutant, that is the difference between
- * a run somebody makes and a run somebody means to make one day. One second
- * leaves room for the live install rollback's two applet reloads while the
+ * a run somebody makes and a run somebody means to make one day. Two seconds
+ * leave room for the live install rollback's two applet reloads while the
  * outer timeout still catches a callback that will never arrive; cases that
  * talk to a real daemon keep the generous default in an ordinary run.
  */
@@ -194,12 +195,12 @@ function environmentWith(xletDir) {
     return GLib.get_environ()
         .filter(entry => entry.indexOf("POWERTOYS_XLET_DIR=") !== 0 &&
                          entry.indexOf("POWERTOYS_SETTLE_MS=") !== 0)
-        .concat(["POWERTOYS_XLET_DIR=" + xletDir, "POWERTOYS_SETTLE_MS=1000"]);
+        .concat(["POWERTOYS_XLET_DIR=" + xletDir, "POWERTOYS_SETTLE_MS=2000"]);
 }
 
 function sourceFiles() {
     let names = [];
-    for (let name of _listDir(ROOT + "/" + UUID + "/lib"))
+    for (let name of _listDir(XLET + "/lib"))
         names.push("lib/" + name);
     return names.filter(name => name.substr(-3) === ".js").sort();
 }
@@ -253,10 +254,11 @@ if (files.length === 0)
  * reported against a half written case is worse than no answer.
  */
 let work = GLib.dir_make_tmp("powertoys-mutate-XXXXXX");
-let copy = work + "/" + UUID;
+let copy = work + "/files/" + UUID;
 /* Tests also inspect these root fixtures. Keep the manifest explicit so the
  * isolated baseline proves the same project that the ordinary suite proves. */
-for (let part of [UUID, "tests", "tools", "install.sh", "Makefile", "README.md"]) {
+for (let part of ["files", "tests", "tools", "polkit", "udev", "install.sh",
+                  "Makefile", "README.md", "info.json", "screenshot.png"]) {
     if (run(["cp", "-r", ROOT + "/" + part, work + "/" + part], null) !== 0) {
         printerr("could not copy " + part + " to " + work);
         System.exit(2);
@@ -289,7 +291,7 @@ let totals = { killed: 0, survived: 0 };
 let survivors = [];
 
 for (let file of files) {
-    let path = ROOT + "/" + UUID + "/" + file;
+    let path = XLET + "/" + file;
     let target = copy + "/" + file;
     let original = Loader.read(path);
     let candidates = mutants(original);

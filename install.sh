@@ -7,7 +7,7 @@
 set -eu
 
 UUID=cinnamon-powertoys@geraldo-netto
-SOURCE_DIR=$(cd "$(dirname "$0")" && pwd)/$UUID
+SOURCE_DIR=$(cd "$(dirname "$0")" && pwd)/files/$UUID
 
 # PREFIX and DESTDIR are honoured so `make install` can hand its own settings
 # through rather than doing the copy a second time and drifting from this.

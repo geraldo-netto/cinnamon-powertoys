@@ -1,8 +1,8 @@
 # Cinnamon Power Toys
 #
 # This is a GJS/Cinnamon xlet project, not a Node project. Everything that
-# belongs in the repository lives in cinnamon-powertoys@geraldo-netto/ plus the
-# install helpers at the top level.
+# belongs in the runtime payload lives in files/cinnamon-powertoys@geraldo-netto/;
+# development, packaging and install helpers stay at the top level.
 
 # ---------------------------------------------------------------- build output
 build/

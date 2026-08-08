@@ -30,7 +30,7 @@ var cases = {};
 function installedTree(msgfmt, body) {
     let directory = GLib.dir_make_tmp("powertoys-gettext-XXXXXX");
     let tools = directory + "/tools";
-    let po = directory + "/" + Harness.UUID + "/po";
+    let po = directory + "/files/" + Harness.UUID + "/po";
     let locale = directory + "/locale";
     let bin = directory + "/bin";
     GLib.mkdir_with_parents(tools, 0o755);

@@ -12,7 +12,7 @@ that is doing to the temperature, **Sensors**, whose first line is the supply
 the machine is running on. A column that has nothing in it is not there at
 all. Nothing is folded away, and every figure is stated once.
 
-![The menu](docs/menu.png)
+![The menu](screenshot.png)
 
 The panel item, between the other applets:
 
@@ -510,59 +510,60 @@ the exact compatibility floor behind the two load-critical requirements.
 ## Layout
 
 ```
-cinnamon-powertoys@geraldo-netto/
-├── applet.js               panel item, menu, wiring, polling
-├── lib/cinnamon-panel.js   Cinnamon panel and tooltip compatibility boundary
-│
-│   reading the machine, and writing to it
-├── lib/io.js               file reads, rooted so a captured /sys can stand in
-├── lib/hardware.js         what a chip, a card and a monitor are called
-├── lib/sensors.js          hwmon, thermal and powercap discovery
-├── lib/backlight.js        screen and keyboard backlight through csd
-├── lib/ddc.js              external monitor brightness through ddcutil
-├── lib/bluez.js            bluetooth batteries UPower does not bridge
-├── lib/cpu.js              cpufreq scaling interface
-├── lib/power-supply.js     charge limit and ACPI platform profile nodes
-├── lib/upower.js           UPower D-Bus client
-├── lib/profiles.js         power-profiles-daemon client
-├── lib/owner-watch.js      recoverable D-Bus ownership watches
-├── lib/privileged.js       finding, running and queueing the pkexec helper
-│
-│   what is made of a reading; no widget, no shell, all of it checkable
-├── lib/reading.js          the questions the panel and the menu ask of one
-├── lib/panel-text.js       the label beside the icon, and the tooltip
-├── lib/sensor-rows.js      one reading as the rows of a sensor list
-├── lib/device.js           what a powered device is, in words
-├── lib/alerts.js           when to interrupt somebody, and how not to twice
-├── lib/pending-profile.js  a profile asked for and not yet arrived
-├── lib/format.js           value formatting and UPower enum naming
-│
-├── lib/keyed-list.js       menu rows that follow a list of values
-├── lib/gettext.js          the text domain, bound once
-├── lib/notifications.js    exception-safe Cinnamon notification delivery
-├── lib/log.js              shell diagnostics, one line per continuous failure
-├── powertoys-helper        validating pkexec helper for root owned settings
-├── metadata.json
-├── settings-schema.json
-├── stylesheet.css
-├── po/                     the translation template and any translations
-└── icons/
+files/
+└── cinnamon-powertoys@geraldo-netto/
+    ├── applet.js               panel item, menu, wiring, polling
+    ├── lib/
+    │   ├── cinnamon-panel.js   Cinnamon panel and tooltip compatibility boundary
+    │   ├── io.js               file reads, rooted so a captured /sys can stand in
+    │   ├── hardware.js         what a chip, a card and a monitor are called
+    │   ├── sensors.js          hwmon, thermal and powercap discovery
+    │   ├── backlight.js        screen and keyboard backlight through csd
+    │   ├── ddc.js              external monitor brightness through ddcutil
+    │   ├── bluez.js            bluetooth batteries UPower does not bridge
+    │   ├── cpu.js              cpufreq scaling interface
+    │   ├── power-supply.js     charge limit and ACPI platform profile nodes
+    │   ├── upower.js           UPower D-Bus client
+    │   ├── profiles.js         power-profiles-daemon client
+    │   ├── owner-watch.js      recoverable D-Bus ownership watches
+    │   ├── privileged.js       finding, running and queueing the pkexec helper
+    │   ├── reading.js          the questions the panel and the menu ask of one
+    │   ├── panel-text.js       the label beside the icon, and the tooltip
+    │   ├── sensor-rows.js      one reading as the rows of a sensor list
+    │   ├── device.js           what a powered device is, in words
+    │   ├── alerts.js           when to interrupt somebody, and how not to twice
+    │   ├── pending-profile.js  a profile asked for and not yet arrived
+    │   ├── format.js           value formatting and UPower enum naming
+    │   ├── keyed-list.js       menu rows that follow a list of values
+    │   ├── gettext.js          the text domain, bound once
+    │   ├── notifications.js    exception-safe Cinnamon notification delivery
+    │   └── log.js              shell diagnostics, one line per continuous failure
+    ├── powertoys-helper        validating pkexec helper for root owned settings
+    ├── metadata.json
+    ├── settings-schema.json
+    ├── stylesheet.css
+    ├── icon.png                 Cinnamon Spices catalogue icon
+    ├── po/                     the translation template and any translations
+    └── icons/
 
 tests/                   harness, runner, the cases and captured machines
 tools/                   test/QA tooling and deployment lifecycle helpers
 polkit/                  the action for one prompt instead of one per change
 udev/                    the optional RAPL counter access rule
+info.json                Cinnamon Spices author and license metadata
+screenshot.png           Cinnamon Spices preview image
+docs/                    additional project images
 ```
 
 ## Translating
 
-`cinnamon-powertoys@geraldo-netto/po/` holds the gettext template extracted
+`files/cinnamon-powertoys@geraldo-netto/po/` holds the gettext template extracted
 from the strings marked for translation in the applet and its settings schema.
 
 To start a language, copy the template and fill it in:
 
 ```sh
-cd cinnamon-powertoys@geraldo-netto/po
+cd files/cinnamon-powertoys@geraldo-netto/po
 msginit -l pt_BR -i cinnamon-powertoys@geraldo-netto.pot -o pt_BR.po
 ```
 

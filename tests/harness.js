@@ -36,7 +36,7 @@ function setRoot(path) {
  * source in the working tree.
  */
 function xletDir() {
-    return GLib.getenv("POWERTOYS_XLET_DIR") || (ROOT + "/" + UUID);
+    return GLib.getenv("POWERTOYS_XLET_DIR") || (ROOT + "/files/" + UUID);
 }
 
 function testsDir() {

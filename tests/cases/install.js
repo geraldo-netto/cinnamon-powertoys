@@ -24,7 +24,7 @@ function read(path) {
 function scratch(options, body) {
     let directory = GLib.dir_make_tmp("powertoys-install-XXXXXX");
     let source = directory + "/source";
-    let applet = source + "/" + UUID;
+    let applet = source + "/files/" + UUID;
     let tools = source + "/tools";
     let stage = directory + "/stage";
     let parent = stage + "/share/cinnamon/applets";

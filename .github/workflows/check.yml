@@ -168,7 +168,7 @@ jobs:
           sudo install -m 0755 makepot.py /usr/local/bin/cinnamon-xlet-makepot
           rm -f makepot.py
 
-          pot=cinnamon-powertoys@geraldo-netto/po/cinnamon-powertoys@geraldo-netto.pot
+          pot=files/cinnamon-powertoys@geraldo-netto/po/cinnamon-powertoys@geraldo-netto.pot
           test -f "$pot" || { echo "no template at $pot"; exit 1; }
 
           # Kept aside before `make pot` writes over it, so the comparison is
