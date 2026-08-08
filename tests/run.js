@@ -8,6 +8,12 @@
  * hooks. A file that needs state builds it inside the case.
  *
  * Usage: cjs tests/run.js [name ...]   - names filter by substring.
+ *        cjs tests/run.js --fail-fast --prioritize ddc,hardware
+ *
+ * --prioritize changes case-file order without filtering anything.
+ * --fail-fast stops at the first real failure. Together they let mutation
+ * testing try the cases nearest to a changed library first while retaining
+ * the whole suite as the proof that a survivor really survived.
  */
 
 const GLib = imports.gi.GLib;
@@ -29,6 +35,7 @@ const ROOT = GLib.path_get_dirname(TESTS);
 imports.searchPath.unshift(ROOT + "/tools");
 imports.searchPath.unshift(TESTS);
 const Harness = imports.harness;
+const MutationPlan = imports.mutation_plan;
 Harness.setRoot(ROOT);
 
 /*
@@ -59,19 +66,39 @@ function caseFiles() {
     return names.sort();
 }
 
-let filters = ARGV;
+let filters = [];
+let priorities = [];
+let failFast = false;
+
+for (let i = 0; i < ARGV.length; i++) {
+    if (ARGV[i] === "--fail-fast") {
+        failFast = true;
+    } else if (ARGV[i] === "--prioritize") {
+        if (i + 1 >= ARGV.length) {
+            printerr("--prioritize needs a comma-separated case-file list");
+            System.exit(2);
+        }
+        priorities = priorities.concat(ARGV[++i].split(",").filter(name => name !== ""));
+    } else {
+        filters.push(ARGV[i]);
+    }
+}
+
 let passed = 0;
 let failed = 0;
 let skipped = [];
 let failures = [];
 
-for (let file of caseFiles()) {
+caseLoop:
+for (let file of MutationPlan.prioritize(caseFiles(), priorities)) {
     let module;
     try {
         module = imports.cases[file];
     } catch (error) {
         failed++;
         failures.push(file + ": will not load: " + error);
+        if (failFast)
+            break;
         continue;
     }
 
@@ -94,6 +121,8 @@ for (let file of caseFiles()) {
             failed++;
             failures.push(label + "\n        " + error.message);
             print("  FAIL  " + label);
+            if (failFast)
+                break caseLoop;
         }
     }
 }

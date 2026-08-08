@@ -51,6 +51,7 @@ COVERAGE_MIN ?= 80
 # --sample N for a quick answer on a big one.
 MUTANTS_MIN ?= 80
 MUTANTS_ARGS ?=
+MUTANTS_JOBS ?= 4
 
 .PHONY: install uninstall install-policy uninstall-policy install-rapl \
 	uninstall-rapl check coverage mutants pot restart help
@@ -183,19 +184,20 @@ coverage:
 #
 # Coverage says a line ran; this says that running it proved something. Each
 # mutant is one small plausible mistake - a comparison that lets its boundary
-# through, an and that should have been an or, a guard dropped - run against
-# the whole suite and then put back. It works on a copy in a temporary
-# directory, so an interrupted run cannot leave a broken source behind.
+# through, an and that should have been an or, a guard dropped. Related cases
+# run first and stop at the first kill; only a survivor traverses every case.
+# Isolated temporary copies keep workers and the working tree independent.
 #
-# Minutes rather than seconds: one full suite run per mutant. Not part of
-# check for that reason.
+# Minutes rather than seconds: one isolated CJS process per mutant. Not part
+# of check for that reason.
 #
 #   make mutants                                  - all of it
 #   make mutants MUTANTS_ARGS="lib/ddc.js"        - one library
 #   make mutants MUTANTS_ARGS="--sample 20"       - a seeded slice of each
+#   make mutants MUTANTS_ARGS="--full-suite"       - legacy ordering oracle
 mutants:
 	@command -v cjs >/dev/null 2>&1 || { echo "cjs not found, install the cjs package"; exit 1; }
-	@cjs tools/mutate.js $(MUTANTS_ARGS) --min $(MUTANTS_MIN)
+	@cjs tools/mutate.js --jobs $(MUTANTS_JOBS) $(MUTANTS_ARGS) --min $(MUTANTS_MIN)
 
 # The template, as a function of the sources and of nothing else.
 #

@@ -11,12 +11,15 @@
  * something is unasserted, or that code could say something else and no
  * behaviour anybody cares about would change.
  *
- * Each mutant is one change, run against the whole suite, then put back. The
- * work is done on a copy of the applet in a temporary directory - the runner
- * is pointed at it with POWERTOYS_XLET_DIR - so nothing here can leave a
- * broken source in the working tree, whatever happens to the run.
+ * Each mutant is one change offered to the whole suite, then put back. Cases
+ * nearest to the changed library run first and the process stops after the
+ * first failure; a survivor still traverses every case. The work is done on
+ * isolated applet copies in a temporary directory - the runner is pointed at
+ * one with POWERTOYS_XLET_DIR - so nothing here can leave a broken source in
+ * the working tree, whatever happens to the run.
  *
  * Usage: mutate.js [file ...] [--min N] [--quiet] [--seed N] [--sample N]
+ *                  [--full-suite] [--jobs N]
  *
  * Files are paths under the applet directory, e.g. lib/ddc.js; with none, all
  * of them. --sample takes that many mutants per file, chosen by a seeded
@@ -42,6 +45,7 @@ const XLET = ROOT + "/files/" + UUID;
 imports.searchPath.unshift(TOOLS);
 const Loader = imports.loader;
 const Scan = imports.scan;
+const MutationPlan = imports.mutation_plan;
 
 /* ---------------------------------------------------------------- */
 /* what a mutant is                                                  */
@@ -185,8 +189,8 @@ function run(argv, environment) {
  *
  * A mutant that breaks a callback does not fail a case, it stops one
  * answering - and the harness waits five seconds before calling that a
- * failure. At one whole suite run per mutant, that is the difference between
- * a run somebody makes and a run somebody means to make one day. Two seconds
+ * failure. Across hundreds of mutant runs, that is the difference between a
+ * run somebody makes and a run somebody means to make one day. Two seconds
  * leave room for the live install rollback's two applet reloads while the
  * outer timeout still catches a callback that will never arrive; cases that
  * talk to a real daemon keep the generous default in an ordinary run.
@@ -226,6 +230,8 @@ let minimum = 80;
 let quiet = false;
 let seed = 1;
 let sample = 0;
+let fullSuite = false;
+let jobCount = 1;
 let files = [];
 
 for (let i = 0; i < args.length; i++) {
@@ -237,8 +243,17 @@ for (let i = 0; i < args.length; i++) {
         sample = Number(args[++i]);
     else if (args[i] === "--quiet")
         quiet = true;
+    else if (args[i] === "--full-suite")
+        fullSuite = true;
+    else if (args[i] === "--jobs")
+        jobCount = Number(args[++i]);
     else
         files.push(args[i]);
+}
+
+if (!Number.isInteger(jobCount) || jobCount < 1) {
+    printerr("--jobs needs a positive integer");
+    System.exit(2);
 }
 
 if (files.length === 0)
@@ -267,6 +282,23 @@ for (let part of ["files", "tests", "tools", "polkit", "udev", "install.sh",
 
 let environment = environmentWith(copy);
 
+function sourcesIn(directory, names, prefix) {
+    let sources = {};
+    for (let name of names)
+        sources[prefix + name] = Loader.read(directory + "/" + name);
+    return sources;
+}
+
+let libraryNames = _listDir(copy + "/lib")
+    .filter(name => name.substr(-3) === ".js").sort();
+let caseNames = _listDir(work + "/tests/cases")
+    .filter(name => name.substr(-3) === ".js").sort();
+let librarySources = sourcesIn(copy + "/lib", libraryNames, "lib/");
+let caseSources = sourcesIn(work + "/tests/cases", caseNames, "");
+let namedCaseSources = {};
+for (let name in caseSources)
+    namedCaseSources[name.slice(0, -3)] = caseSources[name];
+
 /*
  * The suite, under a clock.
  *
@@ -280,6 +312,13 @@ let environment = environmentWith(copy);
  */
 let suite = ["timeout", "--kill-after=2", "10", "cjs", work + "/tests/run.js"];
 
+function suiteFor(file) {
+    if (fullSuite)
+        return suite;
+    let first = MutationPlan.impactedCases(file, librarySources, namedCaseSources);
+    return suite.concat(["--fail-fast", "--prioritize", first.join(",")]);
+}
+
 /* A suite that is not green against the copy says nothing about a mutant. */
 if (run(suite, environment) !== 0) {
     printerr("the suite does not pass against an unmutated copy; nothing to learn here");
@@ -287,40 +326,136 @@ if (run(suite, environment) !== 0) {
     System.exit(2);
 }
 
-let totals = { killed: 0, survived: 0 };
-let survivors = [];
-
+let plans = {};
+let pending = [];
 for (let file of files) {
     let path = XLET + "/" + file;
-    let target = copy + "/" + file;
     let original = Loader.read(path);
     let candidates = mutants(original);
 
     if (sample > 0 && candidates.length > sample)
         candidates = shuffled(candidates, seed).slice(0, sample).sort((a, b) => a.line - b.line);
 
-    let killed = 0;
-    for (let mutant of candidates) {
-        GLib.file_set_contents(target, mutant.source);
-        let status = run(suite, environment);
+    plans[file] = { original: original, candidates: candidates, killed: 0, survived: [] };
+    for (let mutant of candidates)
+        pending.push({ file: file, mutant: mutant, order: pending.length });
+}
+
+/*
+ * Workers share the immutable copied suite and fixtures, but each owns an
+ * applet copy. No process can observe another process's mutant. The CJS
+ * process boundary remains one per mutant, which also gives every run a fresh
+ * module cache and fresh test globals.
+ */
+let workerCount = Math.min(jobCount, pending.length);
+let workers = [];
+for (let i = 0; i < workerCount; i++) {
+    let workerCopy = work + "/workers/" + i + "/" + UUID;
+    GLib.mkdir_with_parents(GLib.path_get_dirname(workerCopy), 0o755);
+    if (run(["cp", "-r", copy, workerCopy], null) !== 0) {
+        printerr("could not create isolated mutation worker " + i);
+        run(["rm", "-rf", work], null);
+        System.exit(2);
+    }
+    workers.push({ copy: workerCopy, environment: environmentWith(workerCopy), pid: 0 });
+}
+
+let next = 0;
+let completed = 0;
+let loop = new GLib.MainLoop(null, false);
+let spawnFlags = GLib.SpawnFlags.SEARCH_PATH |
+    GLib.SpawnFlags.DO_NOT_REAP_CHILD |
+    GLib.SpawnFlags.STDOUT_TO_DEV_NULL |
+    GLib.SpawnFlags.STDERR_TO_DEV_NULL;
+
+function startNext(worker) {
+    if (next >= pending.length) {
+        if (completed === pending.length)
+            loop.quit();
+        return;
+    }
+
+    let job = pending[next++];
+    let target = worker.copy + "/" + job.file;
+    GLib.file_set_contents(target, job.mutant.source);
+
+    let spawned;
+    try {
+        spawned = GLib.spawn_async(ROOT, suiteFor(job.file), worker.environment,
+                                   spawnFlags, null);
+    } catch (error) {
+        printerr("could not start mutation test: " + error.message);
+        GLib.file_set_contents(target, plans[job.file].original);
+        for (let active of workers) {
+            if (active.pid)
+                run(["kill", "-TERM", String(active.pid)], null);
+        }
+        run(["rm", "-rf", work], null);
+        System.exit(2);
+    }
+
+    worker.pid = spawned[1];
+    GLib.child_watch_add(GLib.PRIORITY_DEFAULT, worker.pid, function (pid, status) {
+        GLib.spawn_close_pid(pid);
+        worker.pid = 0;
+        GLib.file_set_contents(target, plans[job.file].original);
+
+        /* Every case still runs before a survivor is recorded. A killed
+         * mutant stops at its first failure, after the cases most likely to
+         * reach this library have been moved to the front. */
         if (status === 0)
-            survivors.push({ file: file, mutant: mutant });
+            plans[job.file].survived.push({ mutant: job.mutant, order: job.order });
         else
-            killed++;
-    }
-    GLib.file_set_contents(target, original);
+            plans[job.file].killed++;
 
-    totals.killed += killed;
-    totals.survived += candidates.length - killed;
+        completed++;
+        startNext(worker);
+    });
+}
 
-    if (!quiet) {
-        let score = candidates.length === 0 ? 100
-            : Math.round(killed / candidates.length * 1000) / 10;
-        print(file + "  " + score + "%  " + killed + " of " + candidates.length + " caught");
+/* Do not leave timeout/CJS descendants behind when an interactive run is
+ * cancelled. GNU timeout forwards TERM to the command it supervises. */
+function interrupted(signal) {
+    for (let worker of workers) {
+        if (worker.pid)
+            run(["kill", "-TERM", String(worker.pid)], null);
     }
+    run(["rm", "-rf", work], null);
+    System.exit(128 + signal);
+}
+
+let signalSources = [];
+if (workerCount > 0) {
+    signalSources.push(GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, 2,
+                                            () => interrupted(2)));
+    signalSources.push(GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, 15,
+                                            () => interrupted(15)));
+    for (let worker of workers)
+        startNext(worker);
+    loop.run();
+    for (let source of signalSources)
+        GLib.source_remove(source);
 }
 
 run(["rm", "-rf", work], null);
+
+let totals = { killed: 0, survived: 0 };
+let survivors = [];
+for (let file of files) {
+    let plan = plans[file];
+    plan.survived.sort((a, b) => a.order - b.order);
+    totals.killed += plan.killed;
+    totals.survived += plan.survived.length;
+    for (let survivor of plan.survived)
+        survivors.push({ file: file, mutant: survivor.mutant });
+
+    if (!quiet) {
+        let score = plan.candidates.length === 0 ? 100
+            : Math.round(plan.killed / plan.candidates.length * 1000) / 10;
+        print(file + "  " + score + "%  " + plan.killed + " of " +
+              plan.candidates.length + " caught");
+    }
+}
 
 let total = totals.killed + totals.survived;
 let score = total === 0 ? 100 : Math.round(totals.killed / total * 1000) / 10;
