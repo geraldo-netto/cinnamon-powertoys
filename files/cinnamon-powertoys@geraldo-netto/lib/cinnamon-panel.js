@@ -8,6 +8,15 @@
  * and everything installed here is put back when the applet is removed.
  */
 
+/*
+ * The theme's power artwork is a wide, short gauge: in the panel's 32-pixel
+ * icon box it covers about 26 by 17 pixels, which reads as a smaller icon than
+ * the square glyphs beside it even though the box is the same size every stock
+ * applet uses. Scaling the box a notch gives that artwork more height without
+ * touching the panel's own height, which is the user's setting.
+ */
+const PANEL_ICON_SIZE = 36;
+
 function _leftAlignedStyle(style) {
     let original = typeof style === "string" ? style : "";
     if (original.trim() === "")
@@ -180,11 +189,31 @@ const PanelAdapter = class PanelAdapter {
     setSymbolicIcon(name) {
         if (this._applet && typeof this._applet.set_applet_icon_symbolic_name === "function")
             this._applet.set_applet_icon_symbolic_name(name);
+        this.applyIconSize();
     }
 
     setIconPath(path) {
         if (this._applet && typeof this._applet.set_applet_icon_path === "function")
             this._applet.set_applet_icon_path(path);
+        this.applyIconSize();
+    }
+
+    /*
+     * Setting an icon replaces the actor's size, so this runs after every one
+     * of the three ways this applet sets one rather than once at startup.
+     * Both paths are used deliberately: the property is what St reads, and an
+     * inline style is the one declaration the desktop theme's own
+     * `.applet-icon` rule cannot outrank.
+     */
+    applyIconSize(size) {
+        let wanted = Number.isFinite(size) && size > 0 ? Math.floor(size) : PANEL_ICON_SIZE;
+        let actor = this._applet?._applet_icon;
+        if (!actor || typeof actor.set_icon_size !== "function")
+            return false;
+        actor.set_icon_size(wanted);
+        if (typeof actor.set_style === "function")
+            actor.set_style("icon-size: " + wanted + "px;");
+        return true;
     }
 
     /* A named icon is the public fallback when the private icon actor moved.
@@ -200,6 +229,7 @@ const PanelAdapter = class PanelAdapter {
             return false;
         try {
             actor.gicon = icon;
+            this.applyIconSize();
             return true;
         } catch (e) {
             return false;

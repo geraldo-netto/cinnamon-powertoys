@@ -15,6 +15,44 @@ function publicApplet(calls, actor) {
     };
 }
 
+cases["every way of setting the panel icon also sets its size"] = function () {
+    /*
+     * The theme's power artwork is wide and short: in a 32-pixel box it covers
+     * about 26 by 17 and reads as a smaller icon than the square glyphs beside
+     * it. Setting an icon replaces the actor's size, so a size applied once at
+     * startup is lost on the first battery change; and the property alone is
+     * outranked by the theme's own `.applet-icon` rule, which is what the
+     * inline style is for.
+     */
+    let calls = [];
+    let sizes = [];
+    let styles = [];
+    let iconActor = {
+        gicon: null,
+        set_icon_size: size => sizes.push(size),
+        set_style: value => styles.push(value),
+    };
+    let applet = publicApplet(calls, null);
+    applet._applet_icon = iconActor;
+    let panel = new CinnamonPanel.PanelAdapter(applet, {});
+
+    panel.setSymbolicIcon("powertoys");
+    panel.setIconPath("/icons/balanced.svg");
+    Harness.ok(panel.setBatteryIcon("battery-full", {}, "battery-good-symbolic"),
+               "Gio.Icon actor available");
+
+    Harness.deepEqual(sizes, [36, 36, 36, 36], "each icon set carries the size with it");
+    Harness.deepEqual(styles, [
+        "icon-size: 36px;", "icon-size: 36px;", "icon-size: 36px;", "icon-size: 36px;",
+    ], "the theme rule is outranked by an inline declaration");
+    Harness.ok(panel.applyIconSize(28), "an explicit size is honoured");
+    Harness.equal(sizes[sizes.length - 1], 28, "explicit size applied");
+    Harness.ok(!panel.applyIconSize.call({_applet: {}}, 32),
+               "no private icon actor invented");
+
+    panel.destroy();
+};
+
 cases["private tooltip hooks report reality and are restored"] = function () {
     let style = "color: red; padding: 4px;";
     let tooltipActor = {
