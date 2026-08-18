@@ -29,6 +29,7 @@ const Controls = require("./ui/controls.js");
 const Rows = require("./ui/rows.js");
 
 const _ = Translate._;
+const ngettext = Translate.ngettext;
 
 const BacklightSlider = Controls.BacklightSlider;
 const ChoiceControl = Controls.ChoiceControl;
@@ -527,8 +528,11 @@ class MenuPresenter {
                 note: true,
                 /* The limit rather than the overflow, because the limit is the
                  * part that is worth knowing: it is the same next time. */
-                label: _("Only the first %d monitors have a slider")
-                    .replace("%d", String(this._monitors.limit)),
+                label: Translate.interpolate(
+                    ngettext("Only the first %{count} monitor has a slider",
+                             "Only the first %{count} monitors have a slider",
+                             this._monitors.limit),
+                    { count: this._monitors.limit }),
             });
 
         this._monitorList.sync(entries);

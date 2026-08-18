@@ -222,9 +222,22 @@ function readFile(path) {
  * to say so.
  */
 function shellModules() {
+    return _modulesIn("ui");
+}
+
+/*
+ * The names of the library modules, read the same way and for the same reason:
+ * a case that asks something of every library must not depend on a hand-kept
+ * list to know what every library is.
+ */
+function libraryModules() {
+    return _modulesIn("lib");
+}
+
+function _modulesIn(subdirectory) {
     const Gio = imports.gi.Gio;
     let names = [];
-    let directory = Gio.File.new_for_path(xletDir() + "/ui");
+    let directory = Gio.File.new_for_path(xletDir() + "/" + subdirectory);
     if (!directory.query_exists(null))
         return names;
     let entries = directory.enumerate_children("standard::name",

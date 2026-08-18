@@ -284,7 +284,8 @@ function performanceEntries(data, options) {
     if (current)
         processor.push(current);
     if (maximum)
-        processor.push(_("maximum %s").replace("%s", maximum));
+        processor.push(Translate.interpolate(_("maximum %{frequency}"),
+                                             { frequency: maximum }));
     if (processor.length > 0)
         entries.push(Translate.interpolate(_("Processor: %{details}"),
             { details: processor.join(" · ") }));

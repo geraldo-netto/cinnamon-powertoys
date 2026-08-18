@@ -306,6 +306,62 @@ cases["dynamic name and value phrases use complete templates"] = function () {
         "the complete cycle count is a plural-aware translatable phrase");
 };
 
+cases["a translated sentence is filled in by interpolate, never by replace"] = function () {
+    /*
+     * String.prototype.replace substitutes only the first occurrence of a
+     * token, so a translation that repeats a placeholder - which is a
+     * translator's prerogative - silently loses one of them; and it expands
+     * "$&", "$\u0060" and "$\u0027" in whatever is substituted, so a value
+     * carrying one of those is rewritten by the engine rather than inserted.
+     * Translate.interpolate does neither. This is the hazard lib/sensors.js
+     * documents avoiding, and it applies to every translated string in the
+     * applet, so it is asked of all of them rather than of the two that once
+     * got it wrong.
+     */
+    let offenders = [];
+    let files = [Harness.xletDir() + "/applet.js"];
+    for (let name of Harness.shellModules())
+        files.push(Harness.xletDir() + "/ui/" + name);
+    for (let name of Harness.libraryModules())
+        files.push(Harness.xletDir() + "/lib/" + name);
+
+    for (let file of files) {
+        let source = Harness.readFile(file);
+        let pattern = /(?:_|ngettext)\([^;]*?\)\s*\.replace\(/g;
+        let match;
+        while ((match = pattern.exec(source)) !== null) {
+            let line = source.slice(0, match.index).split("\n").length;
+            offenders.push(file.slice(file.lastIndexOf("/") + 1) + ":" + line);
+        }
+    }
+
+    Harness.deepEqual(offenders, [],
+                      "no translated string is patched with String.replace");
+};
+
+cases["the monitor cap and the maximum frequency are plural-aware templates"] = function () {
+    /* The two strings that used to substitute a printf token by hand. The
+     * cap counts monitors, so it needs a plural form as well as a named
+     * placeholder: not every language has English's two. */
+    let source = [Harness.shellSource(),
+                  Harness.readFile(Harness.xletDir() + "/lib/panel-text.js")].join("\n");
+    Harness.ok(source.indexOf(
+        'ngettext("Only the first %{count} monitor has a slider",') >= 0,
+        "the monitor cap is a plural-aware translatable phrase");
+    Harness.ok(source.indexOf('_("maximum %{frequency}")') >= 0,
+               "the maximum frequency is a named placeholder");
+    Harness.equal(Translate.interpolate(
+        Translate.ngettext("Only the first %{count} monitor has a slider",
+                           "Only the first %{count} monitors have a slider", 1),
+        { count: 1 }), "Only the first 1 monitor has a slider",
+        "one monitor reads in the singular");
+    Harness.equal(Translate.interpolate(
+        Translate.ngettext("Only the first %{count} monitor has a slider",
+                           "Only the first %{count} monitors have a slider", 10),
+        { count: 10 }), "Only the first 10 monitors have a slider",
+        "several monitors read in the plural");
+};
+
 cases["asking for the translation of anything at all answers with text"] = function () {
     /*
      * Every label in this applet goes through here, including ones built from

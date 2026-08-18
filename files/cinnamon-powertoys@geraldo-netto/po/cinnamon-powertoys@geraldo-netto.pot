@@ -107,104 +107,105 @@ msgstr ""
 msgid "%{display}: %{percentage}"
 msgstr ""
 
-#: ui/menu.js:226
+#: ui/menu.js:227
 msgid "System power settings"
 msgstr ""
 
-#: ui/menu.js:249
+#: ui/menu.js:250
 msgid "Brightness"
 msgstr ""
 
-#: ui/menu.js:255
+#: ui/menu.js:256
 msgid "Screen"
 msgstr ""
 
-#: ui/menu.js:273 lib/format.js:182
+#: ui/menu.js:274 lib/format.js:182
 msgid "Keyboard"
 msgstr ""
 
-#: ui/menu.js:281
+#: ui/menu.js:282
 msgid "Power profile"
 msgstr ""
 
-#: ui/menu.js:290
+#: ui/menu.js:291
 msgid "Profile"
 msgstr ""
 
-#: ui/menu.js:294
+#: ui/menu.js:295
 msgid "Performance limited"
 msgstr ""
 
-#: ui/menu.js:299
+#: ui/menu.js:300
 msgid "Profile holds"
 msgstr ""
 
-#: ui/menu.js:324 lib/panel-text.js:244 lib/sensors.js:37
+#: ui/menu.js:325 lib/panel-text.js:244 lib/sensors.js:37
 msgid "Processor"
 msgstr ""
 
-#: ui/menu.js:329
+#: ui/menu.js:330
 msgid "Turbo boost"
 msgstr ""
 
-#: ui/menu.js:347
+#: ui/menu.js:348
 msgid "Governor"
 msgstr ""
 
-#: ui/menu.js:350
+#: ui/menu.js:351
 msgid "Energy preference"
 msgstr ""
 
-#: ui/menu.js:365 lib/panel-text.js:327
+#: ui/menu.js:366 lib/panel-text.js:328
 msgid "Devices"
 msgstr ""
 
-#: ui/menu.js:401
+#: ui/menu.js:402
 msgid "Charge limit"
 msgstr ""
 
-#: ui/menu.js:417
+#: ui/menu.js:418
 msgid "Sensors"
 msgstr ""
 
-#: ui/menu.js:530
-#, javascript-format
-msgid "Only the first %d monitors have a slider"
-msgstr ""
+#: ui/menu.js:532
+msgid "Only the first %{count} monitor has a slider"
+msgid_plural "Only the first %{count} monitors have a slider"
+msgstr[0] ""
+msgstr[1] ""
 
-#: ui/menu.js:673
+#: ui/menu.js:677
 msgid "%{kind} %{charge}"
 msgstr ""
 
-#: ui/menu.js:678
+#: ui/menu.js:682
 msgid "%{state} · %{remaining}"
 msgstr ""
 
-#: ui/menu.js:717 lib/panel-text.js:310
+#: ui/menu.js:721 lib/panel-text.js:311
 msgid "Connected"
 msgstr ""
 
-#: ui/menu.js:717 lib/panel-text.js:310
+#: ui/menu.js:721 lib/panel-text.js:311
 msgid "Disconnected"
 msgstr ""
 
-#: ui/menu.js:771
+#: ui/menu.js:775
 msgid "No sensor matches “%{sensor}”"
 msgstr ""
 
-#: ui/menu.js:793
+#: ui/menu.js:797
 msgid "The batteries have different limits; choosing one sets all batteries."
 msgstr ""
 
-#: ui/menu.js:794
+#: ui/menu.js:798
 msgid "The batteries have different charge limits."
 msgstr ""
 
-#: ui/menu.js:797
+#: ui/menu.js:801
 msgid "Some battery limits could not be read; choosing one sets all batteries."
 msgstr ""
 
-#: ui/menu.js:798
+#: ui/menu.js:802
 msgid "Some battery limits could not be read."
 msgstr ""
 
@@ -220,7 +221,7 @@ msgstr ""
 msgid "Battery low"
 msgstr ""
 
-#: lib/alerts.js:169 lib/format.js:537 lib/panel-text.js:293
+#: lib/alerts.js:169 lib/format.js:537 lib/panel-text.js:294
 msgid "Temperature"
 msgstr ""
 
@@ -490,7 +491,7 @@ msgstr ""
 msgid "Balanced performance"
 msgstr ""
 
-#: lib/format.js:363 lib/format.js:495 lib/format.js:513 lib/panel-text.js:326
+#: lib/format.js:363 lib/format.js:495 lib/format.js:513 lib/panel-text.js:327
 msgid "Performance"
 msgstr ""
 
@@ -671,23 +672,22 @@ msgid "Governor: %{governor}"
 msgstr ""
 
 #: lib/panel-text.js:287
-#, javascript-format
-msgid "maximum %s"
+msgid "maximum %{frequency}"
 msgstr ""
 
-#: lib/panel-text.js:289
+#: lib/panel-text.js:290
 msgid "Processor: %{details}"
 msgstr ""
 
-#: lib/panel-text.js:294
+#: lib/panel-text.js:295
 msgid "%{source}: %{temperature}"
 msgstr ""
 
-#: lib/panel-text.js:308
+#: lib/panel-text.js:309
 msgid "%{device}: %{state}"
 msgstr ""
 
-#: lib/panel-text.js:325
+#: lib/panel-text.js:326
 msgid "Consumption"
 msgstr ""
 
