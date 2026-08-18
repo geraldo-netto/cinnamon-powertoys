@@ -9,6 +9,22 @@
   changes: auth_admin_keep holds for a few minutes, the same way a package
   manager session does.
 
+  Only a session logged in at the machine can reach that authentication. The
+  applet is a panel control: it is operated by the person sitting in the
+  session it is drawn in, and there is no use case in which it is driven from
+  an inactive session or from somewhere with no session at all. So allow_any
+  and allow_inactive are `no` rather than an authentication prompt - a prompt
+  offered to a remote or inactive caller is an attack surface kept open for a
+  case that does not exist. Widening either one means writing the use case
+  down here first; tools/check-policy.py fails while they say anything else.
+
+  There is deliberately no org.freedesktop.policykit.exec.allow_gui
+  annotation. It exists to let pkexec run programs that draw on the caller's
+  display, forwarding the display environment into a root process; the helper
+  is a non-interactive shell script that prints to stderr and draws nothing,
+  so the forwarding buys nothing and polkit's own documentation discourages
+  it.
+
   The path below is deliberately not the helper inside the applet directory,
   which lives under the user's home and which the user can rewrite. Any
   executable passed to pkexec must be outside the caller's control even for a
@@ -32,12 +48,11 @@
     <?powertoys-message-translations?>
     <icon_name>cs-power</icon_name>
     <defaults>
-      <allow_any>auth_admin</allow_any>
-      <allow_inactive>auth_admin</allow_inactive>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
       <allow_active>auth_admin_keep</allow_active>
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/usr/local/lib/cinnamon-powertoys/powertoys-helper</annotate>
-    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
   </action>
 
 </policyconfig>

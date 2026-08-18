@@ -401,10 +401,15 @@ rollback and cleanup, so concurrent commands cannot interleave the pair.
 **What the action grants.** An administrator, logged in at the machine, may run
 that one helper as root, and the authorisation is remembered for a few minutes
 afterwards (`auth_admin_keep`) rather than for a single call. Anyone who is not
-an administrator is still asked for an administrator password, and anyone
-inactive or connected remotely gets no keeping at all. It grants nothing else:
-the helper takes five fixed commands and checks every value against the list
-the kernel itself advertises.
+an administrator is still asked for an administrator password. A caller in an
+inactive session, or with no local session at all, is not asked for anything:
+the action refuses outright (`allow_inactive` and `allow_any` are both `no`),
+because the applet is a panel control operated by the person sitting in front
+of it and there is no case in which it is driven from anywhere else. The action
+also forwards no display environment into the root process - the helper is a
+non-interactive script that draws nothing. It grants nothing else: the helper
+takes five fixed commands and checks every value against the list the kernel
+itself advertises. `make check` fails if any of that is widened.
 
 **Why the second file.** Authentication makes the selected executable root, so
 that path must be one its caller cannot rewrite before or after authorisation.

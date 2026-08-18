@@ -24,6 +24,9 @@ POLICY      := io.github.geraldo-netto.cinnamon-powertoys.policy
 POLICY_DIR  := $(DESTDIR)/usr/share/polkit-1/actions
 POLICY_TOOL := tools/install-policy.sh
 POLICY_BUILDER := tools/build-policy.py
+# What the action is allowed to grant, checked rather than reviewed: see the
+# script, and the comment in the action itself for why the answer is what it is.
+POLICY_CHECKER := tools/check-policy.py
 POLICY_LOCK := $(if $(DESTDIR),$(DESTDIR),/run/cinnamon-powertoys-policy.lock)
 HELPER_PATH := /usr/local/lib/cinnamon-powertoys/powertoys-helper
 HELPER_DEST := $(DESTDIR)$(HELPER_PATH)
@@ -148,8 +151,7 @@ check:
 		&& echo "shell ok     helper and install scripts"
 	@python3 -c "import json; [json.load(open(f)) for f in ['$(XLET_DIR)/metadata.json','$(XLET_DIR)/settings-schema.json','info.json']]" \
 		&& echo "json ok      runtime metadata, settings and Spices info"
-	@python3 -c "import xml.dom.minidom; xml.dom.minidom.parse('polkit/$(POLICY)')" \
-		&& echo "policy ok    polkit/$(POLICY)"
+	@python3 $(POLICY_CHECKER) polkit/$(POLICY) $(HELPER_PATH)
 	@grep -q '"$(HELPER_PATH)"' $(XLET_DIR)/applet.js \
 		&& grep -q '>$(HELPER_PATH)<' polkit/$(POLICY) \
 		&& echo "paths ok     $(HELPER_PATH)"
