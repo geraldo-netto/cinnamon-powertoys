@@ -192,13 +192,51 @@ cases["a helper that succeeds reports applied"] = function () {
 };
 
 cases["a dismissed password dialog is cancelled, not an error"] = function () {
-    for (let status of [126, 127]) {
-        let helper = helperWith([SYSTEM], [status, ""]);
+    /* 126 is the dialog closed, whatever pkexec did or did not print. */
+    let helper = helperWith([SYSTEM], [126, ""]);
+    let outcome = null;
+    helper.run(["governor", "powersave"], result => { outcome = result; });
+    Harness.equal(outcome.applied, false, "not applied");
+    Harness.equal(outcome.cancelled, true, "the user already knows nothing happened");
+    Harness.equal(outcome.code, undefined, "and there is nothing to report about it");
+};
+
+cases["a refusal the user was part of is still cancelled"] = function () {
+    /* 127 covers a refusal as well as a failure, and pkexec's own line is the
+     * only thing that tells them apart. Refused means asked and denied, which
+     * the user watched happen. */
+    for (let said of ["Error executing command as another user: Not authorized",
+                      "Error executing command as another user: Request dismissed"]) {
+        let helper = helperWith([SYSTEM], [127, said + "\n"]);
         let outcome = null;
         helper.run(["governor", "powersave"], result => { outcome = result; });
-        Harness.equal(outcome.applied, false, "status " + status + ": not applied");
-        Harness.equal(outcome.cancelled, true,
-                      "status " + status + ": the user already knows nothing happened");
+        Harness.equal(outcome.cancelled, true, said + ": nothing to tell them");
+        Harness.equal(outcome.code, undefined, said + ": and no code either");
+    }
+};
+
+cases["a pkexec that could not even ask is reported, not swallowed"] = function () {
+    /*
+     * pkexec exits 127 for its own errors as well as for a refusal: no
+     * authentication agent on this session, the action file gone or
+     * unparsable, the helper no longer executable between validation and
+     * exec. Read as a dismissal those said nothing at all - no notification,
+     * no log line - so a wholly broken privileged path looked exactly like a
+     * user who had changed their mind.
+     */
+    for (let said of ["Error executing command as another user: No authentication agent found",
+                      "pkexec must be setuid root",
+                      ""]) {
+        let helper = helperWith([SYSTEM], [127, said]);
+        let outcome = null;
+        helper.run(["boost", "1"], result => { outcome = result; });
+        Harness.equal(outcome.applied, false, JSON.stringify(said) + ": not applied");
+        Harness.equal(outcome.cancelled, undefined,
+                      JSON.stringify(said) + ": and not passed off as a cancellation");
+        Harness.equal(outcome.code, "not-authorised",
+                      JSON.stringify(said) + ": a code the applet can put words to");
+        Harness.equal(outcome.diagnostic, said.trim(),
+                      JSON.stringify(said) + ": with whatever pkexec said for the log");
     }
 };
 
@@ -274,24 +312,40 @@ cases["nothing in flight means not busy"] = function () {
     Harness.equal(helper.busy, false, "and after, since that spawn answered at once");
 };
 
-cases["what is queued when the applet leaves is dropped"] = function () {
+cases["what is queued when the applet leaves is answered, not spawned"] = function () {
     /*
      * Everything that comes back from here checks whether the applet is still
      * on the panel, which is why this went unnoticed: a pkexec dialog is not
      * something that comes back. Left alone, the queue went on spawning them.
+     *
+     * Not spawning them is only half of it. A queued caller that is never
+     * called back waits for ever, and this class already answers a caller
+     * that arrives after teardown with exactly this outcome; a caller that
+     * arrived a moment earlier is owed the same.
      */
     let helper = deferredHelper();
     let finished = [];
+    let queued = null;
     helper.run(["governor", "powersave"], () => finished.push("governor"));
-    helper.run(["epp", "power"], () => finished.push("epp"));
+    helper.run(["epp", "power"], result => {
+        finished.push("epp");
+        queued = result;
+    });
     Harness.equal(helper.waiting.length, 1, "the first is running");
 
     helper.destroy();
-    helper.answer(0);
 
-    Harness.deepEqual(finished, ["governor"], "the one already running still finishes");
-    Harness.equal(helper.waiting.length, 0,
-                  "and the second is not spawned, so no dialog for an applet that has gone");
+    Harness.deepEqual(finished, ["epp"], "the queued one is answered at once");
+    Harness.equal(queued.applied, false, "and told that nothing was applied");
+    Harness.equal(queued.code, "shutting-down",
+                  "with the same code run() gives a caller that arrives after teardown");
+    Harness.equal(helper.waiting.length, 1,
+                  "no second dialog for an applet that has gone");
+
+    helper.answer(0);
+    Harness.deepEqual(finished, ["epp", "governor"],
+                      "the one already running still finishes");
+    Harness.equal(helper.waiting.length, 0, "and nothing follows it");
 };
 
 cases["the change already on screen is left to finish"] = function () {

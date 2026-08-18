@@ -17,10 +17,32 @@ const GLib = imports.gi.GLib;
 
 const Log = require("./lib/log.js");
 
-/* pkexec's own exit codes: the dialog was closed, or the password did not
- * check out. Both mean the user knows perfectly well nothing happened. */
+/*
+ * pkexec's own exit codes, which do not mean the same thing as each other.
+ *
+ * 126 is the dialog closed: the user was asked and said no, and telling them
+ * so is telling them what they just did.
+ *
+ * 127 is "not authorized" - and, by the same manual page, any error pkexec
+ * itself hit: no authentication agent registered on this session, the action
+ * file missing or unparsable, the helper gone or no longer executable between
+ * validation and exec. Those were read as a dismissal too, so a privileged
+ * path that was wholly broken produced no notification, no log line and no
+ * way to tell it from a user who had simply changed their mind. Only a
+ * refusal the user was actually part of is silent now; see _refused.
+ */
 const PKEXEC_DISMISSED = 126;
 const PKEXEC_UNAUTHORISED = 127;
+
+/*
+ * pkexec writes one line of its own before exiting, and it is the only thing
+ * that distinguishes "asked and refused" from "could not ask". The wording is
+ * pkexec's, matched loosely because it is a message rather than a protocol:
+ * anything else on 127 is reported.
+ */
+function _refused(stderr) {
+    return /not\s+authori[sz]ed|request\s+dismissed/i.test(stderr || "");
+}
 const HELPER_PROTOCOL = 2;
 const HELPER_PROTOCOL_LINE = "cinnamon-powertoys-helper-protocol " + HELPER_PROTOCOL;
 const PROBE_TIMEOUT_MS = 2000;
@@ -229,7 +251,6 @@ const PrivilegedHelper = class PrivilegedHelper {
         this._probe = probe || (spawn
             ? ((path, onDone) => onDone(true, ""))
             : _probeHelper);
-        this._selection = null;
         this._activeProbe = null;
 
         /*
@@ -262,7 +283,22 @@ const PrivilegedHelper = class PrivilegedHelper {
      */
     destroy() {
         this._destroyed = true;
+        /* Answered, not dropped. run() gives this exact outcome to a caller
+         * that arrives after teardown, and a queued caller is owed the same:
+         * one that is never called back waits for ever. Nothing hangs today
+         * only because the applet happens to destroy its writers before its
+         * helper, which is an ordering and not a contract. */
+        let waiting = this._queue;
         this._queue = [];
+        for (let job of waiting) {
+            try {
+                job.done({ applied: false, code: "shutting-down",
+                           diagnostic: "the applet is shutting down",
+                           error: "the applet is shutting down" });
+            } catch (error) {
+                Log.error("could not settle a queued privileged job: " + error);
+            }
+        }
         let activeProbe = this._activeProbe;
         this._activeProbe = null;
         if (activeProbe?.cancel)
@@ -277,17 +313,15 @@ const PrivilegedHelper = class PrivilegedHelper {
     path(onDone) {
         let done = onDone || function () {};
         /* A deployment can add, replace or remove the system candidate while
-         * Cinnamon keeps this object alive. Selection is therefore a hint for
-         * diagnostics, never an authority: every job rechecks candidates in
-         * priority order and repeats the protocol handshake. */
-        this._selection = null;
+         * Cinnamon keeps this object alive, so nothing is remembered between
+         * jobs: every one of them rechecks the candidates in priority order
+         * and repeats the protocol handshake. */
         this._tryCandidate(0, null, done);
         return null;
     }
 
     _tryCandidate(index, issue, onDone) {
         if (index >= this._candidates.length) {
-            this._selection = { path: null, issue: issue };
             onDone(null, issue);
             return;
         }
@@ -311,7 +345,6 @@ const PrivilegedHelper = class PrivilegedHelper {
                 return;
             }
             if (compatible) {
-                this._selection = { path: candidate, issue: issue };
                 if (issue)
                     Log.error(issue.diagnostic + "; using " + candidate);
                 onDone(candidate, issue);
@@ -399,11 +432,6 @@ const PrivilegedHelper = class PrivilegedHelper {
             let argv = ["pkexec", helper].concat(job.args.map(String));
             this._spawn(argv, (status, stderr) => {
                 this._running = false;
-                /* Failure before a helper could report its own structured
-                 * result may mean the selected path vanished or changed.
-                 * Force the next queued job through discovery again. */
-                if (status === -1)
-                    this._selection = null;
                 let outcome = this._outcome(status, stderr);
                 if (issue)
                     outcome = { ...outcome,
@@ -419,8 +447,20 @@ const PrivilegedHelper = class PrivilegedHelper {
     _outcome(status, stderr) {
         if (status === 0)
             return { applied: true };
-        if (status === PKEXEC_DISMISSED || status === PKEXEC_UNAUTHORISED)
+        if (status === PKEXEC_DISMISSED)
             return { applied: false, cancelled: true };
+        if (status === PKEXEC_UNAUTHORISED) {
+            if (_refused(stderr))
+                return { applied: false, cancelled: true };
+            /* pkexec could not put the question, so nobody has been told
+             * anything. Its own line is the whole of what is known. */
+            let reason = (stderr || "").split("\n").map(line => line.trim())
+                .filter(line => line !== "").pop() || "";
+            Log.error("pkexec would not authorise the change: " +
+                      (reason || "no reason given"));
+            return { applied: false, code: "not-authorised", diagnostic: reason,
+                     error: reason };
+        }
         let failure = _failure(stderr);
         Log.error("helper failed with status " + status + " [" + failure.code + "]: " +
                   (failure.diagnostic || "no reason given"));

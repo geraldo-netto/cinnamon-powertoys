@@ -18,8 +18,8 @@ msgstr ""
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
 #. metadata.json->name
-#: applet.js:489 applet.js:1673 applet.js:1687 applet.js:1750 applet.js:1813
-#: applet.js:1822 applet.js:1963
+#: applet.js:489 applet.js:1681 applet.js:1695 applet.js:1758 applet.js:1821
+#: applet.js:1830 applet.js:1971
 msgid "Power Toys"
 msgstr ""
 
@@ -30,7 +30,7 @@ msgid ""
 "the keyboard backlight. Right click to configure those, and to set shortcuts."
 msgstr ""
 
-#: applet.js:1617 applet.js:1781
+#: applet.js:1617 applet.js:1789
 msgid "Privileged controls are turned off"
 msgstr ""
 
@@ -62,36 +62,43 @@ msgstr ""
 msgid "Install or repair the privileged helper with sudo make install-policy."
 msgstr ""
 
-#: applet.js:1659
+#: applet.js:1660
+msgid ""
+"The system could not ask for authorisation. Check that an authentication "
+"agent is running, and that the policy is installed with sudo make install-"
+"policy."
+msgstr ""
+
+#: applet.js:1667
 msgid "The privileged helper did not answer in time. Try that again."
 msgstr ""
 
-#: applet.js:1661 applet.js:1674
+#: applet.js:1669 applet.js:1682
 msgid ""
 "The installed privileged helper is outdated. Re-run the policy installation."
 msgstr ""
 
-#: applet.js:1663
+#: applet.js:1671
 msgid "The privileged helper is incompatible with this applet version."
 msgstr ""
 
-#: applet.js:1665
+#: applet.js:1673
 msgid "The change could not be applied."
 msgstr ""
 
-#: applet.js:1684
+#: applet.js:1692
 msgid "Could not switch to %{profile}: %{detail}"
 msgstr ""
 
-#: applet.js:1685
+#: applet.js:1693
 msgid "Could not switch to %{profile}"
 msgstr ""
 
-#: applet.js:1751
+#: applet.js:1759
 msgid "Power profile: %{profile}"
 msgstr ""
 
-#: applet.js:1964
+#: applet.js:1972
 msgid "Shortcut is already in use: %{shortcut}"
 msgstr ""
 

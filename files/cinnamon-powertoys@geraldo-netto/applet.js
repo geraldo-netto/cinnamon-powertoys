@@ -1652,6 +1652,14 @@ class PowerToysApplet extends Applet.TextIconApplet {
         case "helper-not-found":
         case "unsafe-system-helper":
             return _("Install or repair the privileged helper with sudo make install-policy.");
+        /* pkexec could not put the question at all - no authentication agent
+         * on this session, or an action it could not read - so unlike a
+         * refusal, nobody has been shown anything and there is nothing the
+         * user has already seen us fail to do. */
+        case "not-authorised":
+            return _("The system could not ask for authorisation. Check that an " +
+                     "authentication agent is running, and that the policy is " +
+                     "installed with sudo make install-policy.");
         /* The helper never answered, so nothing is known to be wrong with it
          * and there is nothing for the user to repair. Asking again is the
          * whole remedy. */
