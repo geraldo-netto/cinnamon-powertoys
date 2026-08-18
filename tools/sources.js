@@ -1,0 +1,56 @@
+/*
+ * Which of the applet's own files a run did not reach, and how much that is.
+ *
+ * Both gates measure less than the applet. `make coverage` can only measure
+ * what a case loaded, and `make mutants` only enumerates lib/ - because
+ * applet.js and the modules under ui/ build Cinnamon widgets, so nothing
+ * outside the shell can load them, no case can kill a mutant in them, and
+ * they never appear in an lcov at all.
+ *
+ * That boundary is real and this file does not move it. What it does is stop
+ * the boundary being invisible: a report that lists only what it reached reads
+ * as though that were the whole applet, and the omission is silent exactly
+ * where the risk is. So each tool asks here what it missed and says so, with
+ * the sizes, beside its own figure.
+ *
+ * Pure on purpose - a listing goes in, a listing comes out - so the rule is
+ * exercised by tests/cases/sources.js rather than only by the tools that use
+ * it, one of which cannot be run from the suite at all.
+ */
+
+/*
+ * `all` is every source that exists, as { name, lines }; `reached` is the
+ * names the run actually worked on. What comes back is the difference, by
+ * name, in a stable order.
+ *
+ * Sorted here rather than by the callers: the two tools list this in their
+ * output and two reports that disagree about the order of the same set read
+ * as two different sets.
+ */
+function unreached(all, reached) {
+    let seen = {};
+    for (let name of reached || [])
+        seen[name] = true;
+    return (all || []).filter(entry => entry && !seen[entry.name])
+        .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+}
+
+function totalLines(entries) {
+    return (entries || []).reduce((sum, entry) => sum + (entry.lines || 0), 0);
+}
+
+/*
+ * The lines a report is speaking for, as a share of the applet. Rounded the
+ * same way both tools round their own percentages, so the two figures beside
+ * each other are read on the same scale.
+ */
+function share(reachedLines, unreachedLines) {
+    let total = reachedLines + unreachedLines;
+    return total === 0 ? 100 : Math.round(reachedLines / total * 1000) / 10;
+}
+
+/* One line per file, aligned, for a tool to print under a heading of its own. */
+function lines(entries) {
+    return unreached(entries, []).map(entry =>
+        String(entry.lines).padStart(6) + "  " + entry.name);
+}

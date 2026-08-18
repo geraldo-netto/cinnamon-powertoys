@@ -32,6 +32,7 @@ function scriptDir() {
 imports.searchPath.unshift(scriptDir());
 const Loader = imports.loader;
 const Scan = imports.scan;
+const Sources = imports.sources;
 
 /*
  * What a function covers, given where it starts.
@@ -125,6 +126,70 @@ function attribute(functions, hits) {
 
 function percentage(covered, total) {
     return total === 0 ? 100 : Math.round(covered / total * 1000) / 10;
+}
+
+/* ---------------------------------------------------------------- */
+/* what was not measured                                             */
+
+/*
+ * The applet's source no case can load, named rather than omitted. Why a
+ * report has to say so, and the rule itself, are in tools/sources.js; what is
+ * here is the listing that rule needs.
+ */
+function jsFilesIn(directory, prefix) {
+    const Gio = imports.gi.Gio;
+    let names = [];
+    let folder = Gio.File.new_for_path(directory);
+    if (!folder.query_exists(null))
+        return names;
+    let entries = folder.enumerate_children("standard::name",
+                                            Gio.FileQueryInfoFlags.NONE, null);
+    let info;
+    while ((info = entries.next_file(null)) !== null) {
+        let name = info.get_name();
+        if (name.slice(-3) === ".js")
+            names.push(prefix + name);
+    }
+    entries.close(null);
+    return names.sort();
+}
+
+/*
+ * Where the applet is, worked out from a measured source rather than passed
+ * in: every entry in the manifest is <xlet>/lib/<name>.js, so the xlet is two
+ * directories above any of them. A second copy of that path would be a second
+ * thing to move.
+ */
+function xletDirFrom(sources) {
+    for (let name in sources)
+        return GLib.path_get_dirname(GLib.path_get_dirname(sources[name]));
+    return null;
+}
+
+function unmeasuredFiles(sources) {
+    let xlet = xletDirFrom(sources);
+    if (!xlet)
+        return [];
+    let measured = {};
+    for (let name in sources)
+        measured[sources[name]] = true;
+
+    let all = [];
+    let reached = [];
+    for (let relative of jsFilesIn(xlet, "").concat(jsFilesIn(xlet + "/lib", "lib/"))
+                                            .concat(jsFilesIn(xlet + "/ui", "ui/"))) {
+        let path = xlet + "/" + relative;
+        let source;
+        try {
+            source = Loader.read(path);
+        } catch (error) {
+            continue;
+        }
+        all.push({ name: relative, lines: source.split("\n").length });
+        if (measured[path])
+            reached.push(relative);
+    }
+    return Sources.unreached(all, reached);
 }
 
 /* ---------------------------------------------------------------- */
@@ -234,6 +299,17 @@ let functions = reports.reduce((total, report) => total + report.functions.lengt
 let lines = reports.reduce((total, report) => total + report.totals.lines, 0);
 let covered = reports.reduce((total, report) => total + report.totals.covered, 0);
 
+let missing = unmeasuredFiles(sources);
+let missingLines = Sources.totalLines(missing);
+
+if (!quiet && missing.length > 0) {
+    print("not measured  " + missing.length + " files, " + missingLines +
+          " lines: they build Cinnamon widgets and cannot be loaded here");
+    for (let entry of Sources.lines(missing))
+        print("            " + entry);
+    print("");
+}
+
 if (below.length > 0) {
     printerr("coverage FAIL " + below.length + " of " + functions +
              " functions under " + minimum + "%");
@@ -246,4 +322,8 @@ if (below.length > 0) {
 }
 
 print("coverage ok  " + functions + " functions, every one at " + minimum +
-      "% or better; " + percentage(covered, lines) + "% of " + lines + " lines overall");
+      "% or better; " + percentage(covered, lines) + "% of " + lines +
+      " measured lines" +
+      (missing.length === 0 ? " overall"
+          : ", which is " + Sources.share(lines, missingLines) +
+            "% of the applet; " + missingLines + " unmeasured lines listed above"));

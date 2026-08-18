@@ -46,6 +46,7 @@ imports.searchPath.unshift(TOOLS);
 const Loader = imports.loader;
 const Scan = imports.scan;
 const MutationPlan = imports.mutation_plan;
+const Sources = imports.sources;
 
 /* ---------------------------------------------------------------- */
 /* what a mutant is                                                  */
@@ -207,6 +208,31 @@ function sourceFiles() {
     for (let name of _listDir(XLET + "/lib"))
         names.push("lib/" + name);
     return names.filter(name => name.substr(-3) === ".js").sort();
+}
+
+/*
+ * Every source in the applet, so the report can say which of them this run did
+ * not enumerate. sourceFiles() above is lib/ alone, because applet.js and the
+ * modules under ui/ build Cinnamon widgets: no case can load them, so every
+ * mutant made in them would be reported as a survivor. Why that has to be said
+ * out loud rather than left out is in tools/sources.js.
+ */
+function allSources() {
+    let entries = [];
+    let names = _listDir(XLET).filter(name => name.substr(-3) === ".js")
+        .concat(_listDir(XLET + "/lib")
+            .filter(name => name.substr(-3) === ".js").map(name => "lib/" + name))
+        .concat(_listDir(XLET + "/ui")
+            .filter(name => name.substr(-3) === ".js").map(name => "ui/" + name));
+    for (let name of names) {
+        try {
+            entries.push({ name: name,
+                           lines: Loader.read(XLET + "/" + name).split("\n").length });
+        } catch (error) {
+            /* listed a moment ago and gone now; it is not ours to mutate either */
+        }
+    }
+    return entries;
 }
 
 function _listDir(path) {
@@ -460,6 +486,16 @@ for (let file of files) {
 let total = totals.killed + totals.survived;
 let score = total === 0 ? 100 : Math.round(totals.killed / total * 1000) / 10;
 
+let unmutated = Sources.unreached(allSources(), files);
+let unmutatedLines = Sources.totalLines(unmutated);
+
+if (!quiet && unmutated.length > 0) {
+    print("not mutated  " + unmutated.length + " files, " + unmutatedLines +
+          " lines: no case can load them, so no case could kill a mutant in them");
+    for (let entry of Sources.lines(unmutated))
+        print("           " + entry);
+}
+
 if (survivors.length > 0) {
     printerr("");
     for (let survivor of survivors) {
@@ -476,4 +512,6 @@ if (score < minimum) {
 }
 
 print("mutants ok   " + score + "% of " + total + " caught, " +
-      survivors.length + " survived");
+      survivors.length + " survived" +
+      (unmutated.length === 0 ? ""
+          : "; " + unmutatedLines + " lines were not mutated, listed above"));
