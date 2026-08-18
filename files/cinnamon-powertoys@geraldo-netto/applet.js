@@ -9,12 +9,14 @@
 
 const Applet = imports.ui.applet;
 const Clutter = imports.gi.Clutter;
+const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 const Gtk = imports.gi.Gtk;
 const Main = imports.ui.main;
 const Mainloop = imports.mainloop;
 const PopupMenu = imports.ui.popupMenu;
 const Settings = imports.ui.settings;
+const St = imports.gi.St;
 
 /*
  * Cinnamon loads every xlet file through misc/fileUtils.js, which hands the
@@ -1235,6 +1237,12 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     _onMenuOpened() {
+        /* How much room the menu has is not known when it is built: the applet
+         * can be dragged to another panel on another monitor, the desktop can
+         * be rescaled, and the text scaling can be turned up, all without the
+         * menu being rebuilt. Asked here because this is the moment before it
+         * is shown. */
+        this._menuPresenter.syncLayout(this._menuConstraints());
         /* Cheap, and only sweeps again if something moved. The poll does this
          * too, on a much slower cadence; here it is because someone opening
          * the menu wants what is true now. */
@@ -1268,6 +1276,69 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._menuPresenter.update(this._latest, this._menuOptions());
         }
         this._update();
+    }
+
+    /*
+     * The room the menu has, and what the desktop is magnifying it by.
+     *
+     * The work area rather than the monitor, so a menu is not sized to include
+     * the panel it drops out of; the monitor the applet is on rather than the
+     * primary one, because a second screen is often the smaller. Every part of
+     * this is a shell interface that has changed shape before, so each is
+     * asked for defensively and the arithmetic is left with a sane number when
+     * one of them is not there - see lib/menu-layout.js, which treats a
+     * missing width as "one column" rather than as zero.
+     */
+    _menuConstraints() {
+        return {
+            availableWidth: this._workAreaWidth(),
+            scaleFactor: this._scaleFactor(),
+            textScale: this._textScale(),
+        };
+    }
+
+    _workAreaWidth() {
+        try {
+            let layout = Main.layoutManager;
+            let monitor = layout.findMonitorForActor
+                ? layout.findMonitorForActor(this.actor) : layout.primaryMonitor;
+            let index = monitor?.index;
+            if (typeof index === "number" && layout.getWorkAreaForMonitor) {
+                let area = layout.getWorkAreaForMonitor(index);
+                if (area?.width)
+                    return area.width;
+            }
+            return monitor?.width || 0;
+        } catch (error) {
+            return 0;
+        }
+    }
+
+    /* The desktop's HiDPI multiplier. St applies it to every length in the
+     * stylesheet, and the work area above is in the same magnified pixels. */
+    _scaleFactor() {
+        try {
+            if (typeof global !== "undefined" && global.ui_scale)
+                return global.ui_scale;
+            return St.ThemeContext.get_for_stage(global.stage).scale_factor || 1;
+        } catch (error) {
+            return 1;
+        }
+    }
+
+    /* Type magnified for somebody who needs it makes every row wider, and a
+     * column is as wide as its longest row. */
+    _textScale() {
+        try {
+            let schema = "org.cinnamon.desktop.interface";
+            let source = Gio.SettingsSchemaSource.get_default();
+            if (source && !source.lookup(schema, true))
+                return 1;
+            return new Gio.Settings({ schema_id: schema })
+                .get_double("text-scaling-factor") || 1;
+        } catch (error) {
+            return 1;
+        }
     }
 
     /*

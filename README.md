@@ -12,6 +12,14 @@ that is doing to the temperature, **Sensors**, whose first line is the supply
 the machine is running on. A column that has nothing in it is not there at
 all. Nothing is folded away, and every figure is stated once.
 
+Three columns is what a wide screen gets. Three of them need about 700 pixels
+of work area, and twice that with the desktop magnified — so on a small screen,
+at a high scale factor, or with the desktop text scaling turned up, the menu
+reflows to two columns or to one rather than running off the edge. Nothing is
+dropped and nothing is folded to make it fit: a column that has no room beside
+the others goes below them, in the same order, so what the keyboard walks and
+what a screen reader reads is the same in every arrangement.
+
 ![The menu](screenshot.png)
 
 The panel item, between the other applets:
@@ -499,6 +507,16 @@ the exact compatibility floor behind the two load-critical requirements.
   `monitors-changed`, which is when the monitor sliders are looked for again.
   And the `=` operator in a settings-schema `dependency`. All of them are in
   5.4.0.
+
+  What the menu measures itself with is treated differently, because a wrong
+  answer there must not stop the menu opening: `layoutManager`'s
+  `findMonitorForActor` and `getWorkAreaForMonitor`, `global.ui_scale`,
+  `St.ThemeContext.get_for_stage`, and the desktop's `text-scaling-factor`
+  key are each read inside a guard, and a desktop that will not answer one of
+  them gets the arrangement that always works rather than an exception on the
+  way to a popup. See `_menuConstraints` in `applet.js`, and
+  `lib/menu-layout.js`, which is written to treat a missing measurement as
+  "one column" rather than as none.
 
   Compatibility-sensitive interfaces outside Cinnamon itself are visible in
   the source too: `Gio.File.load_contents_async`, which takes sensor reads off

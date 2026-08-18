@@ -19,6 +19,7 @@ const PopupMenu = imports.ui.popupMenu;
 const Device = require("./lib/device.js");
 const Format = require("./lib/format.js");
 const KeyedList = require("./lib/keyed-list.js");
+const MenuLayout = require("./lib/menu-layout.js");
 const PanelText = require("./lib/panel-text.js");
 const ProfileView = require("./lib/profile-view.js");
 const Reading = require("./lib/reading.js");
@@ -85,6 +86,14 @@ function headingItem(text) {
     return heading;
 }
 
+/* A style class that follows a condition rather than being added once. */
+function _setClass(actor, name, wanted) {
+    if (wanted)
+        actor.add_style_class_name(name);
+    else
+        actor.remove_style_class_name(name);
+}
+
 /*
  * One column of the menu.
  *
@@ -101,11 +110,15 @@ function headingItem(text) {
  * the groups, and the numbers are stated once each.
  */
 class Column {
-    constructor(parent) {
+    constructor(parent, shelf) {
         this._section = new PanelSection();
         this._section.actor.add_style_class_name("powertoys-panel");
         parent.addMenuItem(this._section);
 
+        /* Which shelf this column is on, which is fixed. What moves is
+         * whether the shelves and the boxes holding them are laid out across
+         * or down; see lib/menu-layout.js. */
+        this.shelf = shelf || 0;
         this.menu = this._section;
         this.actor = this._section.actor;
     }
@@ -176,15 +189,31 @@ class MenuPresenter {
      * been. See _syncColumns.
      */
     _build(backlights) {
-        /* A section laid out the other way round is a row of columns. */
+        /* A section laid out the other way round is a row of columns.
+         *
+         * Two shelves inside it, always in the same order and never emptied
+         * into one another: the arrangement changes by turning boxes between
+         * across and down, not by moving columns between them. Re-parenting
+         * would take the keyboard order and the menu's own list of items with
+         * it, and an applet that rearranges itself must not rearrange what
+         * Tab does. See lib/menu-layout.js for the three shapes. */
         this._columns = new PopupMenu.PopupMenuSection();
         this._columns.actor.set_vertical(false);
         this._columns.actor.add_style_class_name("powertoys-columns");
         this._menu.addMenuItem(this._columns);
 
-        this._performanceColumn = new Column(this._columns);
-        this._deviceColumn = new Column(this._columns);
-        this._sensorColumn = new Column(this._columns);
+        this._shelves = [new PopupMenu.PopupMenuSection(),
+                         new PopupMenu.PopupMenuSection()];
+        for (let shelf of this._shelves) {
+            shelf.actor.set_vertical(false);
+            shelf.actor.add_style_class_name("powertoys-shelf");
+            this._columns.addMenuItem(shelf);
+        }
+
+        this._constraints = null;
+        this._performanceColumn = new Column(this._shelves[0], 0);
+        this._deviceColumn = new Column(this._shelves[0], 0);
+        this._sensorColumn = new Column(this._shelves[1], 1);
         this._columnList = [this._performanceColumn, this._deviceColumn, this._sensorColumn];
 
         this._buildProfileGroup();
@@ -560,13 +589,55 @@ class MenuPresenter {
          * battery itself is a row under Devices. */
         this._sensorColumn.actor.visible = this._sensorGroup.heading.actor.visible;
 
+        this._applyLayout();
+    }
+
+    /*
+     * The room there is, from the applet, which is the only thing that can see
+     * the monitor the menu will open on and what the desktop is scaling by.
+     * Kept, because the columns can appear and disappear between one of these
+     * and the next and the arrangement has to follow that too.
+     */
+    syncLayout(constraints) {
+        if (constraints)
+            this._constraints = constraints;
+        this._applyLayout();
+    }
+
+    /*
+     * Turn the two boxes, and put the rules where the columns actually meet.
+     *
+     * A divider is a vertical line between two columns side by side; stacked,
+     * there is nothing beside them to divide, and what separates them is the
+     * rule above. Which columns are on which row follows from the shelf they
+     * were built on and from what is visible now, not from their position in
+     * the list - hiding the middle column leaves the other two on different
+     * shelves and they must not draw as though they were side by side.
+     */
+    _applyLayout() {
         let visible = this._columnList.filter(column => column.actor.visible);
-        visible.forEach((column, index) => {
-            if (index === 0)
-                column.actor.remove_style_class_name("powertoys-panel-divided");
-            else
-                column.actor.add_style_class_name("powertoys-panel-divided");
+        let plan = MenuLayout.plan(Object.assign({}, this._constraints || {},
+                                                 { visibleColumns: visible.length }));
+        this._columns.actor.set_vertical(plan.outerVertical);
+        this._shelves[0].actor.set_vertical(plan.shelfVertical);
+
+        let rows;
+        if (!plan.outerVertical)
+            rows = [visible];
+        else if (!plan.shelfVertical)
+            rows = this._shelves.map((shelf, index) =>
+                visible.filter(column => column.shelf === index)).filter(row => row.length > 0);
+        else
+            rows = visible.map(column => [column]);
+
+        rows.forEach((row, rowIndex) => {
+            row.forEach((column, index) => {
+                _setClass(column.actor, "powertoys-panel-divided", index > 0);
+                _setClass(column.actor, "powertoys-panel-stacked",
+                          index === 0 && rowIndex > 0);
+            });
         });
+        this._plan = plan;
     }
 
     update(data, options) {

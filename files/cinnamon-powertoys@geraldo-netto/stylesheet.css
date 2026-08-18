@@ -85,10 +85,24 @@
     padding-left: 22px;
 }
 
-/* The three columns side by side. */
+/*
+ * The columns, side by side or stacked.
+ *
+ * Which of those it is is decided in lib/menu-layout.js and applied by turning
+ * these boxes rather than by moving anything between them, so the order the
+ * rows come in - and with it the order the keyboard walks them - is the same
+ * in every arrangement.
+ */
 .powertoys-columns {
     padding-top: 4px;
     padding-bottom: 4px;
+}
+
+/* One shelf of columns. It carries no styling of its own: a shelf that boxed
+ * or padded its columns would make the two-column arrangement look like a
+ * different menu from the three-column one. */
+.powertoys-shelf {
+    padding: 0;
 }
 
 /*
@@ -101,6 +115,8 @@
  * is the sort of thing that is seen without being noticed.
  */
 .powertoys-panel {
+    /* Also stated as COLUMN_MINIMUM in lib/menu-layout.js, which works out how
+     * many of these fit on the screen; a case fails if the two disagree. */
     min-width: 210px;
     padding-left: 8px;
     padding-right: 8px;
@@ -116,6 +132,18 @@
  */
 .powertoys-panel-divided {
     border-left: 1px solid rgba(127, 127, 127, 0.35);
+}
+
+/*
+ * The same division for a column that begins a row below another one, where
+ * there is nothing beside it to divide and the rule that means "a new subject"
+ * is the one above. Applied in code by the same pass that applies the vertical
+ * rule; the two are never on one column at once.
+ */
+.powertoys-panel-stacked {
+    border-top: 1px solid rgba(127, 127, 127, 0.35);
+    padding-top: 6px;
+    margin-top: 4px;
 }
 
 /*

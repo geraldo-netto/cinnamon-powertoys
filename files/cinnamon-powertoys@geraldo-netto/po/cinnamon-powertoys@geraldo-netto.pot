@@ -18,80 +18,80 @@ msgstr ""
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
 #. metadata.json->name
-#: applet.js:487 applet.js:1602 applet.js:1616 applet.js:1679 applet.js:1742
-#: applet.js:1751 applet.js:1892
+#: applet.js:489 applet.js:1673 applet.js:1687 applet.js:1750 applet.js:1813
+#: applet.js:1822 applet.js:1963
 msgid "Power Toys"
 msgstr ""
 
-#: applet.js:488
+#: applet.js:490
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "
 "the keyboard backlight. Right click to configure those, and to set shortcuts."
 msgstr ""
 
-#: applet.js:1546 applet.js:1710
+#: applet.js:1617 applet.js:1781
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:1570
+#: applet.js:1641
 msgid "The requested value is not valid for this control."
 msgstr ""
 
-#: applet.js:1572
+#: applet.js:1643
 msgid "This control is not supported on this system."
 msgstr ""
 
-#: applet.js:1574
+#: applet.js:1645
 msgid "This control is currently unavailable."
 msgstr ""
 
-#: applet.js:1576
+#: applet.js:1647
 msgid "The system refused the requested change."
 msgstr ""
 
-#: applet.js:1578
+#: applet.js:1649
 msgid "The change failed; the previous settings were restored."
 msgstr ""
 
-#: applet.js:1580
+#: applet.js:1651
 msgid "The change failed and some previous settings could not be restored."
 msgstr ""
 
-#: applet.js:1583
+#: applet.js:1654
 msgid "Install or repair the privileged helper with sudo make install-policy."
 msgstr ""
 
-#: applet.js:1588
+#: applet.js:1659
 msgid "The privileged helper did not answer in time. Try that again."
 msgstr ""
 
-#: applet.js:1590 applet.js:1603
+#: applet.js:1661 applet.js:1674
 msgid ""
 "The installed privileged helper is outdated. Re-run the policy installation."
 msgstr ""
 
-#: applet.js:1592
+#: applet.js:1663
 msgid "The privileged helper is incompatible with this applet version."
 msgstr ""
 
-#: applet.js:1594
+#: applet.js:1665
 msgid "The change could not be applied."
 msgstr ""
 
-#: applet.js:1613
+#: applet.js:1684
 msgid "Could not switch to %{profile}: %{detail}"
 msgstr ""
 
-#: applet.js:1614
+#: applet.js:1685
 msgid "Could not switch to %{profile}"
 msgstr ""
 
-#: applet.js:1680
+#: applet.js:1751
 msgid "Power profile: %{profile}"
 msgstr ""
 
-#: applet.js:1893
+#: applet.js:1964
 msgid "Shortcut is already in use: %{shortcut}"
 msgstr ""
 
@@ -107,104 +107,104 @@ msgstr ""
 msgid "%{display}: %{percentage}"
 msgstr ""
 
-#: ui/menu.js:197
+#: ui/menu.js:226
 msgid "System power settings"
 msgstr ""
 
-#: ui/menu.js:220
+#: ui/menu.js:249
 msgid "Brightness"
 msgstr ""
 
-#: ui/menu.js:226
+#: ui/menu.js:255
 msgid "Screen"
 msgstr ""
 
-#: ui/menu.js:244 lib/format.js:182
+#: ui/menu.js:273 lib/format.js:182
 msgid "Keyboard"
 msgstr ""
 
-#: ui/menu.js:252
+#: ui/menu.js:281
 msgid "Power profile"
 msgstr ""
 
-#: ui/menu.js:261
+#: ui/menu.js:290
 msgid "Profile"
 msgstr ""
 
-#: ui/menu.js:265
+#: ui/menu.js:294
 msgid "Performance limited"
 msgstr ""
 
-#: ui/menu.js:270
+#: ui/menu.js:299
 msgid "Profile holds"
 msgstr ""
 
-#: ui/menu.js:295 lib/panel-text.js:244 lib/sensors.js:37
+#: ui/menu.js:324 lib/panel-text.js:244 lib/sensors.js:37
 msgid "Processor"
 msgstr ""
 
-#: ui/menu.js:300
+#: ui/menu.js:329
 msgid "Turbo boost"
 msgstr ""
 
-#: ui/menu.js:318
+#: ui/menu.js:347
 msgid "Governor"
 msgstr ""
 
-#: ui/menu.js:321
+#: ui/menu.js:350
 msgid "Energy preference"
 msgstr ""
 
-#: ui/menu.js:336 lib/panel-text.js:327
+#: ui/menu.js:365 lib/panel-text.js:327
 msgid "Devices"
 msgstr ""
 
-#: ui/menu.js:372
+#: ui/menu.js:401
 msgid "Charge limit"
 msgstr ""
 
-#: ui/menu.js:388
+#: ui/menu.js:417
 msgid "Sensors"
 msgstr ""
 
-#: ui/menu.js:501
+#: ui/menu.js:530
 #, javascript-format
 msgid "Only the first %d monitors have a slider"
 msgstr ""
 
-#: ui/menu.js:602
+#: ui/menu.js:673
 msgid "%{kind} %{charge}"
 msgstr ""
 
-#: ui/menu.js:607
+#: ui/menu.js:678
 msgid "%{state} · %{remaining}"
 msgstr ""
 
-#: ui/menu.js:646 lib/panel-text.js:310
+#: ui/menu.js:717 lib/panel-text.js:310
 msgid "Connected"
 msgstr ""
 
-#: ui/menu.js:646 lib/panel-text.js:310
+#: ui/menu.js:717 lib/panel-text.js:310
 msgid "Disconnected"
 msgstr ""
 
-#: ui/menu.js:700
+#: ui/menu.js:771
 msgid "No sensor matches “%{sensor}”"
 msgstr ""
 
-#: ui/menu.js:722
+#: ui/menu.js:793
 msgid "The batteries have different limits; choosing one sets all batteries."
 msgstr ""
 
-#: ui/menu.js:723
+#: ui/menu.js:794
 msgid "The batteries have different charge limits."
 msgstr ""
 
-#: ui/menu.js:726
+#: ui/menu.js:797
 msgid "Some battery limits could not be read; choosing one sets all batteries."
 msgstr ""
 
-#: ui/menu.js:727
+#: ui/menu.js:798
 msgid "Some battery limits could not be read."
 msgstr ""
 
