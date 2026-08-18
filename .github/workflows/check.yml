@@ -20,9 +20,22 @@ on:
 permissions:
   contents: read
 
+# A push that supersedes an earlier one on the same branch makes that earlier
+# run's answer worthless before it finishes, so it is cancelled rather than
+# left holding a runner. Grouped by workflow and ref: two branches, and a pull
+# request and the branch it comes from, are separate questions and never
+# cancel one another.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
+    # The whole job is minutes of work. Left unset it would inherit the
+    # six-hour default, which is what a hung apt mirror, a wedged cjs process
+    # or a step waiting on input actually consumes before anyone notices.
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
@@ -37,16 +50,19 @@ jobs:
       # gir1.2-upowerglib-1.0 they fail at load before their tests can run. Gio
       # and GLib arrive with cjs; UPowerGlib is the only one that does not.
       - name: Install cjs, its UPower typelib and gettext
+        timeout-minutes: 10
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
             cjs gir1.2-upowerglib-1.0 gettext
 
       - name: Check
+        timeout-minutes: 10
         run: make check
 
       - name: Coverage
         id: coverage
+        timeout-minutes: 15
         run: make coverage
 
       # Keep the measured sources, LCOV data, test output and per-function
@@ -54,6 +70,7 @@ jobs:
       # must be opted in explicitly or the action uploads an empty artifact.
       - name: Preserve coverage failure report
         if: failure() && steps.coverage.outcome == 'failure'
+        timeout-minutes: 10
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-failure-${{ github.run_id }}-${{ github.run_attempt }}
@@ -65,6 +82,7 @@ jobs:
       # A staged lifecycle, so packaging and every destructive counterpart are
       # exercised without any of it reaching the runner's own home directory.
       - name: Staged install and uninstall
+        timeout-minutes: 10
         run: |
           stage="$PWD/staged"
           data="$stage$HOME/.local/share"
@@ -156,6 +174,7 @@ jobs:
       # not, which it never was, so the check reported success for months
       # without once running.
       - name: Translation template is current
+        timeout-minutes: 10
         env:
           # linuxmint/cinnamon, the commit tag 6.6.9 named when this was pinned
           MAKEPOT_COMMIT: 806c1a4e8cd23e528d3446b9e3cf5a3c7a3ddf18
