@@ -383,6 +383,31 @@ const PlatformProfileClient = class PlatformProfileClient {
                     waiter(false);
                 return;
             }
+            /*
+             * An unreadable node is not an answer, and storing it as one is
+             * worse than not sampling at all.
+             *
+             * IO fills a path it could not settle - a batch that was
+             * cancelled, a read that timed out - with null and calls back
+             * regardless; see _batchAsync. Written through, that null leaves
+             * a profile list with nothing active in it, which is not a state
+             * this machine can be in: the segmented control draws with no
+             * segment filled and the panel gauge falls back to the plain
+             * applet icon, on exactly the machines where the firmware profile
+             * is the only profile there is. It heals on the next good poll,
+             * having said in the meantime that the profile was unknown.
+             *
+             * So the last complete reading is kept and the sample reports
+             * that it did not answer, which is what the identity and
+             * generation guard above already does for the other two ways this
+             * reply can turn out not to describe the current profile. refresh()
+             * makes the same judgement about the same node.
+             */
+            if (values[PLATFORM_PROFILE] === null) {
+                for (let waiter of waiters)
+                    waiter(false);
+                return;
+            }
             this._profile = {
                 active: values[PLATFORM_PROFILE],
                 choices: profile.choices,

@@ -459,6 +459,50 @@ cases["the runtime firmware backend discovers and samples asynchronously"] = fun
     }
 };
 
+cases["a firmware sample that cannot read the node keeps the last profile"] = function () {
+    /*
+     * IO answers an unsettled path with null and calls back all the same - a
+     * cancelled batch, a read that timed out on a slow ACPI node. Written
+     * through as the active profile that leaves a machine with a list of
+     * profiles and none of them in force, which the menu draws as a control
+     * with nothing selected and the panel as no gauge at all. The last
+     * complete reading stands instead, and the sample says it did not answer.
+     */
+    let real = IO.readStringsAsync;
+    let active = "balanced";
+    IO.readStringsAsync = (paths, done) => {
+        let values = {};
+        for (let path of paths)
+            values[path] = /choices$/.test(path) ? "quiet balanced performance" : active;
+        done(values);
+    };
+
+    let client = new PowerSupply.PlatformProfileClient(null, { asynchronous: true });
+    try {
+        client.refresh(function () {});
+        Harness.equal(client.active, "balanced", "a complete reading to lose");
+
+        active = null;
+        let sampled = null;
+        client.sample(value => { sampled = value; });
+        Harness.equal(sampled, false, "the sample reports that it did not answer");
+        Harness.equal(client.active, "balanced",
+                      "the last profile the machine actually reported is kept");
+        Harness.deepEqual(client.profiles, ["quiet", "balanced", "performance"],
+                          "and the choices with it");
+        Harness.equal(client.available, true,
+                      "so the backend does not go missing over one unreadable read");
+
+        active = "performance";
+        client.sample(value => { sampled = value; });
+        Harness.equal(sampled, true, "the next readable sample answers");
+        Harness.equal(client.active, "performance", "and is adopted");
+    } finally {
+        client.destroy();
+        IO.readStringsAsync = real;
+    }
+};
+
 cases["firmware refreshes reject superseded and teardown replies"] = function () {
     let real = IO.readStringsAsync;
     let pending = [];
