@@ -26,6 +26,13 @@ POLICY_TOOL := tools/install-policy.sh
 POLICY_BUILDER := tools/build-policy.py
 # What the action is allowed to grant, checked rather than reviewed: see the
 # script, and the comment in the action itself for why the answer is what it is.
+#
+# Run twice on purpose. `make check` runs it over the template, which is the
+# file under review; install-policy runs it over what the builder produced from
+# that template plus the translations, which is the file that actually lands in
+# /usr/share/polkit-1/actions. Only the second one is a grant of root on this
+# machine, and it was the one nothing had ever checked - the builder only
+# re-parsed its own output for well-formedness.
 POLICY_CHECKER := tools/check-policy.py
 POLICY_LOCK := $(if $(DESTDIR),$(DESTDIR),/run/cinnamon-powertoys-policy.lock)
 HELPER_PATH := /usr/local/lib/cinnamon-powertoys/powertoys-helper
@@ -100,6 +107,7 @@ install-policy:
 	@built_policy=$$(mktemp); \
 		trap 'rm -f -- "$$built_policy"' EXIT HUP INT TERM; \
 		python3 "$(POLICY_BUILDER)" "polkit/$(POLICY)" "$(XLET_DIR)/po" "$$built_policy"; \
+		python3 "$(POLICY_CHECKER)" "$$built_policy" "$(HELPER_PATH)"; \
 		sh "$(POLICY_TOOL)" install "$(XLET_DIR)/powertoys-helper" "$(HELPER_DEST)" \
 			"$$built_policy" "$(POLICY_DIR)/$(POLICY)" "$(POLICY_LOCK)"
 	@echo "installed $(HELPER_DEST)"

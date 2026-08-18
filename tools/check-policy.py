@@ -96,8 +96,12 @@ def main() -> int:
     if root.tag != "policyconfig":
         fail(f"root element is {root.tag}, not policyconfig")
     actions = root.findall("action")
-    if not actions:
-        fail("the policy declares no action")
+    # Exactly one, not at least one. The docstring above promises this shape,
+    # and a second action is the cheapest way to widen the grant without
+    # touching a line the other checks look at: its own exec.path, its own
+    # implicit authorizations, its own annotations. Loop and it passes.
+    if len(actions) != 1:
+        fail(f"the policy declares {len(actions)} actions; it must declare exactly one")
     for action in actions:
         check_action(action, helper)
 

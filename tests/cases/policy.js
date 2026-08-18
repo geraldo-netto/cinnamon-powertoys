@@ -112,6 +112,45 @@ cases["an action that names no executable fails the check"] = function () {
     Harness.ok(result.status !== 0, "an action without exec.path authorises nothing safely");
 };
 
+cases["a second action fails the check"] = function () {
+    /*
+     * The cheapest way to widen this grant without touching a line any other
+     * case looks at: leave the reviewed action exactly as it is and put a
+     * second one beside it, with its own exec.path and its own
+     * authorizations. The checker failed only on no action at all and then
+     * looped over however many there were, so this passed.
+     */
+    let source = Harness.readFile(policyPath());
+    let opens = source.indexOf("<action ");
+    Harness.ok(opens >= 0, "the shipped file declares an action to copy");
+    let closes = source.indexOf("</action>") + "</action>".length;
+    let second = source.slice(opens, closes)
+        .replace(/id="[^"]*"/, 'id="io.github.geraldo-netto.cinnamon-powertoys.other"')
+        .replace(HELPER, "/bin/sh");
+    let result = check([[source.slice(opens, closes),
+                         source.slice(opens, closes) + "\n" + second]]);
+    Harness.ok(result.status !== 0, "two actions are refused");
+    Harness.ok(result.stderr.indexOf("exactly one") >= 0,
+               "and the reason names the shape: " + result.stderr);
+};
+
+cases["the action the install writes is checked, not only the template"] = function () {
+    /*
+     * `make check` validates polkit/<action>, which is the file under review.
+     * What reaches /usr/share/polkit-1/actions is a different file: the
+     * builder merges the translations into it, and until this it re-parsed
+     * its own output for well-formedness and nothing else looked at it again.
+     * Only the second of those two is a grant of root on this machine.
+     */
+    let source = Harness.readFile(Harness.testsDir() + "/../Makefile");
+    Harness.ok(source.indexOf(
+        'python3 "$(POLICY_CHECKER)" "$$built_policy" "$(HELPER_PATH)"') >= 0,
+        "install-policy runs the checker over what the builder produced");
+    Harness.ok(source.indexOf('python3 "$(POLICY_CHECKER)" "$$built_policy"') <
+               source.indexOf('sh "$(POLICY_TOOL)" install'),
+               "and before the installer is allowed to stage it");
+};
+
 cases["the check is what make check runs"] = function () {
     let source = Harness.readFile(Harness.testsDir() + "/../Makefile");
     Harness.ok(source.indexOf("POLICY_CHECKER := tools/check-policy.py") >= 0,
