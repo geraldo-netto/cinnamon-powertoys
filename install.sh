@@ -37,6 +37,21 @@ TRANSLATION_BACKUP=
 TRANSLATION_BACKUP_READY=no
 TRANSLATION_BACKUP_RETAINED=no
 
+# Whether the applet Cinnamon is running is the one just published.
+#
+#   0  it is, and it was loaded from the expected directory
+#   1  it is not running, or it is running from somewhere else
+#   2  Cinnamon's answer could not be observed at all
+#   3  it is running, but which files it loaded cannot be observed
+#
+# Three is the ordinary case on a stock session. Reading an applet's source
+# directory needs org.Cinnamon.Eval, which Cinnamon refuses unless the
+# `development-tools` gsettings key is on, and that key is off by default. The
+# refusal used to be indistinguishable from an unreachable session, so every
+# upgrade of a running applet reported "the replacement did not start" and
+# rolled itself back over a reload that had in fact succeeded. So a refusal
+# falls back to GetRunningXletUUIDs, which needs no Eval: it can say the applet
+# is loaded, and cannot say from where, which the caller then does not claim.
 wait_for_running_xlet() {
     expected_source=$1
     attempts=0
@@ -49,6 +64,13 @@ wait_for_running_xlet() {
             result=$?
             if [ "$result" -eq 2 ]; then
                 return 2
+            fi
+            if [ "$result" -eq 3 ]; then
+                if cinnamon_xlet_running "$UUID"; then
+                    return 3
+                fi
+                membership=$?
+                [ "$membership" -eq 1 ] || return 2
             fi
         fi
         attempts=$((attempts + 1))
@@ -125,11 +147,15 @@ cleanup() {
             echo "restored the previous stylesheet but could not reload the theme" >&2
             status=1
         fi
+        restore_status=1
         if gdbus call --session \
                 --dest org.Cinnamon \
                 --object-path /org/Cinnamon \
-                --method org.Cinnamon.ReloadXlet "$UUID" APPLET >/dev/null 2>&1 &&
-                wait_for_running_xlet "$TARGET_SOURCE"; then
+                --method org.Cinnamon.ReloadXlet "$UUID" APPLET >/dev/null 2>&1; then
+            restore_status=0
+            wait_for_running_xlet "$TARGET_SOURCE" || restore_status=$?
+        fi
+        if [ "$restore_status" -eq 0 ] || [ "$restore_status" -eq 3 ]; then
             echo "Restored and reloaded the previous applet." >&2
         else
             echo "restored the previous files but could not reload the applet" >&2
@@ -274,13 +300,18 @@ fi
 # Reloading only works once the applet is enabled on a panel; on a first
 # install the call fails and the instructions below apply.
 reloaded=no
+verified=no
 if command -v gdbus > /dev/null 2>&1 &&
         gdbus call --session \
         --dest org.Cinnamon \
         --object-path /org/Cinnamon \
-        --method org.Cinnamon.ReloadXlet "$UUID" APPLET > /dev/null 2>&1 &&
-        wait_for_running_xlet "$TARGET_SOURCE"; then
-    reloaded=yes
+        --method org.Cinnamon.ReloadXlet "$UUID" APPLET > /dev/null 2>&1; then
+    reload_status=0
+    wait_for_running_xlet "$TARGET_SOURCE" || reload_status=$?
+    case "$reload_status" in
+        0) reloaded=yes; verified=yes ;;
+        3) reloaded=yes ;;
+    esac
 fi
 
 if [ "$was_running" = yes ] && [ "$reloaded" != yes ]; then
@@ -303,6 +334,13 @@ TRANSLATION_BACKUP_READY=no
 trap - EXIT HUP INT TERM
 
 echo "Installed to $TARGET_DIR"
+
+if [ "$reloaded" = yes ] && [ "$verified" != yes ]; then
+    echo
+    echo "Note: the reloaded applet is running, but which files it loaded could"
+    echo "not be checked - reading that needs Cinnamon's Eval interface, which is"
+    echo "off unless the org.cinnamon development-tools setting is on."
+fi
 
 if [ "$reloaded" = yes ]; then
     if [ "$themed" = yes ]; then

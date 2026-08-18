@@ -82,7 +82,7 @@ function scratch(options, body) {
 
         let path = GLib.getenv("PATH") || "/usr/bin:/bin";
         if (options.rmdirStatus || options.signalPublish || options.failedReload ||
-                options.mismatchedReload ||
+                options.mismatchedReload || options.evalRefused ||
                 options.runningQueryFailure ||
                 options.uninstallRuntime || options.uninstallQueryFailure ||
                 options.uninstallThemeFailure) {
@@ -126,6 +126,30 @@ function scratch(options, body) {
                 GLib.chmod(bin + "/gdbus", 0o700);
                 options.themeState = themeState;
             }
+            /* A stock session: org.Cinnamon.Eval is refused because the
+             * development-tools key is off, and answers so with a complete
+             * (false, '') reply. Everything Eval-free still works. */
+            if (options.evalRefused) {
+                let state = directory + "/reload-count";
+                GLib.file_set_contents(state, "0\n");
+                GLib.file_set_contents(bin + "/gdbus",
+                    "#!/bin/sh\n" +
+                    "case \"$*\" in\n" +
+                    "  *GetRunningXletUUIDs*)\n" +
+                    (options.reloadLosesApplet
+                        ? "    count=$(cat '" + state + "')\n" +
+                          "    if [ \"$count\" = 0 ]; then echo \"(['" + UUID + "'],)\";\n" +
+                          "    else echo '(@as [],)'; fi;;\n"
+                        : "    echo \"(['" + UUID + "'],)\";;\n") +
+                    "  *ReloadXlet*)\n" +
+                    "    count=$(cat '" + state + "')\n" +
+                    "    echo $((count + 1)) > '" + state + "';;\n" +
+                    "  *Eval*)\n" +
+                    "    echo \"(false, '')\";;\n" +
+                    "esac\n");
+                GLib.chmod(bin + "/gdbus", 0o700);
+                options.reloadState = state;
+            }
             if (options.runningQueryFailure) {
                 GLib.file_set_contents(bin + "/gdbus", "#!/bin/sh\nexit 23\n");
                 GLib.chmod(bin + "/gdbus", 0o700);
@@ -151,7 +175,9 @@ function scratch(options, body) {
                     (options.uninstallThemeFailure
                         ? "    echo \"(false, 'debugging disabled')\";;\n"
                         : "    echo \"(true, '')\";;\n") +
-                    "  *Eval*) echo \"(true, '\\\"" + activePath + "\\\"')\";;\n" +
+                    (options.uninstallEvalRefused
+                        ? "  *Eval*) echo \"(false, '')\";;\n"
+                        : "  *Eval*) echo \"(true, '\\\"" + activePath + "\\\"')\";;\n") +
                     "  *GetRunningXletUUIDs*)\n" +
                     (options.uninstallNotRunning ?
                         "    echo '(@as [],)' ;;\n" :
@@ -185,7 +211,8 @@ function install(tree, live) {
         environment.push("DESTDIR=" + tree.stage, "PREFIX=/share");
     environment.push(tree.source + "/install.sh");
     return Harness.settle(done => Privileged._spawn(
-        environment, (status, stderr) => done({ status: status, stderr: stderr })),
+        environment, (status, stderr, stdout) => done({
+            status: status, stderr: stderr, stdout: stdout || "" })),
     live ? "the live install" : "the staged install");
 }
 
@@ -346,8 +373,12 @@ cases["live xlet paths require an instantiated applet answer"] = function () {
                       absent.stdout + " " + absent.stderr);
         Harness.equal(query("(true, '42')").status, 2,
                       "a non-path Eval result is an observation failure");
-        Harness.equal(query("(false, '\"failed\"')").status, 2,
-                      "a failed Eval cannot prove a live instance");
+        Harness.equal(query("(false, '\"failed\"')").status, 3,
+                      "a refusal cannot prove a live instance, but is a complete answer");
+        Harness.equal(query("(false, '')").status, 3,
+                      "which is exactly what a session with development-tools off replies");
+        Harness.equal(query("nonsense").status, 2,
+                      "an unparseable reply remains an observation failure");
     } finally {
         GLib.spawn_sync(null, ["rm", "-rf", directory], null,
                         GLib.SpawnFlags.SEARCH_PATH, null);
@@ -544,5 +575,69 @@ cases["a failed uninstall restores assets before the panel setting"] = function 
         Harness.ok(read(options.enabledState).indexOf(UUID) >= 0,
                    "the original enabled-applets value was restored after the assets");
         Harness.deepEqual(temporaryEntries(tree), [], "the source backup was not stranded");
+    });
+};
+
+/* org.Cinnamon.Eval is refused unless the development-tools gsettings key is
+ * on, which it is not on a stock session. Reading a live applet's source
+ * directory is the only thing that needs it, so a refusal must cost the
+ * verification and nothing else. It used to cost the whole upgrade. */
+cases["an upgrade completes on a session that refuses Eval"] = function () {
+    let options = { evalRefused: true, translationMutation: true };
+    scratch(options, tree => {
+        let outcome = install(tree, true);
+        Harness.equal(outcome.status, 0,
+                      "a refused Eval is not a failed reload: " + outcome.stderr);
+        Harness.equal(read(tree.target + "/applet.js"), "new applet.js",
+                      "the replacement stayed published");
+        Harness.equal(read(tree.target + "/marker"), null, "the old tree was retired");
+        Harness.equal(read(options.reloadState), "1", "the applet was reloaded once");
+        Harness.ok(outcome.stderr.indexOf("restoring the previous applet") < 0,
+                   "nothing was rolled back: " + outcome.stderr);
+        Harness.equal(read(options.translationState), "new translation",
+                      "and the new catalogue was kept");
+    });
+};
+
+cases["a refused Eval says the source could not be checked"] = function () {
+    scratch({ evalRefused: true }, tree => {
+        let outcome = install(tree, true);
+        Harness.equal(outcome.status, 0, "the upgrade succeeded");
+        Harness.ok(outcome.stdout.indexOf("development-tools") >= 0,
+                   "the unverified source is stated rather than silently assumed: " +
+                   outcome.stdout);
+        Harness.ok(outcome.stdout.indexOf("Reloaded the running applet") >= 0,
+                   "alongside what did happen: " + outcome.stdout);
+    });
+};
+
+cases["a refused Eval still requires the applet to be loaded"] = function () {
+    scratch({ evalRefused: true, reloadLosesApplet: true }, tree => {
+        let outcome = install(tree, true);
+        Harness.ok(outcome.status !== 0,
+                   "an applet that is not running after the reload still fails the upgrade");
+        Harness.equal(read(tree.target + "/marker"), "old", "the prior tree was restored");
+        Harness.equal(read(tree.target + "/applet.js"), null,
+                      "the replacement that did not start was removed");
+    });
+};
+
+cases["a live uninstall proceeds when Eval is refused"] = function () {
+    let options = {
+        uninstallRuntime: true,
+        uninstallEvalRefused: true,
+        uninstallThemeFailure: true,
+    };
+    scratch(options, tree => {
+        let outcome = uninstall(tree, true);
+        Harness.equal(outcome.status, 0,
+                      "a refused Eval no longer blocks removing a running applet: " +
+                      outcome.stderr);
+        Harness.equal(GLib.file_test(tree.target, GLib.FileTest.EXISTS), false,
+                      "the applet was removed");
+        Harness.equal(read(options.enabledState).indexOf(UUID), -1,
+                      "and its panel entry with it");
+        Harness.ok(outcome.stderr.indexOf("could not check where the running") >= 0,
+                   "the unverified source is stated: " + outcome.stderr);
     });
 };

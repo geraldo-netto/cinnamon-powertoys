@@ -38,8 +38,16 @@ sys.exit(0 if os.environ["POWERTOYS_XLET_UUID"] in uuids else 1)
 
 # The source directory carried by a live applet instance. Unlike
 # GetRunningXletUUIDs, this does not treat an enabled definition whose applet
-# is still null as a running xlet. Returns 0 with the normalized path, 1 when
-# no instance exists, and 2 when Cinnamon's answer cannot be observed safely.
+# is still null as a running xlet.
+#
+# Returns 0 with the normalized path, 1 when no instance exists, 2 when
+# Cinnamon's answer cannot be observed safely, and 3 when Cinnamon answered but
+# refused to evaluate at all. That last one is not a failure of the session: it
+# is what org.Cinnamon.Eval does whenever the `development-tools` gsettings key
+# is off, which is the default, and it comes back as a well-formed `(false, '')`
+# reply. Callers that only need to know whether the applet is loaded fall back
+# to GetRunningXletUUIDs, which needs no Eval; treating a refusal as an
+# unobservable session made every upgrade of a running applet roll itself back.
 cinnamon_xlet_live_path() {
     cinnamon_live_uuid=${1:-}
     [ -n "$cinnamon_live_uuid" ] || return 2
@@ -65,7 +73,8 @@ import sys
 raw = os.environ["POWERTOYS_EVAL_RESULT"]
 match = re.fullmatch(r"\(true,\s*(.+)\)\s*", raw, re.S)
 if match is None:
-    sys.exit(2)
+    # A refusal is a complete, valid reply saying the interface is disabled.
+    sys.exit(3 if re.fullmatch(r"\(false,.*\)\s*", raw, re.S) else 2)
 try:
     encoded = ast.literal_eval(match.group(1))
     path = json.loads(encoded)
@@ -78,6 +87,6 @@ if not isinstance(path, str) or not path:
 print(os.path.realpath(path))
 '
     cinnamon_live_status=$?
-    [ "$cinnamon_live_status" -le 2 ] || cinnamon_live_status=2
+    [ "$cinnamon_live_status" -le 3 ] || cinnamon_live_status=2
     return "$cinnamon_live_status"
 }

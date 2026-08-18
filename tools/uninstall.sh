@@ -125,18 +125,29 @@ if [ -z "${DESTDIR:-}" ]; then
     fi
 
     if [ "$was_running" = yes ]; then
-        active_source=$(cinnamon_xlet_live_path "$UUID") || {
+        live_status=0
+        active_source=$(cinnamon_xlet_live_path "$UUID") || live_status=$?
+        # Reading a live applet's source directory needs org.Cinnamon.Eval,
+        # which a stock session refuses because `development-tools` is off.
+        # That refusal is not a broken session and used to make this refuse to
+        # uninstall a running applet at all. The comparison below is a guard
+        # against removing a copy at this prefix while a different copy is the
+        # one on the panel; unverifiable, it is stated rather than fatal.
+        if [ "$live_status" -eq 3 ]; then
+            echo "could not check where the running $UUID was loaded from: Cinnamon's Eval interface is off (the org.cinnamon development-tools setting). Removing the copy at $TARGET_DIR" >&2
+        elif [ "$live_status" -ne 0 ]; then
             echo "could not determine where the running $UUID was loaded from; uninstall was not changed" >&2
             exit 1
-        }
-        target_source=$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' \
-            "$TARGET_DIR") || {
-            echo "could not resolve the requested applet target; uninstall was not changed" >&2
-            exit 1
-        }
-        if [ "$active_source" != "$target_source" ]; then
-            echo "$UUID is running from $active_source, not $TARGET_DIR; uninstall was not changed" >&2
-            exit 1
+        else
+            target_source=$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' \
+                "$TARGET_DIR") || {
+                echo "could not resolve the requested applet target; uninstall was not changed" >&2
+                exit 1
+            }
+            if [ "$active_source" != "$target_source" ]; then
+                echo "$UUID is running from $active_source, not $TARGET_DIR; uninstall was not changed" >&2
+                exit 1
+            fi
         fi
     fi
 
