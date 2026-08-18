@@ -91,3 +91,49 @@ cases["clipped notes preserve their complete text"] = function () {
     Harness.ok(note.indexOf("super._init.call(this, { reactive: false })") >= 0,
                "the informational row stays outside the interactive focus order");
 };
+
+/*
+ * The reading rows name themselves.
+ *
+ * InfoRow and DeviceRow are non-reactive rows whose text lives in child
+ * labels, so without a name of their own each sensor value, the summary, the
+ * degraded and holds lines and every device entry reach assistive technology
+ * as an unnamed menu item. The sibling widgets - NoteRow, the headings, the
+ * sliders, the segment buttons - all say what they are; these did not.
+ */
+function classBody(source, name, next) {
+    let start = source.indexOf("class " + name + " ");
+    Harness.ok(start >= 0, name + " is present");
+    let end = source.indexOf("\nclass " + next, start);
+    Harness.ok(end > start, next + " follows " + name);
+    return source.slice(start, end);
+}
+
+cases["a reading row names itself from its label and its value"] = function () {
+    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let row = classBody(source, "InfoRow", "NoteRow");
+    Harness.ok(row.indexOf("Format.readingName(this._labelText, this._valueText)") >= 0,
+               "the name is composed by the shared formatter");
+    /* Both setters and the constructor, or a row keeps the name it was born
+     * with while its text changes underneath it on every poll. */
+    let synced = row.match(/this\._syncAccessibleName\(\);/g) || [];
+    Harness.equal(synced.length, 3,
+                  "the constructor and both setters keep the name and the text together");
+    for (let setter of ["setLabel", "setValue"]) {
+        let body = new RegExp(setter + "\\(text\\) \\{([\\s\\S]*?)\\n    \\}").exec(row);
+        Harness.ok(body !== null, setter + " is present");
+        Harness.ok(body[1].indexOf("this._syncAccessibleName();") >= 0,
+                   setter + " updates the name it just invalidated");
+    }
+};
+
+cases["a device entry names itself from its model"] = function () {
+    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let row = classBody(source, "DeviceRow", "SelectorItem");
+    let update = /update\(model\) \{([\s\S]*?)\n    \}/.exec(row);
+    Harness.ok(update !== null, "DeviceRow.update is present");
+    Harness.ok(update[1].indexOf("Format.readingName(model.title, model.details)") >= 0,
+               "title and details are one name rather than two unreachable labels");
+    Harness.ok(update[1].indexOf("set_accessible_name") >= 0,
+               "and it is set on the row itself, which is what a reader lands on");
+};

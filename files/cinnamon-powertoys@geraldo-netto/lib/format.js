@@ -12,6 +12,29 @@ const UPDeviceKind = UPowerGlib.DeviceKind;
 const UPDeviceState = UPowerGlib.DeviceState;
 const UPDeviceLevel = UPowerGlib.DeviceLevel;
 
+/*
+ * One reading, said once: "Battery: 84%".
+ *
+ * A menu row draws its two halves in two actors, which is a layout and not a
+ * sentence - assistive technology reaching such a row gets the label and the
+ * value as two unrelated fragments, or as nothing at all where the row is
+ * non-reactive and its children are not focusable. So the rows name
+ * themselves with this, and the joining lives here rather than in each row.
+ *
+ * Either half alone is a complete name: a heading before its value has
+ * arrived is "Governor", not "Governor: ". The joining is translatable
+ * because what goes between a label and its value is not a colon and a space
+ * in every language.
+ */
+function readingName(label, value) {
+    let name = label || "";
+    let detail = value || "";
+    if (name && detail)
+        return Translate.interpolate(_("%{label}: %{value}"),
+                                     { label: name, value: detail });
+    return name || detail;
+}
+
 function capitalize(text) {
     if (!text)
         return "";

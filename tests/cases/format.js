@@ -645,3 +645,35 @@ cases["the pstate mode is added once, and only where it says something"] = funct
     Harness.equal(twice.indexOf("hardware managed"), twice.lastIndexOf("hardware managed"),
                   "the mode appears once: " + twice);
 };
+
+/*
+ * The name a reading row gives itself.
+ *
+ * Two labels in a row are a layout; a screen reader needs a sentence. What is
+ * worth pinning down is the joining and, more, the two edges - a heading whose
+ * value has not arrived yet must not be read out with a colon and nothing
+ * after it, and a value with no label must still be readable.
+ */
+cases["a reading names itself with its label and its value"] = function () {
+    Harness.equal(Format.readingName("Battery", "84%"), "Battery: 84%",
+                  "both halves are said, in order, as one name");
+};
+
+cases["either half of a reading is a complete name on its own"] = function () {
+    Harness.equal(Format.readingName("Governor", ""), "Governor",
+                  "a heading before its value has arrived is not \"Governor: \"");
+    Harness.equal(Format.readingName("Governor", null), "Governor",
+                  "an absent value is the same as an empty one");
+    Harness.equal(Format.readingName("", "84%"), "84%",
+                  "and a value with no label is still worth reading");
+    Harness.equal(Format.readingName(null, undefined), "",
+                  "a row with nothing to say says nothing");
+};
+
+cases["the joining between a label and its value is translatable"] = function () {
+    let source = Harness.readFile(Harness.xletDir() + "/lib/format.js");
+    Harness.ok(source.indexOf('_("%{label}: %{value}")') >= 0,
+               "what goes between the two is not a colon in every language");
+    Harness.ok(source.indexOf('Translate.interpolate(_("%{label}: %{value}")') >= 0,
+               "and it is substituted rather than concatenated");
+};

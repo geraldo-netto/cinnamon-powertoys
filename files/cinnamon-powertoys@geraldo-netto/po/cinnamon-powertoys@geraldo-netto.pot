@@ -17,198 +17,198 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
-#: applet.js:871 applet.js:912
+#: applet.js:887 applet.js:928
 msgid "Brightness: %{display}"
 msgstr ""
 
-#: applet.js:878
+#: applet.js:894
 msgid "Brightness range: %{minimum} to %{maximum}; step: %{step}"
 msgstr ""
 
-#: applet.js:935
+#: applet.js:951
 msgid "%{display}: %{percentage}"
 msgstr ""
 
-#: applet.js:1119
+#: applet.js:1135
 msgid "System power settings"
 msgstr ""
 
-#: applet.js:1142
+#: applet.js:1158
 msgid "Brightness"
 msgstr ""
 
-#: applet.js:1148
+#: applet.js:1164
 msgid "Screen"
 msgstr ""
 
-#: applet.js:1166 lib/format.js:159
+#: applet.js:1182 lib/format.js:182
 msgid "Keyboard"
 msgstr ""
 
-#: applet.js:1174
+#: applet.js:1190
 msgid "Power profile"
 msgstr ""
 
-#: applet.js:1183
+#: applet.js:1199
 msgid "Profile"
 msgstr ""
 
-#: applet.js:1187
+#: applet.js:1203
 msgid "Performance limited"
 msgstr ""
 
-#: applet.js:1192
+#: applet.js:1208
 msgid "Profile holds"
 msgstr ""
 
-#: applet.js:1217 lib/panel-text.js:217 lib/sensors.js:37
+#: applet.js:1233 lib/panel-text.js:219 lib/sensors.js:37
 msgid "Processor"
 msgstr ""
 
-#: applet.js:1222
+#: applet.js:1238
 msgid "Turbo boost"
 msgstr ""
 
-#: applet.js:1240
+#: applet.js:1256
 msgid "Governor"
 msgstr ""
 
-#: applet.js:1243
+#: applet.js:1259
 msgid "Energy preference"
 msgstr ""
 
-#: applet.js:1258 lib/panel-text.js:283
+#: applet.js:1274 lib/panel-text.js:285
 msgid "Devices"
 msgstr ""
 
-#: applet.js:1294
+#: applet.js:1310
 msgid "Charge limit"
 msgstr ""
 
-#: applet.js:1310
+#: applet.js:1326
 msgid "Sensors"
 msgstr ""
 
-#: applet.js:1423
+#: applet.js:1439
 #, javascript-format
 msgid "Only the first %d monitors have a slider"
 msgstr ""
 
-#: applet.js:1524
+#: applet.js:1540
 msgid "%{kind} %{charge}"
 msgstr ""
 
-#: applet.js:1529
+#: applet.js:1545
 msgid "%{state} · %{remaining}"
 msgstr ""
 
-#: applet.js:1567
+#: applet.js:1583
 msgid "an application"
 msgstr ""
 
-#: applet.js:1569
+#: applet.js:1585
 msgid "%{application} → %{profile}"
 msgstr ""
 
-#: applet.js:1590 lib/panel-text.js:266
+#: applet.js:1606 lib/panel-text.js:268
 msgid "Connected"
 msgstr ""
 
-#: applet.js:1590 lib/panel-text.js:266
+#: applet.js:1606 lib/panel-text.js:268
 msgid "Disconnected"
 msgstr ""
 
-#: applet.js:1644
+#: applet.js:1660
 msgid "No sensor matches “%{sensor}”"
 msgstr ""
 
-#: applet.js:1666
+#: applet.js:1682
 msgid "The batteries have different limits; choosing one sets all batteries."
 msgstr ""
 
-#: applet.js:1667
+#: applet.js:1683
 msgid "The batteries have different charge limits."
 msgstr ""
 
-#: applet.js:1670
+#: applet.js:1686
 msgid "Some battery limits could not be read; choosing one sets all batteries."
 msgstr ""
 
-#: applet.js:1671
+#: applet.js:1687
 msgid "Some battery limits could not be read."
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:1983 applet.js:3081 applet.js:3095 applet.js:3154 applet.js:3217
-#: applet.js:3226 applet.js:3367
+#: applet.js:1999 applet.js:3096 applet.js:3110 applet.js:3169 applet.js:3232
+#: applet.js:3241 applet.js:3382
 msgid "Power Toys"
 msgstr ""
 
-#: applet.js:1984
+#: applet.js:2000
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "
 "the keyboard backlight. Right click to configure those, and to set shortcuts."
 msgstr ""
 
-#: applet.js:3029 applet.js:3185
+#: applet.js:3045 applet.js:3200
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:3054
+#: applet.js:3069
 msgid "The requested value is not valid for this control."
 msgstr ""
 
-#: applet.js:3056
+#: applet.js:3071
 msgid "This control is not supported on this system."
 msgstr ""
 
-#: applet.js:3058
+#: applet.js:3073
 msgid "This control is currently unavailable."
 msgstr ""
 
-#: applet.js:3060
+#: applet.js:3075
 msgid "The system refused the requested change."
 msgstr ""
 
-#: applet.js:3062
+#: applet.js:3077
 msgid "The change failed; the previous settings were restored."
 msgstr ""
 
-#: applet.js:3064
+#: applet.js:3079
 msgid "The change failed and some previous settings could not be restored."
 msgstr ""
 
-#: applet.js:3067
+#: applet.js:3082
 msgid "Install or repair the privileged helper with sudo make install-policy."
 msgstr ""
 
-#: applet.js:3069 applet.js:3082
+#: applet.js:3084 applet.js:3097
 msgid ""
 "The installed privileged helper is outdated. Re-run the policy installation."
 msgstr ""
 
-#: applet.js:3071
+#: applet.js:3086
 msgid "The privileged helper is incompatible with this applet version."
 msgstr ""
 
-#: applet.js:3073
+#: applet.js:3088
 msgid "The change could not be applied."
 msgstr ""
 
-#: applet.js:3092
+#: applet.js:3107
 msgid "Could not switch to %{profile}: %{detail}"
 msgstr ""
 
-#: applet.js:3093
+#: applet.js:3108
 msgid "Could not switch to %{profile}"
 msgstr ""
 
-#: applet.js:3155
+#: applet.js:3170
 msgid "Power profile: %{profile}"
 msgstr ""
 
-#: applet.js:3368
+#: applet.js:3383
 msgid "Shortcut is already in use: %{shortcut}"
 msgstr ""
 
@@ -220,19 +220,19 @@ msgstr ""
 msgid "Battery critically low"
 msgstr ""
 
-#: lib/alerts.js:146
+#: lib/alerts.js:147
 msgid "Battery low"
 msgstr ""
 
-#: lib/alerts.js:168 lib/format.js:514 lib/panel-text.js:249
+#: lib/alerts.js:169 lib/format.js:537 lib/panel-text.js:251
 msgid "Temperature"
 msgstr ""
 
-#: lib/alerts.js:169
+#: lib/alerts.js:170
 msgid "High temperature"
 msgstr ""
 
-#: lib/ddc.js:209
+#: lib/ddc.js:211
 msgid "Display %{number}"
 msgstr ""
 
@@ -270,424 +270,428 @@ msgstr ""
 msgid "%{device}  %{charge}"
 msgstr ""
 
-#: lib/format.js:72
+#: lib/format.js:33
+msgid "%{label}: %{value}"
+msgstr ""
+
+#: lib/format.js:95
 msgid "%{value}%"
 msgstr ""
 
-#: lib/format.js:80
+#: lib/format.js:103
 msgid "%{value} °F"
 msgstr ""
 
-#: lib/format.js:84
+#: lib/format.js:107
 msgid "%{value} °C"
 msgstr ""
 
-#: lib/format.js:93
+#: lib/format.js:116
 msgid "%{value} mW"
 msgstr ""
 
-#: lib/format.js:97
+#: lib/format.js:120
 msgid "%{value} W"
 msgstr ""
 
-#: lib/format.js:106
+#: lib/format.js:129
 msgid "%{value} GHz"
 msgstr ""
 
-#: lib/format.js:110
+#: lib/format.js:133
 msgid "%{value} MHz"
 msgstr ""
 
-#: lib/format.js:116
+#: lib/format.js:139
 msgid "%{value} V"
 msgstr ""
 
-#: lib/format.js:122
+#: lib/format.js:145
 msgid "%{value} RPM"
 msgstr ""
 
-#: lib/format.js:128
+#: lib/format.js:151
 msgid "%{value} Wh"
 msgstr ""
 
-#: lib/format.js:144
+#: lib/format.js:167
 msgid "%{hours}h %{minutes}m"
 msgstr ""
 
-#: lib/format.js:149
+#: lib/format.js:172
 msgid "%{minutes}m"
 msgstr ""
 
-#: lib/format.js:154
+#: lib/format.js:177
 msgid "AC adapter"
 msgstr ""
 
-#: lib/format.js:155 lib/panel-text.js:155 lib/sensors.js:42
+#: lib/format.js:178 lib/panel-text.js:157 lib/sensors.js:42
 msgid "Battery"
 msgstr ""
 
-#: lib/format.js:156
+#: lib/format.js:179
 msgid "UPS"
 msgstr ""
 
-#: lib/format.js:157
+#: lib/format.js:180
 msgid "Monitor"
 msgstr ""
 
-#: lib/format.js:158
+#: lib/format.js:181
 msgid "Mouse"
 msgstr ""
 
-#: lib/format.js:160
+#: lib/format.js:183
 msgid "PDA"
 msgstr ""
 
-#: lib/format.js:161
+#: lib/format.js:184
 msgid "Phone"
 msgstr ""
 
-#: lib/format.js:162
+#: lib/format.js:185
 msgid "Media player"
 msgstr ""
 
-#: lib/format.js:163
+#: lib/format.js:186
 msgid "Tablet"
 msgstr ""
 
-#: lib/format.js:164
+#: lib/format.js:187
 msgid "Computer"
 msgstr ""
 
-#: lib/format.js:165
+#: lib/format.js:188
 msgid "Game controller"
 msgstr ""
 
-#: lib/format.js:166
+#: lib/format.js:189
 msgid "Pen"
 msgstr ""
 
-#: lib/format.js:167
+#: lib/format.js:190
 msgid "Touchpad"
 msgstr ""
 
-#: lib/format.js:168
+#: lib/format.js:191
 msgid "Modem"
 msgstr ""
 
-#: lib/format.js:169
+#: lib/format.js:192
 msgid "Network device"
 msgstr ""
 
-#: lib/format.js:170
+#: lib/format.js:193
 msgid "Headset"
 msgstr ""
 
-#: lib/format.js:171
+#: lib/format.js:194
 msgid "Speakers"
 msgstr ""
 
-#: lib/format.js:172
+#: lib/format.js:195
 msgid "Headphones"
 msgstr ""
 
-#: lib/format.js:173
+#: lib/format.js:196
 msgid "Video device"
 msgstr ""
 
-#: lib/format.js:174
+#: lib/format.js:197
 msgid "Audio device"
 msgstr ""
 
-#: lib/format.js:175
+#: lib/format.js:198
 msgid "Remote control"
 msgstr ""
 
-#: lib/format.js:176
+#: lib/format.js:199
 msgid "Printer"
 msgstr ""
 
-#: lib/format.js:177
+#: lib/format.js:200
 msgid "Scanner"
 msgstr ""
 
-#: lib/format.js:178
+#: lib/format.js:201
 msgid "Camera"
 msgstr ""
 
-#: lib/format.js:179
+#: lib/format.js:202
 msgid "Wearable"
 msgstr ""
 
-#: lib/format.js:180
+#: lib/format.js:203
 msgid "Toy"
 msgstr ""
 
-#: lib/format.js:181
+#: lib/format.js:204
 msgid "Bluetooth device"
 msgstr ""
 
-#: lib/format.js:186
+#: lib/format.js:209
 msgid "Device"
 msgstr ""
 
-#: lib/format.js:193
+#: lib/format.js:216
 msgid "Charging"
 msgstr ""
 
-#: lib/format.js:194
+#: lib/format.js:217
 msgid "Discharging"
 msgstr ""
 
-#: lib/format.js:195
+#: lib/format.js:218
 msgid "Empty"
 msgstr ""
 
-#: lib/format.js:196
+#: lib/format.js:219
 msgid "Fully charged"
 msgstr ""
 
-#: lib/format.js:197
+#: lib/format.js:220
 msgid "Pending charge"
 msgstr ""
 
-#: lib/format.js:198
+#: lib/format.js:221
 msgid "Pending discharge"
 msgstr ""
 
-#: lib/format.js:199 lib/format.js:211
+#: lib/format.js:222 lib/format.js:234
 msgid "Unknown"
 msgstr ""
 
-#: lib/format.js:206
+#: lib/format.js:229
 msgid "Full"
 msgstr ""
 
-#: lib/format.js:207
+#: lib/format.js:230
 msgid "High"
 msgstr ""
 
-#: lib/format.js:208
+#: lib/format.js:231
 msgid "Normal"
 msgstr ""
 
-#: lib/format.js:209
+#: lib/format.js:232
 msgid "Low"
 msgstr ""
 
-#: lib/format.js:210
+#: lib/format.js:233
 msgid "Critical"
 msgstr ""
 
-#: lib/format.js:337
+#: lib/format.js:360
 msgid "Power saver"
 msgstr ""
 
-#: lib/format.js:338
+#: lib/format.js:361
 msgid "Balanced"
 msgstr ""
 
-#: lib/format.js:339
+#: lib/format.js:362
 msgid "Balanced performance"
 msgstr ""
 
-#: lib/format.js:340 lib/format.js:472 lib/format.js:490 lib/panel-text.js:282
+#: lib/format.js:363 lib/format.js:495 lib/format.js:513 lib/panel-text.js:284
 msgid "Performance"
 msgstr ""
 
-#: lib/format.js:341
+#: lib/format.js:364
 msgid "Quiet"
 msgstr ""
 
-#: lib/format.js:342
+#: lib/format.js:365
 msgid "Low power"
 msgstr ""
 
-#: lib/format.js:343
+#: lib/format.js:366
 msgid "Cool"
 msgstr ""
 
-#: lib/format.js:359
+#: lib/format.js:382
 msgid "Lap detected"
 msgstr ""
 
-#: lib/format.js:360
+#: lib/format.js:383
 msgid "High operating temperature"
 msgstr ""
 
-#: lib/format.js:417 lib/format.js:418
+#: lib/format.js:440 lib/format.js:441
 msgid "AMD"
 msgstr ""
 
-#: lib/format.js:419
+#: lib/format.js:442
 msgid "ACPI"
 msgstr ""
 
-#: lib/format.js:420
+#: lib/format.js:443
 msgid "Intel"
 msgstr ""
 
-#: lib/format.js:421
+#: lib/format.js:444
 msgid "Intel, kernel managed"
 msgstr ""
 
-#: lib/format.js:422
+#: lib/format.js:445
 msgid "ACPI hardware managed"
 msgstr ""
 
-#: lib/format.js:423
+#: lib/format.js:446
 msgid "Intel SpeedStep"
 msgstr ""
 
-#: lib/format.js:424
+#: lib/format.js:447
 msgid "AMD PowerNow"
 msgstr ""
 
-#: lib/format.js:425
+#: lib/format.js:448
 msgid "Processor Clocking Control"
 msgstr ""
 
-#: lib/format.js:434
+#: lib/format.js:457
 msgid "hardware managed"
 msgstr ""
 
-#: lib/format.js:435
+#: lib/format.js:458
 msgid "guided"
 msgstr ""
 
-#: lib/format.js:436
+#: lib/format.js:459
 msgid "kernel managed"
 msgstr ""
 
-#: lib/format.js:450
+#: lib/format.js:473
 msgid "unknown"
 msgstr ""
 
-#: lib/format.js:459
+#: lib/format.js:482
 msgid "%{label}, %{mode} (%{driver})"
 msgstr ""
 
-#: lib/format.js:465
+#: lib/format.js:488
 msgid "%{label} (%{driver})"
 msgstr ""
 
-#: lib/format.js:473
+#: lib/format.js:496
 msgid "Power save"
 msgstr ""
 
-#: lib/format.js:474
+#: lib/format.js:497
 msgid "On demand"
 msgstr ""
 
-#: lib/format.js:475
+#: lib/format.js:498
 msgid "Conservative"
 msgstr ""
 
-#: lib/format.js:476
+#: lib/format.js:499
 msgid "Scheduler guided"
 msgstr ""
 
-#: lib/format.js:477
+#: lib/format.js:500
 msgid "Userspace"
 msgstr ""
 
-#: lib/format.js:489
+#: lib/format.js:512
 msgid "Default"
 msgstr ""
 
-#: lib/format.js:491
+#: lib/format.js:514
 msgid "Balance performance"
 msgstr ""
 
-#: lib/format.js:492
+#: lib/format.js:515
 msgid "Balance power"
 msgstr ""
 
-#: lib/format.js:493
+#: lib/format.js:516
 msgid "Power saving"
 msgstr ""
 
-#: lib/format.js:515
+#: lib/format.js:538
 msgid "Fan"
 msgstr ""
 
-#: lib/format.js:516 lib/sensors.js:224
+#: lib/format.js:539 lib/sensors.js:224
 msgid "Power"
 msgstr ""
 
-#: lib/panel-text.js:147 lib/panel-text.js:153
+#: lib/panel-text.js:149 lib/panel-text.js:155
 msgid "Power status unavailable"
 msgstr ""
 
-#: lib/panel-text.js:148
+#: lib/panel-text.js:150
 msgid "On battery power"
 msgstr ""
 
-#: lib/panel-text.js:148
+#: lib/panel-text.js:150
 msgid "On AC power"
 msgstr ""
 
-#: lib/panel-text.js:154
+#: lib/panel-text.js:156
 msgid "Power source: %{source}"
 msgstr ""
 
-#: lib/panel-text.js:155
+#: lib/panel-text.js:157
 msgid "AC"
 msgstr ""
 
-#: lib/panel-text.js:182
+#: lib/panel-text.js:184
 msgid "%{name}: %{status}"
 msgstr ""
 
-#: lib/panel-text.js:198
+#: lib/panel-text.js:200
 msgid "Whole system (battery): %{power}"
 msgstr ""
 
-#: lib/panel-text.js:201
+#: lib/panel-text.js:203
 msgid "Platform total (DTPM): %{power}"
 msgstr ""
 
-#: lib/panel-text.js:204
+#: lib/panel-text.js:206
 msgid "Processor package total: %{power}"
 msgstr ""
 
-#: lib/panel-text.js:217 lib/sensors.js:39
+#: lib/panel-text.js:219 lib/sensors.js:39
 msgid "Graphics"
 msgstr ""
 
-#: lib/panel-text.js:219
+#: lib/panel-text.js:221
 msgid "%{name} — %{detail}"
 msgstr ""
 
-#: lib/panel-text.js:221
+#: lib/panel-text.js:223
 msgid "%{name}: %{power}"
 msgstr ""
 
-#: lib/panel-text.js:231
+#: lib/panel-text.js:233
 msgid "Profile: %{profile}"
 msgstr ""
 
-#: lib/panel-text.js:234 lib/reading.js:142
+#: lib/panel-text.js:236 lib/reading.js:142
 msgid "Governor: %{governor}"
 msgstr ""
 
-#: lib/panel-text.js:243
+#: lib/panel-text.js:245
 #, javascript-format
 msgid "maximum %s"
 msgstr ""
 
-#: lib/panel-text.js:245
+#: lib/panel-text.js:247
 msgid "Processor: %{details}"
 msgstr ""
 
-#: lib/panel-text.js:250
+#: lib/panel-text.js:252
 msgid "%{source}: %{temperature}"
 msgstr ""
 
-#: lib/panel-text.js:264
+#: lib/panel-text.js:266
 msgid "%{device}: %{state}"
 msgstr ""
 
-#: lib/panel-text.js:281
+#: lib/panel-text.js:283
 msgid "Consumption"
 msgstr ""
 
@@ -751,7 +755,7 @@ msgstr ""
 msgid "No sensors found"
 msgstr ""
 
-#: lib/sensors.js:41 lib/sensors.js:682
+#: lib/sensors.js:41 lib/sensors.js:714
 msgid "Package"
 msgstr ""
 
@@ -795,7 +799,7 @@ msgstr ""
 msgid "Hotspot"
 msgstr ""
 
-#: lib/sensors.js:221 lib/sensors.js:674
+#: lib/sensors.js:221 lib/sensors.js:706
 msgid "Memory"
 msgstr ""
 
@@ -807,23 +811,23 @@ msgstr ""
 msgid "SoC voltage"
 msgstr ""
 
-#: lib/sensors.js:672
+#: lib/sensors.js:704
 msgid "Cores"
 msgstr ""
 
-#: lib/sensors.js:673
+#: lib/sensors.js:705
 msgid "Uncore"
 msgstr ""
 
-#: lib/sensors.js:675
+#: lib/sensors.js:707
 msgid "Whole board"
 msgstr ""
 
-#: lib/sensors.js:682
+#: lib/sensors.js:714
 msgid "Package %{number}"
 msgstr ""
 
-#: lib/sensors.js:753
+#: lib/sensors.js:785
 msgid "Total"
 msgstr ""
 
@@ -1114,11 +1118,11 @@ msgstr ""
 msgid "°F"
 msgstr ""
 
-#: polkit/io.github.geraldo-netto.cinnamon-powertoys.policy:29
+#: polkit/io.github.geraldo-netto.cinnamon-powertoys.policy:45
 msgid "Apply a power setting"
 msgstr ""
 
-#: polkit/io.github.geraldo-netto.cinnamon-powertoys.policy:31
+#: polkit/io.github.geraldo-netto.cinnamon-powertoys.policy:47
 msgid ""
 "Authentication is required to change the CPU governor, energy performance "
 "preference, turbo boost, platform profile or battery charge limit."

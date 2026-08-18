@@ -342,19 +342,31 @@ class InfoRow extends PopupMenu.PopupBaseMenuItem {
     _init(label, value) {
         super._init.call(this, { reactive: false });
 
+        this._labelText = label || "";
+        this._valueText = value || "";
         this._label = new St.Label({ text: label, style_class: "powertoys-info-label" });
         this._value = new St.Label({ text: value || "", style_class: "powertoys-info-value" });
 
         this.addActor(this._label);
         this.addActor(this._value, { expand: true, span: -1, align: St.Align.END });
+        this._syncAccessibleName();
     }
 
     setLabel(text) {
-        this._label.set_text(text || "");
+        this._labelText = text || "";
+        this._label.set_text(this._labelText);
+        this._syncAccessibleName();
     }
 
     setValue(text) {
-        this._value.set_text(text || "");
+        this._valueText = text || "";
+        this._value.set_text(this._valueText);
+        this._syncAccessibleName();
+    }
+
+    _syncAccessibleName() {
+        this.actor.set_accessible_name(
+            Format.readingName(this._labelText, this._valueText));
     }
 
     setWarning(warning) {
@@ -445,6 +457,11 @@ class DeviceRow extends PopupMenu.PopupBaseMenuItem {
     update(model) {
         this._title.set_text(model.title);
         this._details.set_text(model.details);
+        /* Title and details are two labels inside a box inside a non-reactive
+         * row, so without this the whole entry is an unnamed menu item and the
+         * charge, the time remaining and the limit below it are unreachable. */
+        this.actor.set_accessible_name(
+            Format.readingName(model.title, model.details));
 
         /* Setting an icon name that has not changed still costs a texture
          * lookup, and this runs on every poll. */
