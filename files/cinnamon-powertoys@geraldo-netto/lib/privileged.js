@@ -106,16 +106,29 @@ function _spawn(argv, onDone) {
     });
 }
 
+/* Why a probe said no.
+ *
+ * A helper that answered with the wrong protocol is a helper that will not be
+ * right again until it is reinstalled. One that did not answer inside the
+ * two seconds allowed says nothing about itself at all: a machine under load,
+ * a cold page cache or a busy disk is enough, and the same helper answers the
+ * next time. Telling the user to reinstall it is then both the wrong diagnosis
+ * and the wrong remedy, so the two are not the same rejection. */
+const PROBE_TIMED_OUT = "timed-out";
+
 /* A helper identifies its command and failure vocabulary before pkexec is
  * involved. Executing the probe also verifies that the candidate is a regular
- * executable with a working interpreter rather than merely an existing path. */
+ * executable with a working interpreter rather than merely an existing path.
+ *
+ * onDone(compatible, diagnostic, reason) - reason is PROBE_TIMED_OUT when the
+ * probe was still waiting, and empty for every answer the candidate gave. */
 function _probeHelper(path, onDone, timeoutMs) {
     let done = false;
     let timeoutId = 0;
     let cancellable = new Gio.Cancellable();
     let process;
 
-    function finish(status, stderr, stdout) {
+    function finish(status, stderr, stdout, reason) {
         if (done)
             return;
         done = true;
@@ -126,23 +139,23 @@ function _probeHelper(path, onDone, timeoutMs) {
 
         let answer = String(stdout || "").trim();
         if (status === 0 && answer === HELPER_PROTOCOL_LINE) {
-            onDone(true, "");
+            onDone(true, "", "");
             return;
         }
         let diagnostic = status === 0
             ? "reported " + (answer || "no protocol")
             : String(stderr || "probe exited with status " + status).trim();
-        onDone(false, diagnostic);
+        onDone(false, diagnostic, reason || "");
     }
 
-    function stop(diagnostic) {
+    function stop(diagnostic, reason) {
         try {
             cancellable.cancel();
             process.force_exit();
         } catch (error) {
             /* already gone */
         }
-        finish(-1, diagnostic, "");
+        finish(-1, diagnostic, "", reason);
     }
 
     try {
@@ -159,7 +172,7 @@ function _probeHelper(path, onDone, timeoutMs) {
     let limit = timeoutMs === undefined ? PROBE_TIMEOUT_MS : timeoutMs;
     timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, limit, () => {
         timeoutId = 0;
-        stop("protocol probe timed out");
+        stop("protocol probe timed out", PROBE_TIMED_OUT);
         return GLib.SOURCE_REMOVE;
     });
 
@@ -290,7 +303,7 @@ const PrivilegedHelper = class PrivilegedHelper {
 
         let activeProbe = { cancel: null };
         this._activeProbe = activeProbe;
-        let cancel = this._probe(candidate, (compatible, diagnostic) => {
+        let cancel = this._probe(candidate, (compatible, diagnostic, reason) => {
             if (this._activeProbe === activeProbe)
                 this._activeProbe = null;
             if (this._destroyed) {
@@ -304,13 +317,22 @@ const PrivilegedHelper = class PrivilegedHelper {
                 onDone(candidate, issue);
                 return;
             }
-            let rejected = {
-                code: index === 0 ? "stale-system-helper" : "helper-incompatible",
-                diagnostic: (index === 0
-                    ? "the installed privileged helper is incompatible"
-                    : "a privileged helper is incompatible") +
-                    (diagnostic ? ": " + diagnostic : ""),
-            };
+            /* A helper that ran out of time has not said anything about
+             * itself, so nothing is concluded about it: the code is the
+             * transient one, and the next attempt probes it again. */
+            let rejected = reason === PROBE_TIMED_OUT
+                ? {
+                    code: "helper-unavailable",
+                    diagnostic: "the privileged helper did not answer in time" +
+                        (diagnostic ? ": " + diagnostic : ""),
+                }
+                : {
+                    code: index === 0 ? "stale-system-helper" : "helper-incompatible",
+                    diagnostic: (index === 0
+                        ? "the installed privileged helper is incompatible"
+                        : "a privileged helper is incompatible") +
+                        (diagnostic ? ": " + diagnostic : ""),
+                };
             this._tryCandidate(index + 1, issue || rejected, onDone);
         });
         if (this._activeProbe === activeProbe && typeof cancel === "function")

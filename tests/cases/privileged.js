@@ -630,3 +630,86 @@ cases["a change on screen with nothing behind it is still a change in flight"] =
     helper.answer(0);
     Harness.equal(helper.busy, false, "and now it is not");
 };
+
+/*
+ * A probe that timed out and a probe that answered wrongly are two different
+ * things. The first says nothing about the helper at all - a loaded machine
+ * or a cold cache is enough - and used to be reported as the second, which
+ * told the user to reinstall a helper that was never broken.
+ */
+cases["a probe that runs out of time says so"] = function () {
+    let directory = GLib.dir_make_tmp("powertoys-helper-slow-XXXXXX");
+    let path = directory + "/powertoys-helper";
+    try {
+        GLib.file_set_contents(path, "#!/bin/sh\nsleep 5\n");
+        GLib.chmod(path, 0o700);
+        let answer = Harness.settle(done => Privileged._probeHelper(
+            path, (compatible, diagnostic, reason) =>
+                done({ compatible: compatible, diagnostic: diagnostic, reason: reason }), 20),
+            "a bounded helper protocol probe");
+        Harness.equal(answer.compatible, false, "nothing was verified");
+        Harness.equal(answer.reason, "timed-out",
+                      "and the caller is told which kind of no this is");
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
+    }
+};
+
+cases["an answered probe carries no transient reason"] = function () {
+    let answer = Harness.settle(done => Privileged._probeHelper(
+        "/bin/true", (compatible, diagnostic, reason) =>
+            done({ compatible: compatible, reason: reason })),
+        "an executable that is not the helper");
+    Harness.equal(answer.compatible, false, "it is not the helper");
+    Harness.equal(answer.reason, "", "but it did answer, so nothing is transient about it");
+
+    let good = Harness.settle(done => Privileged._probeHelper(
+        Harness.xletDir() + "/powertoys-helper",
+        (compatible, diagnostic, reason) => done({ compatible: compatible, reason: reason })),
+        "the shipped helper");
+    Harness.equal(good.compatible, true, "the bundled helper agrees");
+    Harness.equal(good.reason, "", "with nothing transient to report");
+};
+
+cases["a timed-out probe is not reported as an outdated helper"] = function () {
+    let spawned = [];
+    let helper = new Privileged.PrivilegedHelper(
+        [SYSTEM], () => true,
+        (argv, onDone) => { spawned.push(argv); onDone(0, ""); },
+        (path, onDone) => onDone(false, "protocol probe timed out", "timed-out"));
+    let outcome = null;
+    helper.run(["boost", "1"], result => { outcome = result; });
+
+    Harness.equal(spawned.length, 0, "pkexec never receives an unverified helper");
+    Harness.equal(outcome.applied, false, "the change is still refused");
+    Harness.equal(outcome.code, "helper-unavailable",
+                  "the helper is unavailable, not outdated");
+    Harness.ok(outcome.diagnostic.indexOf("did not answer in time") >= 0,
+               "and the log says what actually happened: " + outcome.diagnostic);
+};
+
+cases["a helper that answers wrongly is still reported as outdated"] = function () {
+    let helper = new Privileged.PrivilegedHelper(
+        [SYSTEM], () => true,
+        (argv, onDone) => onDone(0, ""),
+        (path, onDone) => onDone(false, "reported protocol 0", ""));
+    let outcome = null;
+    helper.run(["boost", "1"], result => { outcome = result; });
+    Harness.equal(outcome.code, "stale-system-helper",
+                  "a wrong answer is a helper that needs reinstalling");
+};
+
+cases["a timeout does not warn about an outdated helper on a later success"] = function () {
+    /* The warning path: a rejected first candidate is carried as an issue on
+     * whatever helper does run, and only an outdated one is worth interrupting
+     * somebody about. A machine that was merely busy is not. */
+    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    Harness.ok(source.indexOf('outcome?.warningCode !== "stale-system-helper"') >= 0,
+               "the notification is still limited to the outdated helper");
+    Harness.ok(source.indexOf('case "helper-unavailable":') >= 0,
+               "and the transient code has a message of its own");
+    Harness.ok(source.indexOf(
+        '_("The privileged helper did not answer in time. Try that again.")') >= 0,
+        "which asks for a retry rather than a reinstallation");
+};

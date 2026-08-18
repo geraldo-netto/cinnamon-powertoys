@@ -3080,6 +3080,11 @@ class PowerToysApplet extends Applet.TextIconApplet {
         case "helper-not-found":
         case "unsafe-system-helper":
             return _("Install or repair the privileged helper with sudo make install-policy.");
+        /* The helper never answered, so nothing is known to be wrong with it
+         * and there is nothing for the user to repair. Asking again is the
+         * whole remedy. */
+        case "helper-unavailable":
+            return _("The privileged helper did not answer in time. Try that again.");
         case "stale-system-helper":
             return _("The installed privileged helper is outdated. Re-run the policy installation.");
         case "helper-incompatible":

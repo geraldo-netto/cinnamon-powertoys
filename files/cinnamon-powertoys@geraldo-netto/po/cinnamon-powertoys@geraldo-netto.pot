@@ -139,8 +139,8 @@ msgid "Some battery limits could not be read."
 msgstr ""
 
 #. metadata.json->name
-#: applet.js:1999 applet.js:3096 applet.js:3110 applet.js:3169 applet.js:3232
-#: applet.js:3241 applet.js:3382
+#: applet.js:1999 applet.js:3101 applet.js:3115 applet.js:3174 applet.js:3237
+#: applet.js:3246 applet.js:3387
 msgid "Power Toys"
 msgstr ""
 
@@ -151,7 +151,7 @@ msgid ""
 "the keyboard backlight. Right click to configure those, and to set shortcuts."
 msgstr ""
 
-#: applet.js:3045 applet.js:3200
+#: applet.js:3045 applet.js:3205
 msgid "Privileged controls are turned off"
 msgstr ""
 
@@ -183,32 +183,36 @@ msgstr ""
 msgid "Install or repair the privileged helper with sudo make install-policy."
 msgstr ""
 
-#: applet.js:3084 applet.js:3097
+#: applet.js:3087
+msgid "The privileged helper did not answer in time. Try that again."
+msgstr ""
+
+#: applet.js:3089 applet.js:3102
 msgid ""
 "The installed privileged helper is outdated. Re-run the policy installation."
 msgstr ""
 
-#: applet.js:3086
+#: applet.js:3091
 msgid "The privileged helper is incompatible with this applet version."
 msgstr ""
 
-#: applet.js:3088
+#: applet.js:3093
 msgid "The change could not be applied."
 msgstr ""
 
-#: applet.js:3107
+#: applet.js:3112
 msgid "Could not switch to %{profile}: %{detail}"
 msgstr ""
 
-#: applet.js:3108
+#: applet.js:3113
 msgid "Could not switch to %{profile}"
 msgstr ""
 
-#: applet.js:3170
+#: applet.js:3175
 msgid "Power profile: %{profile}"
 msgstr ""
 
-#: applet.js:3383
+#: applet.js:3388
 msgid "Shortcut is already in use: %{shortcut}"
 msgstr ""
 
