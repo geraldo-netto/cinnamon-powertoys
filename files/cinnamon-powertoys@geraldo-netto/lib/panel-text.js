@@ -186,6 +186,69 @@ function namedStatus(name, device) {
 }
 
 /*
+ * The one whole-machine figure, where there is one.
+ *
+ * Battery discharge is the closest thing to a reading for the machine; a
+ * platform meter is the firmware's own total. Exactly one of them is the
+ * system figure, and which it is was decided when the reading was assembled.
+ */
+function _systemEntry(data) {
+    if (data.systemWatts === null || data.systemWatts === undefined)
+        return null;
+    if (data.systemWattsSource === "battery")
+        return Translate.interpolate(_("Whole system (battery): %{power}"),
+            { power: Format.watts(data.systemWatts) });
+    if (data.systemWattsSource === "platform")
+        return Translate.interpolate(_("Platform total (DTPM): %{power}"),
+            { power: Format.watts(data.systemWatts) });
+    return null;
+}
+
+/* RAPL, which is a processor-package total and says so. */
+function _packageEntry(data) {
+    if (data.packageWatts === undefined || data.packageWatts === null)
+        return null;
+    return Translate.interpolate(_("Processor package total: %{power}"),
+        { power: Format.watts(data.packageWatts) });
+}
+
+/* The meters worth naming: a component figure with a number in it. */
+function _meters(data) {
+    return (data.powers || []).filter(meter =>
+        (meter.kind === "cpu" || meter.kind === "gpu") && meter.watts !== null);
+}
+
+/* Which meters share a name, so that only those have to carry a qualifier. */
+function _groupCounts(meters) {
+    let counts = {};
+    for (let meter of meters) {
+        let group = _group(meter);
+        counts[group] = (counts[group] || 0) + 1;
+    }
+    return counts;
+}
+
+function _group(meter) {
+    return meter.group || meter.groupLabel || meter.label;
+}
+
+/*
+ * What one meter is called.
+ *
+ * Two rails of the same device are two lines with one name between them, so
+ * the second half of the name is added exactly where it distinguishes
+ * something and left off where it would only be noise.
+ */
+function _meterName(meter, counts) {
+    let name = meter.groupLabel || meter.label ||
+               (meter.kind === "gpu" ? _("Graphics") : _("Processor"));
+    if (counts[_group(meter)] > 1 && meter.shortLabel)
+        return Translate.interpolate(_("%{name} — %{detail}"),
+            { name: name, detail: meter.shortLabel });
+    return name;
+}
+
+/*
  * Every consumption figure the tooltip can identify honestly.
  *
  * Battery discharge is the closest thing available here to a whole-machine
@@ -195,33 +258,12 @@ function namedStatus(name, device) {
  * one of them simply "Power draw" promoted a GPU reading to a system total.
  */
 function consumptionEntries(data) {
-    let entries = [];
-    if (data.systemWattsSource === "battery" && data.systemWatts !== null)
-        entries.push(Translate.interpolate(_("Whole system (battery): %{power}"),
-            { power: Format.watts(data.systemWatts) }));
-    if (data.systemWattsSource === "platform" && data.systemWatts !== null)
-        entries.push(Translate.interpolate(_("Platform total (DTPM): %{power}"),
-            { power: Format.watts(data.systemWatts) }));
-    if (data.packageWatts !== undefined && data.packageWatts !== null)
-        entries.push(Translate.interpolate(_("Processor package total: %{power}"),
-            { power: Format.watts(data.packageWatts) }));
-
-    let meters = (data.powers || []).filter(meter =>
-        (meter.kind === "cpu" || meter.kind === "gpu") && meter.watts !== null);
-    let counts = {};
+    let entries = [_systemEntry(data), _packageEntry(data)].filter(entry => entry !== null);
+    let meters = _meters(data);
+    let counts = _groupCounts(meters);
     for (let meter of meters) {
-        let group = meter.group || meter.groupLabel || meter.label;
-        counts[group] = (counts[group] || 0) + 1;
-    }
-    for (let meter of meters) {
-        let group = meter.group || meter.groupLabel || meter.label;
-        let name = meter.groupLabel || meter.label ||
-                   (meter.kind === "gpu" ? _("Graphics") : _("Processor"));
-        if (counts[group] > 1 && meter.shortLabel)
-            name = Translate.interpolate(_("%{name} — %{detail}"),
-                { name: name, detail: meter.shortLabel });
         entries.push(Translate.interpolate(_("%{name}: %{power}"),
-            { name: name, power: Format.watts(meter.watts) }));
+            { name: _meterName(meter, counts), power: Format.watts(meter.watts) }));
     }
     return entries;
 }

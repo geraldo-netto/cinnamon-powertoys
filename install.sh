@@ -229,10 +229,12 @@ for required in applet.js metadata.json settings-schema.json powertoys-helper; d
         exit 1
     }
 done
-[ -d "$STAGING/lib" ] || {
-    echo "incomplete applet copy: missing lib" >&2
-    exit 1
-}
+for required in lib ui; do
+    [ -d "$STAGING/$required" ] || {
+        echo "incomplete applet copy: missing $required" >&2
+        exit 1
+    }
+done
 
 # The translation helper has its own transaction, but its successful commit
 # precedes runtime verification. Retain the outer operation's prior catalogue

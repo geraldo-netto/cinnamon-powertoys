@@ -49,8 +49,10 @@ function scratch(options, body) {
                           "powertoys-helper"])
             GLib.file_set_contents(applet + "/" + name, "new " + name + "\n");
         GLib.chmod(applet + "/powertoys-helper", 0o600);
-        if (!options.incomplete)
+        if (!options.incomplete) {
             GLib.mkdir_with_parents(applet + "/lib", 0o755);
+            GLib.mkdir_with_parents(applet + "/ui", 0o755);
+        }
 
         if (!options.firstInstall) {
             GLib.file_set_contents(target + "/marker", "old\n");

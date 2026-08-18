@@ -29,7 +29,7 @@ function schemaKeys() {
 }
 
 function tableEntries() {
-    let source = readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let table = source.slice(source.indexOf("const SETTINGS = ["),
                              source.indexOf("];", source.indexOf("const SETTINGS = [")));
     let entries = [];
@@ -91,7 +91,7 @@ cases["a property name still matches its key"] = function () {
 };
 
 cases["a setting that needs more than a repaint says so"] = function () {
-    let source = readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let table = source.slice(source.indexOf("const SETTINGS = ["),
                              source.indexOf("];", source.indexOf("const SETTINGS = [")));
     for (let key of ["refresh-interval", "temp-unit", "monitor-brightness",
@@ -123,7 +123,7 @@ cases["the privileged setting names every gated control"] = function () {
 };
 
 cases["disabling privileged writes keeps the charge limit readable"] = function () {
-    let source = readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let readStart = source.indexOf("    _readChargeLimit() {");
     let readEnd = source.indexOf("\n    }", readStart);
     let read = source.slice(readStart, readEnd);

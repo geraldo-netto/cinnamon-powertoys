@@ -282,8 +282,9 @@ cases["named values are inserted after the complete message is translated"] = fu
 };
 
 cases["dynamic name and value phrases use complete templates"] = function () {
-    let files = ["applet.js", "lib/alerts.js", "lib/device.js"];
-    let source = files.map(file => Harness.readFile(Harness.xletDir() + "/" + file)).join("\n");
+    let files = ["lib/alerts.js", "lib/device.js", "lib/profile-view.js"];
+    let source = [Harness.shellSource()].concat(
+        files.map(file => Harness.readFile(Harness.xletDir() + "/" + file))).join("\n");
     for (let message of [
         "%{source} - %{reading}",
         "%{device}  %{charge}",

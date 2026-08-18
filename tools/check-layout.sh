@@ -30,7 +30,7 @@ for wrapper in README.md info.json screenshot.png; do
 done
 
 for required in applet.js metadata.json settings-schema.json stylesheet.css \
-        icon.png powertoys-helper lib icons po; do
+        icon.png powertoys-helper lib ui icons po; do
     [ -e "$XLET_DIR/$required" ] || fail "missing runtime asset $required"
 done
 
@@ -38,7 +38,7 @@ for entry in "$XLET_DIR"/* "$XLET_DIR"/.[!.]* "$XLET_DIR"/..?*; do
     [ -e "$entry" ] || [ -L "$entry" ] || continue
     name=${entry##*/}
     case "$name" in
-        applet.js|metadata.json|settings-schema.json|stylesheet.css|icon.png|powertoys-helper|lib|icons|po)
+        applet.js|metadata.json|settings-schema.json|stylesheet.css|icon.png|powertoys-helper|lib|ui|icons|po)
             ;;
         *) fail "unexpected top-level runtime entry $name" ;;
     esac

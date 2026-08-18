@@ -147,7 +147,8 @@ uninstall-rapl:
 check:
 	@command -v cjs >/dev/null 2>&1 || { echo "cjs not found, install the cjs package"; exit 1; }
 	@sh tools/check-layout.sh "$(UUID)" "$(FILES_DIR)"
-	@cjs tools/parse-check.js $(XLET_DIR)/applet.js $(XLET_DIR)/lib/*.js
+	@cjs tools/parse-check.js $(XLET_DIR)/applet.js $(XLET_DIR)/lib/*.js \
+		$(XLET_DIR)/ui/*.js
 	@cjs tests/run.js
 	@sh -n $(XLET_DIR)/powertoys-helper install.sh tools/check-layout.sh \
 		tools/install-translations.sh \

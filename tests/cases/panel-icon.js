@@ -33,7 +33,7 @@ const TRIGGERS = [
 var cases = {};
 
 cases["every rebuild of the icon actor drops the cached key first"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     for (let [name, why] of TRIGGERS) {
         let body = methodBody(source, name);
         let invalidate = body.indexOf("this._panel.invalidateIcon();");
@@ -46,7 +46,7 @@ cases["every rebuild of the icon actor drops the cached key first"] = function (
 };
 
 cases["the icon setting drops the cached key before redrawing"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let handler = /icon: \(\) => \{([\s\S]*?)\n            \},/.exec(source);
     Harness.ok(handler !== null, "the icon settings handler is present");
     Harness.ok(handler[1].indexOf("this._panel.invalidateIcon();") >= 0,
@@ -57,7 +57,7 @@ cases["the icon setting drops the cached key before redrawing"] = function () {
 };
 
 cases["the invalidation contract names every trigger that honours it"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.readFile(Harness.xletDir() + "/lib/panel-presenter.js");
     let start = source.indexOf("    invalidateIcon() {");
     Harness.ok(start >= 0, "the cache drop is present");
     /* Comment text wraps, so the phrases are matched against it as prose. */

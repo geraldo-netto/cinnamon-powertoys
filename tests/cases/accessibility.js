@@ -11,7 +11,7 @@ const Harness = imports.harness;
 var cases = {};
 
 cases["slider descriptions avoid Atk.Action's method"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     Harness.ok(source.indexOf("Atk.Object.prototype.set_description.call(") >= 0,
                "the Atk.Object method is selected explicitly");
     Harness.ok(source.indexOf("this._accessible.set_description(") < 0,
@@ -19,7 +19,7 @@ cases["slider descriptions avoid Atk.Action's method"] = function () {
 };
 
 cases["slider range and step are complete localized accessibility text"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let start = source.indexOf("class BacklightSlider ");
     let slider = source.slice(start, source.indexOf("\nclass PanelPresenter", start));
     Harness.ok(start >= 0 && slider.length > 0, "the backlight slider is present");
@@ -34,17 +34,23 @@ cases["slider range and step are complete localized accessibility text"] = funct
 };
 
 cases["one power profile is status rather than a control"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     Harness.ok(source.indexOf("this._profileValueRow = new InfoRow") >= 0,
                "a non-reactive value row exists for the single profile");
-    Harness.ok(source.indexOf("data.profile.list.length === 1") >= 0,
-               "the one-value backend selects that row");
-    Harness.ok(source.indexOf("this._profileControl.actor.visible = show && !single") >= 0,
-               "the focusable segmented control is removed in that state");
+    /* Which of the two is on screen is decided in lib/profile-view.js, whose
+     * own cases check the decision; what is checked here is that the menu
+     * honours it and that the two are alternatives rather than both drawn. */
+    Harness.ok(source.indexOf("this._profileControl.actor.visible = view.showChoices") >= 0,
+               "the focusable segmented control follows the view");
+    Harness.ok(source.indexOf("this._profileValueRow.actor.visible = view.single") >= 0,
+               "and the value row is shown exactly when there is nothing to choose");
+    let view = Harness.readFile(Harness.xletDir() + "/lib/profile-view.js");
+    Harness.ok(view.indexOf("profile.list.length === 1") >= 0,
+               "the one-value backend is what selects that row");
 };
 
 cases["selector dots expose synchronized radio semantics"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let start = source.indexOf("class SelectorItem ");
     let selector = source.slice(start, source.indexOf("\nclass SelectorGroup", start));
     Harness.ok(start >= 0 && selector.length > 0, "the selector class is present");
@@ -61,7 +67,7 @@ cases["selector dots expose synchronized radio semantics"] = function () {
 };
 
 cases["visual group titles expose heading semantics"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let start = source.indexOf("function exposeHeading");
     let helper = source.slice(start, source.indexOf("\n/*", start));
     Harness.ok(start >= 0 && helper.length > 0, "the heading boundary is present");
@@ -78,7 +84,7 @@ cases["visual group titles expose heading semantics"] = function () {
 };
 
 cases["clipped notes preserve their complete text"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let start = source.indexOf("class NoteRow ");
     let note = source.slice(start, source.indexOf("\nclass DeviceRow", start));
     Harness.ok(start >= 0 && note.length > 0, "the note row is present");
@@ -110,7 +116,7 @@ function classBody(source, name, next) {
 }
 
 cases["a reading row names itself from its label and its value"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let row = classBody(source, "InfoRow", "NoteRow");
     Harness.ok(row.indexOf("Format.readingName(this._labelText, this._valueText)") >= 0,
                "the name is composed by the shared formatter");
@@ -128,7 +134,7 @@ cases["a reading row names itself from its label and its value"] = function () {
 };
 
 cases["a device entry names itself from its model"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let row = classBody(source, "DeviceRow", "SelectorItem");
     let update = /update\(model\) \{([\s\S]*?)\n    \}/.exec(row);
     Harness.ok(update !== null, "DeviceRow.update is present");

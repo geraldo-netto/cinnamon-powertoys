@@ -335,6 +335,49 @@ cases["consumption names system processor and graphics readings separately"] = f
                       "none is promoted to an unnamed whole-machine total");
 };
 
+cases["two meters on one device are told apart, and one is not"] = function () {
+    /* A qualifier earns its place only where the name it qualifies appears
+     * twice. On the single-rail card below, "Radeon RX 6600 - Power" would be
+     * a detail distinguishing a reading from nothing. */
+    let shared = reading({
+        powers: [
+            { id: "gpu-core", kind: "gpu", group: "gpu0", groupLabel: "Radeon RX 6600",
+              label: "amdgpu core", shortLabel: "Core", watts: 21 },
+            { id: "gpu-board", kind: "gpu", group: "gpu0", groupLabel: "Radeon RX 6600",
+              label: "amdgpu board", shortLabel: "Board", watts: 34 },
+        ],
+    });
+    let lines = PanelText.tooltipText(shared, options()).split("\n");
+    Harness.ok(lines.indexOf("  Radeon RX 6600 \u2014 Core: 21 W") >= 0,
+               "the two rails of one card carry which rail they are: " + lines.join("|"));
+    Harness.ok(lines.indexOf("  Radeon RX 6600 \u2014 Board: 34 W") >= 0,
+               "both of them");
+
+    let alone = reading({
+        powers: [
+            { id: "gpu-board", kind: "gpu", group: "gpu0", groupLabel: "Radeon RX 6600",
+              label: "amdgpu board", shortLabel: "Board", watts: 34 },
+        ],
+    });
+    let single = PanelText.tooltipText(alone, options()).split("\n");
+    Harness.ok(single.indexOf("  Radeon RX 6600: 34 W") >= 0,
+               "a card with one meter is named once, without a qualifier");
+};
+
+cases["a meter with no name of its own is named for what it measures"] = function () {
+    let data = reading({
+        powers: [
+            { id: "unnamed-gpu", kind: "gpu", group: "gpu0", watts: 12 },
+            { id: "unnamed-cpu", kind: "cpu", group: "cpu0", watts: 8 },
+        ],
+    });
+    let lines = PanelText.tooltipText(data, options()).split("\n");
+    Harness.ok(lines.indexOf("  Graphics: 12 W") >= 0,
+               "the graphics meter: " + lines.join("|"));
+    Harness.ok(lines.indexOf("  Processor: 8.0 W") >= 0,
+               "and the processor one: " + lines.join("|"));
+};
+
 cases["consumption identifies a DTPM platform total"] = function () {
     let data = reading({
         systemWatts: 72,

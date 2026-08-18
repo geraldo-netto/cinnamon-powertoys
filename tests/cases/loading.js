@@ -11,6 +11,15 @@ const GLib = imports.gi.GLib;
 const Harness = imports.harness;
 const Loader = imports.loader;
 const Translate = Harness.requireXlet("./lib/gettext.js");
+const ProfileView = Harness.requireXlet("./lib/profile-view.js");
+
+/* The applet's one-line ownership check, for an isolated method that calls it.
+ * What the check itself means is tests/cases/profile-view.js. */
+function stillOwned(applet) {
+    return (backend, generation) => ProfileView.sameOwner(
+        { source: backend, generation: generation },
+        applet._profileBackend, applet._profileBackendGeneration);
+}
 
 /* The file tools/loader.js claims to copy. Absent on anything that is not a
  * Cinnamon desktop, which includes the runner. */
@@ -21,7 +30,7 @@ var cases = {};
 const MODULES = ["io", "log", "gettext", "format", "device", "hardware", "sensors", "cpu",
                  "power-supply", "privileged", "owner-watch", "upower", "profiles", "backlight", "ddc",
                  "bluez", "alerts", "reading", "sensor-rows", "panel-text", "pending-profile",
-                 "keyed-list", "cinnamon-panel", "notifications"];
+                 "keyed-list", "cinnamon-panel", "notifications", "panel-presenter"];
 
 for (let name of MODULES) {
     cases["lib/" + name + ".js loads"] = function () {
@@ -57,19 +66,44 @@ cases["runtime D-Bus constructors forward lifecycle cancellables"] = function ()
  */
 function sourceFiles() {
     let files = [Harness.xletDir() + "/applet.js"];
+    for (let name of Harness.shellModules())
+        files.push(Harness.xletDir() + "/ui/" + name);
     for (let name of MODULES)
         files.push(Harness.xletDir() + "/lib/" + name + ".js");
     return files;
 }
 
-/* `const Sensors = require("./lib/sensors.js")` - the alias and what it is. */
+/* `const Sensors = require("./lib/sensors.js")` - the alias, and the module
+ * path it stands for. Both directories, because a widget module is required
+ * exactly the same way and a rename there is exactly as invisible. */
 function requiresIn(source) {
     let aliases = {};
-    let pattern = /(?:const|var|let)\s+([A-Za-z_$][\w$]*)\s*=\s*require\("\.\/lib\/([\w-]+)\.js"\)/g;
+    let pattern = /(?:const|var|let)\s+([A-Za-z_$][\w$]*)\s*=\s*require\("\.\/((?:lib|ui)\/[\w-]+\.js)"\)/g;
     let match;
     while ((match = pattern.exec(source)) !== null)
         aliases[match[1]] = match[2];
     return aliases;
+}
+
+/*
+ * What a module offers, without running it.
+ *
+ * The modules under ui/ build Cinnamon widgets and cannot be loaded here, so
+ * asking them what they export is not an option - but the loader does not ask
+ * either. It appends one assignment per top level declaration, by the regexes
+ * in tools/loader.js, and that is a thing that can be read off the source. So
+ * these are checked the way the shell will resolve them rather than being left
+ * out of the check for being unloadable.
+ */
+function staticExports(path) {
+    let body = Loader.PREAMBLE + Harness.readFile(path) + ";";
+    let names = {};
+    let pattern = /exports\.([A-Za-z_$][\w$]*) =/g;
+    let match;
+    let assignments = Loader.exportAssignments(body);
+    while ((match = pattern.exec(assignments)) !== null)
+        names[match[1]] = true;
+    return names;
 }
 
 function usedNames(source, alias) {
@@ -89,12 +123,16 @@ cases["every name a source reaches for on a library is exported"] = function () 
         let source = Harness.readFile(file);
         let aliases = requiresIn(source);
         for (let alias in aliases) {
-            let module = Harness.requireXlet("./lib/" + aliases[alias] + ".js");
+            let target = aliases[alias];
+            /* Loaded where it can be, read where it cannot. */
+            let offered = target.indexOf("ui/") === 0
+                ? staticExports(Harness.xletDir() + "/" + target)
+                : Harness.requireXlet("./" + target);
             for (let symbol of usedNames(source, alias)) {
                 checked++;
-                if (module[symbol] === undefined || module[symbol] === null)
+                if (offered[symbol] === undefined || offered[symbol] === null)
                     missing.push(file.replace(Harness.xletDir() + "/", "") +
-                                 " uses " + aliases[alias] + "." + symbol);
+                                 " uses " + target + "." + symbol);
             }
         }
     }
@@ -154,7 +192,7 @@ cases["a file that translates asks lib/gettext.js for the translator"] = functio
         if (!match)
             continue;
         checked++;
-        if (requiresIn(source)[match[1]] !== "gettext")
+        if (requiresIn(source)[match[1]] !== "lib/gettext.js")
             wrong.push(file.replace(Harness.xletDir() + "/", "") + " takes _ from " + match[1]);
     }
 
@@ -170,7 +208,7 @@ cases["the libraries load without a shell"] = function () {
 };
 
 cases["partial applet construction owns its rollback"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let start = source.indexOf("constructor(metadata, orientation");
     let constructor = source.slice(start, source.indexOf("\n    _initialize(metadata", start));
     Harness.ok(constructor.indexOf("try {") >= 0, "initialization has a guarded acquisition stage");
@@ -184,7 +222,7 @@ cases["a late collection stops when its applet is destroyed"] = function () {
     /* applet.js needs Cinnamon's UI modules and cannot be loaded by the
      * shell-free runner. Exercise its collection method with only the two
      * asynchronous backend contracts it uses. */
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let match = /    _collect\(onDone, sampleCpu\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* The sensor readings/.exec(source);
     Harness.ok(match, "the collection method can be isolated");
 
@@ -213,6 +251,7 @@ cases["a late collection stops when its applet is destroyed"] = function () {
         },
     };
 
+    applet._stillOwned = stillOwned(applet);
     collect.call(applet, answer => answers.push(answer));
     sensorDone({ temperatures: [] });
     applet._destroyed = true;
@@ -224,7 +263,7 @@ cases["a late collection stops when its applet is destroyed"] = function () {
 };
 
 cases["collection waits for asynchronous charge and firmware samples"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let match = /    _collect\(onDone, sampleCpu\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* The sensor readings/.exec(source);
     Harness.ok(match, "the collection method can be isolated");
     let collect = Function("Log", "return function (onDone, sampleCpu) {" +
@@ -250,6 +289,7 @@ cases["collection waits for asynchronous charge and firmware samples"] = functio
         _assemble: (readings, profile) => ({ readings: readings, profile: profile }),
     };
 
+    applet._stillOwned = stillOwned(applet);
     collect.call(applet, answer => answers.push(answer));
     pending.sensors({ temperatures: [] });
     pending.cpu(true);
@@ -264,7 +304,7 @@ cases["collection waits for asynchronous charge and firmware samples"] = functio
 };
 
 cases["hidden collections skip live CPU sampling"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let match = /    _collect\(onDone, sampleCpu\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* The sensor readings/.exec(source);
     Harness.ok(match, "the collection method can be isolated");
     let collect = Function("Log", "return function (onDone, sampleCpu) {" +
@@ -284,13 +324,14 @@ cases["hidden collections skip live CPU sampling"] = function () {
         _assemble: readings => readings,
     };
 
+    applet._stillOwned = stillOwned(applet);
     collect.call(applet, value => { answer = value; }, false);
     Harness.equal(sampled, 0, "no moving CPU node is requested");
     Harness.deepEqual(answer, { temperatures: [] }, "the cached CPU snapshot can assemble");
 };
 
 cases["CPU sampling follows visible consumers"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let match = /    _cpuSampleWanted\(\) \{([\s\S]*?)\n    \}/.exec(source);
     Harness.ok(match, "the CPU visibility policy can be isolated");
     let wanted = Function("return function () {" + match[1] + "\n};")();
@@ -313,20 +354,24 @@ cases["CPU sampling follows visible consumers"] = function () {
 };
 
 cases["profile collections and controls reject a backend transition"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let collectMatch = /    _collect\(onDone, sampleCpu\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* The sensor readings/.exec(source);
     let chooseMatch = /    _chooseProfileBackend\(\) \{([\s\S]*?)\n    \}\n\n    \/\* One look/.exec(source);
-    let stateMatch = /    _profileState\(\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* One step/.exec(source);
-    Harness.ok(collectMatch && chooseMatch && stateMatch, "the profile wiring can be isolated");
+    let contextMatch = /    _profileContext\(\) \{([\s\S]*?)\n    \}/.exec(source);
+    Harness.ok(collectMatch && chooseMatch && contextMatch, "the profile wiring can be isolated");
 
     let collect = Function("Log", "return function (onDone, sampleCpu) {" +
         collectMatch[1] + "\n};")({
         error: message => { throw new Error(message); },
     });
     let choose = Function("return function () {" + chooseMatch[1] + "\n};")();
-    let profileState = Function("Reading", "return function () {" + stateMatch[1] + "\n};")({
-        profileCanChange: () => true,
-    });
+    /* _profileState is one call now: the rule is lib/profile-view.js and what
+     * is left in the applet is assembling the context to ask it with. That
+     * assembly is what this isolates; the rule has its own cases. */
+    let profileContext = Function("return function () {" + contextMatch[1] + "\n};")();
+    let profileState = function () {
+        return ProfileView.steppableState(this._latest, profileContext.call(this));
+    };
     let pending = {};
     let forgotten = 0;
     let daemon = { available: false, sample: done => { pending.profile = done; } };
@@ -360,6 +405,7 @@ cases["profile collections and controls reject a backend transition"] = function
     Harness.equal(choose.call(applet), true, "the appearing daemon takes ownership");
     let daemonGeneration = applet._profileBackendGeneration;
     applet.menu = null;
+    applet._stillOwned = stillOwned(applet);
     collect.call(applet, answer => { pending.answer = answer; });
     pending.sensors({ temperatures: [] });
     pending.cpu(true);
@@ -407,7 +453,7 @@ cases["profile collections and controls reject a backend transition"] = function
 };
 
 cases["a profile write stays with the backend that produced its control"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let match = /    _setProfile\(name, onResult\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* A password dialog/.exec(source);
     Harness.ok(match, "the profile action can be isolated");
     let setProfile = Function(
@@ -443,6 +489,7 @@ cases["a profile write stays with the backend that produced its control"] = func
         _notifyProfileError: (name, error) => notices.push([name, error]),
         _scheduleUpdate: () => updates++,
     };
+    applet._stillOwned = stillOwned(applet);
 
     Harness.equal(setProfile.call(applet, "performance", error => results.push(error)), true,
                   "the write was accepted");
@@ -457,7 +504,7 @@ cases["a profile write stays with the backend that produced its control"] = func
 };
 
 cases["profile announcements wait for matching success"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let match = /    _stepProfile\(step, wrap, announce\) \{([\s\S]*?)\n    \}\n\n    _cycleProfile/.exec(source);
     Harness.ok(match, "the profile step can be isolated");
     let notices = [];
@@ -496,37 +543,8 @@ cases["profile announcements wait for matching success"] = function () {
                       "only the matching success is announced");
 };
 
-cases["malformed battery icon metadata keeps the panel fallback"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
-    let match = /    _updateIcon\(data, source, profile\) \{([\s\S]*?)\n    \}\n\n    destroy\(\)/.exec(source);
-    Harness.ok(match, "the panel icon boundary can be isolated");
-    let updateIcon = Function(
-        "Gio", "Format", "DEFAULT_ICON",
-        "return function (data, source, profile) {" + match[1] + "\n};")({
-        icon_new_for_string: () => { throw new Error("malformed icon"); },
-    }, {
-        batteryIconName: () => "battery-fallback",
-        profileIconName: () => null,
-    }, "powertoys");
-    let calls = [];
-    let presenter = {
-        _iconKey: null,
-        _iconDir: "/icons",
-        _shell: {
-            setBatteryIcon: (fallback, icon, sourceName) =>
-                calls.push([fallback, icon, sourceName]),
-            setIconPath: () => {},
-            setSymbolicIcon: () => {},
-        },
-    };
-
-    updateIcon.call(presenter, { primary: { icon: "not a valid icon" } }, "battery", null);
-    Harness.deepEqual(calls, [["battery-fallback", null, "not a valid icon"]],
-                      "the validated symbolic fallback still reaches the panel");
-};
-
 cases["presentation consumers fail independently"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let match = /    _present\(data\) \{([\s\S]*?)\n    \}\n\n    \/\* What the three switches/.exec(source);
     Harness.ok(match, "the presentation boundary can be isolated");
     let logs = [];
@@ -582,7 +600,7 @@ cases["presentation consumers fail independently"] = function () {
 };
 
 cases["slow rediscovery includes CPU topology"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let rediscover = /    _rediscover\(\) \{([\s\S]*?)\n    \}/.exec(source);
     Harness.ok(rediscover, "the rediscovery method can be isolated");
     Harness.ok(rediscover[1].indexOf("this._cpu.refresh()") >= 0,
@@ -601,10 +619,56 @@ cases["slow rediscovery includes CPU topology"] = function () {
 };
 
 cases["a monitor overflow note cannot create an empty brightness group"] = function () {
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     let sync = /    _syncMonitors\(\) \{([\s\S]*?)\n    \}/.exec(source);
     Harness.ok(sync, "the monitor presentation method can be isolated");
     Harness.ok(
         /if \(entries\.length > 0 && this\._monitors\.hidden > 0\)/.test(sync[1]),
         "overflow is shown only beside at least one available monitor slider");
+};
+
+/*
+ * The line between the two directories.
+ *
+ * lib/ is loaded, measured and mutated by this suite; ui/ cannot be loaded
+ * here at all. So a decision that moves from lib/ into ui/ leaves the suite
+ * without noticing, which is exactly the direction this repository has drifted
+ * before. Two rules keep the boundary readable: nothing in lib/ may touch
+ * Cinnamon's UI modules or its widget toolkit, and nothing in lib/ may require
+ * a module out of ui/.
+ */
+cases["nothing in lib reaches for the shell"] = function () {
+    let offenders = [];
+    let checked = 0;
+    for (let name of MODULES) {
+        let file = "lib/" + name + ".js";
+        /* Code only: these files explain the boundary in their comments, and
+         * naming a module in prose is not importing it. */
+        let source = Harness.readFile(Harness.xletDir() + "/" + file)
+            .replace(/\/\*[\s\S]*?\*\//g, " ")
+            .replace(/^\s*\/\/.*$/gm, " ");
+        checked++;
+        for (let forbidden of ["imports.ui.", "imports.gi.St", "imports.gi.Clutter",
+                               "imports.gi.Atk", "imports.gi.Pango", "imports.gi.Gtk"]) {
+            if (source.indexOf(forbidden) >= 0)
+                offenders.push(file + " uses " + forbidden);
+        }
+        if (/require\("\.\/ui\//.test(source))
+            offenders.push(file + " requires a widget module");
+    }
+    Harness.deepEqual(offenders, [], "a library that needs the shell is not a library");
+    Harness.ok(checked > 20, "only " + checked + " libraries checked, which is too few");
+};
+
+cases["every widget module is one of the shell sources"] = function () {
+    /* The cases that read shell code read applet.js and everything under ui/.
+     * A module added to ui/ and left out of that list would be code nothing
+     * here looks at, not even as text. */
+    let names = Harness.shellModules();
+    Harness.ok(names.length > 0, "there are widget modules to check");
+    let source = Harness.shellSource();
+    for (let name of names) {
+        let text = Harness.readFile(Harness.xletDir() + "/ui/" + name);
+        Harness.ok(source.indexOf(text) >= 0, "ui/" + name + " is part of the shell source");
+    }
 };

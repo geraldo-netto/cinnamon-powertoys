@@ -213,6 +213,47 @@ function readFile(path) {
     return Loader.read(path);
 }
 
+/*
+ * The names of the shell-only modules, in order.
+ *
+ * Everything under ui/ builds Cinnamon widgets and so cannot be loaded here,
+ * exactly like applet.js. Read from the directory rather than listed, so a
+ * module added there is covered by the cases below without anyone remembering
+ * to say so.
+ */
+function shellModules() {
+    const Gio = imports.gi.Gio;
+    let names = [];
+    let directory = Gio.File.new_for_path(xletDir() + "/ui");
+    if (!directory.query_exists(null))
+        return names;
+    let entries = directory.enumerate_children("standard::name",
+                                               Gio.FileQueryInfoFlags.NONE, null);
+    let info;
+    while ((info = entries.next_file(null)) !== null) {
+        let name = info.get_name();
+        if (name.substr(-3) === ".js")
+            names.push(name);
+    }
+    entries.close(null);
+    return names.sort();
+}
+
+/*
+ * All the source Cinnamon evaluates that no case can load, as one text.
+ *
+ * The applet and the widget modules beside it are one body of shell code that
+ * happens to be split across files; which file a class is in is a matter of
+ * ownership, not of behaviour. A case that reads it reads all of it, so moving
+ * a class from one to another is a refactor rather than a failing test.
+ */
+function shellSource() {
+    let sources = [readFile(xletDir() + "/applet.js")];
+    for (let name of shellModules())
+        sources.push(readFile(xletDir() + "/ui/" + name));
+    return sources.join("\n");
+}
+
 /* ---------------------------------------------------------------- */
 /* asynchronous results                                              */
 

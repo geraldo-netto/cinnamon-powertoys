@@ -704,7 +704,7 @@ cases["a timeout does not warn about an outdated helper on a later success"] = f
     /* The warning path: a rejected first candidate is carried as an issue on
      * whatever helper does run, and only an outdated one is worth interrupting
      * somebody about. A machine that was merely busy is not. */
-    let source = Harness.readFile(Harness.xletDir() + "/applet.js");
+    let source = Harness.shellSource();
     Harness.ok(source.indexOf('outcome?.warningCode !== "stale-system-helper"') >= 0,
                "the notification is still limited to the outdated helper");
     Harness.ok(source.indexOf('case "helper-unavailable":') >= 0,

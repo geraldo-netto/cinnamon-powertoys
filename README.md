@@ -514,11 +514,26 @@ the exact compatibility floor behind the two load-critical requirements.
 
 ## Layout
 
+Two directories, and the line between them is whether a file can be loaded
+without Cinnamon. Everything in `lib/` can: it is loaded, measured for coverage
+and mutated by the test suite, and it holds no widget. Everything in `ui/`
+builds Cinnamon's own actors and can only be parsed here, so nothing that could
+have been decided in `lib/` is decided there - which is why the menu's profile
+group is a projection in `lib/profile-view.js` and four lines of applying in
+`ui/menu.js`. `applet.js` composes the two and owns nothing else: the settings,
+the backends, the poll, and turning a click, a wheel or a hotkey into a call.
+
 ```
 files/
 └── cinnamon-powertoys@geraldo-netto/
-    ├── applet.js               panel item, menu, wiring, polling
+    ├── applet.js               settings, backends, polling, and what a click does
+    ├── ui/                      Cinnamon widgets: needs the shell to load at all
+    │   ├── rows.js             one row each: a reading, a note, a device, a choice
+    │   ├── controls.js         a control is several rows and the choice between them
+    │   └── menu.js             the columns, and one update handed to what is in them
     ├── lib/
+    │   ├── panel-presenter.js  the label, the icon and the tooltip on the panel
+    │   ├── profile-view.js     what is made of a profile reading, before drawing it
     │   ├── cinnamon-panel.js   Cinnamon panel and tooltip compatibility boundary
     │   ├── io.js               file reads, rooted so a captured /sys can stand in
     │   ├── hardware.js         what a chip, a card and a monitor are called
