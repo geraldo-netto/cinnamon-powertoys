@@ -3379,9 +3379,16 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this.menu.toggle();
     }
 
+    /* Moving the applet to a vertical panel rebuilds the icon actor as well as
+     * the menu, and the cache in PanelPresenter keys on what the icon should
+     * be rather than on the actor holding it - so the redraw below would find
+     * the key unchanged, skip the icon, and leave the new actor empty until
+     * something else changed the icon. The invalidation contract names this
+     * caller; it was the one caller that did not honour it. */
     on_orientation_changed(orientation) {
         this._destroyMenu();
         this._createMenu(orientation);
+        this._panel.invalidateIcon();
         this._update();
     }
 
