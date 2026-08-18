@@ -56,8 +56,13 @@ MUTANTS_MIN ?= 80
 MUTANTS_ARGS ?=
 MUTANTS_JOBS ?= 4
 
+# Where `make dist` puts the release archive and its checksum, and the tool
+# that writes them. Ignored by git: it is output, not source.
+DIST_DIR ?= dist
+PACKAGE_TOOL := tools/build-package.py
+
 .PHONY: install uninstall install-policy uninstall-policy install-rapl \
-	uninstall-rapl check coverage mutants pot restart help
+	uninstall-rapl check coverage mutants dist pot restart help
 
 help:
 	@echo "make install          - install the applet for the current user"
@@ -72,6 +77,7 @@ help:
 	@echo "                        JSON and policy"
 	@echo "make coverage         - run the tests again under the interpreter's own"
 	@echo "                        coverage and report it per function"
+	@echo "make dist             - build the release archive and its checksum"
 	@echo "make pot              - regenerate the translation template"
 	@echo "make restart          - restart Cinnamon"
 
@@ -200,6 +206,23 @@ coverage:
 mutants:
 	@command -v cjs >/dev/null 2>&1 || { echo "cjs not found, install the cjs package"; exit 1; }
 	@cjs tools/mutate.js --jobs $(MUTANTS_JOBS) $(MUTANTS_ARGS) --min $(MUTANTS_MIN)
+
+# The archive that goes to Spices or to a release, and the checksum that makes
+# it worth publishing.
+#
+# Byte for byte the same for the same commit: fixed timestamps, fixed modes,
+# sorted entries. A checksum beside an archive whose bytes depend on when it
+# was built tells the reader which machine built it and nothing about what is
+# inside, which is the opposite of the point.
+#
+# What goes in is the Spices submission layout - the payload directory and the
+# three wrapper assets - checked first against the same layout, policy and
+# helper-path rules `make check` applies, so a release cannot be cut from a
+# tree those would reject. Deliberately not part of check: it writes output.
+dist:
+	@rm -rf $(DIST_DIR)
+	@python3 $(PACKAGE_TOOL) --uuid "$(UUID)" --policy "polkit/$(POLICY)" \
+		--helper "$(HELPER_PATH)" --output "$(DIST_DIR)"
 
 # The template, as a function of the sources and of nothing else.
 #

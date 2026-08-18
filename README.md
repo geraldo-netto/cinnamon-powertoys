@@ -617,6 +617,26 @@ typelib, `gir1.2-upowerglib-1.0`, which the runner installs alongside `cjs`.
 Modules that consume UPower device data or enums import that runtime typelib
 directly and cannot load without it.
 
+## Packaging a release
+
+```sh
+make dist             # dist/<uuid>-<version>.zip and its .sha256
+```
+
+The archive holds the Cinnamon Spices submission layout — the payload
+directory plus `info.json`, `README.md` and `screenshot.png` — and nothing
+from the development tree. It is built before anything else is checked: the
+layout rules, the polkit action and the helper path all have to pass, so a
+release cannot be cut from a tree `make check` would reject.
+
+The same commit produces the same bytes, every time and on any machine: entries
+are written sorted, with a fixed timestamp and fixed modes. That is what makes
+the checksum beside it worth publishing — otherwise it records which machine
+built the archive rather than what is in it. The workflow builds it twice,
+compares the two checksums, unpacks it, installs and uninstalls the unpacked
+payload with the installer that ships beside it, and keeps the archive and its
+checksum as an artifact.
+
 `tests/harness.js` loads the libraries exactly as Cinnamon does — strict mode,
 the same export collection, a `require()` bound to the xlet directory — so a
 test exercises what the shell actually runs. Cases live in `tests/cases/` and
