@@ -299,25 +299,39 @@ const PrivilegedHelper = class PrivilegedHelper {
                 Log.error("could not settle a queued privileged job: " + error);
             }
         }
-        let activeProbe = this._activeProbe;
-        this._activeProbe = null;
-        if (activeProbe?.cancel)
-            activeProbe.cancel();
+        this._cancelActiveProbe();
     }
 
     /*
-     * The trusted helper that will actually be run, or null when there is
-     * none. Selection is repeated for every job so an installation changed
-     * while Cinnamon is alive is adopted without reloading the applet.
+     * Hands the trusted helper that will actually be run to onDone, or null
+     * where there is none. Selection is repeated for every job so an
+     * installation changed while Cinnamon is alive is adopted without
+     * reloading the applet.
+     *
+     * It was called path() and looked like a getter, which it never was: the
+     * answer only ever arrives at the callback and the return was a dead null.
+     *
+     * A probe still outstanding belongs to a selection nobody is waiting for
+     * any more, and _activeProbe holds exactly one - so starting another
+     * without ending that one put its subprocess, its pipes and its two second
+     * timer beyond the reach of destroy(). _next() serialises real jobs, but
+     * this is reachable from anywhere the object is.
      */
-    path(onDone) {
+    _selectHelper(onDone) {
         let done = onDone || function () {};
+        this._cancelActiveProbe();
         /* A deployment can add, replace or remove the system candidate while
          * Cinnamon keeps this object alive, so nothing is remembered between
          * jobs: every one of them rechecks the candidates in priority order
          * and repeats the protocol handshake. */
         this._tryCandidate(0, null, done);
-        return null;
+    }
+
+    _cancelActiveProbe() {
+        let activeProbe = this._activeProbe;
+        this._activeProbe = null;
+        if (activeProbe?.cancel)
+            activeProbe.cancel();
     }
 
     _tryCandidate(index, issue, onDone) {
@@ -406,7 +420,7 @@ const PrivilegedHelper = class PrivilegedHelper {
 
         let job = this._queue.shift();
         this._running = true;
-        this.path((helper, issue) => {
+        this._selectHelper((helper, issue) => {
             /* Selecting a helper is asynchronous on the first run. Destroying
              * the applet while its protocol probe is out means no pkexec
              * process has reached the screen yet, so this job is still safe

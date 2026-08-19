@@ -33,7 +33,7 @@ var cases = {};
 
 cases["the root owned helper is preferred"] = function () {
     let helper = helperWith([SYSTEM, OWN], [0, ""]);
-    let path = Harness.settle(done => helper.path(done), "helper selection");
+    let path = Harness.settle(done => helper._selectHelper(done), "helper selection");
     Harness.equal(path, SYSTEM, "the one the polkit action names");
 };
 
@@ -69,7 +69,7 @@ cases["runtime trust rejects a helper below a user-owned directory"] = function 
 
 cases["without an installed helper no user-owned copy is selected"] = function () {
     let helper = helperWith([], [0, ""]);
-    let path = Harness.settle(done => helper.path(done), "helper selection");
+    let path = Harness.settle(done => helper._selectHelper(done), "helper selection");
     Harness.equal(path, null, "a path below the applet is never a candidate");
 };
 
@@ -165,11 +165,40 @@ cases["a spawn failure forces helper reselection"] = function () {
     Harness.equal(probes, 2, "the next job repeats the compatibility handshake");
 };
 
+cases["a second selection ends the probe the first one left running"] = function () {
+    /*
+     * _activeProbe holds one probe, and it is what destroy() cancels. Starting
+     * another selection while one is outstanding used to overwrite it, so the
+     * abandoned probe's subprocess, its pipes and its two second timer were
+     * beyond anybody's reach for the rest of the session.
+     */
+    let cancelled = 0;
+    let settled = [];
+    let helper = new Privileged.PrivilegedHelper(
+        ["/helper"], () => true,
+        (argv, onDone) => onDone(0, ""),
+        function (path, onDone) {
+            return function () {
+                cancelled++;
+                onDone(false, "probe cancelled", "");
+            };
+        });
+
+    helper._selectHelper(path => settled.push(path));
+    Harness.equal(cancelled, 0, "the first probe is still out");
+    helper._selectHelper(path => settled.push(path));
+    Harness.equal(cancelled, 1, "and the second selection ended it");
+    Harness.deepEqual(settled, [null], "the abandoned selection is answered too");
+
+    helper.destroy();
+    Harness.equal(cancelled, 2, "teardown ends the one still running");
+};
+
 cases["with no helper at all, nothing is spawned"] = function () {
     let helper = helperWith([], [0, ""]);
     let outcome = null;
     helper.run(["governor", "powersave"], result => { outcome = result; });
-    Harness.equal(helper.path(), null, "selection remains asynchronous when none is found");
+    Harness.equal(helper.spawned.length, 0, "selection never reached a spawn");
     Harness.deepEqual(helper.spawned, [], "and pkexec was never asked");
     Harness.equal(outcome.applied, false, "reported as not applied");
     Harness.ok(outcome.error, "with a reason");
