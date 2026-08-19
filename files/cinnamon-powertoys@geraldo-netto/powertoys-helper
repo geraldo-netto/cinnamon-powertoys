@@ -261,10 +261,23 @@ set_boost() {
     fi
 }
 
+# The firmware profile, checked against the list the firmware publishes.
+#
+# A machine that cannot be asked is not a machine that refused: an absent,
+# unreadable or empty choices node used to leave `choices` empty, which no
+# value is a member of, so the caller was told the value it picked was invalid
+# for this control. It was told to correct something that was never wrong,
+# about a machine that had not answered. Each of the three now says what it is.
 set_platform_profile() {
     value=$1
     [ -f "$PLATFORM_PROFILE" ] || die unsupported "no ACPI platform profile on this system"
+    [ -f "$PLATFORM_PROFILE_CHOICES" ] ||
+        die unsupported "this system does not publish the platform profiles it accepts"
+    [ -r "$PLATFORM_PROFILE_CHOICES" ] ||
+        die unavailable "the platform profile choices are not readable: $PLATFORM_PROFILE_CHOICES"
     choices=$(cat "$PLATFORM_PROFILE_CHOICES" 2>/dev/null || echo "")
+    [ -n "$choices" ] ||
+        die unavailable "the firmware did not say which platform profiles it accepts"
     advertises "$value" "$choices" || die invalid-value "unknown platform profile: $value"
     write_node "$PLATFORM_PROFILE" "$value" "the firmware would not take the profile: $value"
 }

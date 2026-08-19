@@ -73,6 +73,45 @@ function cpuScratch(policies, body) {
     }
 }
 
+/*
+ * A stand-in for the two ACPI firmware nodes. `profile` is what the machine is
+ * on now; `choices` is what it says it will take - absent, unreadable or empty
+ * are each a different way of not answering, and each has to read as one.
+ */
+function readable(path) {
+    try {
+        return GLib.file_get_contents(path)[0];
+    } catch (error) {
+        return false;
+    }
+}
+
+function platformScratch(options, body) {
+    let directory = GLib.dir_make_tmp("powertoys-helper-platform-XXXXXX");
+    let profile = directory + "/platform_profile";
+    let choices = directory + "/platform_profile_choices";
+    let script = directory + "/powertoys-helper";
+    try {
+        if (options.profile !== undefined)
+            GLib.file_set_contents(profile, options.profile + "\n");
+        if (options.choices !== undefined)
+            GLib.file_set_contents(choices, options.choices + "\n");
+        if (options.unreadableChoices)
+            GLib.chmod(choices, 0o200);
+
+        let source = Harness.readFile(Harness.xletDir() + "/powertoys-helper")
+            .replace(/^PLATFORM_PROFILE=.*$/m, "PLATFORM_PROFILE=\"" + profile + "\"")
+            .replace(/^PLATFORM_PROFILE_CHOICES=.*$/m,
+                     "PLATFORM_PROFILE_CHOICES=\"" + choices + "\"")
+            .replace(/^LOCK_FILE=.*$/m, "LOCK_FILE=\"" + directory + "/lock\"");
+        return body({ directory: directory, profile: profile, choices: choices,
+                      script: script, source: source });
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
+    }
+}
+
 function run(tree, args, refusals) {
     let source = tree.source;
     if (refusals && refusals.length > 0) {
@@ -256,5 +295,54 @@ cases["privileged helper mutations serialize across processes"] = function () {
         Harness.equal(status, 0, "both helper processes finish");
         Harness.equal(contents(log), "start 1\nend 1\nstart 0\nend 0",
                       "the second transaction begins only after the first releases its lock");
+    });
+};
+
+cases["the firmware profile is written from the list the firmware publishes"] = function () {
+    platformScratch({ profile: "balanced", choices: "quiet balanced performance" }, tree => {
+        let outcome = run(tree, ["platform-profile", "performance"]);
+        Harness.equal(outcome.applied, true, "the profile applied");
+        Harness.equal(contents(tree.profile), "performance", "and the firmware node holds it");
+    });
+};
+
+cases["a profile the firmware does not publish is refused as a value"] = function () {
+    platformScratch({ profile: "balanced", choices: "quiet balanced" }, tree => {
+        let outcome = run(tree, ["platform-profile", "performance"]);
+        Harness.equal(outcome.code, "invalid-value", "the machine answered, and said no");
+        Harness.equal(contents(tree.profile), "balanced", "nothing was written");
+    });
+};
+
+cases["a firmware that will not say what it accepts is not a bad value"] = function () {
+    /* Each of these used to report invalid-value, which tells the user to
+     * correct a choice that was never the problem. */
+    platformScratch({ profile: "balanced" }, tree => {
+        Harness.equal(run(tree, ["platform-profile", "performance"]).code, "unsupported",
+                      "no choices node at all is a machine that cannot be asked");
+    });
+    platformScratch({ profile: "balanced", choices: "" }, tree => {
+        Harness.equal(run(tree, ["platform-profile", "performance"]).code, "unavailable",
+                      "an empty answer is no answer");
+    });
+};
+
+cases["a choices node that cannot be read has refused nothing"] = function () {
+    platformScratch({ profile: "balanced", choices: "quiet balanced performance",
+                      unreadableChoices: true }, tree => {
+        /* Anybody who can read a mode 0200 file - root, most obviously - has
+         * no unreadable node here to exercise. */
+        if (readable(tree.choices))
+            Harness.skip("this user can read a write-only file");
+        Harness.equal(run(tree, ["platform-profile", "performance"]).code, "unavailable",
+                      "a node that cannot be read has not refused anything");
+        Harness.equal(contents(tree.profile), "balanced", "and nothing was written");
+    });
+};
+
+cases["a machine with no firmware profile says so"] = function () {
+    platformScratch({ choices: "quiet balanced" }, tree => {
+        Harness.equal(run(tree, ["platform-profile", "quiet"]).code, "unsupported",
+                      "there is nothing to write to");
     });
 };
