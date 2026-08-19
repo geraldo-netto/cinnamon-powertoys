@@ -20,6 +20,11 @@
 #
 # %p is the device's path under /sys, so this names the counter of whichever
 # domain the event was for: the package, and each of the domains inside it.
+#
+# udev runs RUN+= without a PATH lookup, so both commands are named absolutely.
+# Where coreutils lives is not the same on every distribution, so the installer
+# resolves each one on this machine and fails rather than shipping a rule whose
+# every run would only be a line in the udev log.
 ACTION!="remove", SUBSYSTEM=="powercap", KERNEL=="*-rapl:*", \
-    RUN+="/usr/bin/chgrp -- @GROUP@ /sys%p/energy_uj", \
-    RUN+="/usr/bin/chmod 0440 /sys%p/energy_uj"
+    RUN+="@CHGRP@ -- @GROUP@ /sys%p/energy_uj", \
+    RUN+="@CHMOD@ 0440 /sys%p/energy_uj"

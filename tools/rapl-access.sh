@@ -46,8 +46,36 @@ install_rule() {
         ""|-*|*[!A-Za-z0-9_-]*)
             echo "invalid RAPL group: $GROUP" >&2
             return 1;;
-        *) :;;
+        *[!0-9]*) :;;
+        *)
+            # chgrp reads an all-digit operand as a gid, so `0` would hand the
+            # counters back to root and report success.
+            echo "name the RAPL group, not its id: $GROUP" >&2
+            return 1;;
     esac
+
+    # A rule naming a group that does not exist fails at every event, and the
+    # user sees only a missing package-power row after a successful install.
+    # Staging into a DESTDIR is for another machine's accounts, so not there.
+    if [ -z "${DESTDIR:-}" ] && command -v getent >/dev/null 2>&1; then
+        getent group "$GROUP" >/dev/null || {
+            echo "no such group: $GROUP" >&2
+            return 1
+        }
+    fi
+
+    # udev does no PATH lookup for RUN+=, so the rule has to name both commands
+    # absolutely, and where they live differs between distributions.
+    chgrp_path=$(command -v chgrp || echo "")
+    chmod_path=$(command -v chmod || echo "")
+    for resolved in "$chgrp_path" "$chmod_path"; do
+        case "$resolved" in
+            /*) :;;
+            *)
+                echo "chgrp and chmod must both be present at an absolute path" >&2
+                return 1;;
+        esac
+    done
 
     directory=$(dirname "$DESTINATION")
     install -d "$directory"
@@ -88,7 +116,9 @@ install_rule() {
     trap install_cleanup EXIT
     trap 'exit 1' HUP INT TERM
 
-    sed "s/@GROUP@/$GROUP/g" "$SOURCE" > "$staging"
+    sed -e "s/@GROUP@/$GROUP/g" \
+        -e "s|@CHGRP@|$chgrp_path|g" \
+        -e "s|@CHMOD@|$chmod_path|g" "$SOURCE" > "$staging"
     chmod 0644 "$staging"
     if [ -e "$DESTINATION" ] || [ -L "$DESTINATION" ]; then
         backup=$(mktemp "$directory/.rapl-rule.old.XXXXXX")

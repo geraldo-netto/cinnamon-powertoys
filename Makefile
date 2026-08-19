@@ -136,8 +136,6 @@ install-rapl:
 		""|-*|*[!A-Za-z0-9_-]*) echo "invalid group name: $(RAPL_GROUP)"; exit 1;; \
 		*) :;; \
 	esac
-	@[ -n "$(DESTDIR)" ] || getent group "$(RAPL_GROUP)" >/dev/null || \
-		{ echo "no such group: $(RAPL_GROUP)"; exit 1; }
 	@DESTDIR="$(DESTDIR)" sh "$(RAPL_TOOL)" install "udev/$(RAPL_RULE)" \
 		"$(RAPL_DIR)/$(RAPL_RULE)" "$(RAPL_GROUP)" "$(RAPL_LOCK)"
 	@echo "installed $(RAPL_DIR)/$(RAPL_RULE), reading given to group $(RAPL_GROUP)"
