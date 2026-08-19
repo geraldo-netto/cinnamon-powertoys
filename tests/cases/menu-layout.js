@@ -163,14 +163,14 @@ cases["the applet measures the room before the menu is shown"] = function () {
     Harness.ok(opened[1].indexOf("syncLayout(this._menuConstraints())") >= 0,
                "the arrangement is decided from the room there is now");
 
-    /* Each of these is a shell interface that has changed shape before, and a
-     * menu that fails to open is worse than a menu that is too wide. */
-    for (let name of ["_workAreaWidth", "_scaleFactor", "_textScale"]) {
-        let body = new RegExp(name + "\\(\\) \\{([\\s\\S]*?)\\n    \\}").exec(source);
-        Harness.ok(body !== null, name + " is present");
-        Harness.ok(body[1].indexOf("catch") >= 0,
-                   name + " cannot stop the menu opening");
-    }
+    /* Each measurement is a shell interface that has changed shape before, and
+     * a menu that fails to open is worse than a menu that is too wide. The
+     * derivation and its fallbacks are lib/shell-metrics.js, where the cases
+     * can run them; the applet only hands the shell over. */
+    let constraints = /_menuConstraints\(\) \{([\s\S]*?)\n    \}/.exec(source);
+    Harness.ok(constraints !== null, "_menuConstraints is present");
+    Harness.ok(constraints[1].indexOf("ShellMetrics.menuConstraints(") >= 0,
+               "the measurement is taken by the covered library");
 };
 
 cases["a visible column moving between rows changes what divides it"] = function () {

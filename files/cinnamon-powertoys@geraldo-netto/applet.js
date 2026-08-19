@@ -38,6 +38,7 @@ const Notifications = require("./lib/notifications.js");
 const PanelText = require("./lib/panel-text.js");
 const PendingProfile = require("./lib/pending-profile.js");
 const PowerSupply = require("./lib/power-supply.js");
+const ShellMetrics = require("./lib/shell-metrics.js");
 const Privileged = require("./lib/privileged.js");
 const ProfileView = require("./lib/profile-view.js");
 const Panel = require("./lib/panel-presenter.js");
@@ -1279,67 +1280,17 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._update();
     }
 
-    /*
-     * The room the menu has, and what the desktop is magnifying it by.
-     *
-     * The work area rather than the monitor, so a menu is not sized to include
-     * the panel it drops out of; the monitor the applet is on rather than the
-     * primary one, because a second screen is often the smaller. Every part of
-     * this is a shell interface that has changed shape before, so each is
-     * asked for defensively and the arithmetic is left with a sane number when
-     * one of them is not there - see lib/menu-layout.js, which treats a
-     * missing width as "one column" rather than as zero.
-     */
+    /* The room the menu has, and what the desktop is magnifying it by. The
+     * derivation and its fallbacks are lib/shell-metrics.js; the shell
+     * interfaces it reads are this applet's to hand over. */
     _menuConstraints() {
-        return {
-            availableWidth: this._workAreaWidth(),
-            scaleFactor: this._scaleFactor(),
-            textScale: this._textScale(),
-        };
-    }
-
-    _workAreaWidth() {
-        try {
-            let layout = Main.layoutManager;
-            let monitor = layout.findMonitorForActor
-                ? layout.findMonitorForActor(this.actor) : layout.primaryMonitor;
-            let index = monitor?.index;
-            if (typeof index === "number" && layout.getWorkAreaForMonitor) {
-                let area = layout.getWorkAreaForMonitor(index);
-                if (area?.width)
-                    return area.width;
-            }
-            return monitor?.width || 0;
-        } catch (error) {
-            return 0;
-        }
-    }
-
-    /* The desktop's HiDPI multiplier. St applies it to every length in the
-     * stylesheet, and the work area above is in the same magnified pixels. */
-    _scaleFactor() {
-        try {
-            if (typeof global !== "undefined" && global.ui_scale)
-                return global.ui_scale;
-            return St.ThemeContext.get_for_stage(global.stage).scale_factor || 1;
-        } catch (error) {
-            return 1;
-        }
-    }
-
-    /* Type magnified for somebody who needs it makes every row wider, and a
-     * column is as wide as its longest row. */
-    _textScale() {
-        try {
-            let schema = "org.cinnamon.desktop.interface";
-            let source = Gio.SettingsSchemaSource.get_default();
-            if (source && !source.lookup(schema, true))
-                return 1;
-            return new Gio.Settings({ schema_id: schema })
-                .get_double("text-scaling-factor") || 1;
-        } catch (error) {
-            return 1;
-        }
+        return ShellMetrics.menuConstraints({
+            layout: Main.layoutManager,
+            actor: this.actor,
+            global: typeof global !== "undefined" ? global : null,
+            st: St,
+            gio: Gio,
+        });
     }
 
     /*
