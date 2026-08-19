@@ -34,11 +34,17 @@ const FILE_UTILS = "/usr/share/cinnamon/js/misc/fileUtils.js";
 
 var cases = {};
 
-const MODULES = ["io", "log", "once", "gettext", "backends", "format", "device", "hardware", "sensors", "cpu",
-                 "power-supply", "privileged", "owner-watch", "upower", "profiles", "backlight", "ddc",
-                 "bluez", "alerts", "reading", "sensor-rows", "panel-text", "pending-profile",
-                 "keyed-list", "cinnamon-panel", "notifications", "panel-presenter",
-                 "profile-view", "profile-selection", "monitor-watch", "menu-layout"];
+/*
+ * Every library, read from the directory rather than listed.
+ *
+ * This was a hand-kept list, and it had drifted by four: lib/backoff.js,
+ * lib/naming.js, lib/scroll-gatherer.js and lib/shell-metrics.js were absent
+ * from it, which quietly excused all four from the three gates below - loading
+ * at all, exporting every name their callers reach for, and staying off the
+ * shell. The harness reads the directory for exactly this reason, and one of
+ * the cases here says so about its own list of names.
+ */
+const MODULES = Harness.libraryModules().map(name => name.slice(0, -3));
 
 for (let name of MODULES) {
     cases["lib/" + name + ".js loads"] = function () {
