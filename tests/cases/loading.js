@@ -558,7 +558,11 @@ cases["profile announcements wait for matching success"] = function () {
 
 cases["presentation consumers fail independently"] = function () {
     let source = Harness.shellSource();
-    let match = /    _present\(data\) \{([\s\S]*?)\n    \}\n\n    \/\* What the three switches/.exec(source);
+    /* To the first line that is a closing brace at method indentation, which
+     * is the end of _present: everything inside it is indented further. The
+     * anchor used to be the comment on the next method, so moving that method
+     * turned this case into "the boundary cannot be isolated". */
+    let match = /    _present\(data\) \{([\s\S]*?)\n    \}\n/.exec(source);
     Harness.ok(match, "the presentation boundary can be isolated");
     let logs = [];
     let present = Function("Log", "return function (data) {" + match[1] + "\n};")({

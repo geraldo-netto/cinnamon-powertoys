@@ -34,6 +34,7 @@ const Cpu = require("./lib/cpu.js");
 const Ddc = require("./lib/ddc.js");
 const Device = require("./lib/device.js");
 const Input = require("./lib/input.js");
+const SettingsTable = require("./lib/settings.js");
 const SensorRows = require("./lib/sensor-rows.js");
 const Log = require("./lib/log.js");
 const MonitorWatch = require("./lib/monitor-watch.js");
@@ -121,58 +122,6 @@ function defaultBackends() {
     };
 }
 
-/*
- * Every setting this applet binds, and what has to happen when it moves.
- *
- * The property names used to be produced from the keys by a string transform,
- * so a key that was not in the schema bound to nothing and left an undefined
- * property, which reads as "off" everywhere it is used - a switch that cannot
- * be turned on, and no error to say why. Written out, the pair is checked
- * once at bind time and a mismatch is reported instead of silently obeyed.
- *
- * Most of these only need the applet to draw itself again. The ones that do
- * not say so, so that changing the temperature unit does not fold a submenu
- * and picking a panel icon does not re-register the hotkeys.
- */
-const SETTINGS = [
-    { key: "refresh-interval", property: "refreshInterval", onChange: "poll" },
-    { key: "temp-unit", property: "tempUnit", onChange: "unit" },
-    { key: "cpu-sensor-hint", property: "cpuSensorHint" },
-
-    { key: "panel-icon-source", property: "panelIconSource", onChange: "icon" },
-    { key: "panel-text", property: "panelText" },
-    { key: "panel-show-battery", property: "panelShowBattery" },
-    { key: "panel-show-power", property: "panelShowPower" },
-    { key: "panel-show-profile", property: "panelShowProfile" },
-    /* Not shown anywhere: whether the three above have been read once into
-     * the list that replaced them. */
-    { key: "panel-text-migrated", property: "panelTextMigrated" },
-
-    { key: "show-profiles", property: "showProfiles" },
-    { key: "show-cpu", property: "showCpu" },
-    { key: "show-devices", property: "showDevices" },
-    { key: "show-sensors", property: "showSensors" },
-    { key: "show-all-sensors", property: "showAllSensors" },
-    { key: "monitor-brightness", property: "monitorBrightness", onChange: "monitor" },
-
-    /* Not shown anywhere: whether this install has introduced itself yet. */
-    { key: "introduced", property: "introduced" },
-
-    { key: "enable-privileged-controls", property: "enablePrivilegedControls" },
-    { key: "scroll-action", property: "scrollAction" },
-    { key: "middle-click-action", property: "middleClickAction" },
-    { key: "cycle-profile-hotkey", property: "cycleProfileHotkey", onChange: "hotkeys" },
-    { key: "toggle-menu-hotkey", property: "toggleMenuHotkey", onChange: "hotkeys" },
-
-    { key: "notify-low-battery", property: "notifyLowBattery" },
-    { key: "low-battery-threshold", property: "lowBatteryThreshold", onChange: "alertLevels" },
-    { key: "critical-battery-threshold", property: "criticalBatteryThreshold", onChange: "alertLevels" },
-    { key: "notify-peripheral-battery", property: "notifyPeripheralBattery" },
-    { key: "peripheral-battery-threshold", property: "peripheralBatteryThreshold" },
-    { key: "notify-high-temp", property: "notifyHighTemp" },
-    { key: "high-temp-threshold", property: "highTempThreshold" },
-    { key: "high-temp-threshold-fahrenheit", property: "highTempThresholdFahrenheit" },
-];
 
 /*
  * The applet coordinator.
@@ -463,8 +412,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
             alertLevels: () => this._onAlertLevelsChanged(),
         };
 
-        for (let setting of SETTINGS) {
-            let handler = handlers[setting.onChange || "redraw"];
+        for (let setting of SettingsTable.SETTINGS) {
+            let handler = handlers[SettingsTable.changeGroup(setting)];
             this.settings.bind(setting.key, setting.property, handler);
         }
 
@@ -643,9 +592,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * between a five minute fix and a puzzling bug report.
      */
     _reportUnboundSettings() {
-        let missing = SETTINGS
-            .filter(setting => this[setting.property] === undefined)
-            .map(setting => setting.key);
+        let missing = SettingsTable.unboundKeys(this);
         if (missing.length > 0)
             Log.error("these settings did not bind, so settings-schema.json and the " +
                       "SETTINGS table disagree: " + missing.join(", "));
@@ -661,22 +608,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _onTempUnitChanged() {
         let previous = this._tempUnitInUse;
         this._tempUnitInUse = this.tempUnit;
-        if (previous && previous !== this.tempUnit) {
-            if (this.tempUnit === "fahrenheit")
-                this.settings.setValue("high-temp-threshold-fahrenheit",
-                                       Math.round(this.highTempThreshold * 9 / 5 + 32));
-            else
-                this.settings.setValue("high-temp-threshold",
-                                       Math.round((this.highTempThresholdFahrenheit - 32) * 5 / 9));
-        }
+        let carry = SettingsTable.temperatureLimitCarry(previous, this);
+        if (carry)
+            this.settings.setValue(carry.key, carry.value);
         this._onSettingsChanged();
-    }
-
-    /* Sensors are read in Celsius, so every comparison happens there. */
-    get highTempCelsius() {
-        if (this.tempUnit === "fahrenheit")
-            return (this.highTempThresholdFahrenheit - 32) * 5 / 9;
-        return this.highTempThreshold;
     }
 
     _onSettingsChanged() {
@@ -749,7 +684,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             showAllSensors: this.showAllSensors,
             privileged: this.enablePrivilegedControls,
             profilePrivileged: profilePrivileged,
-            highTempCelsius: this.highTempCelsius,
+            highTempCelsius: SettingsTable.highTempCelsius(this),
             /* what a device row colours itself against */
             lowLevel: this.lowBatteryThreshold,
             peripheralLevel: this.peripheralBatteryThreshold,
@@ -1230,13 +1165,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._alerts.check(data, this._alertLimits()));
     }
 
-    /* What the three switches say, which is only read where the list is on
-     * "Choose below" - and once, on the way past them; see below. */
-    _panelSwitches() {
-        return { battery: this.panelShowBattery, power: this.panelShowPower,
-                 profile: this.panelShowProfile };
-    }
-
     /*
      * The switches, read once into the list that replaced them.
      *
@@ -1250,7 +1178,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
         if (this.panelTextMigrated)
             return;
         if (this.introduced) {
-            let wanted = PanelText.migratedPanelText(this._panelSwitches());
+            let wanted = PanelText.migratedPanelText(
+                SettingsTable.panelSwitches(this));
             if (wanted !== this.panelText)
                 this.settings.setValue("panel-text", wanted);
         }
@@ -1258,29 +1187,11 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     _panelOptions() {
-        let text = PanelText.panelParts(this.panelText, this._panelSwitches());
-        return {
-            showBattery: text.battery,
-            showPower: text.power,
-            showProfile: text.profile,
-            iconSource: this.panelIconSource,
-            tempUnit: this.tempUnit,
-            /* a change the machine has not confirmed yet; see shownProfile */
-            pendingProfile: this._pending.value,
-        };
+        return SettingsTable.panelOptions(this, this._pending.value);
     }
 
     _alertLimits() {
-        return {
-            lowBattery: this.notifyLowBattery,
-            peripheralBattery: this.notifyPeripheralBattery,
-            lowLevel: this.lowBatteryThreshold,
-            peripheralLevel: this.peripheralBatteryThreshold,
-            criticalLevel: this.criticalBatteryThreshold,
-            highTemp: this.notifyHighTemp,
-            highTempCelsius: this.highTempCelsius,
-            tempUnit: this.tempUnit,
-        };
+        return SettingsTable.alertLimits(this);
     }
 
     /* ------------------------------------------------------------------ */

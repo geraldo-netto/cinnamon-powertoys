@@ -1,16 +1,21 @@
 /*
- * The settings schema and the applet's table of them, against each other.
+ * The settings schema and the table of them, against each other.
  *
- * applet.js cannot be loaded outside Cinnamon - it imports the shell's own
- * modules at the top - so this reads it as text. That is enough for the one
- * thing worth checking here, which is that the two lists have not drifted:
- * a key in the schema and not in the table is a setting the user can change
- * and the applet never reads, and a key in the table and not in the schema
- * binds to nothing and leaves its property undefined.
+ * The one thing worth checking here is that the two lists have not drifted: a
+ * key in the schema and not in the table is a setting the user can change and
+ * the applet never reads, and a key in the table and not in the schema binds to
+ * nothing and leaves its property undefined.
+ *
+ * The table used to be in applet.js, which imports the shell at its first line
+ * and cannot be loaded outside Cinnamon, so these cases read it as text with a
+ * regular expression. It is lib/settings.js now and is loaded like anything
+ * else, along with everything read out of it.
  */
 
 const GLib = imports.gi.GLib;
 const Harness = imports.harness;
+
+const SettingsTable = Harness.requireXlet("./lib/settings.js");
 
 function readFile(path) {
     let [ok, bytes] = GLib.file_get_contents(path);
@@ -29,15 +34,7 @@ function schemaKeys() {
 }
 
 function tableEntries() {
-    let source = Harness.shellSource();
-    let table = source.slice(source.indexOf("const SETTINGS = ["),
-                             source.indexOf("];", source.indexOf("const SETTINGS = [")));
-    let entries = [];
-    let pattern = /\{ key: "([^"]+)", property: "([^"]+)"/g;
-    let match;
-    while ((match = pattern.exec(table)) !== null)
-        entries.push({ key: match[1], property: match[2] });
-    return entries;
+    return SettingsTable.SETTINGS;
 }
 
 var cases = {};
@@ -91,15 +88,70 @@ cases["a property name still matches its key"] = function () {
 };
 
 cases["a setting that needs more than a repaint says so"] = function () {
-    let source = Harness.shellSource();
-    let table = source.slice(source.indexOf("const SETTINGS = ["),
-                             source.indexOf("];", source.indexOf("const SETTINGS = [")));
     for (let key of ["refresh-interval", "temp-unit", "monitor-brightness",
                      "cycle-profile-hotkey", "toggle-menu-hotkey", "panel-icon-source"]) {
-        let line = table.split("\n").find(text => text.indexOf('"' + key + '"') >= 0);
-        Harness.ok(line && line.indexOf("onChange") >= 0,
+        let setting = tableEntries().find(entry => entry.key === key);
+        Harness.ok(setting && SettingsTable.changeGroup(setting) !== "redraw",
                    key + " would only redraw, which is not enough for it");
     }
+};
+
+cases["a setting nobody bound is named"] = function () {
+    let bound = {};
+    for (let entry of tableEntries())
+        bound[entry.property] = true;
+    Harness.deepEqual(SettingsTable.unboundKeys(bound), [],
+                      "everything in the table reads as bound when it is");
+    delete bound.tempUnit;
+    Harness.deepEqual(SettingsTable.unboundKeys(bound), ["temp-unit"],
+                      "and the one that is not is the one reported");
+};
+
+cases["the temperature limit is carried across a change of unit"] = function () {
+    let values = {
+        tempUnit: "fahrenheit",
+        highTempThreshold: 90,
+        highTempThresholdFahrenheit: 194,
+    };
+    Harness.deepEqual(SettingsTable.temperatureLimitCarry("celsius", values),
+                      { key: "high-temp-threshold-fahrenheit", value: 194 },
+                      "90 C is written into the Fahrenheit key");
+    values.tempUnit = "celsius";
+    Harness.deepEqual(SettingsTable.temperatureLimitCarry("fahrenheit", values),
+                      { key: "high-temp-threshold", value: 90 },
+                      "and 194 F back into the Celsius one");
+    Harness.equal(SettingsTable.temperatureLimitCarry("celsius", values), null,
+                  "a unit that did not move carries nothing");
+    Harness.equal(SettingsTable.temperatureLimitCarry(null, values), null,
+                  "and neither does the first read, which moved from nothing");
+};
+
+cases["every comparison happens in Celsius"] = function () {
+    Harness.equal(SettingsTable.highTempCelsius({
+        tempUnit: "celsius", highTempThreshold: 90, highTempThresholdFahrenheit: 194,
+    }), 90, "the Celsius setting is used directly");
+    Harness.equal(SettingsTable.highTempCelsius({
+        tempUnit: "fahrenheit", highTempThreshold: 90, highTempThresholdFahrenheit: 194,
+    }), 90, "and the Fahrenheit one is converted");
+};
+
+cases["what the panel and the alerts are told comes from the settings"] = function () {
+    let values = {
+        panelText: "choose", panelShowBattery: true, panelShowPower: false,
+        panelShowProfile: true, panelIconSource: "auto", tempUnit: "celsius",
+        notifyLowBattery: true, notifyPeripheralBattery: false,
+        lowBatteryThreshold: 20, peripheralBatteryThreshold: 15,
+        criticalBatteryThreshold: 5, notifyHighTemp: true,
+        highTempThreshold: 90, highTempThresholdFahrenheit: 194,
+    };
+    let panel = SettingsTable.panelOptions(values, "performance");
+    Harness.equal(panel.showBattery, true, "the switch the list defers to is read");
+    Harness.equal(panel.showPower, false, "and so is the one that is off");
+    Harness.equal(panel.pendingProfile, "performance",
+                  "a change the machine has not confirmed is not a setting");
+    let limits = SettingsTable.alertLimits(values);
+    Harness.equal(limits.criticalLevel, 5, "the critical level goes through");
+    Harness.equal(limits.highTempCelsius, 90, "the temperature limit arrives in Celsius");
 };
 
 cases["the refresh interval distinguishes polled and signalled data"] = function () {
