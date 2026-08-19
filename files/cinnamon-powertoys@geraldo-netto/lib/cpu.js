@@ -20,43 +20,12 @@ const Log = require("./lib/log.js");
 const CPU_DIR = "/sys/devices/system/cpu";
 const CPUFREQ_DIR = CPU_DIR + "/cpufreq";
 
-/*
- * A field that is only worked out if somebody reads it, and then only once.
- * Used for the values in a reading that are expensive to produce and that
- * most configurations never display.
- */
-function _lazy(object, name, produce) {
-    let value = null;
-    let produced = false;
-    Object.defineProperty(object, name, {
-        configurable: true,
-        enumerable: true,
-        get: () => {
-            if (!produced) {
-                value = produce();
-                produced = true;
-            }
-            return value;
-        },
-    });
-    return object;
-}
-
 function _intersection(lists) {
     if (lists.length === 0)
         return [];
     return lists[0].filter((value, index) =>
         lists[0].indexOf(value) === index &&
         lists.every(list => list.includes(value)));
-}
-
-function _agreed(paths, node) {
-    if (paths.length === 0)
-        return null;
-    let values = paths.map(path => IO.readString(path + "/" + node));
-    if (values.includes(null))
-        return null;
-    return values.every(value => value === values[0]) ? values[0] : null;
 }
 
 /* Every policy participates in the visible driver identity. An unreadable
@@ -73,7 +42,6 @@ const CpuControl = class CpuControl {
     constructor(runner, options) {
         let configuration = options || {};
         this._runner = runner || function () {};
-        this._asynchronous = !!configuration.asynchronous;
         this._onChanged = configuration.onChanged || function () {};
         this._refreshing = false;
         this._refreshPending = false;
@@ -109,12 +77,6 @@ const CpuControl = class CpuControl {
                 onDone(false);
             return false;
         }
-        if (!this._asynchronous) {
-            this._refreshSync();
-            if (onDone)
-                onDone(true);
-            return true;
-        }
         if (onDone)
             this._refreshWaiters.push(onDone);
         if (this._refreshing) {
@@ -145,50 +107,6 @@ const CpuControl = class CpuControl {
                 waiter(true);
             this._onChanged();
         });
-    }
-
-    _refreshSync() {
-        this.policies = IO.listDir(CPUFREQ_DIR)
-            .filter(name => /^policy\d+$/.test(name))
-            .map(name => CPUFREQ_DIR + "/" + name);
-        this.reference = this.policies.length > 0 ? this.policies[0] : null;
-
-        this.drivers = _policyDrivers(this.policies, IO.readString);
-        this.driver = this.drivers.length === 1 ? this.drivers[0] : null;
-        this.governors = _intersection(this.policies.map(policy =>
-            IO.readWords(policy + "/scaling_available_governors")));
-        this.energyPolicies = this.policies.filter(policy =>
-            IO.exists(policy + "/energy_performance_preference"));
-        this.energyPreferences = _intersection(this.energyPolicies.map(policy =>
-            IO.readWords(policy + "/energy_performance_available_preferences")));
-        this.amdPstateStatus = IO.readString(CPU_DIR + "/amd_pstate/status");
-
-        /* What the chip is called, so a reading can be filed under the same
-         * heading the sensors off that chip are filed under. */
-        this.model = Hardware.cpuModelName();
-
-        /*
-         * The ceiling the silicon was built with. It is read here with the
-         * rest of what a scaling driver swap can change, rather than on every
-         * poll with the values that actually move: nothing short of new
-         * hardware alters it, and a poll is IO on the thread that draws.
-         */
-        this._maxFrequency = null;
-        for (let policy of this.policies) {
-            let maximum = IO.readNumber(policy + "/cpuinfo_max_freq");
-            if (maximum !== null && maximum > 0 &&
-                    (this._maxFrequency === null || maximum > this._maxFrequency))
-                this._maxFrequency = maximum;
-        }
-
-        this.boostPath = null;
-        this.boostInverted = false;
-        if (IO.exists(CPUFREQ_DIR + "/boost")) {
-            this.boostPath = CPUFREQ_DIR + "/boost";
-        } else if (IO.exists(CPU_DIR + "/intel_pstate/no_turbo")) {
-            this.boostPath = CPU_DIR + "/intel_pstate/no_turbo";
-            this.boostInverted = true;
-        }
     }
 
     /* One complete CPU snapshot, assembled after every asynchronous listing,
@@ -353,10 +271,6 @@ const CpuControl = class CpuControl {
      * flight. */
     sample(onDone) {
         let done = onDone || function () {};
-        if (!this._asynchronous) {
-            done(true);
-            return;
-        }
         if (this._destroyed) {
             done(false);
             return;
@@ -385,9 +299,7 @@ const CpuControl = class CpuControl {
     }
 
     get governor() {
-        if (this._asynchronous)
-            return this._governor;
-        return _agreed(this.policies, "scaling_governor");
+        return this._governor;
     }
 
     /* The names below are the helper's vocabulary, and the only place in the
@@ -397,9 +309,7 @@ const CpuControl = class CpuControl {
     }
 
     get energyPreference() {
-        if (this._asynchronous)
-            return this._energyPreference;
-        return _agreed(this.energyPolicies, "energy_performance_preference");
+        return this._energyPreference;
     }
 
     setEnergyPreference(name, onDone) {
@@ -411,14 +321,7 @@ const CpuControl = class CpuControl {
     }
 
     get boostEnabled() {
-        if (this._asynchronous)
-            return this._boostEnabled;
-        if (!this.boostPath)
-            return null;
-        let value = IO.readNumber(this.boostPath);
-        if (value === null)
-            return null;
-        return this.boostInverted ? value === 0 : value === 1;
+        return this._boostEnabled;
     }
 
     /* The helper knows about the intel_pstate inversion too, so it is told
@@ -427,23 +330,10 @@ const CpuControl = class CpuControl {
         this._runner(["boost", enabled ? "1" : "0"], onDone);
     }
 
-    /* Average of the current frequency of every policy, in MHz. */
+    /* Average of the current frequency of every policy, in MHz, as the last
+     * sample() read it. */
     averageFrequency() {
-        if (this._asynchronous)
-            return this._averageFrequency;
-        let total = 0;
-        let count = 0;
-        for (let policy of this.policies) {
-            let value = IO.readNumber(policy + "/cpuinfo_avg_freq");
-            if (value === null)
-                value = IO.readNumber(policy + "/scaling_cur_freq");
-            if (value === null)
-                continue;
-            total += value;
-            count++;
-        }
-        return count > 0 && count === this.policies.length
-            ? (total / count) / 1000 : null;
+        return this._averageFrequency;
     }
 
     /* Read once per refresh, in MHz. */
@@ -474,36 +364,14 @@ const CpuControl = class CpuControl {
         };
 
         /*
-         * In the mode the applet constructs - the only one it constructs -
-         * these four are what the last poll read. refresh() collects them off
+         * These four are what the last sample() read. It collects them off
          * the main loop and this answers from memory, so a value here is up
          * to one poll old and no cpufreq node is touched on this call.
          */
-        if (this._asynchronous) {
-            reading.governor = this._governor;
-            reading.energyPreference = this._energyPreference;
-            reading.boostEnabled = this._boostEnabled;
-            reading.averageFrequency = this._averageFrequency;
-            return reading;
-        }
-
-        /*
-         * The synchronous backend has no poll standing behind it, so the four
-         * below are worked out when somebody asks. Each costs a file read -
-         * the frequency one per policy, which is 32 of them on a sixteen core
-         * machine - and every one of them can be displayed nowhere: the
-         * governor only in the menu and the tooltip, the energy preference
-         * and the boost state only in the menu, the frequency only where the
-         * panel was asked for it.
-         *
-         * So with the menu shut and the pointer elsewhere - which is nearly
-         * always - a synchronous poll reads no cpufreq node at all, and what
-         * is read is read at the moment it is shown.
-         */
-        _lazy(reading, "governor", () => this.governor);
-        _lazy(reading, "energyPreference", () => this.energyPreference);
-        _lazy(reading, "boostEnabled", () => this.boostEnabled);
-        _lazy(reading, "averageFrequency", () => this.averageFrequency());
+        reading.governor = this._governor;
+        reading.energyPreference = this._energyPreference;
+        reading.boostEnabled = this._boostEnabled;
+        reading.averageFrequency = this._averageFrequency;
         return reading;
     }
 

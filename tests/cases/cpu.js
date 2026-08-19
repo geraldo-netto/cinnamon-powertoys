@@ -23,10 +23,17 @@ const Hardware = Harness.requireXlet("./lib/hardware.js");
 const IO = Harness.requireXlet("./lib/io.js");
 const Log = Harness.requireXlet("./lib/log.js");
 
-/* A control over a captured tree, with the commands it was asked to run. */
-function control(fixture) {
-    Hardware.forget();
-    IO.setRoot(Harness.fixture(fixture));
+/*
+ * A control over whatever tree IO is pointed at, discovered and sampled
+ * before it is handed back, with the commands it was asked to run.
+ *
+ * The backend is asynchronous and has no other mode, so every case waits for
+ * both halves of what the applet's poll does: refresh() adopts the topology
+ * and sample() reads the values that move. Constructing one already starts a
+ * discovery, and refresh() called on top of it replays after that one, so a
+ * single settle covers construction too.
+ */
+function started() {
     let commands = [];
     let cpu = new Cpu.CpuControl((args, onDone) => {
         commands.push(args.join(" "));
@@ -34,10 +41,26 @@ function control(fixture) {
             onDone({ applied: true });
     });
     cpu.commands = commands;
+    live.push(cpu);
+    Harness.settle(done => cpu.refresh(done), "CPU discovery");
+    Harness.settle(done => cpu.sample(done), "CPU sample");
     return cpu;
 }
 
+/* A control over a captured tree. */
+function control(fixture) {
+    Hardware.forget();
+    IO.setRoot(Harness.fixture(fixture));
+    return started();
+}
+
+/* Every control a case built, so releasing the tree also cancels the
+ * filesystem work each of them owns. */
+let live = [];
+
 function release() {
+    for (let cpu of live.splice(0))
+        cpu.destroy();
     IO.setRoot("");
     Hardware.forget();
 }
@@ -84,7 +107,7 @@ cases["a machine with no cpufreq at all offers nothing"] = function () {
      * Every list is empty rather than absent, so the menu has nothing to
      * draw and no reason to ask first. */
     scratch({}, function () {
-        let cpu = new Cpu.CpuControl(() => {});
+        let cpu = started();
         Harness.equal(cpu.available, false, "nothing to set");
         Harness.equal(cpu.reference, null, "no policy to read from");
         Harness.equal(cpu.driver, null, "no driver");
@@ -101,7 +124,7 @@ cases["a machine with no cpufreq at all offers nothing"] = function () {
 
 cases["an empty dynamic CPU sample remains unknown"] = function () {
     scratch({}, function () {
-        let cpu = new Cpu.CpuControl(() => {});
+        let cpu = started();
         let state = cpu._dynamicFrom([], [], null, false, () => {
             throw new Error("an empty sample must not read a node");
         });
@@ -127,7 +150,7 @@ cases["heterogeneous policies expose only shared choices and agreed values"] = f
             "default balance_performance\n",
         "/sys/devices/system/cpu/cpufreq/policy1/energy_performance_preference": "default\n",
     }, function () {
-        let cpu = new Cpu.CpuControl(() => {});
+        let cpu = started();
         Harness.deepEqual(cpu.governors, ["performance", "powersave"],
                           "only governors every policy accepts");
         Harness.equal(cpu.governor, null, "different current governors do not become one claim");
@@ -144,20 +167,12 @@ cases["heterogeneous policies report every scaling driver"] = function () {
         "/sys/devices/system/cpu/cpufreq/policy1/scaling_driver": "acpi-cpufreq\n",
     };
     scratch(files, function () {
-        let cpu = new Cpu.CpuControl(() => {});
+        let cpu = started();
         Harness.deepEqual(cpu.drivers, ["amd-pstate-epp", "acpi-cpufreq"],
                           "the policy drivers stay distinct");
         Harness.equal(cpu.driver, null, "no first policy is promoted to machine-wide truth");
-
-        let async = Harness.settle(function (done) {
-            let created = new Cpu.CpuControl(() => {}, {
-                asynchronous: true,
-                onChanged: () => done(created),
-            });
-        }, "heterogeneous asynchronous discovery");
-        Harness.deepEqual(async.snapshot().drivers, cpu.drivers,
-                          "synchronous and asynchronous discovery agree");
-        async.destroy();
+        Harness.deepEqual(cpu.snapshot().drivers, cpu.drivers,
+                          "and the reading says the same as the fields");
     });
 };
 
@@ -168,7 +183,7 @@ cases["a policy that cannot describe its governors prevents unsafe choices"] = f
         "/sys/devices/system/cpu/cpufreq/policy0/scaling_governor": "powersave\n",
         "/sys/devices/system/cpu/cpufreq/policy1/scaling_governor": "powersave\n",
     }, function () {
-        let cpu = new Cpu.CpuControl(() => {});
+        let cpu = started();
         Harness.deepEqual(cpu.governors, [], "no choice is guessed from the first policy");
         Harness.equal(cpu.governor, "powersave", "agreement is still reported independently");
     });
@@ -191,7 +206,7 @@ cases["the frequency is the average across every policy"] = function () {
         "/sys/devices/system/cpu/cpufreq/policy1/scaling_cur_freq": "3000000\n",
         "/sys/devices/system/cpu/cpufreq/policy2/scaling_cur_freq": "2000000\n",
     }, function () {
-        let cpu = new Cpu.CpuControl(() => {});
+        let cpu = started();
         Harness.near(cpu.averageFrequency(), 2000, 0.001, "the average of the three");
     });
 };
@@ -203,14 +218,14 @@ cases["the ceiling is the highest valid policy maximum"] = function () {
         "/sys/devices/system/cpu/cpufreq/policy2/cpuinfo_max_freq": "not-a-number\n",
         "/sys/devices/system/cpu/cpufreq/policy3/cpuinfo_max_freq": "0\n",
     }, function () {
-        let cpu = new Cpu.CpuControl(() => {});
+        let cpu = started();
         Harness.near(cpu.maxFrequency(), 5100, 0.001,
                      "a heterogeneous processor's fastest policy");
     });
     scratch({
         "/sys/devices/system/cpu/cpufreq/policy0/cpuinfo_max_freq": "0\n",
     }, function () {
-        let cpu = new Cpu.CpuControl(() => {});
+        let cpu = started();
         Harness.equal(cpu.maxFrequency(), null, "zero is not a hardware frequency ceiling");
     });
 };
@@ -222,20 +237,12 @@ cases["a policy that will not answer makes the whole average unavailable"] = fun
         "/sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq": "4000000\n",
         "/sys/devices/system/cpu/cpufreq/policy1/scaling_driver": "acpi-cpufreq\n",
     }, function () {
-        let cpu = new Cpu.CpuControl(() => {});
+        let cpu = started();
         Harness.equal(cpu.policies.length, 2, "two policies");
         Harness.equal(cpu.averageFrequency(), null,
                       "a partial sample is not presented as a processor average");
-
-        let asynchronous = Harness.settle(function (done) {
-            let created = new Cpu.CpuControl(() => {}, {
-                asynchronous: true,
-                onChanged: () => done(created),
-            });
-        }, "partial asynchronous CPU discovery");
-        Harness.equal(asynchronous.averageFrequency(), null,
-                      "the asynchronous snapshot follows the same all-policy contract");
-        asynchronous.destroy();
+        Harness.equal(cpu.snapshot().averageFrequency, null,
+                      "and the reading follows the same all-policy contract");
     });
 };
 
@@ -246,7 +253,7 @@ cases["the driver's own averaged frequency is preferred where it has one"] = fun
         "/sys/devices/system/cpu/cpufreq/policy0/cpuinfo_avg_freq": "2500000\n",
         "/sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq": "4000000\n",
     }, function () {
-        let cpu = new Cpu.CpuControl(() => {});
+        let cpu = started();
         Harness.near(cpu.averageFrequency(), 2500, 0.001, "the driver's figure, not the sample");
     });
 };
@@ -277,12 +284,12 @@ cases["the turbo switch reads the way the machine writes it"] = function () {
     }
 
     scratch({ "/sys/devices/system/cpu/intel_pstate/no_turbo": "1\n" }, function () {
-        let cpu = new Cpu.CpuControl(() => {});
+        let cpu = started();
         Harness.equal(cpu.boostEnabled, false, "and no_turbo of 1 is turbo off");
     });
 
     scratch({ "/sys/devices/system/cpu/cpufreq/boost": "0\n" }, function () {
-        let cpu = new Cpu.CpuControl(() => {});
+        let cpu = started();
         Harness.equal(cpu.boostEnabled, false, "as boost of 0 is off the plain way round");
     });
 };
@@ -291,7 +298,7 @@ cases["a turbo switch that will not read is not a turbo switch that is off"] = f
     /* The node exists and answers nothing, which is what a driver being
      * unloaded underneath the applet looks like. Off is a claim; null is not. */
     scratch({ "/sys/devices/system/cpu/cpufreq/boost": "\n" }, function () {
-        let cpu = new Cpu.CpuControl(() => {});
+        let cpu = started();
         Harness.equal(cpu.boostSupported, true, "the node is there");
         Harness.equal(cpu.boostEnabled, null, "and it said nothing");
     });
@@ -302,7 +309,7 @@ cases["cpufreq/boost is preferred where a machine has both"] = function () {
         "/sys/devices/system/cpu/cpufreq/boost": "1\n",
         "/sys/devices/system/cpu/intel_pstate/no_turbo": "1\n",
     }, function () {
-        let cpu = new Cpu.CpuControl(() => {});
+        let cpu = started();
         Harness.equal(cpu.boostInverted, false, "the plain switch wins");
         Harness.equal(cpu.boostEnabled, true, "and is read the plain way round");
     });
@@ -357,14 +364,13 @@ cases["what a write is given is what the helper is given"] = function () {
     }
 };
 
-cases["a reading works out only what somebody asks for"] = function () {
+cases["a reading is what the last poll left, not a trip to the machine"] = function () {
     /*
-     * The four lazy fields each cost a file read - the frequency one per
-     * policy, which is thirty-two of them on a sixteen core machine - and
-     * each can be displayed nowhere: the governor only in the menu and the
-     * tooltip, the frequency only where the panel was asked for it. With the
-     * menu shut and the pointer elsewhere, which is nearly always, a poll
-     * should read no cpufreq node at all.
+     * Every cpufreq node this backend shows is read off the main loop, by the
+     * topology sweep or by sample(). snapshot() is what the panel and the
+     * menu call, sometimes several times for one draw, and it must not open a
+     * file: on a sixteen core machine the frequency alone is thirty-two
+     * reads, on Cinnamon's own thread, for a number that is already known.
      */
     try {
         let cpu = control("machine");
@@ -376,37 +382,11 @@ cases["a reading works out only what somebody asks for"] = function () {
         };
         try {
             let snapshot = cpu.snapshot();
-            Harness.deepEqual(reads, [], "taking the reading read nothing");
-            Harness.equal(snapshot.available, true, "and it still knows what it knew");
-
-            Harness.equal(snapshot.governor, "powersave", "asking is what reads it");
-            Harness.ok(reads.length > 0, "and now something was read");
-        } finally {
-            IO.readString = real;
-        }
-    } finally {
-        release();
-    }
-};
-
-cases["a reading is the same answer twice, without reading twice"] = function () {
-    try {
-        let cpu = control("machine");
-        let snapshot = cpu.snapshot();
-        Harness.equal(snapshot.governor, "powersave", "once");
-        Harness.equal(snapshot.governor, "powersave", "and again");
-
-        /* The second answer comes from the first, so a node that changes
-         * under a reading does not change the reading. */
-        let reads = 0;
-        let real = IO.readString;
-        IO.readString = function (path) {
-            reads++;
-            return real(path);
-        };
-        try {
-            snapshot.governor;
-            Harness.equal(reads, 0, "the answer was kept");
+            Harness.equal(snapshot.available, true, "the reading knows the machine");
+            Harness.equal(snapshot.governor, "powersave", "and what the last sample read");
+            Harness.equal(snapshot.governor, "powersave", "the same answer twice");
+            Harness.near(snapshot.averageFrequency, 3500, 0.001, "frequency included");
+            Harness.deepEqual(reads, [], "and none of it opened a cpufreq node");
         } finally {
             IO.readString = real;
         }
@@ -428,7 +408,7 @@ cases["looking again picks up hardware that has changed underneath"] = function 
         Hardware.forget();
         IO.setRoot(directory);
 
-        let cpu = new Cpu.CpuControl(() => {});
+        let cpu = started();
         Harness.equal(cpu.driver, "acpi-cpufreq", "what it found first");
         Harness.deepEqual(cpu.governors, ["ondemand", "powersave"], "and the list with it");
 
@@ -436,7 +416,7 @@ cases["looking again picks up hardware that has changed underneath"] = function 
         GLib.file_set_contents(policy + "/scaling_available_governors", "performance powersave\n");
         Harness.equal(cpu.driver, "acpi-cpufreq", "still what it found first");
 
-        cpu.refresh();
+        Harness.settle(done => cpu.refresh(done), "rediscovery");
         Harness.equal(cpu.driver, "amd-pstate-epp", "and now what is there");
         Harness.deepEqual(cpu.governors, ["performance", "powersave"], "list and all");
     } finally {
@@ -460,7 +440,6 @@ cases["an asynchronous control adopts one complete CPU snapshot"] = function () 
         try {
             cpu = Harness.settle(function (done) {
                 let created = new Cpu.CpuControl(() => {}, {
-                    asynchronous: true,
                     onChanged: () => done(created),
                 });
                 before = created.snapshot();
@@ -493,7 +472,6 @@ cases["an asynchronous CPU refresh performs no synchronous file access"] = funct
         IO.setRoot(Harness.fixture("machine"));
         let cpu = Harness.settle(function (done) {
             let created = new Cpu.CpuControl(() => {}, {
-                asynchronous: true,
                 onChanged: () => done(created),
             });
         }, "initial asynchronous CPU discovery");
@@ -529,7 +507,6 @@ cases["overlapping CPU refreshes settle from a newer discovery"] = function () {
         let discoveries = [];
         let answers = [];
         let changed = 0;
-        cpu._asynchronous = true;
         cpu._discoverAsync = done => discoveries.push(done);
         cpu._adopt = governor => { cpu._governor = governor; };
         cpu._onChanged = () => changed++;
@@ -557,7 +534,6 @@ cases["destroying a CPU refresh settles every accepted caller once"] = function 
         let cpu = control("machine");
         let discoveries = [];
         let answers = [];
-        cpu._asynchronous = true;
         cpu._discoverAsync = done => discoveries.push(done);
 
         cpu.refresh(result => answers.push(result));
@@ -581,7 +557,6 @@ cases["a waiter that throws during teardown cannot strand the next backend"] = f
     try {
         let cpu = control("machine");
         let answers = [];
-        cpu._asynchronous = true;
         cpu._discoverAsync = () => {};
 
         cpu.refresh(() => { throw new Error("waiter exploded"); });
@@ -599,18 +574,18 @@ cases["a waiter that throws during teardown cannot strand the next backend"] = f
     }
 };
 
-cases["a destroyed synchronous CPU control cannot be refreshed"] = function () {
+cases["a destroyed CPU control cannot be refreshed"] = function () {
     try {
         let cpu = control("machine");
-        let refreshed = 0;
+        let discoveries = 0;
         cpu.destroy();
-        cpu._refreshSync = () => refreshed++;
+        cpu._discoverAsync = () => discoveries++;
         let answer = null;
 
         Harness.equal(cpu.refresh(result => { answer = result; }), false,
                       "terminal controls reject refresh");
         Harness.equal(answer, false, "the rejected caller is settled");
-        Harness.equal(refreshed, 0, "no machine state is read after teardown");
+        Harness.equal(discoveries, 0, "no machine state is read after teardown");
     } finally {
         release();
     }
@@ -622,7 +597,6 @@ cases["an asynchronous sample refreshes only live CPU values"] = function () {
         IO.setRoot(Harness.fixture("machine"));
         let cpu = Harness.settle(function (done) {
             let created = new Cpu.CpuControl(() => {}, {
-                asynchronous: true,
                 onChanged: () => done(created),
             });
         }, "initial asynchronous CPU discovery");
@@ -672,14 +646,9 @@ cases["an asynchronous sample refreshes only live CPU values"] = function () {
     }
 };
 
-cases["CPU sampling settles synchronous, destroyed, and stale requests"] = function () {
+cases["CPU sampling settles destroyed and stale requests"] = function () {
     try {
         let cpu = control("machine");
-        let sync = null;
-        cpu.sample(result => { sync = result; });
-        Harness.equal(sync, true, "a synchronous control already has its live values");
-
-        cpu._asynchronous = true;
         cpu.destroy();
         let destroyed = null;
         cpu.sample(result => { destroyed = result; });
@@ -690,7 +659,6 @@ cases["CPU sampling settles synchronous, destroyed, and stale requests"] = funct
 
     try {
         let cpu = control("machine");
-        cpu._asynchronous = true;
         let real = IO.readStringsAsync;
         let finish = null;
         IO.readStringsAsync = (paths, done) => { finish = done; };
@@ -721,32 +689,10 @@ cases["one policy is a machine, not half of one"] = function () {
         "/sys/devices/system/cpu/cpufreq/policy0/scaling_governor": "powersave\n",
         "/sys/devices/system/cpu/cpufreq/policy0/scaling_available_governors": "performance powersave\n",
     }, function () {
-        let cpu = new Cpu.CpuControl(() => {});
+        let cpu = started();
         Harness.equal(cpu.policies.length, 1, "one policy");
         Harness.equal(cpu.reference, Cpu.CPUFREQ_DIR + "/policy0", "and it is the reference policy");
-        Harness.equal(cpu._stateGeneration, 0, "synchronous discovery starts no async generation");
         Harness.equal(cpu.available, true, "and that is a machine this applet can set");
         Harness.equal(cpu.governor, "powersave", "with a governor to read");
     });
-};
-
-cases["a lazy field is the object's, and the object is handed back"] = function () {
-    /*
-     * The helper that makes the four expensive fields cost nothing until
-     * somebody reads them. It answers with the object it was given so that a
-     * reading can be built up in one expression, and it is worth pinning: a
-     * helper that quietly answered with something else would leave snapshot()
-     * building a reading out of nothing at all.
-     */
-    let reading = { available: true };
-    let produced = 0;
-    let same = Cpu._lazy(reading, "governor", () => {
-        produced++;
-        return "powersave";
-    });
-    Harness.equal(same, reading, "the very object that went in");
-    Harness.equal(produced, 0, "and nothing has been worked out yet");
-    Harness.equal(same.governor, "powersave", "until it is asked for");
-    Harness.equal(same.governor, "powersave", "and then it is the same answer");
-    Harness.equal(produced, 1, "worked out once");
 };

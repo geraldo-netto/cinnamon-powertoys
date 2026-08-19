@@ -43,6 +43,31 @@ function byId(list, id) {
     return list.find(entry => entry.id === id) || null;
 }
 
+/*
+ * The two power-supply backends over whatever tree IO is pointed at, each
+ * brought to the state a poll leaves it in: they read through Gio and keep
+ * complete snapshots, so nothing they expose is there until a refresh has
+ * landed.
+ */
+function cpuControl(runner) {
+    let cpu = new Cpu.CpuControl(runner);
+    Harness.settle(done => cpu.refresh(done), "the cpufreq discovery");
+    Harness.settle(done => cpu.sample(done), "the cpufreq sample");
+    return cpu;
+}
+
+function chargeControl(runner) {
+    let control = new PowerSupply.ChargeControl(runner);
+    Harness.settle(done => control.refresh(done), "the charge discovery");
+    return control;
+}
+
+function profileClient(runner) {
+    let client = new PowerSupply.PlatformProfileClient(runner);
+    Harness.settle(done => client.refresh(done), "the platform profile refresh");
+    return client;
+}
+
 var cases = {};
 
 /* ---------------------------------------------------------------- */
@@ -629,49 +654,54 @@ cases["sensors sort by kind, then by measure, then by name"] = function () {
 
 cases["the scaling interface is read from the first policy"] = function () {
     on("machine", function () {
-        let cpu = new Cpu.CpuControl();
+        let cpu = cpuControl();
         Harness.equal(cpu.available, true, "available");
         Harness.equal(cpu.driver, "amd-pstate-epp", "driver");
         Harness.equal(cpu.governor, "powersave", "governor");
         Harness.deepEqual(cpu.governors, ["performance", "powersave"], "governors");
         Harness.equal(cpu.energyPreference, "power", "energy preference");
         Harness.equal(cpu.amdPstateStatus, "active", "amd_pstate status");
+        cpu.destroy();
     });
 };
 
 cases["the frequency is averaged across every policy"] = function () {
     on("machine", function () {
-        let cpu = new Cpu.CpuControl();
+        let cpu = cpuControl();
         Harness.near(cpu.snapshot().averageFrequency, 3500, 0.001, "3000 and 4000 MHz");
         Harness.near(cpu.maxFrequency(), 5462.711, 0.001, "max");
+        cpu.destroy();
     });
 };
 
 cases["a boost switch is read the right way round"] = function () {
     on("machine", function () {
-        let cpu = new Cpu.CpuControl();
+        let cpu = cpuControl();
         Harness.equal(cpu.boostSupported, true, "cpufreq/boost exists");
         Harness.equal(cpu.boostInverted, false, "and means what it says");
         Harness.equal(cpu.boostEnabled, true, "1 is on");
+        cpu.destroy();
     });
     on("inverted-boost", function () {
-        let cpu = new Cpu.CpuControl();
+        let cpu = cpuControl();
         Harness.equal(cpu.boostSupported, true, "intel_pstate/no_turbo exists");
         Harness.equal(cpu.boostInverted, true, "and means the opposite");
         Harness.equal(cpu.boostEnabled, true, "no_turbo 0 is boost on");
+        cpu.destroy();
     });
 };
 
 cases["a setting is written through the runner it was given"] = function () {
     on("machine", function () {
         let sent = [];
-        let cpu = new Cpu.CpuControl(args => sent.push(args.join(" ")));
+        let cpu = cpuControl(args => sent.push(args.join(" ")));
         cpu.setGovernor("performance");
         cpu.setEnergyPreference("power");
         cpu.setBoost(true);
         cpu.setBoost(false);
         Harness.deepEqual(sent, ["governor performance", "epp power", "boost 1", "boost 0"],
                           "the helper's own vocabulary");
+        cpu.destroy();
     });
 };
 
@@ -680,69 +710,84 @@ cases["a setting is written through the runner it was given"] = function () {
 
 cases["the charge limit is found on the battery that has one"] = function () {
     on("machine", function () {
-        let control = PowerSupply.discoverChargeControl();
-        Harness.ok(control, "not found");
+        let control = chargeControl();
+        Harness.equal(control.available, true, "not found");
         Harness.deepEqual(control.batteries,
                           [{ name: "BAT0",
                              path: "/sys/class/power_supply/BAT0/charge_control_end_threshold" }],
                           "the mains entry is not a battery");
+        control.destroy();
     });
 };
 
 cases["every battery with a threshold is found, not the first"] = function () {
     on("two-batteries", function () {
-        let control = PowerSupply.discoverChargeControl();
+        let control = chargeControl();
         Harness.deepEqual(control.batteries.map(battery => battery.name), ["BAT0", "BAT1"],
                           "the helper writes both, so both have to be read");
-        Harness.deepEqual(control.limits, [80, 100], "each one's own");
+        Harness.deepEqual(control.reading().limits, [80, 100], "each one's own");
+        control.destroy();
     });
 };
 
 cases["two batteries set apart read as no one limit, and say so"] = function () {
     on("two-batteries", function () {
-        let reading = PowerSupply.discoverChargeControl().reading();
+        let control = chargeControl();
+        let reading = control.reading();
         Harness.equal(reading.limit, null,
                       "one of the two would be a number the other battery is not at");
         Harness.equal(reading.state, "divided", "the explicit multi-battery state");
         Harness.equal(reading.divided, true, "and that is worth saying out loud");
+        control.destroy();
     });
 };
 
 cases["one battery reads as its own limit"] = function () {
     on("machine", function () {
-        let reading = PowerSupply.discoverChargeControl().reading();
+        let control = chargeControl();
+        let reading = control.reading();
         Harness.equal(reading.limit, 80, "what the one battery says");
         Harness.equal(reading.state, "agreed", "a complete agreed read");
         Harness.equal(reading.divided, false, "with nothing to disagree with");
+        control.destroy();
     });
 };
 
 cases["a battery that will not answer is not two batteries disagreeing"] = function () {
     on("two-batteries", function () {
-        let control = PowerSupply.discoverChargeControl();
+        let control = chargeControl();
         IO.setRoot("/nonexistent");
+        Harness.settle(done => control.sample(done), "the sample that finds nothing");
         let reading = control.reading();
         Harness.equal(reading.limit, null, "nothing to show");
         Harness.equal(reading.state, "incomplete", "the failed reads are explicit");
         Harness.equal(reading.divided, false,
                       "a control with nothing behind it speaks for itself");
+        control.destroy();
     });
 };
 
 cases["the platform profile reads its own choices"] = function () {
     on("machine", function () {
-        let profile = PowerSupply.platformProfile();
-        Harness.equal(profile.active, "balanced", "active");
-        Harness.deepEqual(profile.choices, ["quiet", "balanced", "performance"], "choices");
+        let client = profileClient();
+        Harness.equal(client.active, "balanced", "active");
+        Harness.deepEqual(client.profiles, ["quiet", "balanced", "performance"], "choices");
+        client.destroy();
     });
 };
 
 cases["a machine with none of it answers null rather than throwing"] = function () {
     IO.setRoot("/nonexistent");
     try {
-        Harness.equal(PowerSupply.discoverChargeControl(), null, "charge control");
-        Harness.equal(PowerSupply.platformProfile(), null, "platform profile");
-        Harness.equal(new Cpu.CpuControl().available, false, "cpufreq");
+        let charge = chargeControl();
+        Harness.equal(charge.available, false, "charge control");
+        charge.destroy();
+        let profiles = profileClient();
+        Harness.equal(profiles.available, false, "platform profile");
+        profiles.destroy();
+        let cpu = cpuControl();
+        Harness.equal(cpu.available, false, "cpufreq");
+        cpu.destroy();
         let found = Sensors.discoverSensors();
         Harness.equal(found.temperatures.length, 0, "temperatures");
     } finally {
@@ -795,19 +840,23 @@ cases["a reading carries the driver's own label"] = function () {
 
 cases["the charge limit is read fresh, not remembered"] = function () {
     on("machine", function () {
-        let control = PowerSupply.discoverChargeControl();
+        let control = chargeControl();
         Harness.equal(control.limit, 80, "as the fixture has it");
         IO.setRoot("/nonexistent");
+        Harness.equal(control.limit, 80, "a reading stands until the next sample");
+        Harness.settle(done => control.sample(done), "the sample after the node went");
         Harness.equal(control.limit, null, "and it notices when the node goes away");
+        control.destroy();
     });
 };
 
 cases["a charge limit is written through the runner"] = function () {
     on("machine", function () {
         let sent = [];
-        let control = PowerSupply.discoverChargeControl(args => sent.push(args.join(" ")));
+        let control = chargeControl(args => sent.push(args.join(" ")));
         control.setLimit(80);
         Harness.deepEqual(sent, ["charge-threshold 80"], "the helper's own vocabulary");
+        control.destroy();
     });
 };
 
@@ -1250,23 +1299,25 @@ cases["a batch of paths comes back keyed by path"] = function () {
 
 cases["the platform profile answers the same questions the daemon does"] = function () {
     on("machine", function () {
-        let client = new PowerSupply.PlatformProfileClient();
+        let client = profileClient();
         Harness.equal(client.available, true, "available");
         Harness.equal(client.active, "balanced", "active");
         Harness.deepEqual(client.profiles, ["quiet", "balanced", "performance"], "profiles");
         Harness.equal(client.busName, "acpi-platform-profile", "which backend this is");
         Harness.equal(client.degraded, "", "firmware says nothing about degradation");
         Harness.deepEqual(client.holds, [], "or about applications holding a profile");
+        client.destroy();
     });
 };
 
 cases["a machine with no platform profile says it is unavailable"] = function () {
     IO.setRoot("/nonexistent");
     try {
-        let client = new PowerSupply.PlatformProfileClient();
+        let client = profileClient();
         Harness.equal(client.available, false, "available");
         Harness.equal(client.active, null, "active");
         Harness.deepEqual(client.profiles, [], "profiles");
+        client.destroy();
     } finally {
         IO.setRoot("");
     }
@@ -1275,7 +1326,7 @@ cases["a machine with no platform profile says it is unavailable"] = function ()
 cases["the platform profile is written through the helper"] = function () {
     on("machine", function () {
         let sent = [];
-        let client = new PowerSupply.PlatformProfileClient(function (args, done) {
+        let client = profileClient(function (args, done) {
             sent.push(args.join(" "));
             done({ applied: true });
         });
@@ -1283,23 +1334,25 @@ cases["the platform profile is written through the helper"] = function () {
         client.setProfile("quiet", e => { error = e; });
         Harness.deepEqual(sent, ["platform-profile quiet"], "the helper's own vocabulary");
         Harness.equal(error, null, "and it reported success");
+        client.destroy();
     });
 };
 
 cases["a refused platform profile reports the refusal"] = function () {
     on("machine", function () {
-        let client = new PowerSupply.PlatformProfileClient(
+        let client = profileClient(
             (args, done) => done({ applied: false, error: "unknown platform profile: nonsense" }));
         let error = null;
         client.setProfile("nonsense", e => { error = e; });
         Harness.ok(error, "an error");
         Harness.equal(error.message, "unknown platform profile: nonsense", "with the reason");
+        client.destroy();
     });
 };
 
 cases["the platform profile answers a whole reading from one look"] = function () {
     on("machine", function () {
-        let client = new PowerSupply.PlatformProfileClient();
+        let client = profileClient();
         let state = client.snapshot();
         Harness.equal(state.available, true, "available");
         Harness.equal(state.busName, "acpi-platform-profile", "which backend");
@@ -1314,16 +1367,19 @@ cases["the platform profile answers a whole reading from one look"] = function (
             { available: client.available, busName: client.busName, active: client.active,
               profiles: client.profiles, degraded: client.degraded, holds: client.holds },
             "one look and six looks agree");
+        client.destroy();
     });
 };
 
 cases["a machine with no platform profile snapshots as unavailable"] = function () {
     IO.setRoot("/nonexistent");
     try {
-        let state = new PowerSupply.PlatformProfileClient().snapshot();
+        let client = profileClient();
+        let state = client.snapshot();
         Harness.equal(state.available, false, "unavailable");
         Harness.equal(state.active, null, "no active profile");
         Harness.deepEqual(state.profiles, [], "and none to choose from");
+        client.destroy();
     } finally {
         IO.setRoot("");
     }

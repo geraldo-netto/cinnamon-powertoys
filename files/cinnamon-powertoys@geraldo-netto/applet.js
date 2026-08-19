@@ -110,11 +110,10 @@ function defaultBackends() {
             onChanged: onChanged,
         }),
         cpuControl: (runner, onChanged) => new Cpu.CpuControl(runner, {
-            asynchronous: true,
             onChanged: onChanged,
         }),
         chargeControl: (runner, onChanged) =>
-            new PowerSupply.AsyncChargeControl(runner, onChanged),
+            new PowerSupply.ChargeControl(runner, onChanged),
         platformProfileClient: (runner, onChanged) =>
             new PowerSupply.PlatformProfileClient(runner, {
                 asynchronous: true,

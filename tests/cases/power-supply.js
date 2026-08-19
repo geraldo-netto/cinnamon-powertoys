@@ -16,24 +16,41 @@ const Fuzz = imports.fuzz;
 const PowerSupply = Harness.requireXlet("./lib/power-supply.js");
 const IO = Harness.requireXlet("./lib/io.js");
 
-/* A control over batteries that answer whatever this case says, without a
- * file system in the way. */
+/*
+ * A control over batteries that answer whatever this case says, without a
+ * file system in the way.
+ *
+ * The backend discovers its batteries by listing /sys, which these cases are
+ * not about, so the list is planted and only the sample is run - which is the
+ * one call that turns per-battery values into the reading the menu draws.
+ */
 function control(limits) {
     let batteries = limits.map((limit, index) => ({ name: "BAT" + index,
                                                     path: "/battery/" + index }));
     let commands = [];
-    let real = IO.readNumber;
-    IO.readNumber = function (path) {
-        let index = Number(path.slice("/battery/".length));
-        return Number.isFinite(index) && index < limits.length ? limits[index] : real(path);
+    let real = IO.readStringsAsync;
+    IO.readStringsAsync = function (paths, done) {
+        let values = {};
+        for (let path of paths) {
+            let index = Number(path.slice("/battery/".length));
+            let limit = Number.isFinite(index) && index < limits.length
+                ? limits[index] : null;
+            values[path] = limit === null ? null : String(limit);
+        }
+        done(values);
     };
-    let charge = new PowerSupply.ChargeControl(batteries, (args, onDone) => {
+    let charge = new PowerSupply.ChargeControl((args, onDone) => {
         commands.push(args.join(" "));
         if (onDone)
             onDone({ applied: true });
     });
+    charge.batteries = batteries;
+    Harness.settle(done => charge.sample(done), "the charge sample");
     charge.commands = commands;
-    charge.release = () => { IO.readNumber = real; };
+    charge.release = () => {
+        IO.readStringsAsync = real;
+        charge.destroy();
+    };
     return charge;
 }
 
@@ -117,15 +134,20 @@ cases["a battery that will not answer is not a battery that disagrees"] = functi
 };
 
 cases["no batteries at all is no limit"] = function () {
-    /* discoverChargeControl answers null rather than build one of these, but
-     * the class is handed its list and must not read a limit out of an empty
-     * one - an undefined drawn into the menu is a dot on nothing. */
-    let charge = new PowerSupply.ChargeControl([], () => {});
-    let reading = charge.reading();
-    Harness.deepEqual(reading.limits, [], "no batteries");
-    Harness.equal(reading.limit, null, "no limit");
-    Harness.equal(reading.state, "incomplete", "an empty direct control is incomplete");
-    Harness.equal(reading.divided, false, "and nothing to explain");
+    /* A desktop discovers no battery at all, and the control must not read a
+     * limit out of an empty list - an undefined drawn into the menu is a dot
+     * on nothing. */
+    let charge = control([]);
+    try {
+        let reading = charge.reading();
+        Harness.deepEqual(reading.limits, [], "no batteries");
+        Harness.equal(reading.limit, null, "no limit");
+        Harness.equal(reading.state, "incomplete", "an empty control is incomplete");
+        Harness.equal(reading.divided, false, "and nothing to explain");
+        Harness.equal(charge.available, false, "and it is not a backend");
+    } finally {
+        charge.release();
+    }
 };
 
 cases["the write goes to every battery, in the helper's own word"] = function () {
@@ -216,7 +238,7 @@ cases["runtime charge discovery and sampling never use synchronous sysfs"] = fun
         done(values);
     };
 
-    let client = new PowerSupply.AsyncChargeControl(null, () => changes++);
+    let client = new PowerSupply.ChargeControl(null, () => changes++);
     try {
         let refreshed = null;
         client.refresh(value => { refreshed = value; });
@@ -243,7 +265,7 @@ cases["runtime charge discovery and sampling never use synchronous sysfs"] = fun
 
 cases["runtime charge work coalesces and rejects stale lifecycle replies"] = function () {
     let commands = [];
-    let client = new PowerSupply.AsyncChargeControl(
+    let client = new PowerSupply.ChargeControl(
         (args, done) => { commands.push(args); if (done) done(true); });
     let starts = 0;
     let results = [];
@@ -288,7 +310,7 @@ cases["runtime charge work coalesces and rejects stale lifecycle replies"] = fun
     Harness.equal(results[5], false, "later discovery is rejected too");
 
     let writeResult = null;
-    let writer = new PowerSupply.AsyncChargeControl((args, done) => {
+    let writer = new PowerSupply.ChargeControl((args, done) => {
         commands.push(args);
         done("written");
     });
@@ -301,14 +323,22 @@ cases["runtime charge work coalesces and rejects stale lifecycle replies"] = fun
 /* ---------------------------------------------------------------- */
 /* the firmware's own profile                                        */
 
-/* A client over a firmware that answers whatever this case says. */
+/* A client over a firmware that answers whatever this case says, refreshed
+ * once so that the fields the getters read are the ones a poll left. */
 function firmware(active, choices) {
-    let real = { readString: IO.readString, readWords: IO.readWords, exists: IO.exists };
-    IO.exists = path => path.indexOf("platform_profile") >= 0 ? active !== null : real.exists(path);
-    IO.readString = path => path.indexOf("platform_profile") >= 0 && path.indexOf("choices") < 0
-        ? active : real.readString(path);
-    IO.readWords = path => path.indexOf("platform_profile_choices") >= 0
-        ? choices : real.readWords(path);
+    let real = IO.readStringsAsync;
+    IO.readStringsAsync = function (paths, done) {
+        let values = {};
+        for (let path of paths) {
+            if (/_choices$/.test(path))
+                values[path] = active === null ? null : choices.join(" ");
+            else if (/platform_profile$/.test(path))
+                values[path] = active;
+            else
+                values[path] = null;
+        }
+        done(values);
+    };
 
     let commands = [];
     let client = new PowerSupply.PlatformProfileClient((args, onDone) => {
@@ -317,10 +347,10 @@ function firmware(active, choices) {
             onDone({ applied: true });
     });
     client.commands = commands;
+    Harness.settle(done => client.refresh(done), "the firmware profile refresh");
     client.release = function () {
-        IO.readString = real.readString;
-        IO.readWords = real.readWords;
-        IO.exists = real.exists;
+        IO.readStringsAsync = real;
+        client.destroy();
     };
     return client;
 }
@@ -477,7 +507,7 @@ cases["a firmware sample that cannot read the node keeps the last profile"] = fu
         done(values);
     };
 
-    let client = new PowerSupply.PlatformProfileClient(null, { asynchronous: true });
+    let client = new PowerSupply.PlatformProfileClient(null);
     try {
         client.refresh(function () {});
         Harness.equal(client.active, "balanced", "a complete reading to lose");
@@ -508,14 +538,7 @@ cases["firmware refreshes reject superseded and teardown replies"] = function ()
     let pending = [];
     IO.readStringsAsync = (paths, done) => pending.push(done);
     try {
-        let synchronous = new PowerSupply.PlatformProfileClient();
-        let sync = [];
-        synchronous.refresh(value => sync.push(value));
-        synchronous.sample(value => sync.push(value));
-        Harness.deepEqual(sync, [true, true], "the synchronous compatibility path is immediate");
-        synchronous.destroy();
-
-        let client = new PowerSupply.PlatformProfileClient(null, { asynchronous: true });
+        let client = new PowerSupply.PlatformProfileClient(null);
         let results = [];
         client.sample(value => results.push(value));
         Harness.deepEqual(results, [true], "no discovered backend needs no active read");

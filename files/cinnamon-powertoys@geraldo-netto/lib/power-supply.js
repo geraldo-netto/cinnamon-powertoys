@@ -51,53 +51,19 @@ function _chargeReading(values) {
  * and a control that wrote two and read one would show the first battery's
  * number and call it both. So the read is the same set as the write.
  *
- * The values are read every time they are asked for rather than captured
- * once: the firmware, a vendor tool or another copy of this applet can move
- * them, and a value remembered from startup would quietly disagree with the
- * hardware.
+ * The values are sampled rather than captured once: the firmware, a vendor
+ * tool or another copy of this applet can move them, and a value remembered
+ * from startup would quietly disagree with the hardware.
  *
  * Writing needs root, so it goes to a runner the caller supplies - in the
  * applet, the pkexec helper - which keeps the read and the write of one
  * setting in the same place.
+ *
+ * Topology and values are both kept as complete cached snapshots, and
+ * discovery and sampling both go through IO's Gio calls, so opening the menu
+ * never asks a power-supply driver a question on Cinnamon's thread.
  */
 const ChargeControl = class ChargeControl {
-    /* `batteries` is every battery that exposes an end threshold, as
-     * { name, path }, in the order they were found. */
-    constructor(batteries, runner) {
-        this.batteries = batteries || [];
-        this._runner = runner || function () {};
-    }
-
-    /* One per battery, in that order, null for one that will not answer now. */
-    get limits() {
-        return this.batteries.map(battery => IO.readNumber(battery.path));
-    }
-
-    /*
-     * What those come to, in one look rather than two.
-     *
-     * `state` keeps three materially different reasons for a null limit apart:
-     * every readable battery agrees, every battery answered but disagrees, or
-     * at least one did not answer. The menu can offer a corrective write for
-     * the latter two without pretending an incomplete read is disagreement.
-     */
-    reading() {
-        return _chargeReading(this.limits);
-    }
-
-    get limit() {
-        return this.reading().limit;
-    }
-
-    setLimit(percent, onDone) {
-        this._runner(["charge-threshold", String(percent)], onDone);
-    }
-};
-
-/* The runtime charge backend keeps topology and values in complete cached
- * snapshots. Discovery and sampling both use Gio through IO, so opening the
- * menu never asks a power-supply driver a question on Cinnamon's thread. */
-const AsyncChargeControl = class AsyncChargeControl {
     constructor(runner, onChanged) {
         this.batteries = [];
         this._runner = runner || function () {};
@@ -246,35 +212,6 @@ const AsyncChargeControl = class AsyncChargeControl {
 };
 
 /*
- * Charge limit support, as exposed by thinkpad_acpi, asus-wmi, huawei-wmi and
- * friends. Only the end threshold is offered, it is the one that matters for
- * battery longevity.
- */
-function discoverChargeControl(runner) {
-    let batteries = [];
-    for (let name of IO.listDir(POWER_SUPPLY_DIR)) {
-        let base = POWER_SUPPLY_DIR + "/" + name;
-        if (IO.readString(base + "/type") !== "Battery")
-            continue;
-        let endPath = base + "/charge_control_end_threshold";
-        if (!IO.exists(endPath))
-            continue;
-        batteries.push({ name: name, path: endPath });
-    }
-    return batteries.length > 0 ? new ChargeControl(batteries, runner) : null;
-}
-
-/* ACPI platform profile, used as a fallback when power-profiles-daemon is absent. */
-function platformProfile() {
-    if (!IO.exists(PLATFORM_PROFILE))
-        return null;
-    return {
-        active: IO.readString(PLATFORM_PROFILE),
-        choices: IO.readWords(PLATFORM_PROFILE_CHOICES),
-    };
-}
-
-/*
  * The ACPI platform profile, wearing the same face as PowerProfilesClient.
  *
  * The two are not alike underneath - one is a daemon on the system bus, the
@@ -287,7 +224,6 @@ const PlatformProfileClient = class PlatformProfileClient {
     constructor(runner, options) {
         let configuration = options || {};
         this._runner = runner || function () {};
-        this._asynchronous = !!configuration.asynchronous;
         this._onChanged = configuration.onChanged || function () {};
         this._profile = null;
         this._scope = new IO.AsyncScope();
@@ -298,18 +234,15 @@ const PlatformProfileClient = class PlatformProfileClient {
         this._sampleWaiters = [];
     }
 
-    /* Read every time: the firmware moves this on its own - a lid closed, a
-     * charger unplugged - and vendor tools write it too. */
+    /* What the last refresh() or sample() read. The firmware moves this on
+     * its own - a lid closed, a charger unplugged - and vendor tools write it
+     * too, which is why the poll keeps asking. */
     _read() {
-        return this._asynchronous ? this._profile : platformProfile();
+        return this._profile;
     }
 
     refresh(onDone) {
         let done = onDone || function () {};
-        if (!this._asynchronous) {
-            done(true);
-            return;
-        }
         if (this._destroyed) {
             done(false);
             return;
@@ -344,10 +277,6 @@ const PlatformProfileClient = class PlatformProfileClient {
 
     sample(onDone) {
         let done = onDone || function () {};
-        if (!this._asynchronous) {
-            done(true);
-            return;
-        }
         if (this._destroyed) {
             done(false);
             return;
@@ -450,11 +379,9 @@ const PlatformProfileClient = class PlatformProfileClient {
      * firmware.
      *
      * The getters above each go back to _read(), which is right when one of
-     * them is what you want and wrong when all of them are: against the
-     * synchronous backend a poll asking for six properties opened the same
-     * two files three times over. Asynchronously _read() is the field the
-     * last refresh() left, so what is saved is the six lookups rather than
-     * the files. Either way this is the one call a poll makes.
+     * them is what you want and wasteful when all of them are: _read() is the
+     * field the last refresh() left, so what this saves is the six lookups.
+     * It is the one call a poll makes.
      */
     snapshot() {
         let profile = this._read();
