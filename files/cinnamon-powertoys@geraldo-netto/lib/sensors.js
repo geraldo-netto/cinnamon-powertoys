@@ -11,6 +11,7 @@ const GLib = imports.gi.GLib;
 const Format = require("./lib/format.js");
 const Hardware = require("./lib/hardware.js");
 const IO = require("./lib/io.js");
+const Naming = require("./lib/naming.js");
 const Once = require("./lib/once.js");
 const Translate = require("./lib/gettext.js");
 
@@ -269,23 +270,14 @@ function _displayName(entry) {
  * longer; they are already told apart by being in RPM and in watts.
  */
 function _finalizeNames(entries) {
-    let named = entries.map(entry => ({ ...entry,
-        display: _displayName(entry),
+    let displays = Naming.disambiguate(entries, {
+        name: entry => _displayName(entry),
+        scope: entry => entry.measure,
+    });
+    return entries.map((entry, index) => ({ ...entry,
+        display: displays[index],
         short: _shortName(entry),
     }));
-
-    let counts = {};
-    for (let entry of named) {
-        let key = entry.measure + "\u0000" + entry.display;
-        counts[key] = (counts[key] || 0) + 1;
-    }
-
-    return named.map(function (entry) {
-        let key = entry.measure + "\u0000" + entry.display;
-        if (counts[key] > 1 && entry.identity)
-            return { ...entry, display: entry.display + " (" + entry.identity + ")" };
-        return entry;
-    });
 }
 
 /*
@@ -318,20 +310,11 @@ function _groupName(entry, pciNames, cpuName) {
  * block device, the thermal zone.
  */
 function _nameGroupsFrom(groups, cpuName, pciNames) {
-    let named = groups.map(group => ({ ...group,
-        label: _groupName(group, pciNames, cpuName),
-    }));
-
-    let counts = {};
-    for (let group of named)
-        counts[group.label] = (counts[group.label] || 0) + 1;
-
+    let names = Naming.disambiguate(groups, {
+        name: group => _groupName(group, pciNames, cpuName),
+    });
     let labels = {};
-    for (let group of named) {
-        labels[group.key] = counts[group.label] > 1 && group.identity
-            ? group.label + " (" + group.identity + ")"
-            : group.label;
-    }
+    groups.forEach((group, index) => { labels[group.key] = names[index]; });
     return labels;
 }
 

@@ -22,6 +22,7 @@ const GLib = imports.gi.GLib;
 
 const Hardware = require("./lib/hardware.js");
 const Log = require("./lib/log.js");
+const Naming = require("./lib/naming.js");
 const Once = require("./lib/once.js");
 const Translate = require("./lib/gettext.js");
 
@@ -230,22 +231,14 @@ function _connectorName(connector) {
  * monitors on the desk is which. Which socket it is plugged into is.
  */
 function nameDisplays(displays) {
-    let named = displays.map(display => ({ ...display,
-        name: Hardware.monitorName(display.manufacturer, display.model) ||
-              _connectorName(display.connector) ||
-              Translate.interpolate(_("Display %{number}"), { number: display.number }),
-    }));
-
-    let counts = {};
-    for (let display of named)
-        counts[display.name] = (counts[display.name] || 0) + 1;
-
-    return named.map(function (display) {
-        if (counts[display.name] < 2)
-            return display;
-        let apart = _connectorName(display.connector) || display.number;
-        return { ...display, name: display.name + " (" + apart + ")" };
+    let names = Naming.disambiguate(displays, {
+        name: display =>
+            Hardware.monitorName(display.manufacturer, display.model) ||
+            _connectorName(display.connector) ||
+            Translate.interpolate(_("Display %{number}"), { number: display.number }),
+        identity: display => _connectorName(display.connector) || display.number,
     });
+    return displays.map((display, index) => ({ ...display, name: names[index] }));
 }
 
 /*
