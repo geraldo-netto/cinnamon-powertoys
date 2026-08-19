@@ -18,6 +18,8 @@
  * is - they are opaque names - and nothing draws anything.
  */
 
+const Once = require("./lib/once.js");
+
 /*
  * How many readings a profile that was written may go on being drawn before
  * the machine is taken at its word.
@@ -85,11 +87,7 @@ const PendingProfile = class PendingProfile {
 
         let request = this._request;
         let report = onResult || function () {};
-        let answered = false;
-        let done = outcome => {
-            if (answered)
-                return;
-            answered = true;
+        let done = Once.once(outcome => {
             /* The request serial still identifies this operation after the
              * machine has already adopted it and settle() has cleared the
              * optimistic value. A different ask advances the serial. */
@@ -103,7 +101,7 @@ const PendingProfile = class PendingProfile {
             else
                 this.written(name, request);
             report(outcome || null, matching);
-        };
+        });
 
         let accepted;
         try {
@@ -114,7 +112,7 @@ const PendingProfile = class PendingProfile {
         }
 
         if (accepted === false) {
-            if (!answered)
+            if (!done.called)
                 done(new Error("profile request was refused"));
             return false;
         }

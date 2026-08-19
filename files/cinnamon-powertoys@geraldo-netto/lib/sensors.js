@@ -11,6 +11,7 @@ const GLib = imports.gi.GLib;
 const Format = require("./lib/format.js");
 const Hardware = require("./lib/hardware.js");
 const IO = require("./lib/io.js");
+const Once = require("./lib/once.js");
 const Translate = require("./lib/gettext.js");
 
 const _ = Translate._;
@@ -1387,13 +1388,7 @@ const SensorSet = class SensorSet {
          * references to make impossible.
         */
         let found = this._lists();
-        let finished = false;
-        let finish = answer => {
-            if (finished)
-                return;
-            finished = true;
-            onDone(answer);
-        };
+        let finish = Once.once(answer => onDone(answer));
         IO.readStringsAsync(this._paths(keep, found), values => {
             if (this._destroyed) {
                 finish(null);

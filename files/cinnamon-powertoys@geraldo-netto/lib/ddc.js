@@ -22,6 +22,7 @@ const GLib = imports.gi.GLib;
 
 const Hardware = require("./lib/hardware.js");
 const Log = require("./lib/log.js");
+const Once = require("./lib/once.js");
 const Translate = require("./lib/gettext.js");
 
 const _ = Translate._;
@@ -80,17 +81,13 @@ function _commandFailureKey(argv) {
  * holding the I2C bus for the rest of CALL_TIMEOUT_MS.
  */
 function runCommand(argv, onDone, failureLog) {
-    let done = false;
     let timeoutId = 0;
     let process;
     let cancellable = new Gio.Cancellable();
     let failures = failureLog || new Log.FailureLog();
     let failureKey = _commandFailureKey(argv);
 
-    function finish(output, status) {
-        if (done)
-            return;
-        done = true;
+    let finish = Once.once((output, status) => {
         /* The timer has done its job, or never needed to; either way it is
          * not left armed for the rest of its eight seconds. */
         if (timeoutId) {
@@ -98,14 +95,14 @@ function runCommand(argv, onDone, failureLog) {
             timeoutId = 0;
         }
         onDone(output, status);
-    }
+    });
 
     /* Whoever holds this can end the command early. Settling with the timeout
      * outcome keeps one answer per command: a caller that has already been
      * told cannot be told again, and one still waiting is not left waiting. */
     let handle = {
         cancel() {
-            if (done)
+            if (finish.called)
                 return;
             cancellable.cancel();
             if (process) {
@@ -146,7 +143,7 @@ function runCommand(argv, onDone, failureLog) {
     });
 
     process.communicate_utf8_async(null, cancellable, (source, result) => {
-        if (!done)
+        if (!finish.called)
             failures.recover(failureKey);
         try {
             let [, stdout] = source.communicate_utf8_finish(result);

@@ -12,6 +12,7 @@ const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 
 const Log = require("./lib/log.js");
+const Once = require("./lib/once.js");
 const OwnerWatch = require("./lib/owner-watch.js");
 
 const BACKENDS = [
@@ -644,7 +645,7 @@ const PowerProfilesClient = class PowerProfilesClient {
             return false;
         }
 
-        let operation = { name: name, done: this._once(done), cancellable: null };
+        let operation = { name: name, done: Once.once(done), cancellable: null };
         if (this._setCall) {
             if (this._setQueued)
                 this._setQueued.done(PROFILE_SUPERSEDED);
@@ -653,16 +654,6 @@ const PowerProfilesClient = class PowerProfilesClient {
         }
         this._setQueued = operation;
         return this._drainProfileWrites();
-    }
-
-    _once(callback) {
-        let called = false;
-        return outcome => {
-            if (called)
-                return;
-            called = true;
-            callback(outcome);
-        };
     }
 
     _drainProfileWrites() {

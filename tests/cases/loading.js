@@ -27,7 +27,7 @@ const FILE_UTILS = "/usr/share/cinnamon/js/misc/fileUtils.js";
 
 var cases = {};
 
-const MODULES = ["io", "log", "gettext", "backends", "format", "device", "hardware", "sensors", "cpu",
+const MODULES = ["io", "log", "once", "gettext", "backends", "format", "device", "hardware", "sensors", "cpu",
                  "power-supply", "privileged", "owner-watch", "upower", "profiles", "backlight", "ddc",
                  "bluez", "alerts", "reading", "sensor-rows", "panel-text", "pending-profile",
                  "keyed-list", "cinnamon-panel", "notifications", "panel-presenter",

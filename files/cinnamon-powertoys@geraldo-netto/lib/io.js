@@ -15,6 +15,8 @@
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 
+const Once = require("./lib/once.js");
+
 let _root = "";
 const ASYNC_TIMEOUT_MS = 5000;
 
@@ -72,9 +74,9 @@ function _asyncOperation(onCancel, options) {
             return active;
         },
         cancellable: cancellable,
-        finish: () => {
-            if (!active)
-                return false;
+        /* True for the one caller that ends the operation, and nothing - so
+         * falsy - for every later arrival. */
+        finish: Once.once(() => {
             active = false;
             if (timer !== 0) {
                 removeTimeout(timer);
@@ -83,7 +85,7 @@ function _asyncOperation(onCancel, options) {
             if (scope)
                 scope.release(operation);
             return true;
-        },
+        }),
         cancel: () => {
             if (!operation.finish())
                 return;

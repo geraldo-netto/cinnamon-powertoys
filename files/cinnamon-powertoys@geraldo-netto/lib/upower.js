@@ -12,6 +12,7 @@ const UPowerGlib = imports.gi.UPowerGlib;
 
 const Format = require("./lib/format.js");
 const Log = require("./lib/log.js");
+const Once = require("./lib/once.js");
 const OwnerWatch = require("./lib/owner-watch.js");
 
 const BUS_NAME = "org.freedesktop.UPower";
@@ -547,15 +548,15 @@ const UPowerMonitor = class UPowerMonitor {
      * the bus and constructing the wrapper can throw before one is installed.
      * Turn both routes into the one exactly-once contract every caller uses. */
     _requestDevice(path, onDone) {
-        let settled = false;
         let cancellable = this._bus.cancellable ? this._bus.cancellable() : null;
         let operation = { path: path, cancellable: cancellable, finish: null };
-        let finish = (proxy, error) => {
-            if (settled || !this._proxyRequests.delete(operation))
+        let finish = Once.once((proxy, error) => {
+            /* A request the teardown already dropped has no caller left to
+             * answer, and the once wrapper closes the route either way. */
+            if (!this._proxyRequests.delete(operation))
                 return;
-            settled = true;
             onDone(proxy, error);
-        };
+        });
         operation.finish = finish;
         this._proxyRequests.add(operation);
         try {

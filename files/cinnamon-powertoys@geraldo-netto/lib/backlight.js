@@ -13,6 +13,7 @@ const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 
 const Log = require("./lib/log.js");
+const Once = require("./lib/once.js");
 const OwnerWatch = require("./lib/owner-watch.js");
 
 const BUS_NAME = "org.cinnamon.SettingsDaemon.Power";
@@ -408,7 +409,7 @@ const BacklightControl = class BacklightControl {
     }
 
     _readPercentage(done) {
-        let waiter = this._once(done);
+        let waiter = Once.once(done);
         if (this._read) {
             /* A signal received after this call began means its reply may
              * describe the state before that signal. Keep one follow-up read
@@ -502,16 +503,6 @@ const BacklightControl = class BacklightControl {
             this._cancelRetry();
     }
 
-    _once(callback) {
-        let called = false;
-        return (...args) => {
-            if (called)
-                return;
-            called = true;
-            callback(...args);
-        };
-    }
-
     _cancelMutations() {
         let current = this._mutation;
         this._mutation = null;
@@ -542,7 +533,7 @@ const BacklightControl = class BacklightControl {
      * another and compute from stale state.
      */
     _enqueueMutation(operation) {
-        operation.settle = this._once(operation.done);
+        operation.settle = Once.once(operation.done);
         if (this.destroyed || !this._proxy) {
             operation.settle({ ok: false, unavailable: true });
             return;
