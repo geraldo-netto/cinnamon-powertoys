@@ -12,13 +12,20 @@ const Harness = imports.harness;
 const Loader = imports.loader;
 const Translate = Harness.requireXlet("./lib/gettext.js");
 const ProfileView = Harness.requireXlet("./lib/profile-view.js");
+const ProfileSelection = Harness.requireXlet("./lib/profile-selection.js");
 
-/* The applet's one-line ownership check, for an isolated method that calls it.
- * What the check itself means is tests/cases/profile-view.js. */
-function stillOwned(applet) {
-    return (backend, generation) => ProfileView.sameOwner(
-        { source: backend, generation: generation },
-        applet._profileBackend, applet._profileBackendGeneration);
+/*
+ * The profile writer the isolated applet methods ask, rather than the fields
+ * they used to carry. The real one, because ownership is exactly what these
+ * cases move under a reply in flight; what a move means on its own is
+ * tests/cases/profile-selection.js.
+ */
+function selectionOver(daemon, platform, onForget) {
+    let selection = new ProfileSelection.ProfileSelection(
+        daemon || { available: false }, platform || { available: false },
+        onForget || function () {});
+    selection.choose();
+    return selection;
 }
 
 /* The file tools/loader.js claims to copy. Absent on anything that is not a
@@ -31,7 +38,7 @@ const MODULES = ["io", "log", "once", "gettext", "backends", "format", "device",
                  "power-supply", "privileged", "owner-watch", "upower", "profiles", "backlight", "ddc",
                  "bluez", "alerts", "reading", "sensor-rows", "panel-text", "pending-profile",
                  "keyed-list", "cinnamon-panel", "notifications", "panel-presenter",
-                 "profile-view", "menu-layout"];
+                 "profile-view", "profile-selection", "monitor-watch", "menu-layout"];
 
 for (let name of MODULES) {
     cases["lib/" + name + ".js loads"] = function () {
@@ -251,8 +258,8 @@ cases["a late collection stops when its applet is destroyed"] = function () {
             return readings;
         },
     };
+    applet._profileSelection = selectionOver({ available: true });
 
-    applet._stillOwned = stillOwned(applet);
     collect.call(applet, answer => answers.push(answer));
     sensorDone({ temperatures: [] });
     applet._destroyed = true;
@@ -281,16 +288,15 @@ cases["collection waits for asynchronous charge and firmware samples"] = functio
         _sensors: { readAsync: (wanted, done) => { pending.sensors = done; } },
         _cpu: { sample: done => { pending.cpu = done; } },
         _chargeControl: { sample: done => { pending.charge = done; } },
-        _profileBackend: {
-            sample: done => { pending.profile = done; },
-            snapshot: () => ({ active: "balanced" }),
-        },
-        _profileBackendGeneration: 4,
-        _collectProfile: (backend, generation) => ({ backend: backend, generation: generation }),
         _assemble: (readings, profile) => ({ readings: readings, profile: profile }),
     };
+    let writer = {
+        available: true,
+        sample: done => { pending.profile = done; },
+        snapshot: () => ({ active: "balanced" }),
+    };
+    applet._profileSelection = selectionOver(writer);
 
-    applet._stillOwned = stillOwned(applet);
     collect.call(applet, answer => answers.push(answer));
     pending.sensors({ temperatures: [] });
     pending.cpu(true);
@@ -299,9 +305,9 @@ cases["collection waits for asynchronous charge and firmware samples"] = functio
     pending.profile(true);
     Harness.equal(answers.length, 1, "the complete snapshot answers once");
     Harness.deepEqual(answers[0].readings, { temperatures: [] }, "with the sensor reading");
-    Harness.equal(answers[0].profile.backend, applet._profileBackend,
-                  "and the sampled profile writer");
-    Harness.equal(answers[0].profile.generation, 4, "from the same backend generation");
+    Harness.equal(answers[0].profile.source, writer, "and the sampled profile writer");
+    Harness.equal(answers[0].profile.generation, applet._profileSelection.generation,
+                  "from the same backend generation");
 };
 
 cases["hidden collections skip live CPU sampling"] = function () {
@@ -312,20 +318,17 @@ cases["hidden collections skip live CPU sampling"] = function () {
         match[1] + "\n};")({ error: message => { throw new Error(message); } });
     let sampled = 0;
     let answer = null;
-    let backend = { snapshot: () => ({ active: "balanced" }) };
+    let backend = { available: true, snapshot: () => ({ active: "balanced" }) };
     let applet = {
         _destroyed: false,
         _failures: new (Harness.requireXlet("./lib/log.js").FailureLog)(),
-        _profileBackend: backend,
-        _profileBackendGeneration: 1,
+        _profileSelection: selectionOver(backend),
         _sensorFilter: () => function () { return true; },
         _sensors: { readAsync: (wanted, done) => done({ temperatures: [] }) },
         _cpu: { sample: () => sampled++ },
-        _collectProfile: () => ({}),
         _assemble: readings => readings,
     };
 
-    applet._stillOwned = stillOwned(applet);
     collect.call(applet, value => { answer = value; }, false);
     Harness.equal(sampled, 0, "no moving CPU node is requested");
     Harness.deepEqual(answer, { temperatures: [] }, "the cached CPU snapshot can assemble");
@@ -357,15 +360,13 @@ cases["CPU sampling follows visible consumers"] = function () {
 cases["profile collections and controls reject a backend transition"] = function () {
     let source = Harness.shellSource();
     let collectMatch = /    _collect\(onDone, sampleCpu\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* The sensor readings/.exec(source);
-    let chooseMatch = /    _chooseProfileBackend\(\) \{([\s\S]*?)\n    \}\n\n    \/\* One look/.exec(source);
     let contextMatch = /    _profileContext\(\) \{([\s\S]*?)\n    \}/.exec(source);
-    Harness.ok(collectMatch && chooseMatch && contextMatch, "the profile wiring can be isolated");
+    Harness.ok(collectMatch && contextMatch, "the profile wiring can be isolated");
 
     let collect = Function("Log", "return function (onDone, sampleCpu) {" +
         collectMatch[1] + "\n};")({
         error: message => { throw new Error(message); },
     });
-    let choose = Function("return function () {" + chooseMatch[1] + "\n};")();
     /* _profileState is one call now: the rule is lib/profile-view.js and what
      * is left in the applet is assembling the context to ask it with. That
      * assembly is what this isolates; the rule has its own cases. */
@@ -377,42 +378,40 @@ cases["profile collections and controls reject a backend transition"] = function
     let forgotten = 0;
     let daemon = { available: false, sample: done => { pending.profile = done; } };
     let firmware = { available: true };
+    let selection = new ProfileSelection.ProfileSelection(
+        daemon, firmware, () => forgotten++);
     let applet = {
         _destroyed: false,
         _failures: new (Harness.requireXlet("./lib/log.js").FailureLog)(),
         _profiles: daemon,
         _platformProfiles: firmware,
-        _profileBackend: null,
-        _profileBackendAvailable: false,
-        _profileBackendGeneration: 0,
+        _profileSelection: selection,
         _pending: { forget: () => forgotten++ },
         _sensorFilter: () => function () { return true; },
         _sensors: { readAsync: (wanted, done) => { pending.sensors = done; } },
         _cpu: { sample: done => { pending.cpu = done; } },
-        _collectProfile: () => { throw new Error("a stale profile was collected"); },
         _assemble: () => { throw new Error("a stale profile was assembled"); },
         enablePrivilegedControls: true,
     };
 
-    Harness.equal(choose.call(applet), true, "the firmware backend is selected");
-    Harness.equal(applet._profileBackend, firmware, "firmware owns this generation");
-    Harness.equal(applet._profileBackendGeneration, 1, "the first owner has a generation");
-    Harness.equal(choose.call(applet), false, "an unchanged owner is not a transition");
+    Harness.equal(selection.choose(), true, "the firmware backend is selected");
+    Harness.equal(selection.backend, firmware, "firmware owns this generation");
+    Harness.equal(selection.generation, 1, "the first owner has a generation");
+    Harness.equal(selection.choose(), false, "an unchanged owner is not a transition");
     Harness.equal(forgotten, 1, "an unchanged choice does not discard a request");
 
     /* Start with a daemon so its sample can remain outstanding, then move
      * ownership to firmware before that sample answers. */
     daemon.available = true;
-    Harness.equal(choose.call(applet), true, "the appearing daemon takes ownership");
-    let daemonGeneration = applet._profileBackendGeneration;
+    Harness.equal(selection.choose(), true, "the appearing daemon takes ownership");
+    let daemonGeneration = selection.generation;
     applet.menu = null;
-    applet._stillOwned = stillOwned(applet);
     collect.call(applet, answer => { pending.answer = answer; });
     pending.sensors({ temperatures: [] });
     pending.cpu(true);
 
     daemon.available = false;
-    Harness.equal(choose.call(applet), true, "the vanished daemon returns ownership");
+    Harness.equal(selection.choose(), true, "the vanished daemon returns ownership");
     Harness.equal(profileState.call(Object.assign(applet, {
         _latest: { profile: {
             available: true,
@@ -429,7 +428,7 @@ cases["profile collections and controls reject a backend transition"] = function
         available: true,
         list: ["low-power", "balanced", "performance"],
         source: firmware,
-        generation: applet._profileBackendGeneration,
+        generation: selection.generation,
     };
     applet._latest = { profile: firmwareState };
     applet._helper = { busy: true };
@@ -440,12 +439,12 @@ cases["profile collections and controls reject a backend transition"] = function
                   "the firmware profile returns when the helper is free");
 
     daemon.available = true;
-    choose.call(applet);
+    selection.choose();
     let daemonState = {
         available: true,
         list: ["balanced", "performance"],
         source: daemon,
-        generation: applet._profileBackendGeneration,
+        generation: selection.generation,
     };
     applet._latest = { profile: daemonState };
     applet._helper.busy = true;
@@ -467,20 +466,25 @@ cases["a profile write stays with the backend that produced its control"] = func
     let oldDone = null;
     let writes = [];
     let daemon = {
+        available: true,
         setProfile: (name, done) => {
             writes.push(name);
             oldDone = done;
             return true;
         },
     };
-    let firmware = { setProfile: () => { throw new Error("wrong profile backend"); } };
-    let profile = { source: daemon, generation: 7 };
+    let firmware = {
+        available: false,
+        setProfile: () => { throw new Error("wrong profile backend"); },
+    };
+    let selection = new ProfileSelection.ProfileSelection(daemon, firmware);
+    selection.choose();
+    let profile = { source: daemon, generation: selection.generation };
     let notices = [];
     let results = [];
     let updates = 0;
     let applet = {
-        _profileBackend: daemon,
-        _profileBackendGeneration: 7,
+        _profileSelection: selection,
         _profileState: () => profile,
         _latest: { profile: profile },
         _pending: {
@@ -490,14 +494,16 @@ cases["a profile write stays with the backend that produced its control"] = func
         _notifyProfileError: (name, error) => notices.push([name, error]),
         _scheduleUpdate: () => updates++,
     };
-    applet._stillOwned = stillOwned(applet);
 
     Harness.equal(setProfile.call(applet, "performance", error => results.push(error)), true,
                   "the write was accepted");
     Harness.deepEqual(writes, ["performance"], "the snapshot's backend received it");
 
-    applet._profileBackend = firmware;
-    applet._profileBackendGeneration = 8;
+    /* The daemon goes and the firmware takes over while the write is out. */
+    daemon.available = false;
+    firmware.available = true;
+    selection.choose();
+    Harness.equal(selection.backend, firmware, "the firmware owns the controls now");
     oldDone(new Error("old daemon vanished"));
     Harness.deepEqual(notices, [], "the obsolete writer cannot report against new controls");
     Harness.deepEqual(results, [], "nor report a result for the obsolete control");

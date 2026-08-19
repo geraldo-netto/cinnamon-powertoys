@@ -35,6 +35,7 @@ const Ddc = require("./lib/ddc.js");
 const Device = require("./lib/device.js");
 const SensorRows = require("./lib/sensor-rows.js");
 const Log = require("./lib/log.js");
+const MonitorWatch = require("./lib/monitor-watch.js");
 const Notifications = require("./lib/notifications.js");
 const PanelText = require("./lib/panel-text.js");
 const PendingProfile = require("./lib/pending-profile.js");
@@ -42,6 +43,7 @@ const PowerSupply = require("./lib/power-supply.js");
 const ScrollGatherer = require("./lib/scroll-gatherer.js");
 const ShellMetrics = require("./lib/shell-metrics.js");
 const Privileged = require("./lib/privileged.js");
+const ProfileSelection = require("./lib/profile-selection.js");
 const ProfileView = require("./lib/profile-view.js");
 const Panel = require("./lib/panel-presenter.js");
 const Sensors = require("./lib/sensors.js");
@@ -83,18 +85,6 @@ const SYSTEM_HELPER = "/usr/local/lib/cinnamon-powertoys/powertoys-helper";
  * something has actually changed.
  */
 const REDISCOVER_SECONDS = 60;
-
-/*
- * How often monitors are looked for while somebody is looking at the applet.
- *
- * A DDC/CI probe spawns ddcutil, talks to every display on the I2C bus and
- * wakes a sleeping one, which is why this is not on the poll and why the timer
- * does not exist unless there is a reason for it - see _watchMonitors. A second
- * is what a monitor that was asleep, plugged in unnoticed or slow to answer
- * costs before its slider appears, which is about as long as somebody who has
- * just opened the menu will wait without deciding the applet cannot see it.
- */
-const MONITOR_PROBE_SECONDS = 1;
 
 /*
  * Everything the applet reads the machine through, gathered in one bag. The
@@ -214,9 +204,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._bluetooth = null;
         this._profiles = null;
         this._platformProfiles = null;
-        this._profileBackend = null;
-        this._profileBackendAvailable = false;
-        this._profileBackendGeneration = 0;
+        this._profileSelection = null;
         this._upower = null;
         this.menuManager = null;
         this.menu = null;
@@ -226,6 +214,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._iconTheme = null;
         this._iconThemeId = 0;
         this._monitorsId = 0;
+        this._monitors = null;
         this._failures = new Log.FailureLog();
 
         try {
@@ -276,18 +265,26 @@ class PowerToysApplet extends Applet.TextIconApplet {
             },
         });
         this._scrollApply = null;
-        /* Why monitors are being looked for, and the timer that does it. Both
-         * empty means nobody is looking at the applet; see _watchMonitors. */
-        this._probeReasons = new Set();
-        this._probeTimerId = 0;
-        /* UPower owns the live lid state. False is deliberately conservative
-         * until its manager proxy says otherwise. */
-        this._lidClosed = false;
-        /* Whether this machine has a backlight of its own, as the settings
-         * daemon answered it. False until it has; see _onScreenBacklightKnown,
-         * which is also where the difference between this and the control's own
-         * `available` is set out. */
-        this._kernelBacklightState = "unknown";
+        /* When a monitor on a cable is worth looking for, and how often - the
+         * setting, the built-in panel, the lid and the reasons somebody is
+         * looking at the applet, all in lib/monitor-watch.js. What that cannot
+         * do without a shell stays here: spawning the probe, and starting or
+         * stopping the control that does it. */
+        this._monitors = new MonitorWatch.MonitorWatch({
+            enabled: () => this.monitorBrightness,
+            onProbe: () => this._backlights.monitor.redetect(),
+            onScopeChanged: wanted => {
+                if (wanted)
+                    this._backlights.monitor.start();
+                else
+                    this._backlights.monitor.stop();
+            },
+            timers: {
+                add: (seconds, callback) =>
+                    Mainloop.timeout_add_seconds(seconds, callback),
+                remove: id => Mainloop.source_remove(id),
+            },
+        });
         /* A profile asked for and not yet arrived, which the panel and the
          * menu draw until it does - or until it is clear it will not. */
         this._pending = new PendingProfile.PendingProfile((asked, actual) => {
@@ -366,15 +363,25 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._profiles = this._backends.profilesClient(() => {
             /* The daemon appearing or vanishing is the only thing that
              * changes which backend answers, and the only thing that says so. */
-            this._chooseProfileBackend();
+            this._profileSelection?.choose();
             this._scheduleUpdate();
         });
         this._platformProfiles = this._backends.platformProfileClient(
             (args, onDone) => this._runHelperQuietly(args, onDone), () => {
-                this._chooseProfileBackend();
+                this._profileSelection?.choose();
                 this._scheduleUpdate();
             });
-        this._chooseProfileBackend();
+        /* Which of the two answers, and the generation that tells one
+         * adoption of the same daemon from the next; both clients exist by
+         * now, and a client that answers from inside its own constructor
+         * finds no selection to move rather than a half-built one. */
+        this._profileSelection = new ProfileSelection.ProfileSelection(
+            this._profiles, this._platformProfiles,
+            /* A request belongs to the writer that accepted it. Its late
+             * answer is still allowed to settle, but it must not remain
+             * presented after ownership moved. */
+            () => this._pending.forget());
+        this._profileSelection.choose();
         if (typeof this._platformProfiles.refresh === "function")
             this._platformProfiles.refresh();
         this._upower = this._backends.upowerMonitor(() => this._onUPowerChanged(),
@@ -439,7 +446,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
              * window, with the menu shut, and _update only draws a menu that
              * is open. */
             monitor: () => {
-                this._considerMonitorBacklight();
+                this._monitors.syncScope();
                 this._onBacklightChanged();
                 this._update();
             },
@@ -547,9 +554,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * constructor, before there is a field. See where the backlights are
          * built.
          */
-        this._kernelBacklightState = control.hardwareState ||
-            (control.available ? "present" : "absent");
-        this._considerMonitorBacklight();
+        this._monitors.setKernelBacklightState(control.hardwareState ||
+            (control.available ? "present" : "absent"));
+        this._monitors.syncScope();
         this._onBacklightChanged();
     }
 
@@ -557,10 +564,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
         let control = this._backlights.screen;
         let state = control.hardwareState ||
             (control.available ? "present" : "absent");
-        if (state !== this._kernelBacklightState) {
-            this._kernelBacklightState = state;
-            this._considerMonitorBacklight();
-        }
+        if (this._monitors.setKernelBacklightState(state))
+            this._monitors.syncScope();
         this._onBacklightChanged();
     }
 
@@ -575,181 +580,40 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     _syncLidState() {
-        let closed = !!this._upower?.lidIsClosed;
-        if (closed === this._lidClosed)
+        if (!this._monitors.setLidClosed(this._upower?.lidIsClosed))
             return;
-        this._lidClosed = closed;
-        this._considerMonitorBacklight();
+        this._monitors.syncScope();
         this._onBacklightChanged();
     }
 
+    /* Whether the built-in panel is present but hidden, which decides which
+     * slider the menu draws and which control the wheel moves. Teardown lets
+     * go of the watch, and a callback that arrives after it may still ask. */
     _externalDisplayMode() {
-        return this._kernelBacklightState === "present" && this._lidClosed;
-    }
-
-    /*
-     * Whether to go looking for a monitor on a cable, asked both when the
-     * settings daemon answers and whenever the setting is switched.
-     *
-     * It used to be asked only on the first of those, so somebody who turned
-     * *Control external monitor brightness* on got nothing until they
-     * reloaded the applet - the one thing a person who has just switched
-     * something on will not think to do. start() is guarded against being
-     * called twice, so asking again costs nothing when the probe has already
-     * happened.
-     *
-     * Off is the same story the other way round, and had the same hole in it:
-     * there was no off path at all, so switching the setting off left the
-     * sliders in the menu and the wheel still driving the monitors, against a
-     * setting that said not to. The setting's own tooltip offers it as the way
-     * to stop the probe, and the first thing somebody who has just switched it
-     * off will look at is whether the sliders went.
-     */
-    _considerMonitorBacklight() {
-        if (!this._canProbeMonitors())
-            this._backlights.monitor.stop();
-        else
-            this._backlights.monitor.start();
-        /* Both of the answers above can move under a reason that is already
-         * held - the daemon answering late, the setting switched with the menu
-         * open - and the watch is armed from them. See _considerProbing. */
-        this._considerProbing();
+        return this._monitors ? this._monitors.externalDisplayMode : false;
     }
 
     /*
      * A monitor has been plugged in, unplugged or rearranged.
      *
      * The desktop knows this and says so, which is the cheapest moment there
-     * is to look again. It is not the only one - see _watchMonitors - because
-     * it only fires for a connector changing, and a monitor that was asleep,
-     * switched on without a hotplug event or slow to answer produces none.
+     * is to look again. It is not the only one - the watch also looks while
+     * somebody has the menu open - because it only fires for a connector
+     * changing, and a monitor that was asleep, switched on without a hotplug
+     * event or slow to answer produces none.
      */
     _onMonitorsChanged() {
         if (this._destroyed)
             return;
-        this._probeMonitors();
-    }
-
-    /*
-     * Look for monitors while somebody is looking at the applet.
-     *
-     * The desktop's own signal misses the monitor that was asleep when the
-     * applet started, the adapter that answers late, and every switch-on that
-     * produces no hotplug event - each of which is a slider that never appears
-     * for the rest of the session, on exactly the machines where these sliders
-     * are the only brightness control there is.
-     *
-     * The cost is why this is bounded to the moments the applet is being read
-     * rather than put on the poll: a probe spawns ddcutil, talks to every
-     * display on the I2C bus and wakes a sleeping monitor. Somebody with the
-     * menu open or the pointer resting on the icon is looking at the applet
-     * and can be spent on; nobody else is, and the timer does not exist while
-     * nobody is.
-     *
-     * What holds it up is a set of reasons rather than a flag, because the
-     * reasons overlap: the tooltip goes away as the menu opens under the
-     * pointer, and stopping the probe there only to start it again a moment
-     * later is a probe wasted on the same person still looking.
-     *
-     * The first probe goes out at once rather than a second later. Whatever
-     * has just given a reason is being looked at now, and a slider that
-     * appears a second after the menu opens is a slider that was not there
-     * when it was looked for.
-     */
-    _watchMonitors(reason, wanted) {
-        let alreadyWanted = this._probeReasons.has(reason);
-        if (wanted)
-            this._probeReasons.add(reason);
-        else
-            this._probeReasons.delete(reason);
-
-        /* The tooltip contains no monitor data. A single warm-up probe makes
-         * a subsequent menu open current without turning an accidental hover
-         * into recurring I2C traffic. The open menu is the only reason that
-         * owns the recurring timer. */
-        if (reason === "tooltip" && wanted && !alreadyWanted &&
-            !this._probeReasons.has("menu"))
-            this._probeMonitors();
-        this._considerProbing();
+        this._monitors.probeNow();
     }
 
     _onTooltipChanged(shown) {
-        this._watchMonitors("tooltip", shown);
+        this._monitors.watch("tooltip", shown);
         /* beforeTooltip paints the cached reading synchronously; this replaces
          * its moving CPU fields as soon as the asynchronous sample answers. */
         if (shown)
             this._update();
-    }
-
-    /*
-     * Arm the timer, or drop it, from what is true now.
-     *
-     * Two things have to hold for it to exist: somebody is looking, and there
-     * is something a look could find. The second was asked inside the tick and
-     * not before it, so on every machine with a kernel backlight of its own -
-     * which is every laptop, and the common case - each hover and each open
-     * menu started a timer whose every tick did nothing at all, against a
-     * comment saying the timer does not exist while there is nobody to spend
-     * it on.
-     *
-     * It is asked here rather than only at the two moments a reason arrives
-     * because the answer moves under a reason that is already held: the
-     * settings daemon can say late that there is a kernel backlight, and the
-     * setting can be switched with the menu open. Both of those already reach
-     * _considerMonitorBacklight, which asks again on the way out.
-     */
-    _considerProbing() {
-        if (this._destroyed || !this._probeReasons.has("menu") ||
-            !this._canProbeMonitors()) {
-            this._stopProbingMonitors();
-            return;
-        }
-        if (this._probeTimerId)
-            return;
-
-        this._probeMonitors();
-        this._probeTimerId = Mainloop.timeout_add_seconds(MONITOR_PROBE_SECONDS, () => {
-            this._probeMonitors();
-            return GLib.SOURCE_CONTINUE;
-        });
-    }
-
-    /*
-     * Whether looking for a monitor could find one worth having.
-     *
-     * The setting says whether this is wanted at all. A usable built-in panel
-     * keeps DDC off the machine; when UPower says its lid is closed, that panel
-     * is no longer the visible screen and the external monitors become the
-     * controls worth finding.
-     *
-     * The second half used to be asked of the screen control's `available`,
-     * which is about the moment and about nothing else: it is lowered by any
-     * failed GetPercentage. The daemon's answer is remembered instead, at the
-     * moment it answers; see _onScreenBacklightKnown.
-     */
-    _canProbeMonitors() {
-        return Backlight.shouldUseMonitorBacklight(
-            this.monitorBrightness, this._kernelBacklightState, this._lidClosed);
-    }
-
-    _stopProbingMonitors() {
-        if (this._probeTimerId) {
-            Mainloop.source_remove(this._probeTimerId);
-            this._probeTimerId = 0;
-        }
-    }
-
-    /*
-     * One look for monitors, from wherever the reason came from.
-     *
-     * A probe that lands while ddcutil is already talking to this machine is
-     * retained by the control as one coalesced follow-up. Repeated requests do
-     * not grow a queue, so nothing here has to know how long ddcutil is taking
-     * or what else is on the bus.
-     */
-    _probeMonitors() {
-        if (this._canProbeMonitors())
-            this._backlights.monitor.redetect();
     }
 
     /*
@@ -828,7 +692,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
              * separate bounded topology probe: up while open, down when shut.
              * Kernel backlights use their daemon's Changed signal and are
              * retried independently by _onMenuOpened only when unavailable. */
-            this._watchMonitors("menu", open);
+            this._monitors.watch("menu", open);
         });
 
         this._menuPresenter = new Menu.MenuPresenter(this.menu, this._menuActions(),
@@ -866,7 +730,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _menuOptions() {
         let helperBusy = this._helper.busy;
         let profilePrivileged = this.enablePrivilegedControls &&
-            (this._profileBackend !== this._platformProfiles || !helperBusy);
+            (!this._profileSelection.isPlatform || !helperBusy);
         return {
             tempUnit: this.tempUnit,
             showProfiles: this.showProfiles,
@@ -893,7 +757,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             return;
         /* An orientation change throws the menu away wholesale, and a menu
          * that is gone never says it shut. */
-        this._watchMonitors("menu", false);
+        this._monitors.watch("menu", false);
         this.menuManager.removeMenu(this.menu);
         this.menu.destroy();
         this.menu = null;
@@ -915,8 +779,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * one. The caller has an in-flight flag riding on that promise. */
     _collect(onDone, sampleCpu) {
         let readings = null;
-        let profileBackend = this._profileBackend;
-        let profileGeneration = this._profileBackendGeneration;
+        let profileBackend = this._profileSelection.backend;
+        let profileGeneration = this._profileSelection.generation;
         let sensorsReady = false;
         let cpuReady = false;
         let chargeReady = false;
@@ -934,14 +798,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
             /* A backend owner change schedules another collection. Do not
              * publish a snapshot assembled from the old backend in between:
              * its controls would belong to a writer that no longer owns it. */
-            if (!this._stillOwned(profileBackend, profileGeneration)) {
+            if (!this._profileSelection.stillOwned(profileBackend, profileGeneration)) {
                 onDone(null);
                 return;
             }
             let data = null;
             try {
                 data = this._assemble(
-                    readings, this._collectProfile(profileBackend, profileGeneration));
+                    readings,
+                    this._profileSelection.snapshot(profileBackend, profileGeneration));
                 this._failures.recover("collection");
             } catch (error) {
                 this._failures.report("collection", "collection failed: " + error);
@@ -1138,81 +1003,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._rediscoverChargeControl();
         if (this._platformProfiles && typeof this._platformProfiles.refresh === "function")
             this._platformProfiles.refresh();
-        this._chooseProfileBackend();
-    }
-
-    /*
-     * Which of the two backends answers, decided here rather than at every
-     * place that cares.
-     *
-     * power-profiles-daemon where it is running, the firmware's own profile
-     * where it is not. When there is neither, the daemon client is still the
-     * one asked: it answers unavailable, null and an empty list, which is
-     * exactly how a machine with no profiles should read.
-     *
-     * This was wired to one of the two backends' news only - the constructor,
-     * and the daemon appearing or vanishing. On a machine with no daemon that
-     * callback never fires again, which is exactly the machine the firmware
-     * fallback exists for: a vendor module loaded after login, or an applet
-     * that came up before the driver settled, left platform_profile there and
-     * unread until the applet was reloaded. It is asked with the rest of the
-     * discovery now, and costs one exists and two reads while there is no
-     * daemon and nothing at all while there is.
-     */
-    _chooseProfileBackend() {
-        let backend;
-        if (this._profiles.available)
-            backend = this._profiles;
-        else if (this._platformProfiles.available)
-            backend = this._platformProfiles;
-        else
-            backend = this._profiles;
-
-        let available = !!backend.available;
-        if (backend === this._profileBackend &&
-                available === this._profileBackendAvailable)
-            return false;
-
-        this._profileBackend = backend;
-        this._profileBackendAvailable = available;
-        this._profileBackendGeneration++;
-        /* A request belongs to the writer that accepted it. Its late answer
-         * is still allowed to settle, but it must not remain presented after
-         * ownership moved to a different profile state machine. */
-        this._pending.forget();
-        return true;
-    }
-
-    /* One look at whichever backend answers, rather than six. Each of them
-     * has its own reason for that mattering: the firmware one opens two files
-     * per property, the daemon one unpacks a variant per property. */
-    /*
-     * Whether the profile writer a piece of work started against is still the
-     * one this applet is talking to.
-     *
-     * The backend object alone is not enough: the same daemon can be adopted
-     * again after its bus name changed owner, and a snapshot or a reply from
-     * before that describes neither the current controls nor the current
-     * writer. lib/profile-view.js makes the comparison; both callers here ask
-     * it the same way.
-     */
-    _stillOwned(backend, generation) {
-        return ProfileView.sameOwner({ source: backend, generation: generation },
-                                     this._profileBackend, this._profileBackendGeneration);
-    }
-
-    _collectProfile(backend, generation) {
-        let state = backend.snapshot();
-        return {
-            available: state.available,
-            backend: state.busName,
-            active: state.active,
-            list: state.profiles,
-            degraded: state.degraded,
-            holds: state.holds,
-            source: backend,
-            generation: generation,
-        };
+        this._profileSelection.choose();
     }
 
     /* ------------------------------------------------------------------ */
@@ -1273,7 +1064,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * values are already current. Retry only a control which has no valid
          * value; this lets a transient daemon failure heal without issuing two
          * unnecessary D-Bus reads on every menu open. External monitors have
-         * their own DDC topology probe in _watchMonitors. */
+         * their own DDC topology probe in the monitor watch. */
         for (let name of ["screen", "keyboard"]) {
             let control = this._backlights[name];
             if (control && !control.available)
@@ -1513,9 +1304,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
             done => backend.setProfile(name, done), (outcome, matching) => {
                 /* Ownership moved while the old transport was in flight.
                  * Its result describes neither the current controls nor the
-                 * current writer, and _chooseProfileBackend already cleared
+                 * current writer, and the selection has already cleared
                  * its optimistic presentation. */
-                if (!this._stillOwned(backend, generation)) {
+                if (!this._profileSelection.stillOwned(backend, generation)) {
                     this._scheduleUpdate();
                     return;
                 }
@@ -1717,8 +1508,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * privileged changes are allowed at all. */
     _profileContext() {
         return {
-            backend: this._profileBackend,
-            generation: this._profileBackendGeneration,
+            backend: this._profileSelection.backend,
+            generation: this._profileSelection.generation,
             platformProfiles: this._platformProfiles,
             busy: !!this._helper?.busy,
             privileged: this.enablePrivilegedControls,
@@ -1989,7 +1780,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         };
 
         release("poll timer", () => this._stopPolling());
-        release("monitor timer", () => this._stopProbingMonitors());
+        release("monitor watch", () => this._monitors?.destroy());
         release("scroll timer", () => this._cancelPendingScroll());
         if (this._idleId) {
             let id = this._idleId;
@@ -2016,7 +1807,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         destroy("_upower", "UPower monitor");
         destroy("_platformProfiles", "platform profile backend");
         destroy("_profiles", "profile backend");
-        this._profileBackend = null;
+        this._profileSelection?.release();
         destroy("_bluetooth", "Bluetooth backend");
         let backlights = this._backlights;
         this._backlights = {};
