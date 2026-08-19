@@ -542,85 +542,114 @@ const BacklightControl = class BacklightControl {
         this._drainMutations();
     }
 
+    /*
+     * One run of one mutation: the operation, and the three things that say
+     * whether the world it was started against is still the world its reply
+     * comes back to. Every step of the run is checked against this one object
+     * rather than against four variables captured in a closure.
+     */
+    _beginMutation(operation) {
+        let run = {
+            operation: operation,
+            proxy: this._proxy,
+            generation: this._generation,
+            valueGeneration: ++this._valueGeneration,
+        };
+        run.current = () => !this.destroyed &&
+            run.generation === this._generation && run.proxy === this._proxy &&
+            run.valueGeneration === this._valueGeneration;
+        return run;
+    }
+
     _drainMutations() {
         if (this._mutation || this.destroyed || !this._proxy ||
             this._mutationQueue.length === 0)
             return;
 
         let operation = this._mutationQueue.shift();
-        let proxy = this._proxy;
-        let generation = this._generation;
-        let valueGeneration = ++this._valueGeneration;
+        let run = this._beginMutation(operation);
         this._mutation = operation;
 
-        let finish = (result, error) => {
-            /* Owner loss and destroy settle and detach the operation first. A
-             * late D-Bus reply is then only a second answer to the once guard. */
-            if (this._mutation !== operation) {
-                operation.settle({ ok: false, cancelled: true });
-                return;
-            }
-            let current = !this.destroyed && generation === this._generation &&
-                          proxy === this._proxy &&
-                          valueGeneration === this._valueGeneration;
-            if (current && !error && result) {
-                this._mutation = null;
-                this.percentage = result[0];
-                operation.settle({ ok: true, percentage: this.percentage });
-                this._drainMutations();
-                return;
-            }
-            if (!current) {
-                this._mutation = null;
-                operation.settle({ ok: false, cancelled: true });
-                this._drainMutations();
-                return;
-            }
-
-            let failure = error || new Error("the daemon returned no brightness value");
-            let outcome = { ok: false, error: failure };
-            operation.failureOutcome = outcome;
-            Log.error(this.kind + " backlight " + operation.type +
-                      " failed: " + (failure.message || String(failure)));
-            this.percentage = null;
-            /* The rejected mutation says nothing about the real value. Keep
-             * this operation as the queue owner until one fresh read either
-             * restores the cache or drops the broken proxy. */
-            this._readPercentage(() => {
-                if (this._mutation === operation)
-                    this._mutation = null;
-                operation.settle(outcome);
-                if (!this.destroyed)
-                    this._onChanged();
-                this._drainMutations();
-            });
-        };
-
+        let finish = (result, error) => this._finishMutation(run, result, error);
         try {
-            if (operation.type === "set") {
-                proxy.SetPercentageRemote(operation.value, finish);
-            } else if (operation.type === "toggle") {
-                proxy.ToggleRemote(finish);
-            } else {
-                this._runSteps(operation, proxy, generation, valueGeneration, finish);
-            }
+            if (operation.type === "set")
+                run.proxy.SetPercentageRemote(operation.value, finish);
+            else if (operation.type === "toggle")
+                run.proxy.ToggleRemote(finish);
+            else
+                this._runSteps(run, finish);
         } catch (e) {
             finish(null, e);
         }
     }
 
-    _runSteps(operation, proxy, generation, valueGeneration, finish) {
-        let remaining = operation.count;
+    /* The three ways a run ends: it was detached, it is stale, or it answered.
+     * A rejection is the fourth and has a settle path of its own. */
+    _finishMutation(run, result, error) {
+        let operation = run.operation;
+        /* Owner loss and destroy settle and detach the operation first. A
+         * late D-Bus reply is then only a second answer to the once guard. */
+        if (this._mutation !== operation) {
+            operation.settle({ ok: false, cancelled: true });
+            return;
+        }
+        if (!run.current()) {
+            this._releaseMutation(operation, { ok: false, cancelled: true });
+            return;
+        }
+        if (!error && result) {
+            this.percentage = result[0];
+            this._releaseMutation(operation,
+                                  { ok: true, percentage: this.percentage });
+            return;
+        }
+        this._rejectMutation(operation, error);
+    }
+
+    /* Hand the queue on: exactly one place clears the owner and continues. */
+    _releaseMutation(operation, outcome) {
+        this._mutation = null;
+        operation.settle(outcome);
+        this._drainMutations();
+    }
+
+    /*
+     * A rejected mutation says nothing about the real value, so this path
+     * keeps the operation as queue owner across one fresh read - the whole
+     * ownership handover lives here rather than half in the caller.
+     */
+    _rejectMutation(operation, error) {
+        let failure = error || new Error("the daemon returned no brightness value");
+        let outcome = { ok: false, error: failure };
+        operation.failureOutcome = outcome;
+        Log.error(this.kind + " backlight " + operation.type +
+                  " failed: " + (failure.message || String(failure)));
+        this.percentage = null;
+        this._readPercentage(() => {
+            if (this._mutation === operation)
+                this._mutation = null;
+            operation.settle(outcome);
+            if (!this.destroyed)
+                this._onChanged();
+            this._drainMutations();
+        });
+    }
+
+    /*
+     * A gathered flick, one notch per round trip. The run says what the notch
+     * is still allowed to change; `latest` is the last reply worth reporting.
+     */
+    _runSteps(run, finish) {
+        let remaining = run.operation.count;
         let latest = null;
-        let call = operation.up ? proxy.StepUpRemote : proxy.StepDownRemote;
+        let proxy = run.proxy;
+        let call = run.operation.up ? proxy.StepUpRemote : proxy.StepDownRemote;
         let next = (result, error) => {
-            if (result !== undefined && !this.destroyed &&
-                generation === this._generation && proxy === this._proxy &&
-                valueGeneration === this._valueGeneration && !error && result) {
+            if (result !== undefined && run.current() && !error && result) {
                 this.percentage = result[0];
                 latest = result;
             }
-            if (error || this.destroyed || generation !== this._generation ||
+            if (error || this.destroyed || run.generation !== this._generation ||
                 proxy !== this._proxy || remaining === 0) {
                 finish(latest, error);
                 return;

@@ -886,16 +886,14 @@ cases["stale step replies cannot change the visible percentage"] = function () {
     function attempt(configure, answer, error) {
         let live = proxy({ GetPercentage: 40, StepUp: 90 });
         let screen = control(Backlight.SCREEN, live);
-        let generation = screen._generation;
-        let valueGeneration = screen._valueGeneration;
         let calls = 0;
         let reply = null;
         live.StepUpRemote = onDone => { calls++; reply = onDone; };
 
         let finished = 0;
         let count = (configure === "value" || configure === "empty") ? 1 : 3;
-        screen._runSteps({ count: count, up: true }, live, generation,
-                         valueGeneration, () => finished++);
+        let run = screen._beginMutation({ count: count, up: true });
+        screen._runSteps(run, () => finished++);
         if (configure === "destroyed")
             screen.destroyed = true;
         else if (configure === "generation")
