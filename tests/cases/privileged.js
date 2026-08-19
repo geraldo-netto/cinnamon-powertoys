@@ -24,9 +24,19 @@ function helperWith(present, answer) {
         function (argv, onDone) {
             spawned.push(argv.join(" "));
             onDone(answer[0], answer[1]);
-        });
+        },
+        yes);
     helper.spawned = spawned;
     return helper;
+}
+
+/*
+ * A stubbed protocol handshake. A helper is only run once it has said it
+ * understands this applet, and a spawn stub cannot execute a candidate to say
+ * so - so a case that is about anything else says yes here on its behalf.
+ */
+function yes(path, onDone) {
+    onDone(true, "");
 }
 
 var cases = {};
@@ -81,7 +91,7 @@ cases["a trusted fallback preserves the primary warning"] = function () {
             code: "unsafe-system-helper",
             diagnostic: "the primary helper is unsafe",
         },
-        (argv, onDone) => onDone(0, ""));
+        (argv, onDone) => onDone(0, ""), yes);
     let outcome = null;
     let lines = [];
     Log.setSink(line => lines.push(line));
@@ -294,8 +304,9 @@ cases["a failure with nothing to say still reports a failure"] = function () {
 /* A helper whose spawn is held open until the case says to answer. */
 function deferredHelper() {
     let waiting = [];
-    let helper = new Privileged.PrivilegedHelper([SYSTEM], () => true,
-                                                 (argv, onDone) => waiting.push({ argv: argv, onDone: onDone }));
+    let helper = new Privileged.PrivilegedHelper(
+        [SYSTEM], () => true,
+        (argv, onDone) => waiting.push({ argv: argv, onDone: onDone }), yes);
     helper.waiting = waiting;
     helper.answer = function (status) {
         let next = waiting.shift();
@@ -475,9 +486,9 @@ cases["a helper that was killed never exited, and is not asked what it exited wi
             done({ status: status, stderr: stderr })), "a process that was killed");
     Harness.equal(outcome.status, -1, "a failure of its own, not an exit status");
 
-    let helper = new Privileged.PrivilegedHelper(["/helper"], () => true,
-                                                 (argv, onDone) => Privileged._spawn(
-                                                     ["sh", "-c", "kill -TERM $$"], onDone));
+    let helper = new Privileged.PrivilegedHelper(
+        ["/helper"], () => true,
+        (argv, onDone) => Privileged._spawn(["sh", "-c", "kill -TERM $$"], onDone), yes);
     let reported = Harness.settle(done => helper.run(["boost", "1"], done), "the outcome");
     Harness.equal(reported.applied, false, "nothing was applied");
     Harness.ok(!reported.cancelled, "and the user did not dismiss anything, so they are told");
@@ -505,7 +516,7 @@ cases["a real helper run reaches the outcome the menu reads"] = function () {
      */
     let helper = new Privileged.PrivilegedHelper(
         ["/bin/echo"], path => path === "/bin/echo",
-        (argv, onDone) => Privileged._spawn(argv.slice(1), onDone));
+        (argv, onDone) => Privileged._spawn(argv.slice(1), onDone), yes);
 
     let outcome = Harness.settle(done => helper.run(["governor", "performance"], done),
                                  "a change that is applied");
@@ -517,7 +528,7 @@ cases["what the helper prints is separated into code and diagnostic"] = function
         ["/bin/sh"], () => true,
         (argv, onDone) => Privileged._spawn(
             ["sh", "-c", "echo first line >&2; echo 'powertoys-helper-error unavailable no cpufreq policy found' >&2; exit 3"],
-            onDone));
+            onDone), yes);
 
     let outcome = Harness.settle(done => helper.run(["governor", "x"], done), "a refusal");
     Harness.equal(outcome.applied, false, "not applied");
@@ -546,7 +557,7 @@ cases["the structured failure works when it is the only line"] = function () {
     let helper = new Privileged.PrivilegedHelper(
         [SYSTEM], () => true,
         (argv, onDone) => onDone(1,
-            "powertoys-helper-error invalid-value unknown governor: nonsense\n"));
+            "powertoys-helper-error invalid-value unknown governor: nonsense\n"), yes);
     let outcome = null;
     helper.run(["governor", "nonsense"], result => { outcome = result; });
     Harness.equal(outcome.code, "invalid-value", "the code");
@@ -645,7 +656,7 @@ cases["a refusal is written to the log with its status and its reason"] = functi
         let helper = new Privileged.PrivilegedHelper(
             [SYSTEM], () => true,
             (argv, onDone) => onDone(3,
-                "powertoys-helper-error unavailable no cpufreq policy found\n"));
+                "powertoys-helper-error unavailable no cpufreq policy found\n"), yes);
         helper.run(["governor", "x"], () => {});
         Harness.equal(lines.length, 1, "one line");
         Harness.equal(lines[0],
@@ -654,7 +665,7 @@ cases["a refusal is written to the log with its status and its reason"] = functi
 
         lines.length = 0;
         let quiet = new Privileged.PrivilegedHelper(
-            [SYSTEM], () => true, (argv, onDone) => onDone(9, ""));
+            [SYSTEM], () => true, (argv, onDone) => onDone(9, ""), yes);
         quiet.run(["boost", "1"], () => {});
         Harness.equal(lines[0],
                       "[powertoys] helper failed with status 9 [helper-failed]: no reason given",

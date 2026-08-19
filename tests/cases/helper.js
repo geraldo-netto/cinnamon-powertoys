@@ -95,7 +95,10 @@ function run(tree, args, refusals) {
 
     let helper = new Privileged.PrivilegedHelper(
         [tree.script], () => true,
-        (argv, done) => Privileged._spawn(argv.slice(1), done));
+        (argv, done) => Privileged._spawn(argv.slice(1), done),
+        /* This is about what the helper writes, not about the handshake it
+         * answers separately; the spawn stub drops pkexec's own argument. */
+        (path, onDone) => onDone(true, ""));
     return Harness.settle(done => helper.run(args.map(value => String(value)), done),
                           "the helper transaction");
 }

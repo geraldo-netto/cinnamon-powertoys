@@ -245,12 +245,13 @@ const PrivilegedHelper = class PrivilegedHelper {
         this._candidates = candidates || [];
         this._inspect = inspect || inspectTrustedHelper;
         this._spawn = spawn || _spawn;
-        /* An injected spawn normally stands for pkexec in tests or another
-         * integration and cannot execute a candidate directly. Such callers
-         * may inject a probe too; runtime uses the real protocol handshake. */
-        this._probe = probe || (spawn
-            ? ((path, onDone) => onDone(true, ""))
-            : _probeHelper);
+        /* The protocol handshake is how a helper says it understands this
+         * applet, and it is not something a collaborator can switch off by
+         * accident: injecting a spawn - a legitimate integration seam and not
+         * only a test hook - used to turn the handshake into an unconditional
+         * yes. A caller that cannot execute its candidates injects the probe
+         * it actually wants. */
+        this._probe = probe || _probeHelper;
         this._activeProbe = null;
 
         /*
