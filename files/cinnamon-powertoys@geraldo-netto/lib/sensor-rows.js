@@ -25,6 +25,74 @@ const _ = Translate._;
 const WARN_WITHIN = 5;
 
 /*
+ * What the batteries contribute to the sensor lists.
+ *
+ * A battery is a sensor as much as a hwmon chip is: it reports its own
+ * temperature, and the rate it is charging or draining at is a power meter.
+ * So its readings carry everything a hwmon reading carries, including the
+ * grouping - one group per device, headed by the device's own name, with the
+ * rows under it saying only what they measure. That is the same shape
+ * lib/sensors.js produces, and it has to be: the menu concatenates the two
+ * lists and groups the result without knowing which came from where.
+ *
+ * A plain function of a device list, so the shape can be checked without a
+ * system bus. It lived in lib/upower.js, whose job is the bus and not the
+ * menu; the row vocabulary it speaks - label, group, groupLabel, shortLabel,
+ * kind - is the one every other function in this file speaks.
+ */
+function batteryReadings(devices) {
+    let temperatures = [];
+    let powers = [];
+
+    for (let device of devices) {
+        let title = Format.deviceTitle(device);
+        let group = "upower:" + device.path;
+
+        /*
+         * Zero degrees is dropped, and it is a reading.
+         *
+         * It has to be, because UPower cannot say the other thing. Temperature
+         * is a plain `d` on the interface with no "is present" beside it, and
+         * a device with no thermometer in it publishes 0.0 rather than
+         * declining to answer - a bluetooth headset does exactly that. Letting
+         * 0 through put "Temperature 0.0 °C" under a heading with the
+         * headset's name on it, on a machine where nothing was measuring
+         * anything. A battery that really is at freezing loses its row; a
+         * dozen devices that measure nothing would otherwise gain one.
+         */
+        if (device.temperature)
+            temperatures.push({
+                id: "upower:" + device.path,
+                measure: "temperature",
+                chip: title,
+                kind: "battery",
+                label: title,
+                group: group,
+                groupLabel: title,
+                shortLabel: Format.measureName("temperature"),
+                critical: null,
+                celsius: device.temperature,
+            });
+
+        /* Zero watts is not: a battery at rest reports it, and a row saying
+         * the machine is drawing nothing at all is worse than no row. */
+        if (device.powerSupply && device.energyRate)
+            powers.push({
+                id: "upower:" + device.path,
+                measure: "power",
+                kind: "battery",
+                label: title,
+                group: group,
+                groupLabel: title,
+                shortLabel: Format.measureName("power"),
+                watts: device.energyRate,
+            });
+    }
+
+    return { temperatures: temperatures, powers: powers };
+}
+
+/*
  * A menu key unique across the three lists. Ids are unique within one of
  * them but not between them: a battery that reports both a temperature
  * and a draw carries the same UPower path in each, and what tells the two

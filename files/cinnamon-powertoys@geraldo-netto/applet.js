@@ -33,6 +33,7 @@ const Bluez = require("./lib/bluez.js");
 const Cpu = require("./lib/cpu.js");
 const Ddc = require("./lib/ddc.js");
 const Device = require("./lib/device.js");
+const SensorRows = require("./lib/sensor-rows.js");
 const Log = require("./lib/log.js");
 const Notifications = require("./lib/notifications.js");
 const PanelText = require("./lib/panel-text.js");
@@ -998,8 +999,11 @@ class PowerToysApplet extends Applet.TextIconApplet {
         let devices = upower.devices.concat(this._bluetooth.missingFrom(upower.devices));
         devices = Device.withPrimary(devices, upower.primary);
 
-        let temperatures = readings.temperatures.concat(upower.temperatures);
-        let powers = readings.powers.concat(upower.powers);
+        /* The batteries are sensors too, and what they contribute to the two
+         * lists is a function of the devices UPower reported. */
+        let battery = SensorRows.batteryReadings(upower.devices);
+        let temperatures = readings.temperatures.concat(battery.temperatures);
+        let powers = readings.powers.concat(battery.powers);
         let power = Reading.pickPower(upower.primary, readings.packageWatts, powers);
         let picked = Reading.pickTemperature(temperatures, this.cpuSensorHint,
                                              Sensors.sensorMatches);

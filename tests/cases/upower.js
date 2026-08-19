@@ -4,12 +4,15 @@
  *
  * Everything else about lib/upower.js needs a system bus and is covered by
  * live.js, which skips itself where there is not one. These two parts do not:
- * each is a function of a device list. sensorReadings is the one path into the
+ * each is a function of a device list. SensorRows.batteryReadings is the one
+ * path into the
  * menu's sensor list that does not come from lib/sensors.js - the menu
  * concatenates the two and groups the result without knowing which came from
  * where, so the two have to produce the same shape, which is exactly the sort
- * of agreement that rots silently. reportedDevices is what decides whether a
- * device gets a row.
+ * of agreement that rots silently. Device.reportedDevices is what decides
+ * whether a device gets a row. Both moved out of lib/upower.js, which talks to
+ * the bus; the cases stayed here, because what they are about is what UPower's
+ * devices become.
  */
 
 const Fuzz = imports.fuzz;
@@ -20,6 +23,8 @@ const Format = Harness.requireXlet("./lib/format.js");
 const Log = Harness.requireXlet("./lib/log.js");
 const Sensors = Harness.requireXlet("./lib/sensors.js");
 const UPower = Harness.requireXlet("./lib/upower.js");
+const Device = Harness.requireXlet("./lib/device.js");
+const SensorRows = Harness.requireXlet("./lib/sensor-rows.js");
 
 const Kind = UPowerGlib.DeviceKind;
 const State = UPowerGlib.DeviceState;
@@ -43,7 +48,7 @@ function device(overrides) {
 var cases = {};
 
 cases["a battery reports a temperature and a draw"] = function () {
-    let readings = UPower.sensorReadings([device()]);
+    let readings = SensorRows.batteryReadings([device()]);
     Harness.equal(readings.temperatures.length, 1, "one temperature");
     Harness.equal(readings.powers.length, 1, "one power meter");
     Harness.equal(readings.temperatures[0].celsius, 31.5, "the temperature it reported");
@@ -51,7 +56,7 @@ cases["a battery reports a temperature and a draw"] = function () {
 };
 
 cases["a battery's readings are grouped under the battery"] = function () {
-    let readings = UPower.sensorReadings([device()]);
+    let readings = SensorRows.batteryReadings([device()]);
     let temperature = readings.temperatures[0];
     let power = readings.powers[0];
 
@@ -64,7 +69,7 @@ cases["a battery's readings are grouped under the battery"] = function () {
 };
 
 cases["two batteries are two groups"] = function () {
-    let readings = UPower.sensorReadings([
+    let readings = SensorRows.batteryReadings([
         device(),
         device({ path: "/org/freedesktop/UPower/devices/battery_BAT1", model: "BAT1" }),
     ]);
@@ -74,7 +79,7 @@ cases["two batteries are two groups"] = function () {
 };
 
 cases["a peripheral contributes its temperature but not a draw"] = function () {
-    let readings = UPower.sensorReadings([
+    let readings = SensorRows.batteryReadings([
         device({ powerSupply: false, model: "BW01", vendor: "" }),
     ]);
     Harness.equal(readings.temperatures.length, 1, "a headset that reports a temperature");
@@ -83,7 +88,7 @@ cases["a peripheral contributes its temperature but not a draw"] = function () {
 };
 
 cases["a device that reports neither contributes nothing"] = function () {
-    let readings = UPower.sensorReadings([device({ temperature: null, energyRate: null })]);
+    let readings = SensorRows.batteryReadings([device({ temperature: null, energyRate: null })]);
     Harness.deepEqual(readings, { temperatures: [], powers: [] }, "nothing to say");
 };
 
@@ -95,10 +100,10 @@ cases["nothing at zero is taken as a reading"] = function () {
      * put a sensor group under a headset's name with one row in it saying the
      * headset was at 0 °C. The rare true reading is the one that has to go.
      */
-    let cold = UPower.sensorReadings([device({ temperature: 0 })]);
+    let cold = SensorRows.batteryReadings([device({ temperature: 0 })]);
     Harness.equal(cold.temperatures.length, 0, "not a temperature UPower can vouch for");
 
-    let idle = UPower.sensorReadings([device({ energyRate: 0 })]);
+    let idle = SensorRows.batteryReadings([device({ energyRate: 0 })]);
     Harness.equal(idle.powers.length, 0,
                   "a battery at rest reports 0 W, and a row saying so is worse than no row");
 };
@@ -108,7 +113,7 @@ cases["these readings carry what the sensor list reads off them"] = function () 
      * that adding one to the sensors and not to these fails rather than
      * quietly showing an undefined heading. */
     const WANTED = ["id", "measure", "kind", "label", "group", "groupLabel", "shortLabel"];
-    let readings = UPower.sensorReadings([device()]);
+    let readings = SensorRows.batteryReadings([device()]);
     for (let reading of readings.temperatures.concat(readings.powers)) {
         for (let field of WANTED)
             Harness.ok(reading[field] !== undefined && reading[field] !== null,
@@ -130,7 +135,7 @@ cases["and carry no field nothing reads"] = function () {
         power: ["id", "measure", "kind", "label", "group", "groupLabel", "shortLabel", "watts"],
     };
     let extra = [];
-    let readings = UPower.sensorReadings([device()]);
+    let readings = SensorRows.batteryReadings([device()]);
     for (let reading of readings.temperatures.concat(readings.powers)) {
         for (let field in reading) {
             if (ALLOWED[reading.measure].indexOf(field) < 0)
@@ -148,10 +153,10 @@ cases["a battery that is not fitted is not a battery at 0%"] = function () {
      * A laptop with its battery out got a row saying 0%, and with no display
      * device composed it became the machine's own battery in the panel.
      */
-    let out = UPower.reportedDevices([device({ present: false, percentage: 0, state: State.UNKNOWN })]);
+    let out = Device.reportedDevices([device({ present: false, percentage: 0, state: State.UNKNOWN })]);
     Harness.deepEqual(out, [], "IsPresent is the field that says so");
 
-    let fitted = UPower.reportedDevices([device({ percentage: 0, state: State.EMPTY })]);
+    let fitted = Device.reportedDevices([device({ percentage: 0, state: State.EMPTY })]);
     Harness.equal(fitted.length, 1,
                   "a battery that really is flat still has a row, which is the whole difference");
 };
@@ -159,18 +164,18 @@ cases["a battery that is not fitted is not a battery at 0%"] = function () {
 cases["a device that says nothing at all is dropped"] = function () {
     /* What the second guard was for: a proxy that carries no properties
      * answers false to IsPresent as well, so one test covers both. */
-    Harness.deepEqual(UPower.reportedDevices([{ path: "/x", kind: Kind.MOUSE }]), [],
+    Harness.deepEqual(Device.reportedDevices([{ path: "/x", kind: Kind.MOUSE }]), [],
                       "nothing to say about it and no row for it");
 };
 
 cases["the charger is reported elsewhere, not here"] = function () {
-    let out = UPower.reportedDevices([device({ path: "/ac", kind: Kind.LINE_POWER }), device()]);
+    let out = Device.reportedDevices([device({ path: "/ac", kind: Kind.LINE_POWER }), device()]);
     Harness.equal(out.length, 1, "whether the cable is in is a different question");
     Harness.equal(out[0].kind, 2, "and the battery is what is left");
 };
 
 cases["the machine's own batteries come before what is plugged into it"] = function () {
-    let out = UPower.reportedDevices([
+    let out = Device.reportedDevices([
         device({ path: "/mouse", kind: Kind.MOUSE, powerSupply: false }),
         device({ path: "/headset", kind: Kind.HEADSET, powerSupply: false }),
         device({ path: "/bat" }),
@@ -180,7 +185,7 @@ cases["the machine's own batteries come before what is plugged into it"] = funct
 };
 
 cases["their kind is one the menu knows and keeps"] = function () {
-    let readings = UPower.sensorReadings([device()]);
+    let readings = SensorRows.batteryReadings([device()]);
     Harness.equal(readings.temperatures[0].kind, "battery", "battery");
     Harness.equal(Sensors.isPrimaryKind("battery"), true,
                   "which survives the menu's default filter, or a laptop would never see it");
@@ -1446,11 +1451,13 @@ cases["whatever UPower publishes describes into something the menu can draw"] = 
         }
 
         /* Every temperature and every draw the sensor list is given has to be
-         * a number, or a row in it says NaN °C. */
-        for (let entry of reading.temperatures)
+         * a number, or a row in it says NaN °C. The applet builds those rows
+         * from the devices this reading carries. */
+        let battery = Fuzz.answers(() => SensorRows.batteryReadings(reading.devices));
+        for (let entry of battery.temperatures)
             Harness.ok(Number.isFinite(entry.celsius),
                        "a temperature that is a number: " + Fuzz.show(entry.celsius));
-        for (let entry of reading.powers)
+        for (let entry of battery.powers)
             Harness.ok(Number.isFinite(entry.watts),
                        "a draw that is a number: " + Fuzz.show(entry.watts));
 
@@ -1482,7 +1489,7 @@ cases["the order the rows come out in is an order"] = function () {
         }
         return devices;
     }, function (devices) {
-        let out = Fuzz.answers(() => UPower.reportedDevices(devices));
+        let out = Fuzz.answers(() => Device.reportedDevices(devices));
 
         for (let i = 1; i < out.length; i++) {
             let before = out[i - 1];

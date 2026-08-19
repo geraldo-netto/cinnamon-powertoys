@@ -24,6 +24,46 @@ function isSystemPowerDevice(device) {
 }
 
 /*
+ * The devices worth a row, in the order they are shown.
+ *
+ * A plain function of described devices, so what gets dropped can be checked
+ * without a system bus - which is how the two guards this replaces went so long
+ * without anyone noticing that neither could fire. Both asked whether the
+ * percentage was null, and on a live bus it never is: Percentage is a plain `d`
+ * with no "is present" beside it, so a battery that is not fitted publishes 0.0
+ * exactly as a flat one does. This file already knew that trap - it is the
+ * whole of the comment over the temperature in SensorRows.batteryReadings -
+ * and the guards
+ * walked into it from the other side.
+ *
+ * IsPresent is the field they meant to ask, so a device that says it is not
+ * there is dropped whatever else it says. A laptop with its battery out listed
+ * one at 0%, and where UPower composes no display device _primaryDevice took
+ * that absent battery as the machine's own, so the panel read 0% too. It covers
+ * what the second guard was for as well: a proxy carrying no properties at all
+ * answers false here.
+ *
+ * Line power adapters are not dropped so much as reported elsewhere, through
+ * UPowerMonitor.lineDevices(), because whether the cable is in is a different
+ * question from what is carrying a charge.
+ *
+ * It lived in lib/upower.js, which talks to the bus; which devices are worth a
+ * row and in what order is the same kind of statement as withPrimary below,
+ * and belongs beside it.
+ */
+function reportedDevices(devices) {
+    return devices
+        .filter(device => device.kind !== UPDeviceKind.LINE_POWER && device.present)
+        .sort((a, b) => {
+            if (a.powerSupply !== b.powerSupply)
+                return a.powerSupply ? -1 : 1;
+            if (a.kind !== b.kind)
+                return a.kind - b.kind;
+            return a.path < b.path ? -1 : 1;
+        });
+}
+
+/*
  * Rows shared by the Devices group and alert policy. UPower's DisplayDevice
  * normally duplicates one or more physical batteries, so it stays out while
  * any physical system supply is known. During an incomplete enumeration it

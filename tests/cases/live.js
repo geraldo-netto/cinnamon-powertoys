@@ -23,6 +23,7 @@ const GLib = imports.gi.GLib;
 const Harness = imports.harness;
 
 const UPower = Harness.requireXlet("./lib/upower.js");
+const SensorRows = Harness.requireXlet("./lib/sensor-rows.js");
 const Profiles = Harness.requireXlet("./lib/profiles.js");
 
 /* Whether there is a system bus at all. This is the whole of the "can these
@@ -62,9 +63,13 @@ cases["UPower answers the questions the applet asks it"] = function () {
         Harness.equal(reading.available, true, "available");
         Harness.ok(Array.isArray(reading.devices), "devices is a list");
         Harness.ok(Array.isArray(reading.lines), "lines is a list");
-        Harness.ok(Array.isArray(reading.temperatures), "temperatures is a list");
-        Harness.ok(Array.isArray(reading.powers), "powers is a list");
         Harness.equal(typeof reading.onBattery, "boolean", "onBattery");
+
+        /* What those devices contribute to the sensor list is the applet's
+         * own step, and a function of the devices above. */
+        let battery = SensorRows.batteryReadings(reading.devices);
+        Harness.ok(Array.isArray(battery.temperatures), "temperatures is a list");
+        Harness.ok(Array.isArray(battery.powers), "powers is a list");
 
         /*
          * Every device it describes has to carry what the menu and the alert

@@ -9,7 +9,7 @@
 const Gio = imports.gi.Gio;
 const UPowerGlib = imports.gi.UPowerGlib;
 
-const Format = require("./lib/format.js");
+const Device = require("./lib/device.js");
 const Log = require("./lib/log.js");
 const Once = require("./lib/once.js");
 const OwnerWatch = require("./lib/owner-watch.js");
@@ -70,107 +70,6 @@ const UPDeviceLevel = UPowerGlib.DeviceLevel;
 
 function _number(value) {
     return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-/*
- * What the batteries contribute to the sensor lists.
- *
- * A battery is a sensor as much as a hwmon chip is: it reports its own
- * temperature, and the rate it is charging or draining at is a power meter.
- * So its readings carry everything a hwmon reading carries, including the
- * grouping - one group per device, headed by the device's own name, with the
- * rows under it saying only what they measure. That is the same shape
- * lib/sensors.js produces, and it has to be: the menu concatenates the two
- * lists and groups the result without knowing which came from where.
- *
- * A plain function of a device list, so the shape can be checked without a
- * system bus.
- */
-function sensorReadings(devices) {
-    let temperatures = [];
-    let powers = [];
-
-    for (let device of devices) {
-        let title = Format.deviceTitle(device);
-        let group = "upower:" + device.path;
-
-        /*
-         * Zero degrees is dropped, and it is a reading.
-         *
-         * It has to be, because UPower cannot say the other thing. Temperature
-         * is a plain `d` on the interface with no "is present" beside it, and
-         * a device with no thermometer in it publishes 0.0 rather than
-         * declining to answer - a bluetooth headset does exactly that. Letting
-         * 0 through put "Temperature 0.0 °C" under a heading with the
-         * headset's name on it, on a machine where nothing was measuring
-         * anything. A battery that really is at freezing loses its row; a
-         * dozen devices that measure nothing would otherwise gain one.
-         */
-        if (device.temperature)
-            temperatures.push({
-                id: "upower:" + device.path,
-                measure: "temperature",
-                chip: title,
-                kind: "battery",
-                label: title,
-                group: group,
-                groupLabel: title,
-                shortLabel: Format.measureName("temperature"),
-                critical: null,
-                celsius: device.temperature,
-            });
-
-        /* Zero watts is not: a battery at rest reports it, and a row saying
-         * the machine is drawing nothing at all is worse than no row. */
-        if (device.powerSupply && device.energyRate)
-            powers.push({
-                id: "upower:" + device.path,
-                measure: "power",
-                kind: "battery",
-                label: title,
-                group: group,
-                groupLabel: title,
-                shortLabel: Format.measureName("power"),
-                watts: device.energyRate,
-            });
-    }
-
-    return { temperatures: temperatures, powers: powers };
-}
-
-/*
- * The devices worth a row, in the order they are shown.
- *
- * A plain function of described devices, so what gets dropped can be checked
- * without a system bus - which is how the two guards this replaces went so long
- * without anyone noticing that neither could fire. Both asked whether the
- * percentage was null, and on a live bus it never is: Percentage is a plain `d`
- * with no "is present" beside it, so a battery that is not fitted publishes 0.0
- * exactly as a flat one does. This file already knew that trap - it is the
- * whole of the comment over the temperature in sensorReadings - and the guards
- * walked into it from the other side.
- *
- * IsPresent is the field they meant to ask, so a device that says it is not
- * there is dropped whatever else it says. A laptop with its battery out listed
- * one at 0%, and where UPower composes no display device _primaryDevice took
- * that absent battery as the machine's own, so the panel read 0% too. It covers
- * what the second guard was for as well: a proxy carrying no properties at all
- * answers false here.
- *
- * Line power adapters are not dropped so much as reported elsewhere, through
- * lineDevices(), because whether the cable is in is a different question from
- * what is carrying a charge.
- */
-function reportedDevices(devices) {
-    return devices
-        .filter(device => device.kind !== UPDeviceKind.LINE_POWER && device.present)
-        .sort((a, b) => {
-            if (a.powerSupply !== b.powerSupply)
-                return a.powerSupply ? -1 : 1;
-            if (a.kind !== b.kind)
-                return a.kind - b.kind;
-            return a.path < b.path ? -1 : 1;
-        });
 }
 
 /*
@@ -759,12 +658,12 @@ const UPowerMonitor = class UPowerMonitor {
 
     /*
      * Every device that carries a charge, batteries first, then peripherals.
-     * Which those are, and what order they come in, is reportedDevices - a
+     * Which those are, and what order they come in, is Device.reportedDevices - a
      * function of the descriptions, and so something that can be held to
      * without a bus.
      */
     snapshot() {
-        return reportedDevices(this._describeAll());
+        return Device.reportedDevices(this._describeAll());
     }
 
     lineDevices() {
@@ -798,20 +697,18 @@ const UPowerMonitor = class UPowerMonitor {
     }
 
     /* Everything the applet takes from UPower, as of now, from one walk of
-     * what it holds - see _describeAll for why that is worth saying. */
+     * what it holds - see _describeAll for why that is worth saying. Devices,
+     * not rows: what the batteries look like in the sensor list is
+     * SensorRows.batteryReadings, and it is not this module's business. */
     read() {
         let described = this._describeAll();
-        let devices = reportedDevices(described);
-        let lines = this._lineDevices(described);
-        let readings = sensorReadings(devices);
+        let devices = Device.reportedDevices(described);
         return {
             available: this.available,
             devices: devices,
-            lines: lines,
+            lines: this._lineDevices(described),
             primary: this._primaryDevice(devices),
             onBattery: this.onBattery,
-            temperatures: readings.temperatures,
-            powers: readings.powers,
         };
     }
 
