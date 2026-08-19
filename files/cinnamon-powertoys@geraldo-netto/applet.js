@@ -55,6 +55,7 @@ const UPower = require("./lib/upower.js");
 const Profiles = require("./lib/profiles.js");
 const Reading = require("./lib/reading.js");
 const Format = require("./lib/format.js");
+const HelperMessages = require("./lib/helper-messages.js");
 const Controls = require("./ui/controls.js");
 const Menu = require("./ui/menu.js");
 
@@ -1255,7 +1256,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         };
 
         if (!this.enablePrivilegedControls) {
-            settle({ applied: false, error: _("Privileged controls are turned off") });
+            settle(HelperMessages.disabledOutcome());
             return;
         }
 
@@ -1280,78 +1281,22 @@ class PowerToysApplet extends Applet.TextIconApplet {
      */
     _runHelperQuietly(args, onDone) {
         this._callHelper(args, {
-            report: outcome => {
-                if (!outcome.applied && !outcome.cancelled)
-                    return { ...outcome, error: this._helperErrorMessage(outcome) };
-                return outcome;
-            },
+            report: outcome => HelperMessages.describedOutcome(outcome),
         }, onDone);
     }
 
-    /* Helper diagnostics describe kernel and filesystem details for the log;
-     * they are not UI strings. Codes are deliberately broader and stable, so
-     * these messages can be translated without coupling the catalogue to a
-     * shell, driver or path. */
-    _helperErrorMessage(outcome) {
-        switch (outcome?.code) {
-        case "invalid-invocation":
-        case "invalid-value":
-            return _("The requested value is not valid for this control.");
-        case "unsupported":
-            return _("This control is not supported on this system.");
-        case "unavailable":
-            return _("This control is currently unavailable.");
-        case "write-failed":
-            return _("The system refused the requested change.");
-        case "change-failed-restored":
-            return _("The change failed; the previous settings were restored.");
-        case "rollback-failed":
-            return _("The change failed and some previous settings could not be restored.");
-        case "helper-not-found":
-        case "unsafe-system-helper":
-            return _("Install or repair the privileged helper with sudo make install-policy.");
-        /* pkexec could not put the question at all - no authentication agent
-         * on this session, or an action it could not read - so unlike a
-         * refusal, nobody has been shown anything and there is nothing the
-         * user has already seen us fail to do. */
-        case "not-authorised":
-            return _("The system could not ask for authorisation. Check that an " +
-                     "authentication agent is running, and that the policy is " +
-                     "installed with sudo make install-policy.");
-        /* The helper never answered, so nothing is known to be wrong with it
-         * and there is nothing for the user to repair. Asking again is the
-         * whole remedy. */
-        case "helper-unavailable":
-            return _("The privileged helper did not answer in time. Try that again.");
-        case "stale-system-helper":
-            return _("The installed privileged helper is outdated. Re-run the policy installation.");
-        case "helper-incompatible":
-            return _("The privileged helper is incompatible with this applet version.");
-        default:
-            return _("The change could not be applied.");
-        }
-    }
-
+    /* An outdated helper is worth saying beside a change that worked, because
+     * a warning that only fired on failure would never be seen on the machine
+     * it is about. What to say is lib/helper-messages.js; the tray is here. */
     _reportHelperWarning(outcome) {
-        if (outcome?.warningCode !== "stale-system-helper")
-            return;
-        this._notifications.error(
-            _("Power Toys"),
-            _("The installed privileged helper is outdated. Re-run the policy installation."));
+        let message = HelperMessages.warningMessage(outcome);
+        if (message)
+            this._notifications.error(_("Power Toys"), message);
     }
 
-    /* Gio prefixes a remote error with the D-Bus error name, which means
-     * nothing to the person reading the notification. */
     _notifyProfileError(name, error) {
-        let detail = error?.message ? error.message : String(error);
-        detail = detail.replace(/^GDBus\.Error:[^\s:]+:\s*/, "").trim();
-        let values = { profile: Format.profileLabel(name), detail: detail };
-        let message = detail ?
-            Translate.interpolate(_("Could not switch to %{profile}: %{detail}"), values) :
-            Translate.interpolate(_("Could not switch to %{profile}"), values);
         this._notifications.error(
-            _("Power Toys"),
-            message);
+            _("Power Toys"), HelperMessages.profileErrorMessage(name, error));
     }
 
     /*
@@ -1460,8 +1405,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
                     /* Cancelled means the user closed the dialog or the
                      * password did not check out; they do not need telling
                      * what they just did. */
-                    this._notifications.error(_("Power Toys"),
-                                              this._helperErrorMessage(outcome));
+                    this._notifications.error(
+                        _("Power Toys"), HelperMessages.errorMessage(outcome));
                 }
                 return outcome;
             },

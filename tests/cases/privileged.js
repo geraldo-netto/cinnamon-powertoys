@@ -826,12 +826,12 @@ cases["a timeout does not warn about an outdated helper on a later success"] = f
     /* The warning path: a rejected first candidate is carried as an issue on
      * whatever helper does run, and only an outdated one is worth interrupting
      * somebody about. A machine that was merely busy is not. */
-    let source = Harness.shellSource();
-    Harness.ok(source.indexOf('outcome?.warningCode !== "stale-system-helper"') >= 0,
+    const Messages = Harness.requireXlet("./lib/helper-messages.js");
+    Harness.ok(Messages.warningMessage({ warningCode: "stale-system-helper" }),
                "the notification is still limited to the outdated helper");
-    Harness.ok(source.indexOf('case "helper-unavailable":') >= 0,
-               "and the transient code has a message of its own");
-    Harness.ok(source.indexOf(
-        '_("The privileged helper did not answer in time. Try that again.")') >= 0,
-        "which asks for a retry rather than a reinstallation");
+    Harness.equal(Messages.warningMessage({ warningCode: "helper-unavailable" }), null,
+                  "a machine that was merely busy is not interrupted");
+    Harness.equal(Messages.errorMessage({ code: "helper-unavailable" }),
+                  "The privileged helper did not answer in time. Try that again.",
+                  "and the transient code asks for a retry, not a reinstallation");
 };
