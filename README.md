@@ -319,9 +319,9 @@ in `/sys`, so those actions call the root-owned `powertoys-helper` through
 guidance. The applet verifies that the helper is a regular root-owned
 executable and that neither it nor any parent directory is writable by a group
 or another user. It never elevates the copy in the user-writable applet
-directory. The helper accepts five fixed commands and validates every value
-against the list the kernel advertises, so it cannot be used to write arbitrary
-data. Turn the whole group off with *Allow changing privileged power settings*
+directory. The helper accepts six fixed commands and validates every value
+against the list the kernel advertises where there is one, and against a fixed
+range otherwise, so it cannot be used to write arbitrary data. Turn the whole group off with *Allow changing privileged power settings*
 in the applet settings if you would rather not be asked; the firmware profile
 stays visible there as a read-only status.
 
@@ -416,8 +416,10 @@ because the applet is a panel control operated by the person sitting in front
 of it and there is no case in which it is driven from anywhere else. The action
 also forwards no display environment into the root process - the helper is a
 non-interactive script that draws nothing. It grants nothing else: the helper
-takes five fixed commands and checks every value against the list the kernel
-itself advertises. `make check` fails if any of that is widened.
+takes six fixed commands - the five changes and the protocol handshake - and
+checks every value against the list the kernel itself advertises where there is
+one, and against a fixed range where the kernel advertises nothing: `boost`
+against `0|1`, and the charge threshold against 20-100. `make check` fails if any of that is widened.
 
 **Why the second file.** Authentication makes the selected executable root, so
 that path must be one its caller cannot rewrite before or after authorisation.
