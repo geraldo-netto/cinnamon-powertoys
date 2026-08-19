@@ -230,19 +230,25 @@ function readStringsAsync(paths, onDone, concurrency, fileFactory, options) {
 }
 
 /*
- * A node that holds a list, as the list.
+ * What a sysfs node's contents mean as a list of words. Separate from the
+ * reading for the same reason toNumber is: a value fetched any other way - an
+ * asynchronous batch, a D-Bus property - has to be understood identically.
  *
- * There is no empty word to filter out afterwards: readString has already
- * trimmed, so the only string that could produce one is the empty string, and
- * the guard above answers that first. The filter that used to be here could
- * not remove anything, which is a thing worth knowing rather than a thing
- * worth keeping - it read as though the split were untrustworthy.
+ * There is no empty word to filter out afterwards: a node's contents are
+ * already trimmed, so the only string that could produce one is the empty
+ * string, and the guard above answers that first. The filter that used to be
+ * here could not remove anything, which is a thing worth knowing rather than a
+ * thing worth keeping - it read as though the split were untrustworthy.
  */
-function readWords(path) {
-    let raw = readString(path);
+function toWords(raw) {
     if (!raw)
         return [];
     return raw.split(/\s+/);
+}
+
+/* A node that holds a list, as the list. */
+function readWords(path) {
+    return toWords(readString(path));
 }
 
 /* The target of a symlink, undecoded: callers only ever want its basename. */

@@ -333,7 +333,7 @@ const PlatformProfileClient = class PlatformProfileClient {
             let rawChoices = values[PLATFORM_PROFILE_CHOICES];
             let profile = active === null || rawChoices === null ? null : {
                 active: active,
-                choices: rawChoices ? rawChoices.split(/\s+/) : [],
+                choices: IO.toWords(rawChoices),
             };
             let changed = JSON.stringify(profile) !== JSON.stringify(this._profile);
             this._profile = profile;

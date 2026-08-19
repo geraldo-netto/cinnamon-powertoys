@@ -234,10 +234,7 @@ const CpuControl = class CpuControl {
 
     _stateFrom(policies, values, existence, model) {
         let read = path => values[path] === undefined ? null : values[path];
-        let words = path => {
-            let raw = read(path);
-            return raw ? raw.split(/\s+/) : [];
-        };
+        let words = path => IO.toWords(read(path));
         let energyPolicies = policies.filter(policy =>
             existence[policy + "/energy_performance_preference"]);
         let maximum = null;
