@@ -15,6 +15,7 @@
 
 const Hardware = require("./lib/hardware.js");
 const IO = require("./lib/io.js");
+const Log = require("./lib/log.js");
 
 const CPU_DIR = "/sys/devices/system/cpu";
 const CPUFREQ_DIR = CPU_DIR + "/cpufreq";
@@ -511,15 +512,15 @@ const CpuControl = class CpuControl {
         /* Refresh was accepted while this backend still existed. Teardown is
          * its final, unsuccessful answer; a cancelled filesystem callback is
          * deliberately not required to arrive in order to release callers. */
-        let firstError = null;
+        /* A waiter that throws is reported and not propagated: destroy() is
+         * called from a teardown that goes on to release other backends, and
+         * a throw here would strand every one of them. */
         for (let waiter of waiters) {
             try {
                 waiter(false);
             } catch (error) {
-                firstError = firstError || error;
+                Log.error("cpu teardown waiter failed: " + error);
             }
         }
-        if (firstError)
-            throw firstError;
     }
 };

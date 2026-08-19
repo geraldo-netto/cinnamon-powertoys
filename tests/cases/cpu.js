@@ -21,6 +21,7 @@ const Fuzz = imports.fuzz;
 const Cpu = Harness.requireXlet("./lib/cpu.js");
 const Hardware = Harness.requireXlet("./lib/hardware.js");
 const IO = Harness.requireXlet("./lib/io.js");
+const Log = Harness.requireXlet("./lib/log.js");
 
 /* A control over a captured tree, with the commands it was asked to run. */
 function control(fixture) {
@@ -570,6 +571,30 @@ cases["destroying a CPU refresh settles every accepted caller once"] = function 
         discoveries.shift()("late state");
         Harness.deepEqual(answers, [false, false], "the cancelled discovery cannot answer again");
     } finally {
+        release();
+    }
+};
+
+cases["a waiter that throws during teardown cannot strand the next backend"] = function () {
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    try {
+        let cpu = control("machine");
+        let answers = [];
+        cpu._asynchronous = true;
+        cpu._discoverAsync = () => {};
+
+        cpu.refresh(() => { throw new Error("waiter exploded"); });
+        cpu.refresh(result => answers.push(result));
+        cpu.destroy();
+
+        Harness.deepEqual(answers, [false],
+                          "the waiter behind the throwing one is still settled");
+        Harness.equal(lines.length, 1, "and the failure is reported once");
+        Harness.equal(lines[0].indexOf("waiter exploded") >= 0, true,
+                      "naming what went wrong");
+    } finally {
+        Log.setSink(null);
         release();
     }
 };
