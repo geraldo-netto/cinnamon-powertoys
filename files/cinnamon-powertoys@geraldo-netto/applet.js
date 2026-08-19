@@ -177,8 +177,27 @@ class PowerToysApplet extends Applet.TextIconApplet {
         }
     }
 
+    /*
+     * Construction, in the order the order matters in.
+     *
+     * Five steps, each named for what it is responsible for having finished.
+     * They are not independent and must not be reordered: the state a backend
+     * can answer into exists before any backend is built, every backend exists
+     * before the shell is wired to it, and nothing is asked to draw itself
+     * until both are done. A failure at any point leaves _teardown a partial
+     * applet to take apart, which is what the constructor hands it.
+     */
     _initialize(metadata, orientation, instanceId, backends) {
+        this._adoptEnvironment(metadata, instanceId, backends);
+        this._buildState();
+        this._bindSettings();
+        this._buildBackends();
+        this._wireToShell(orientation);
+        this._begin();
+    }
 
+    /* What this applet was handed, and what it tells the panel about itself. */
+    _adoptEnvironment(metadata, instanceId, backends) {
         this.metadata = metadata;
         this.instanceId = instanceId;
         this._backends = backends || defaultBackends();
@@ -187,7 +206,16 @@ class PowerToysApplet extends Applet.TextIconApplet {
             : new Notifications.NotificationCenter(Main);
         this.setAllowedLayout(Applet.AllowedLayout.BOTH);
         this.set_show_label_in_vertical_panels(false);
+    }
 
+    /*
+     * Everything that can answer before there is anything to answer to.
+     *
+     * A backend can call back from inside its own constructor - a bus it
+     * cannot reach, a control that already knows it is absent - so every
+     * counter, flag and policy those callbacks touch exists first.
+     */
+    _buildState() {
         /*
          * Set when the applet leaves the panel. Everything that can be
          * reached from outside - a D-Bus reply, a spawned process finishing,
@@ -266,7 +294,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
         });
         this._normalizingAlertLevels = false;
 
-        this._bindSettings();
+    }
+
+    /* The machine, in the order the callbacks between them require. */
+    _buildBackends() {
 
         this._helper = this._backends.privilegedHelper([SYSTEM_HELPER]);
 
@@ -350,6 +381,11 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * assignment above exists. Read it once after assignment as well. */
         this._syncLidState();
 
+    }
+
+    /* The shell: a menu, the actor's own events, and the two desktop-wide
+     * changes that invalidate what this applet found. */
+    _wireToShell(orientation) {
         this.menuManager = new PopupMenu.PopupMenuManager(this);
         this._createMenu(orientation);
 
@@ -374,6 +410,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._monitorsId = Main.layoutManager.connect("monitors-changed",
                                                       () => this._onMonitorsChanged());
 
+    }
+
+    /* Only now does anything draw, poll or say anything. */
+    _begin() {
         this._registerHotkeys();
         this._startPolling();
         /* Before the greeting: it is the greeting that marks the install as
