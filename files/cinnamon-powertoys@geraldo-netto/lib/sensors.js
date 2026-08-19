@@ -995,14 +995,19 @@ const EnergyMeter = class EnergyMeter {
 };
 
 /*
- * The sensors of one machine: what was found, and what they read now.
+ * What sensors this machine has, and noticing when that changes.
  *
  * Discovery is the expensive half - every hwmon directory listed, every label
  * file opened - and it only changes when hardware does, so it happens once
- * and the result is kept. read() is the cheap half, one file per sensor, and
- * is what a poll calls.
+ * and the result is kept. Two independent coalescing rules live here and
+ * nowhere else: one discovery at a time with at most one replay behind it,
+ * and one topology check at a time with at most one recheck behind it, since
+ * a menu opened five times in a second must not put five sweeps of sysfs on
+ * the bus.
+ *
+ * Nothing here reads a sensor value. What the values mean is SensorReader's.
  */
-const SensorSet = class SensorSet {
+const SensorInventory = class SensorInventory {
     constructor(options) {
         let configuration = options || {};
         this._topology = null;
@@ -1012,6 +1017,7 @@ const SensorSet = class SensorSet {
         this.energyMeters = [];
         this._asynchronous = !!configuration.asynchronous;
         this._onChanged = configuration.onChanged || function () {};
+        this._io = configuration.io || {};
         this._discovering = false;
         this._discoverAgain = false;
         this._discoverWaiters = [];
@@ -1021,19 +1027,23 @@ const SensorSet = class SensorSet {
         this._refreshChanged = false;
         this._refreshWaiters = [];
         this._destroyed = false;
-        /* Which unlabelled fans have been seen spinning, by sensor id. Held
-         * here rather than on the discovered records because _adopt replaces
-         * those wholesale on every rediscovery that finds a changed topology,
-         * which would drop a fan that has spun and since stopped out of the
-         * menu. */
-        this._fansThatHaveRun = new Set();
-        this._ioScope = new IO.AsyncScope();
-        this._ioOptions = { scope: this._ioScope };
+    }
 
+    start() {
         if (this._asynchronous)
             this.discoverAsync();
         else
             this.discover();
+    }
+
+    /* What was discovered, as one thing that can be held on to. */
+    lists() {
+        return {
+            temperatures: this.temperatureSensors,
+            fans: this.fanSensors,
+            meters: this.energyMeters,
+            powers: this.powerSensors,
+        };
     }
 
     discover() {
@@ -1093,9 +1103,9 @@ const SensorSet = class SensorSet {
             }
         };
         if (inventory)
-            snapshotFromInventoryAsync(inventory, adopt, this._ioOptions);
+            snapshotFromInventoryAsync(inventory, adopt, this._io);
         else
-            discoverSnapshotAsync(adopt, this._ioOptions);
+            discoverSnapshotAsync(adopt, this._io);
     }
 
     _adopt(found, counters, topology, directPowers) {
@@ -1124,9 +1134,11 @@ const SensorSet = class SensorSet {
 
     /*
      * Checks for hardware that has come or gone, and sweeps again only if
-     * there is any. Synchronous sets answer whether they swept; asynchronous
-     * sets take an optional callback with that answer and report that the
-     * request was accepted immediately.
+     * there is any. Both modes answer the caller: synchronous sets return
+     * whether they swept and call onDone with the same answer, asynchronous
+     * sets return that the request was accepted and answer onDone when the
+     * check lands. The callback used to be dropped on the synchronous branch,
+     * so one of the two contracts silently left its caller waiting.
      *
      * The comparison includes the stable metadata and device links that give
      * those nodes meaning. Moving readings are excluded.
@@ -1135,10 +1147,12 @@ const SensorSet = class SensorSet {
         if (this._destroyed)
             return false;
         if (!this._asynchronous) {
-            if (this._topologyKey() === this._topology)
-                return false;
-            this.discover();
-            return true;
+            let swept = this._topologyKey() !== this._topology;
+            if (swept)
+                this.discover();
+            if (onDone)
+                onDone(swept);
+            return swept;
         }
 
         if (onDone)
@@ -1171,7 +1185,7 @@ const SensorSet = class SensorSet {
             /* The machine changed, and this sweep already holds everything
              * the snapshot is built from. */
             this.discoverAsync(() => this._finishRefresh(true), inventory);
-        }, this._ioOptions);
+        }, this._io);
     }
 
     _finishRefresh(changed) {
@@ -1191,7 +1205,62 @@ const SensorSet = class SensorSet {
             waiter(result);
     }
 
-    _temperature(sensor, readNumber) {
+    /* Every caller accepted before teardown is answered once, unsuccessfully:
+     * cancelled I/O may never reach its ordinary completion. The first throw
+     * is handed back rather than swallowed or allowed to strand the rest. */
+    destroy() {
+        if (this._destroyed)
+            return null;
+        this._destroyed = true;
+        this._onChanged = function () {};
+        this._discovering = false;
+        this._discoverAgain = false;
+        let waiters = this._discoverWaiters.splice(0)
+            .concat(this._discoverNextWaiters.splice(0), this._refreshWaiters.splice(0));
+        this._refreshing = false;
+        this._refreshPending = false;
+        this._refreshChanged = false;
+        let firstError = null;
+        for (let waiter of waiters) {
+            try {
+                waiter(false);
+            } catch (error) {
+                firstError = firstError || error;
+            }
+        }
+        this.temperatureSensors = [];
+        this.fanSensors = [];
+        this.powerSensors = [];
+        this.energyMeters = [];
+        return firstError;
+    }
+};
+
+/*
+ * What a set of discovered sensors reads, given the numbers behind them.
+ *
+ * A function of an inventory and a way of getting a value: hand it the same
+ * lists and the same values and it says the same thing, whether those values
+ * came one file read at a time or out of a batch that was loaded off the main
+ * loop. That is why read() and readAsync() cannot drift - there is one
+ * assembly and two sources for it.
+ *
+ * The one thing it remembers is which unlabelled fans have been seen turning,
+ * which is a judgement about the hardware rather than about this reading: a
+ * fan that has spun once is wired, and stays wired after it stops.
+ */
+const SensorReader = class SensorReader {
+    /* `lists` answers the current inventory as { temperatures, fans, meters,
+     * powers }. */
+    constructor(lists) {
+        this._lists = lists || (() => ({ temperatures: [], fans: [], meters: [], powers: [] }));
+        /* Held here rather than on the discovered records because a
+         * rediscovery replaces those wholesale, which would drop a fan that
+         * has spun and since stopped out of the menu. */
+        this._fansThatHaveRun = new Set();
+    }
+
+    temperature(sensor, readNumber) {
         let fault = sensor.faultPath ? readNumber(sensor.faultPath) : 0;
         let raw = fault !== null && fault > 0 ? null : readNumber(sensor.path);
         return {
@@ -1213,7 +1282,7 @@ const SensorSet = class SensorSet {
         };
     }
 
-    _temperatureSelection(keep, sensors) {
+    _selectTemperatures(keep, sensors) {
         let fallbackDevices = new Set();
         for (let sensor of sensors) {
             if (sensor.fallbackForDevice && keep(sensor))
@@ -1230,12 +1299,12 @@ const SensorSet = class SensorSet {
         return { primary: primary, fallbacks: fallbacks };
     }
 
-    _temperatures(keep, readNumber, lists) {
+    temperatures(keep, readNumber, lists) {
         let found = lists || this._lists();
-        let selected = this._temperatureSelection(keep, found.temperatures);
+        let selected = this._selectTemperatures(keep, found.temperatures);
         let readings = selected.primary.map(sensor => ({
             sensor: sensor,
-            reading: this._temperature(sensor, readNumber),
+            reading: this.temperature(sensor, readNumber),
         }));
         let validDevices = new Set(readings
             .filter(item => item.reading.celsius !== null && item.sensor.deviceIdentity)
@@ -1243,12 +1312,12 @@ const SensorSet = class SensorSet {
         let result = readings.map(item => item.reading);
         for (let sensor of selected.fallbacks) {
             if (!validDevices.has(sensor.fallbackForDevice))
-                result.push(this._temperature(sensor, readNumber));
+                result.push(this.temperature(sensor, readNumber));
         }
         return result;
     }
 
-    _fan(sensor, readNumber) {
+    fan(sensor, readNumber) {
         let fault = sensor.faultPath ? readNumber(sensor.faultPath) : 0;
         let rpm = fault !== null && fault > 0 ? null : readNumber(sensor.path);
         if (rpm !== null && rpm > 0)
@@ -1271,7 +1340,7 @@ const SensorSet = class SensorSet {
         };
     }
 
-    _powers(keep, readNumber, lists) {
+    powers(keep, readNumber, lists) {
         let found = lists || this._lists();
         let readings = [];
         let packageWatts = null;
@@ -1327,6 +1396,100 @@ const SensorSet = class SensorSet {
         return { readings: readings, packageWatts: packageWatts };
     }
 
+    _appendPaths(paths, sensors, keep, secondary) {
+        for (let sensor of sensors) {
+            if (!keep(sensor))
+                continue;
+            paths.push(sensor.path);
+            if (secondary && sensor[secondary])
+                paths.push(sensor[secondary]);
+        }
+    }
+
+    /* Every node one reading touches, for whoever wants to load them first. */
+    paths(keep, lists) {
+        let found = lists || this._lists();
+        let paths = [];
+        let temperatures = this._selectTemperatures(keep, found.temperatures);
+        this._appendPaths(paths, temperatures.primary.concat(temperatures.fallbacks),
+                          () => true, "faultPath");
+        this._appendPaths(paths, found.fans, keep, "faultPath");
+        for (let meter of found.meters)
+            if (keep(meter))
+                paths.push(meter.counter.path);
+        this._appendPaths(paths, found.powers, keep, "fallbackPath");
+        return paths;
+    }
+
+    assemble(keep, readNumber, lists) {
+        let found = lists || this._lists();
+        let powers = this.powers(keep, readNumber, found);
+        return {
+            temperatures: this.temperatures(keep, readNumber, found),
+            fans: found.fans.filter(keep).map(sensor => this.fan(sensor, readNumber)),
+            powers: powers.readings,
+            packageWatts: powers.packageWatts,
+        };
+    }
+
+};
+
+/*
+ * The sensors of one machine: what was found, and what they read now.
+ *
+ * Two objects underneath - an inventory that knows what is there, and a
+ * reader that turns values into readings - and one filesystem scope, which is
+ * what a poll's batch and a discovery sweep both hang off and what teardown
+ * cancels.
+ */
+const SensorSet = class SensorSet {
+    constructor(options) {
+        let configuration = options || {};
+        this._destroyed = false;
+        this._ioScope = new IO.AsyncScope();
+        this._ioOptions = { scope: this._ioScope };
+        this._inventory = new SensorInventory({
+            asynchronous: configuration.asynchronous,
+            onChanged: configuration.onChanged,
+            io: this._ioOptions,
+        });
+        this._reader = new SensorReader(() => this._inventory.lists());
+        this._inventory.start();
+    }
+
+    get temperatureSensors() {
+        return this._inventory.temperatureSensors;
+    }
+
+    get fanSensors() {
+        return this._inventory.fanSensors;
+    }
+
+    get powerSensors() {
+        return this._inventory.powerSensors;
+    }
+
+    get energyMeters() {
+        return this._inventory.energyMeters;
+    }
+
+    discover() {
+        this._inventory.discover();
+    }
+
+    discoverAsync(onDone, inventory) {
+        this._inventory.discoverAsync(onDone, inventory);
+    }
+
+    refresh(onDone) {
+        return this._inventory.refresh(onDone);
+    }
+
+    /* What was discovered, as one thing that can be held on to. */
+    _lists() {
+        return this._inventory.lists();
+    }
+
     /*
      * One value per sensor, as of now - but only for the sensors `wanted`
      * says yes to.
@@ -1344,7 +1507,7 @@ const SensorSet = class SensorSet {
      */
     read(wanted) {
         let keep = wanted || (() => true);
-        return this._assemble(keep, IO.readNumber);
+        return this._reader.assemble(keep, IO.readNumber);
     }
 
     /*
@@ -1390,59 +1553,13 @@ const SensorSet = class SensorSet {
         */
         let found = this._lists();
         let finish = Once.once(answer => onDone(answer));
-        IO.readStringsAsync(this._paths(keep, found), values => {
+        IO.readStringsAsync(this._reader.paths(keep, found), values => {
             if (this._destroyed) {
                 finish(null);
                 return;
             }
-            finish(this._assemble(keep, path => IO.toNumber(values[path]), found));
+            finish(this._reader.assemble(keep, path => IO.toNumber(values[path]), found));
         }, 32, null, this._ioOptions);
-    }
-
-    /* What was discovered, as one thing that can be held on to. */
-    _lists() {
-        return {
-            temperatures: this.temperatureSensors,
-            fans: this.fanSensors,
-            meters: this.energyMeters,
-            powers: this.powerSensors,
-        };
-    }
-
-    _appendPaths(paths, sensors, keep, secondary) {
-        for (let sensor of sensors) {
-            if (!keep(sensor))
-                continue;
-            paths.push(sensor.path);
-            if (secondary && sensor[secondary])
-                paths.push(sensor[secondary]);
-        }
-    }
-
-    /* Every node one reading touches, for whoever wants to load them first. */
-    _paths(keep, lists) {
-        let found = lists || this._lists();
-        let paths = [];
-        let temperatures = this._temperatureSelection(keep, found.temperatures);
-        this._appendPaths(paths, temperatures.primary.concat(temperatures.fallbacks),
-                          () => true, "faultPath");
-        this._appendPaths(paths, found.fans, keep, "faultPath");
-        for (let meter of found.meters)
-            if (keep(meter))
-                paths.push(meter.counter.path);
-        this._appendPaths(paths, found.powers, keep, "fallbackPath");
-        return paths;
-    }
-
-    _assemble(keep, readNumber, lists) {
-        let found = lists || this._lists();
-        let powers = this._powers(keep, readNumber, found);
-        return {
-            temperatures: this._temperatures(keep, readNumber, found),
-            fans: found.fans.filter(keep).map(sensor => this._fan(sensor, readNumber)),
-            powers: powers.readings,
-            packageWatts: powers.packageWatts,
-        };
     }
 
     destroy() {
@@ -1450,29 +1567,7 @@ const SensorSet = class SensorSet {
             return;
         this._destroyed = true;
         this._ioScope.cancel();
-        this._onChanged = function () {};
-        this._discovering = false;
-        this._discoverAgain = false;
-        let waiters = this._discoverWaiters.splice(0)
-            .concat(this._discoverNextWaiters.splice(0), this._refreshWaiters.splice(0));
-        this._refreshing = false;
-        this._refreshPending = false;
-        this._refreshChanged = false;
-        /* Every callback above belongs to work accepted before destruction.
-         * Cancelled I/O may never reach its ordinary completion, so teardown
-         * itself is the one explicit unsuccessful completion. */
-        let firstError = null;
-        for (let waiter of waiters) {
-            try {
-                waiter(false);
-            } catch (error) {
-                firstError = firstError || error;
-            }
-        }
-        this.temperatureSensors = [];
-        this.fanSensors = [];
-        this.powerSensors = [];
-        this.energyMeters = [];
+        let firstError = this._inventory.destroy();
         if (firstError)
             throw firstError;
     }

@@ -301,7 +301,7 @@ cases["an unreadable averaged power node falls back without duplicating the chan
         let set = new Sensors.SensorSet();
         let sensor = byId(set.powerSensors, "hwmon:hwmon4:power1");
         let touched = [];
-        let result = set._powers(
+        let result = set._reader.powers(
             () => true,
             path => {
                 touched.push(path);
@@ -318,7 +318,7 @@ cases["an unreadable averaged power node falls back without duplicating the chan
         Harness.equal(result.readings.length, 1, "one physical channel remains one row");
         Harness.near(result.readings[0].watts, 5.1, 0.001,
                      "the readable instantaneous value is retained");
-        Harness.ok(set._paths(() => true).indexOf(sensor.fallbackPath) >= 0,
+        Harness.ok(set._reader.paths(() => true).indexOf(sensor.fallbackPath) >= 0,
                    "asynchronous batches preload the fallback too");
     });
 };
@@ -342,7 +342,7 @@ cases["an unreadable hwmon temperature falls back to its thermal zone"] = functi
         };
         let lists = { temperatures: [hwmon, thermal], fans: [], meters: [], powers: [] };
         let touched = [];
-        let readable = set._temperatures(() => true, path => {
+        let readable = set._reader.temperatures(() => true, path => {
             touched.push(path);
             return path === hwmon.path ? 55000 : 42000;
         }, lists);
@@ -352,7 +352,7 @@ cases["an unreadable hwmon temperature falls back to its thermal zone"] = functi
                           "the synchronous path does not read an unnecessary fallback");
 
         touched = [];
-        let fallback = set._temperatures(() => true, path => {
+        let fallback = set._reader.temperatures(() => true, path => {
             touched.push(path);
             return path === thermal.path ? 42000 : null;
         }, lists);
@@ -361,7 +361,7 @@ cases["an unreadable hwmon temperature falls back to its thermal zone"] = functi
         "the readable thermal zone replaces the failed hwmon device");
         Harness.deepEqual(touched, [hwmon.path, thermal.path],
                           "the fallback is tried only after the primary fails");
-        Harness.deepEqual(set._paths(() => true, lists), [hwmon.path, thermal.path],
+        Harness.deepEqual(set._reader.paths(() => true, lists), [hwmon.path, thermal.path],
                           "asynchronous batches preload both possible paths");
     });
 };
@@ -414,12 +414,12 @@ cases["faulted hwmon measurements are not trusted"] = function () {
         Harness.ok(temperature.faultPath, "temperature fault node discovered");
         Harness.ok(fan.faultPath, "fan fault node discovered");
         let read = path => /_fault$/.test(path) ? 1 : 1000;
-        Harness.equal(set._temperature(temperature, read).celsius, null,
+        Harness.equal(set._reader.temperature(temperature, read).celsius, null,
                       "faulted temperature suppressed");
-        Harness.equal(set._fan(fan, read).rpm, null, "faulted fan suppressed");
-        Harness.equal(set._paths(() => true).indexOf(temperature.faultPath) >= 0, true,
+        Harness.equal(set._reader.fan(fan, read).rpm, null, "faulted fan suppressed");
+        Harness.equal(set._reader.paths(() => true).indexOf(temperature.faultPath) >= 0, true,
                       "asynchronous temperature read includes its fault flag");
-        Harness.equal(set._paths(() => true).indexOf(fan.faultPath) >= 0, true,
+        Harness.equal(set._reader.paths(() => true).indexOf(fan.faultPath) >= 0, true,
                       "asynchronous fan read includes its fault flag");
     });
 };
@@ -439,9 +439,9 @@ cases["an unlabelled fan stays known after it has run"] = function () {
         let sensor = set.fanSensors[0];
         sensor.rawLabel = null;
 
-        Harness.equal(set._fan(sensor, path => path === sensor.path ? 1200 : 0).inUse,
+        Harness.equal(set._reader.fan(sensor, path => path === sensor.path ? 1200 : 0).inUse,
                       true, "known while turning");
-        let stopped = set._fan(sensor, () => 0);
+        let stopped = set._reader.fan(sensor, () => 0);
         Harness.equal(stopped.inUse, true, "still known after stopping");
         Harness.equal(stopped.rpm, 0, "zero is preserved as the reading");
     });
@@ -451,7 +451,7 @@ cases["an unlabelled fan that has run survives a rediscovery"] = function () {
     on("machine", function () {
         let set = new Sensors.SensorSet();
         set.fanSensors[0].rawLabel = null;
-        Harness.equal(set._fan(set.fanSensors[0],
+        Harness.equal(set._reader.fan(set.fanSensors[0],
                                path => path === set.fanSensors[0].path ? 1200 : 0).inUse,
                       true, "known while turning");
 
@@ -459,7 +459,7 @@ cases["an unlabelled fan that has run survives a rediscovery"] = function () {
         set.discover();
         let rebuilt = set.fanSensors[0];
         rebuilt.rawLabel = null;
-        Harness.equal(set._fan(rebuilt, () => 0).inUse, true,
+        Harness.equal(set._reader.fan(rebuilt, () => 0).inUse, true,
                       "and it is still known after the records were replaced");
     });
 };
@@ -1075,10 +1075,34 @@ cases["destroyed sensor sets reject synchronous and asynchronous discovery"] = f
     let answered = 0;
     set.discover();
     set.discoverAsync(() => answered++);
-    set._startRefresh();
+    set._inventory._startRefresh();
     Harness.equal(answered, 0, "no work or callbacks begin after teardown");
-    Harness.equal(set._refreshing, false, "no topology check begins after teardown");
+    Harness.equal(set._inventory._refreshing, false, "no topology check begins after teardown");
     Harness.deepEqual(set.temperatureSensors, [], "the destroyed snapshot remains empty");
+};
+
+cases["a synchronous topology check answers its caller too"] = function () {
+    /*
+     * refresh(onDone) has one contract and two implementations, and the
+     * synchronous one used to accept the callback and never call it - so a
+     * caller written against the documented interface waited for ever if the
+     * set it was handed happened to be the synchronous kind. Both now answer
+     * with the same thing the return value says.
+     */
+    on("machine", function () {
+        let set = new Sensors.SensorSet();
+        let answers = [];
+        Harness.equal(set.refresh(result => answers.push(result)), false,
+                      "an unchanged machine is not swept again");
+        Harness.deepEqual(answers, [false], "and the caller is told so");
+
+        /* A topology nothing matches is a machine that changed. */
+        set._inventory._topology = "not this machine";
+        Harness.equal(set.refresh(result => answers.push(result)), true,
+                      "a changed machine is swept");
+        Harness.deepEqual(answers, [false, true], "and that answer reaches the caller too");
+        set.destroy();
+    });
 };
 
 cases["destroying sensor work settles every accepted caller once"] = function () {
@@ -1088,7 +1112,7 @@ cases["destroying sensor work settles every accepted caller once"] = function ()
         Object.fromEntries(paths.map(path => [path, []]))));
     try {
         let set = new Sensors.SensorSet();
-        set._asynchronous = true;
+        set._inventory._asynchronous = true;
         let answers = [];
         set.discoverAsync(result => answers.push(["current", result]));
         set.discoverAsync(result => answers.push(["replay", result]));
@@ -1115,11 +1139,11 @@ cases["overlapping sensor discoveries settle callers from their own generation"]
     IO.setRoot("/definitely/not/here");
     try {
         let set = new Sensors.SensorSet();
-        set._asynchronous = true;
+        set._inventory._asynchronous = true;
         let answers = [];
         let changes = 0;
         Harness.settle(done => {
-            set._onChanged = () => {
+            set._inventory._onChanged = () => {
                 changes++;
                 if (changes === 1)
                     done();
@@ -1134,7 +1158,7 @@ cases["overlapping sensor discoveries settle callers from their own generation"]
         Harness.deepEqual(answers, [true],
                           "the first caller settles from the snapshot it requested");
         Harness.settle(done => {
-            set._onChanged = () => {
+            set._inventory._onChanged = () => {
                 changes++;
                 done();
             };
