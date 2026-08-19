@@ -38,6 +38,7 @@ const Notifications = require("./lib/notifications.js");
 const PanelText = require("./lib/panel-text.js");
 const PendingProfile = require("./lib/pending-profile.js");
 const PowerSupply = require("./lib/power-supply.js");
+const ScrollGatherer = require("./lib/scroll-gatherer.js");
 const ShellMetrics = require("./lib/shell-metrics.js");
 const Privileged = require("./lib/privileged.js");
 const ProfileView = require("./lib/profile-view.js");
@@ -259,8 +260,22 @@ class PowerToysApplet extends Applet.TextIconApplet {
         /* A reading is in flight; another was asked for while it was. */
         this._collecting = false;
         this._collectAgain = false;
-        this._scrollTimerId = 0;
-        this._pendingScroll = 0;
+        /* The wheel counts, and the count is applied once it settles - see
+         * lib/scroll-gatherer.js for why a flick is one write and not five.
+         * What to do with the settled count is decided when it settles, so
+         * the gatherer is handed the notches and the handler the action. */
+        this._scroll = new ScrollGatherer.ScrollGatherer({
+            settleMs: Controls.SCROLL_SETTLE_MS,
+            timers: {
+                add: (delay, callback) => Mainloop.timeout_add(delay, callback),
+                remove: id => Mainloop.source_remove(id),
+            },
+            apply: steps => {
+                if (this._scrollApply)
+                    this._scrollApply(steps);
+            },
+        });
+        this._scrollApply = null;
         /* Why monitors are being looked for, and the timer that does it. Both
          * empty means nobody is looking at the applet; see _watchMonitors. */
         this._probeReasons = new Set();
@@ -1831,37 +1846,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     /*
-     * The wheel counts, and the count is applied once it settles.
-     *
-     * One flick of a finger sends several clicks. For the power profile each
-     * used to be its own D-Bus write, so a flick meant the daemon switching
-     * profiles two or three times in a few tens of milliseconds, and that is
-     * why this gathering exists.
-     *
-     * The brightness did not gather, and needed it more. On a kernel backlight
-     * the daemon queues the steps and nothing is lost; on a monitor over
-     * DDC/CI each step reads a percentage that has not moved yet and a second
-     * write while the first is in flight is refused, so a five-notch flick
-     * moved one notch and the other four went nowhere. Brightness is the
-     * default action, so that was the common path.
-     *
-     * Long enough to gather a flick, short enough that the change still feels
-     * immediate.
-     */
-    _gatherScroll(step, apply) {
-        this._pendingScroll += step;
-        this._cancelPendingScroll();
-        this._scrollTimerId = Mainloop.timeout_add(Controls.SCROLL_SETTLE_MS, () => {
-            this._scrollTimerId = 0;
-            let gathered = Controls.settledScrollSteps(this._pendingScroll);
-            this._pendingScroll = 0;
-            if (gathered !== 0)
-                apply(gathered);
-            return GLib.SOURCE_REMOVE;
-        });
-    }
-
-    /*
      * A gathered flick, on whichever screen this machine has.
      *
      * Resolved when the flick settles rather than when it started: a monitor
@@ -1906,11 +1890,14 @@ class PowerToysApplet extends Applet.TextIconApplet {
         return Clutter.EVENT_PROPAGATE;
     }
 
+    _gatherScroll(step, apply) {
+        this._scrollApply = apply;
+        this._scroll.gather(step);
+    }
+
     _cancelPendingScroll() {
-        if (this._scrollTimerId) {
-            Mainloop.source_remove(this._scrollTimerId);
-            this._scrollTimerId = 0;
-        }
+        this._scroll.cancel();
+        this._scrollApply = null;
     }
 
     _registerHotkeys() {

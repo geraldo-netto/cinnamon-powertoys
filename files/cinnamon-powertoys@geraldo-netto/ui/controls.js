@@ -22,6 +22,7 @@ const Tooltips = imports.ui.tooltips;
 
 const Format = require("./lib/format.js");
 const KeyedList = require("./lib/keyed-list.js");
+const ScrollGatherer = require("./lib/scroll-gatherer.js");
 const Translate = require("./lib/gettext.js");
 const Rows = require("./ui/rows.js");
 
@@ -32,15 +33,11 @@ const NoteRow = Rows.NoteRow;
 const SelectorItem = Rows.SelectorItem;
 const exposeHeading = Rows.exposeHeading;
 
-/*
- * How long the wheel has to stop for before a profile change is applied.
- *
- * One flick of a finger sends several clicks, and each one used to be its own
- * D-Bus write, so a flick meant the daemon switching profiles two or three
- * times in a few tens of milliseconds. Long enough to gather a flick, short
- * enough that the change still feels immediate.
- */
-const SCROLL_SETTLE_MS = 250;
+/* The gathering, its settle window and its rounding are
+ * lib/scroll-gatherer.js; the applet's own wheel handler uses the same
+ * one. Re-exported here because this module is what the presentation
+ * side reaches for. */
+const SCROLL_SETTLE_MS = ScrollGatherer.SETTLE_MS;
 
 /* A positive amount means the same thing as scrolling up everywhere. */
 function scrollAmount(event) {
@@ -60,9 +57,7 @@ function scrollAmount(event) {
     }
 }
 
-function settledScrollSteps(amount) {
-    return amount < 0 ? -Math.round(-amount) : Math.round(amount);
-}
+const settledScrollSteps = ScrollGatherer.settledSteps;
 
 /*
  * A radio group: a heading carrying the current value, then one dot item per
@@ -392,8 +387,14 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
         this._control = control;
         this._name = label;
         this._seeking = false;
-        this._pendingScroll = 0;
-        this._scrollTimerId = 0;
+        this._scroll = new ScrollGatherer.ScrollGatherer({
+            settleMs: SCROLL_SETTLE_MS,
+            timers: {
+                add: (delay, callback) => Mainloop.timeout_add(delay, callback),
+                remove: id => Mainloop.source_remove(id),
+            },
+            apply: steps => this._control.stepBy(steps, () => this.sync()),
+        });
         this.actor.hide();
 
         this._icon = new St.Icon({ icon_name: iconName, icon_type: St.IconType.SYMBOLIC,
@@ -452,11 +453,7 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
         this.connect("drag-begin", () => { this._seeking = true; });
         this.connect("drag-end", () => { this._seeking = false; });
         this.connect("value-changed", (item, value) => this._onDragged(value));
-        this.actor.connect("destroy", () => {
-            if (this._scrollTimerId)
-                Mainloop.source_remove(this._scrollTimerId);
-            this._scrollTimerId = 0;
-        });
+        this.actor.connect("destroy", () => this._scroll.cancel());
     }
 
     _onDragged(value) {
@@ -513,17 +510,7 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
         if (amount === 0)
             return Clutter.EVENT_PROPAGATE;
 
-        this._pendingScroll += amount;
-        if (this._scrollTimerId)
-            Mainloop.source_remove(this._scrollTimerId);
-        this._scrollTimerId = Mainloop.timeout_add(SCROLL_SETTLE_MS, () => {
-            this._scrollTimerId = 0;
-            let steps = settledScrollSteps(this._pendingScroll);
-            this._pendingScroll = 0;
-            if (steps !== 0)
-                this._control.stepBy(steps, () => this.sync());
-            return GLib.SOURCE_REMOVE;
-        });
+        this._scroll.gather(amount);
         return Clutter.EVENT_STOP;
     }
 }
