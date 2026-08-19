@@ -175,6 +175,7 @@ const BacklightControl = class BacklightControl {
         this._connectWaiters = [];
         this._generation = 0;
         this._valueGeneration = 0;
+        this._readGeneration = 0;
         this._readySent = false;
         this._read = null;
         this._readQueue = [];
@@ -295,6 +296,7 @@ const BacklightControl = class BacklightControl {
         this._connectCancellable = null;
         ++this._generation;
         ++this._valueGeneration;
+        ++this._readGeneration;
         this._connecting = false;
         this._cancelReads();
         this._cancelMutations();
@@ -394,7 +396,7 @@ const BacklightControl = class BacklightControl {
              * describe the state before that signal. Keep one follow-up read
              * and let every caller settle from that newer snapshot. */
             this._readQueue.push(waiter);
-            ++this._valueGeneration;
+            ++this._readGeneration;
             return;
         }
         this._startRead([waiter]);
@@ -410,7 +412,11 @@ const BacklightControl = class BacklightControl {
         let operation = {
             proxy: this._proxy,
             proxyGeneration: this._generation,
-            valueGeneration: ++this._valueGeneration,
+            readGeneration: ++this._readGeneration,
+            /* Recorded, never advanced: a read reports what the daemon
+             * already had, so it must not displace a mutation that was
+             * accepted while it was in flight. */
+            valueGeneration: this._valueGeneration,
             waiters: waiters,
         };
         this._read = operation;
@@ -443,7 +449,8 @@ const BacklightControl = class BacklightControl {
             return;
         }
 
-        if (sameProxy && operation.valueGeneration === this._valueGeneration)
+        if (sameProxy && operation.readGeneration === this._readGeneration &&
+            operation.valueGeneration === this._valueGeneration)
             this._adoptRead(result, error);
         for (let waiter of operation.waiters)
             waiter();
@@ -519,7 +526,10 @@ const BacklightControl = class BacklightControl {
         }
 
         /* A later mutation owns the next visible value, including while an
-         * earlier read or mutation is still in flight. */
+         * earlier read or mutation is still in flight. Only the mutation queue
+         * moves this counter; read coalescing has _readGeneration of its own,
+         * so the daemon's Changed signal - which our own write provokes - can
+         * no longer report a successful write as cancelled. */
         ++this._valueGeneration;
 
         let last = this._mutationQueue[this._mutationQueue.length - 1];

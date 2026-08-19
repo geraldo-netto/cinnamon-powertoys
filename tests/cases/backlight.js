@@ -215,8 +215,10 @@ cases["a backlight answers with what the daemon reports"] = function () {
     Harness.equal(screen.available, true, "the daemon answered, so there is one");
     Harness.equal(screen.percentage, 42, "and this is where it is");
     Harness.equal(screen.readyCount(), 1, "ready is said once, when the answer is in");
-    Harness.equal(screen._valueGeneration, 1,
-                  "the first read advances once from the initial generation");
+    Harness.equal(screen._readGeneration, 1,
+                  "the first read advances the read generation once");
+    Harness.equal(screen._valueGeneration, 0,
+                  "and leaves the value generation to the mutation queue");
 };
 
 cases["the owner watch performs the only production startup read"] = function () {
@@ -856,6 +858,28 @@ cases["a mutation invalidates an older percentage read"] = function () {
     answers.GetPercentage = 20;
     stub.pending.shift()();
     Harness.equal(screen.percentage, 80, "the older read cannot overwrite the mutation");
+};
+
+cases["the daemon's own Changed edge does not cancel the write that caused it"] = function () {
+    let stub = proxy({ GetPercentage: 40, SetPercentage: 80 },
+                     { deferred: ["SetPercentage"] });
+    let screen = control(Backlight.SCREEN, stub);
+    let outcome = null;
+
+    screen.setPercentage(80, result => { outcome = result; });
+    Harness.equal(stub.pending.length, 1, "the write is waiting for the daemon");
+
+    /* csd emits Changed as soon as it applies the write, and the applet's own
+     * subscription refreshes on it. That read must not invalidate the reply
+     * still on its way back. */
+    stub.handlers.Changed();
+    Harness.equal(screen.percentage, 40, "the read reports what the daemon had");
+
+    stub.pending.shift()();
+    Harness.equal(outcome && outcome.ok, true, "the write reports success");
+    Harness.equal(outcome.cancelled, undefined, "and is not reported cancelled");
+    Harness.equal(screen.percentage, 80, "the written value is the visible one");
+    screen.destroy();
 };
 
 cases["stale step replies cannot change the visible percentage"] = function () {
