@@ -236,6 +236,14 @@ cases["public hover events are the fallback and disconnect cleanly"] = function 
                       "the current UPower state remains available publicly");
     panel.destroy();
     Harness.deepEqual(disconnected.sort(), [1, 2], "both hover hooks disconnected");
+
+    /* Teardown lets the panel actor go with the handlers: the adapter can
+     * outlive the applet, and holding a live reference to an actor Cinnamon
+     * is destroying is what a repeated disconnect used to walk into. */
+    panel._disconnectHover();
+    Harness.deepEqual(disconnected.sort(), [1, 2], "disconnecting again touches nothing");
+    panel.destroy();
+    Harness.deepEqual(disconnected.sort(), [1, 2], "and neither does a second teardown");
 };
 
 cases["partial hover fallback wiring is rolled back"] = function () {

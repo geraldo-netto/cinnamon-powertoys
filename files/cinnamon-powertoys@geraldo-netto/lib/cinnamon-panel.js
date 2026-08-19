@@ -264,6 +264,10 @@ const PanelAdapter = class PanelAdapter {
         }
     }
 
+    /* Idempotent, the way _restoreTooltipHooks is: letting the actor go is
+     * half of disconnecting from it. Keeping the reference meant the adapter
+     * outlived the applet still holding the panel actor Cinnamon was tearing
+     * down, and a second call walked an emptied list against a dead actor. */
     _disconnectHover() {
         if (!this._hoverActor)
             return;
@@ -274,6 +278,8 @@ const PanelAdapter = class PanelAdapter {
                 /* The actor may already have been destroyed by Cinnamon. */
             }
         }
+        this._hoverSignals = [];
+        this._hoverActor = null;
     }
 
     destroy() {
@@ -284,7 +290,6 @@ const PanelAdapter = class PanelAdapter {
         this._restoreTooltipHooks();
         this._restoreTooltipStyle();
         this._disconnectHover();
-        this._hoverSignals = [];
         this._publishTooltip(false);
         this._beforeTooltip = function () {};
         this._onTooltip = function () {};
