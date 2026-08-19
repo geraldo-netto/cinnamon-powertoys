@@ -71,11 +71,18 @@ function _commandFailureKey(argv) {
  * Cinnamon's spawn helpers, so this module stays loadable outside the shell,
  * and with a timer behind it because ddcutil can hang on a monitor that
  * accepts the connection and then says nothing.
+ *
+ * The return value is the handle on the running command: cancel() disarms the
+ * timer, cancels the read and kills the child, then settles the caller with
+ * the same failure a timeout would have given it. Without it a teardown could
+ * only forget about a running ddcutil, leaving an armed source and a process
+ * holding the I2C bus for the rest of CALL_TIMEOUT_MS.
  */
 function runCommand(argv, onDone, failureLog) {
     let done = false;
     let timeoutId = 0;
     let process;
+    let cancellable = new Gio.Cancellable();
     let failures = failureLog || new Log.FailureLog();
     let failureKey = _commandFailureKey(argv);
 
@@ -92,6 +99,25 @@ function runCommand(argv, onDone, failureLog) {
         onDone(output, status);
     }
 
+    /* Whoever holds this can end the command early. Settling with the timeout
+     * outcome keeps one answer per command: a caller that has already been
+     * told cannot be told again, and one still waiting is not left waiting. */
+    let handle = {
+        cancel() {
+            if (done)
+                return;
+            cancellable.cancel();
+            if (process) {
+                try {
+                    process.force_exit();
+                } catch (e) {
+                    /* already gone */
+                }
+            }
+            finish("", -1);
+        },
+    };
+
     try {
         process = new Gio.Subprocess({
             argv: argv,
@@ -102,7 +128,7 @@ function runCommand(argv, onDone, failureLog) {
         /* ddcutil is not installed, which is the ordinary case. */
         failures.recover(failureKey);
         finish("", -1);
-        return;
+        return handle;
     }
 
     timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, CALL_TIMEOUT_MS, () => {
@@ -118,7 +144,7 @@ function runCommand(argv, onDone, failureLog) {
         return GLib.SOURCE_REMOVE;
     });
 
-    process.communicate_utf8_async(null, null, (source, result) => {
+    process.communicate_utf8_async(null, cancellable, (source, result) => {
         if (!done)
             failures.recover(failureKey);
         try {
@@ -132,6 +158,7 @@ function runCommand(argv, onDone, failureLog) {
             finish("", -1);
         }
     });
+    return handle;
 }
 
 /*
@@ -546,6 +573,10 @@ const DdcBacklight = class DdcBacklight {
          * active job and queue, independently of monitor lifetimes. */
         this._commandsInFlight = 0;
         this._activeCommand = null;
+        /* What the transport gave back for the active job, when it gave
+         * anything: the handle destroy() and stop() end a running command
+         * with. An injected run may hand back nothing, so it stays optional. */
+        this._activeCancel = null;
         this._commandQueue = [];
         this._run = (argv, onDone, kind) => this._invoke(argv, onDone, kind);
         this._started = false;
@@ -586,9 +617,10 @@ const DdcBacklight = class DdcBacklight {
      * a concession: monitors may well have been plugged or unplugged while it
      * was off, and nothing was watching.
      *
-     * An operation already in flight is disowned, but remains machine-level
-     * busy until its command answers. A start asked in that interval is held
-     * rather than putting a fresh whole-bus probe on top of it.
+     * An operation already in flight is disowned and then ended: switching
+     * the setting off means stop talking to the bus now, not in eight seconds'
+     * time. A start asked before it has settled is held rather than putting a
+     * fresh whole-bus probe on top of it.
      */
     stop() {
         if (!this._started)
@@ -607,10 +639,11 @@ const DdcBacklight = class DdcBacklight {
         this._missingConfirmations = 0;
         this._redetectPending = false;
         this._commandFailures.clear();
-        /* The transport may already own one process, which is allowed to
-         * finish. Nothing still waiting has touched a bus yet, so settle those
-         * jobs now instead of running obsolete reads after DDC was disabled. */
+        /* Nothing still waiting has touched a bus yet, so settle those jobs
+         * before ending the one that has: obsolete reads must not run after
+         * DDC was disabled, and the active ddcutil must let the bus go. */
         this._cancelQueuedCommands();
+        this._cancelActiveCommand();
         /* Emptying the list is a change like any other; see lib/bluez.js,
          * where the same silence kept dead rows in the menu. */
         this._onChanged();
@@ -654,6 +687,7 @@ const DdcBacklight = class DdcBacklight {
             try {
                 job.onDone(output, status);
             } finally {
+                this._activeCancel = null;
                 this._activeCommand = null;
                 this._commandsInFlight--;
                 this._drainCommands();
@@ -661,10 +695,25 @@ const DdcBacklight = class DdcBacklight {
             }
         };
         try {
-            this._runCommand(job.argv, finish);
+            this._activeCancel = this._runCommand(job.argv, finish) || null;
         } catch (error) {
             Log.error("could not run ddcutil: " + error);
             finish("", -1);
+        }
+    }
+
+    /* End the command that is already talking to the bus. The transport
+     * settles it as a failure, which returns it through _drainCommands' finish
+     * and so keeps the in-flight count and the queue honest. */
+    _cancelActiveCommand() {
+        let handle = this._activeCancel;
+        this._activeCancel = null;
+        if (!handle || typeof handle.cancel !== "function")
+            return;
+        try {
+            handle.cancel();
+        } catch (error) {
+            Log.error("could not stop the running ddcutil: " + error);
         }
     }
 
@@ -999,5 +1048,6 @@ const DdcBacklight = class DdcBacklight {
             monitor.destroy();
         this.monitors = [];
         this._cancelQueuedCommands();
+        this._cancelActiveCommand();
     }
 };

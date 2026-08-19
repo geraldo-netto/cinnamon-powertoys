@@ -1461,6 +1461,84 @@ cases["a monitor that never answers is given up on without repeated logs"] = fun
     });
 };
 
+cases["a command still running can be ended, and answers once"] = function () {
+    /*
+     * Teardown while a probe is out is the ordinary case: the open menu probes
+     * once a second and the applet can be removed or reloaded between two of
+     * them. Without a handle on the running command the caller can only forget
+     * about it, which leaves an armed eight second timer on the main loop and
+     * a ddcutil holding the I2C bus.
+     */
+    let armed = [];
+    let removed = [];
+    let realAdd = GLib.timeout_add;
+    let realRemove = GLib.source_remove;
+
+    GLib.timeout_add = function (priority, delay, callback) {
+        let id = realAdd(priority, delay, callback);
+        if (delay === Ddc.CALL_TIMEOUT_MS)
+            armed.push(id);
+        return id;
+    };
+    GLib.source_remove = function (id) {
+        if (armed.indexOf(id) >= 0)
+            removed.push(id);
+        return realRemove(id);
+    };
+
+    let answers = [];
+    let outcome;
+    try {
+        outcome = Harness.settle(function (done) {
+            let handle = Ddc.runCommand(["sleep", "30"], function (output, status) {
+                answers.push(status);
+                done({ output: output, status: status });
+            });
+            Harness.ok(handle && typeof handle.cancel === "function",
+                       "the transport hands back something to cancel with");
+            handle.cancel();
+            /* Cancelling twice is what a stop() followed by a destroy() does. */
+            handle.cancel();
+        }, "a cancelled command");
+    } finally {
+        GLib.timeout_add = realAdd;
+        GLib.source_remove = realRemove;
+    }
+
+    Harness.equal(outcome.status, -1, "the caller is answered rather than left waiting");
+    Harness.equal(outcome.output, "", "with nothing to parse");
+    Harness.deepEqual(answers, [-1], "and answered exactly once");
+    Harness.deepEqual(removed, armed, "the call's timer is not left armed");
+};
+
+cases["letting go of DDC ends the command that is on the bus"] = function () {
+    /*
+     * The scheduler holds the transport's handle for whichever command is
+     * active, so switching the setting off and tearing the applet down both
+     * end it instead of waiting out its timeout.
+     */
+    for (let ending of ["stop", "destroy"]) {
+        let cancelled = 0;
+        let running = null;
+        let control = new Ddc.DdcBacklight(function () {}, function (argv, onDone) {
+            running = onDone;
+            return { cancel: function () {
+                cancelled++;
+                running = null;
+                onDone("", -1);
+            } };
+        });
+        control.start();
+        Harness.ok(running !== null, "a probe is on the bus");
+        Harness.ok(control.busy, "and the scheduler says so");
+
+        control[ending]();
+
+        Harness.equal(cancelled, 1, ending + "() ended the running command");
+        Harness.ok(!control.busy, "and nothing is left in flight after " + ending + "()");
+    }
+};
+
 cases["a timer that is not needed is not left armed"] = function () {
     /*
      * Eight seconds of timer per call, against ten monitors probed every
