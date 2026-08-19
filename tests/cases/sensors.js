@@ -422,6 +422,23 @@ cases["an unlabelled fan stays known after it has run"] = function () {
     });
 };
 
+cases["an unlabelled fan that has run survives a rediscovery"] = function () {
+    on("machine", function () {
+        let set = new Sensors.SensorSet();
+        set.fanSensors[0].rawLabel = null;
+        Harness.equal(set._fan(set.fanSensors[0],
+                               path => path === set.fanSensors[0].path ? 1200 : 0).inUse,
+                      true, "known while turning");
+
+        /* A changed topology rebuilds every discovered record. */
+        set.discover();
+        let rebuilt = set.fanSensors[0];
+        rebuilt.rawLabel = null;
+        Harness.equal(set._fan(rebuilt, () => 0).inUse, true,
+                      "and it is still known after the records were replaced");
+    });
+};
+
 /* ---------------------------------------------------------------- */
 /* energy counters                                                   */
 

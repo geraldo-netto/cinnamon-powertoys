@@ -1035,6 +1035,12 @@ const SensorSet = class SensorSet {
         this._refreshChanged = false;
         this._refreshWaiters = [];
         this._destroyed = false;
+        /* Which unlabelled fans have been seen spinning, by sensor id. Held
+         * here rather than on the discovered records because _adopt replaces
+         * those wholesale on every rediscovery that finds a changed topology,
+         * which would drop a fan that has spun and since stopped out of the
+         * menu. */
+        this._fansThatHaveRun = new Set();
         this._ioScope = new IO.AsyncScope();
         this._ioOptions = { scope: this._ioScope };
 
@@ -1244,7 +1250,7 @@ const SensorSet = class SensorSet {
         let fault = sensor.faultPath ? readNumber(sensor.faultPath) : 0;
         let rpm = fault !== null && fault > 0 ? null : readNumber(sensor.path);
         if (rpm !== null && rpm > 0)
-            sensor.hasRun = true;
+            this._fansThatHaveRun.add(sensor.id);
         return {
             id: sensor.id,
             measure: sensor.measure,
@@ -1258,7 +1264,7 @@ const SensorSet = class SensorSet {
             /* A label is the driver's declaration that this input is wired.
              * An unlabelled input earns the same status after it has produced
              * a non-zero reading, and keeps it when the fan later stops. */
-            inUse: !!sensor.rawLabel || !!sensor.hasRun,
+            inUse: !!sensor.rawLabel || this._fansThatHaveRun.has(sensor.id),
             rpm: rpm,
         };
     }
