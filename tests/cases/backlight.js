@@ -234,6 +234,38 @@ cases["the owner watch performs the only production startup read"] = function ()
     Harness.deepEqual(owner.unwatched, [19], "the injected owner watch is released");
 };
 
+cases["a startup read that lands after teardown says nothing"] = function () {
+    /*
+     * The read the ownership edge starts is the one path in the module that
+     * called the applet's change handler without checking destroyed, and
+     * teardown deliberately settles every pending read - so removing or
+     * reloading the applet while the first GetPercentage was out ran the
+     * handler after the applet had gone. The applet's own guard absorbed it;
+     * the module must not depend on its caller for that.
+     */
+    let settings = { deferred: [] };
+    let stub = proxy({ GetPercentage: 42 }, settings);
+    let owner = ownerWatcher();
+    let changed = 0;
+    let screen = new Backlight.BacklightControl(
+        Backlight.SCREEN, () => changed++, () => { },
+        (xml, onDone) => onDone(stub, null), owner);
+    Harness.equal(screen.available, true, "the screen backlight answered once");
+
+    /* The daemon comes back, and this time it is still thinking when the
+     * applet is removed. */
+    settings.deferred.push("GetPercentage");
+    owner.appeared();
+    Harness.equal(stub.pending.length, 1, "the read is still out");
+
+    changed = 0;
+    screen.destroy();
+    while (stub.pending.length)
+        stub.pending.shift()();
+
+    Harness.equal(changed, 0, "the applet is told nothing after it has gone");
+};
+
 cases["a failed backlight owner watch is restored"] = function () {
     let stub = proxy({ GetPercentage: 42 });
     let owner = ownerWatcher();

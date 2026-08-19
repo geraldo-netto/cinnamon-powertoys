@@ -322,6 +322,13 @@ const BacklightControl = class BacklightControl {
         this._cancelRetry();
         let before = this.available;
         this.refresh(() => {
+            /* _dropProxy settles every pending read deliberately, so a
+             * teardown while this GetPercentage is out lands here after the
+             * applet has gone. Every other callback in the module guards
+             * itself; this one must not be the exception that leaves the
+             * module depending on its caller's own destroyed check. */
+            if (this.destroyed)
+                return;
             this._settleReady();
             if (this.available !== before || this.available)
                 this._onChanged();
@@ -711,6 +718,9 @@ const BacklightControl = class BacklightControl {
 
     destroy() {
         this.destroyed = true;
+        /* Nothing accepted before teardown speaks to the applet afterwards,
+         * the way SensorSet.destroy neutralises its own handler. */
+        this._onChanged = function () {};
         this._cancelRetry();
         if (this._ownerWatch)
             this._ownerWatch.stop();
