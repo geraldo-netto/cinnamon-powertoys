@@ -473,6 +473,12 @@ const CpuControl = class CpuControl {
             model: this.model,
         };
 
+        /*
+         * In the mode the applet constructs - the only one it constructs -
+         * these four are what the last poll read. refresh() collects them off
+         * the main loop and this answers from memory, so a value here is up
+         * to one poll old and no cpufreq node is touched on this call.
+         */
         if (this._asynchronous) {
             reading.governor = this._governor;
             reading.energyPreference = this._energyPreference;
@@ -482,17 +488,17 @@ const CpuControl = class CpuControl {
         }
 
         /*
-         * Everything above is already in hand. The four below each cost a
-         * file read - the frequency one per policy, which is 32 of them on a
-         * sixteen core machine - and every one of them can be displayed
-         * nowhere: the governor only in the menu and the tooltip, the energy
-         * preference and the boost state only in the menu, the frequency only
-         * where the panel was asked for it.
+         * The synchronous backend has no poll standing behind it, so the four
+         * below are worked out when somebody asks. Each costs a file read -
+         * the frequency one per policy, which is 32 of them on a sixteen core
+         * machine - and every one of them can be displayed nowhere: the
+         * governor only in the menu and the tooltip, the energy preference
+         * and the boost state only in the menu, the frequency only where the
+         * panel was asked for it.
          *
-         * So they are worked out when somebody asks. With the menu shut and
-         * the pointer elsewhere - which is nearly always - a poll now reads
-         * no cpufreq node at all, and the values that are read are read at
-         * the moment they are shown rather than up to four seconds before.
+         * So with the menu shut and the pointer elsewhere - which is nearly
+         * always - a synchronous poll reads no cpufreq node at all, and what
+         * is read is read at the moment it is shown.
          */
         _lazy(reading, "governor", () => this.governor);
         _lazy(reading, "energyPreference", () => this.energyPreference);

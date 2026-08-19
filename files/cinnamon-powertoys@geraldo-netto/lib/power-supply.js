@@ -449,10 +449,12 @@ const PlatformProfileClient = class PlatformProfileClient {
      * Everything a reading asks about the profile, from one look at the
      * firmware.
      *
-     * The getters above are each a fresh read, which is right when one of them
-     * is what you want and wrong when all of them are: a poll asking for six
-     * properties opened the same two files three times over. This is the call
-     * a poll makes.
+     * The getters above each go back to _read(), which is right when one of
+     * them is what you want and wrong when all of them are: against the
+     * synchronous backend a poll asking for six properties opened the same
+     * two files three times over. Asynchronously _read() is the field the
+     * last refresh() left, so what is saved is the six lookups rather than
+     * the files. Either way this is the one call a poll makes.
      */
     snapshot() {
         let profile = this._read();
