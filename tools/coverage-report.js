@@ -242,6 +242,48 @@ let byName = {};
 for (let name in sources)
     byName[name] = sources[name];
 
+/*
+ * The lcov names the copies, not the sources.
+ *
+ * cjs measured `.coverage/modules/cov_lib_io_js.js`, a temporary file that no
+ * commit contains, so an external reader of this lcov - a Sonar scan, a
+ * coverage service - attributes the run to files it cannot find and reports
+ * the applet as uncovered. The manifest already says which source each copy
+ * stood in for, so the lcov is rewritten in place through it, naming the
+ * tracked file relative to the working directory the run was made from.
+ *
+ * Idempotent: a path that is already a tracked source is left alone, so
+ * reading the report twice off one run says the same thing both times.
+ */
+function trackedPath(path) {
+    let name = GLib.path_get_basename(path).replace(/\.js$/, "");
+    return byName[name] || null;
+}
+
+function relativeTo(root, path) {
+    return path.indexOf(root + "/") === 0 ? path.slice(root.length + 1) : path;
+}
+
+function remapLcov(text) {
+    let root = GLib.get_current_dir();
+    let changed = false;
+    let out = text.split("\n").map(line => {
+        if (line.indexOf("SF:") !== 0)
+            return line;
+        let source = trackedPath(line.slice(3));
+        if (!source)
+            return line;
+        changed = true;
+        return "SF:" + relativeTo(root, source);
+    });
+    return changed ? out.join("\n") : null;
+}
+
+/* The copies are gone once the run is over, so a source is found by the
+ * manifest on the first read and by its own path on every one after. */
+for (let name in sources)
+    byName[GLib.path_get_basename(sources[name]).replace(/\.js$/, "")] = sources[name];
+
 let below = [];
 let reports = [];
 
@@ -293,6 +335,15 @@ if (!quiet) {
         }
     }
     print("");
+}
+
+let remapped = remapLcov(Loader.read(directory + "/coverage.lcov"));
+if (remapped !== null) {
+    try {
+        GLib.file_set_contents(directory + "/coverage.lcov", remapped);
+    } catch (error) {
+        printerr("could not rename the lcov sources: " + error.message);
+    }
 }
 
 let functions = reports.reduce((total, report) => total + report.functions.length, 0);
