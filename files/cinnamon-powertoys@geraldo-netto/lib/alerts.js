@@ -33,9 +33,14 @@ const _ = Translate._;
  */
 const HYSTERESIS = 5;
 
+/*
+ * A device or sensor and what it just read, in a notification body.
+ *
+ * The same "label: value" join the rows and the tooltip use, so a translator
+ * decides once what goes between the two. Format.readingName owns it.
+ */
 function readingText(source, reading) {
-    return Translate.interpolate(
-        _("%{source} - %{reading}"), { source: source, reading: reading });
+    return Format.readingName(source, reading);
 }
 
 /*

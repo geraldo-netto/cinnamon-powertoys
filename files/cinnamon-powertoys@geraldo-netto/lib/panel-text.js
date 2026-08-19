@@ -180,9 +180,7 @@ function deviceStatus(device) {
 }
 
 function namedStatus(name, device) {
-    let status = deviceStatus(device);
-    return status ? Translate.interpolate(_("%{name}: %{status}"),
-        { name: name, status: status }) : name;
+    return Format.readingName(name, deviceStatus(device));
 }
 
 /*
@@ -262,8 +260,8 @@ function consumptionEntries(data) {
     let meters = _meters(data);
     let counts = _groupCounts(meters);
     for (let meter of meters) {
-        entries.push(Translate.interpolate(_("%{name}: %{power}"),
-            { name: _meterName(meter, counts), power: Format.watts(meter.watts) }));
+        entries.push(Format.readingName(_meterName(meter, counts),
+                                        Format.watts(meter.watts)));
     }
     return entries;
 }
@@ -292,10 +290,8 @@ function performanceEntries(data, options) {
     if (data.selectedTemperature) {
         let sensor = data.selectedTemperature;
         let source = sensor.label || sensor.groupLabel || _("Temperature");
-        entries.push(Translate.interpolate(_("%{source}: %{temperature}"), {
-            source: source,
-            temperature: Format.temperature(sensor.celsius, options.tempUnit, 1),
-        }));
+        entries.push(Format.readingName(
+            source, Format.temperature(sensor.celsius, options.tempUnit, 1)));
     }
     return entries;
 }
@@ -305,11 +301,9 @@ function performanceEntries(data, options) {
  * display battery on most machines; the physical batteries remain devices of
  * their own here, as they are in the menu. */
 function deviceEntries(data) {
-    let entries = (data.lines || []).map(line => Translate.interpolate(
-        _("%{device}: %{state}"), {
-            device: Format.deviceTitle(line),
-            state: line.online ? _("Connected") : _("Disconnected"),
-        }));
+    let entries = (data.lines || []).map(line => Format.readingName(
+        Format.deviceTitle(line),
+        line.online ? _("Connected") : _("Disconnected")));
     for (let device of data.devices || [])
         entries.push(namedStatus(Format.deviceTitle(device), device));
     return entries;

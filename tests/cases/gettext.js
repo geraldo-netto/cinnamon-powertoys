@@ -286,7 +286,6 @@ cases["dynamic name and value phrases use complete templates"] = function () {
     let source = [Harness.shellSource()].concat(
         files.map(file => Harness.readFile(Harness.xletDir() + "/" + file))).join("\n");
     for (let message of [
-        "%{source} - %{reading}",
         "%{device}  %{charge}",
         "%{kind} %{charge}",
         "%{state} · %{remaining}",

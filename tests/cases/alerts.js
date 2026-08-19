@@ -383,8 +383,8 @@ cases["a different hot sensor is identified and reported"] = function () {
     } }, limits());
 
     Harness.equal(each.said.length, 2, "a new source is distinct news");
-    Harness.equal(each.said[0].body, "Processor - 95.0 °C", "the CPU is named");
-    Harness.equal(each.said[1].body, "Radeon RX 6600 edge - 95.0 °C", "the GPU is named");
+    Harness.equal(each.said[0].body, "Processor: 95.0 °C", "the CPU is named");
+    Harness.equal(each.said[1].body, "Radeon RX 6600 edge: 95.0 °C", "the GPU is named");
 };
 
 cases["a level that never bound is left alone rather than clamped"] = function () {
@@ -546,23 +546,23 @@ cases["what an alert says is the device and where it is"] = function () {
     Harness.equal(each.said.length, 1, "exactly on the critical level is critical");
     Harness.equal(each.said[0].urgent, true, "and urgent");
     Harness.equal(each.said[0].title, "Battery critically low", "the title");
-    Harness.equal(each.said[0].body, "BAT0 - 7%", "the device, and where it is");
+    Harness.equal(each.said[0].body, "BAT0: 7%", "the device, and where it is");
 
     let low = policy();
     low.alerts.check(reading([battery(20)]), limits());
     Harness.equal(low.said[0].urgent, false, "low is not urgent");
     Harness.equal(low.said[0].title, "Battery low", "its own title");
-    Harness.equal(low.said[0].body, "BAT0 - 20%", "and the same shape of body");
+    Harness.equal(low.said[0].body, "BAT0: 20%", "and the same shape of body");
 
     let hot = policy();
     hot.alerts.check(reading([], 90), limits());
     Harness.equal(hot.said[0].title, "High temperature", "the temperature's title");
-    Harness.equal(hot.said[0].body, "Processor - 90.0 °C",
+    Harness.equal(hot.said[0].body, "Processor: 90.0 °C",
                   "and its source with the reading, to the tenth the menu shows");
 
     let fahrenheit = policy();
     fahrenheit.alerts.check(reading([], 90), limits({ tempUnit: "fahrenheit" }));
-    Harness.equal(fahrenheit.said[0].body, "Processor - 194.0 °F",
+    Harness.equal(fahrenheit.said[0].body, "Processor: 194.0 °F",
                   "in whichever unit is set");
 };
 
