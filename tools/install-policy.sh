@@ -36,33 +36,22 @@ fi
 
 . "$(dirname "$0")/transition-lock.sh"
 acquire_transition_lock "$LOCK_TARGET" policy
+. "$(dirname "$0")/atomic-replace.sh"
 
 helper_directory=$(dirname "$HELPER_DESTINATION")
 policy_directory=$(dirname "$POLICY_DESTINATION")
 
-arm_failure_trap() {
-    trap 'exit 1' HUP INT TERM
-}
+# Both files are one transaction, and the ordering between them is this
+# script's own business: the executable is published first and withdrawn
+# first, so the intermediate state a signal can catch is always an action
+# naming no helper and never a privileged executable no action accounts for.
+# Staging, backing up, publishing and rolling back either of them is
+# tools/atomic-replace.sh.
 
 uninstall_pair() {
-    uninstall_helper_existed=no
-    uninstall_policy_existed=no
-    uninstall_helper_removed=no
-    uninstall_policy_removed=no
-    uninstall_helper_recovery=
-    uninstall_policy_recovery=
-    uninstall_helper_backup=
-    uninstall_policy_backup=
-    uninstall_retain_helper=no
-    uninstall_retain_policy=no
     uninstall_committed=no
-
-    if [ -e "$HELPER_DESTINATION" ] || [ -L "$HELPER_DESTINATION" ]; then
-        uninstall_helper_existed=yes
-    fi
-    if [ -e "$POLICY_DESTINATION" ] || [ -L "$POLICY_DESTINATION" ]; then
-        uninstall_policy_existed=yes
-    fi
+    atomic_slot helper "$HELPER_DESTINATION" "policy helper"
+    atomic_slot policy "$POLICY_DESTINATION" "polkit action"
 
     uninstall_cleanup() {
         uninstall_status=$?
@@ -74,37 +63,26 @@ uninstall_pair() {
             # no privileged executable exposed; the action can be withdrawn
             # again to complete the safe removal.
             uninstall_policy_ready=yes
-            if [ "$uninstall_policy_removed" = yes ]; then
-                if mv -- "$uninstall_policy_backup" "$POLICY_DESTINATION"; then
-                    uninstall_policy_removed=no
-                else
-                    echo "could not restore the previous polkit action from $uninstall_policy_backup" >&2
-                    uninstall_policy_ready=no
-                    uninstall_retain_policy=yes
-                    uninstall_status=1
-                fi
+            if ! atomic_restore policy; then
+                uninstall_policy_ready=no
+                atomic_retain policy
+                uninstall_status=1
             fi
 
-            if [ "$uninstall_helper_removed" = yes ]; then
-                if [ "$uninstall_policy_existed" = yes ] &&
+            if atomic_is helper removed yes; then
+                if atomic_is policy existed yes &&
                         [ "$uninstall_policy_ready" != yes ]; then
-                    echo "the policy pair remains safely removed; helper recovery retained at $uninstall_helper_backup" >&2
-                    uninstall_retain_helper=yes
+                    echo "the policy pair remains safely removed; helper recovery retained at $(atomic_backup_path helper)" >&2
+                    atomic_retain helper
                     uninstall_status=1
-                elif mv -- "$uninstall_helper_backup" "$HELPER_DESTINATION"; then
-                    uninstall_helper_removed=no
-                else
-                    echo "could not restore the previous policy helper from $uninstall_helper_backup" >&2
-                    uninstall_retain_helper=yes
+                elif ! atomic_restore helper; then
+                    atomic_retain helper
                     uninstall_status=1
                     # Do not leave the successfully restored (or never moved)
                     # action naming a helper that could not be restored.
-                    if [ "$uninstall_policy_existed" = yes ] &&
-                            { [ -e "$POLICY_DESTINATION" ] || [ -L "$POLICY_DESTINATION" ]; }; then
-                        if [ -n "$uninstall_policy_backup" ] &&
-                                mv -- "$POLICY_DESTINATION" "$uninstall_policy_backup"; then
-                            uninstall_policy_removed=yes
-                            uninstall_retain_policy=yes
+                    if atomic_is policy existed yes && atomic_present policy; then
+                        if atomic_rewithdraw policy; then
+                            atomic_retain policy
                             echo "the policy pair was safely removed after restoration failed" >&2
                         else
                             echo "the helper is removed, but the stale polkit action could not be withdrawn" >&2
@@ -114,59 +92,29 @@ uninstall_pair() {
             fi
         fi
 
-        if [ "$uninstall_retain_helper" != yes ] &&
-                [ -n "$uninstall_helper_recovery" ] &&
-                ! rm -rf -- "$uninstall_helper_recovery"; then
-            echo "policy helper recovery remains in protected directory $uninstall_helper_recovery" >&2
-            uninstall_status=1
-        fi
-        if [ "$uninstall_retain_policy" != yes ] &&
-                [ -n "$uninstall_policy_recovery" ] &&
-                ! rm -rf -- "$uninstall_policy_recovery"; then
-            echo "polkit action recovery remains in protected directory $uninstall_policy_recovery" >&2
-            uninstall_status=1
-        fi
+        atomic_release_recovery helper || uninstall_status=1
+        atomic_release_recovery policy || uninstall_status=1
         if [ "$uninstall_committed" = yes ]; then
             rmdir "$helper_directory" 2>/dev/null || true
         fi
         exit "$uninstall_status"
     }
     trap uninstall_cleanup EXIT
-    arm_failure_trap
+    atomic_arm_failure_trap
 
     # Reserve every recovery location before moving either live file. Each
     # directory is root-only, so a removed executable retained after an
     # exceptional cleanup cannot be invoked through the old public path. The
     # trap is already armed in case the second reservation cannot be made.
-    if [ "$uninstall_helper_existed" = yes ]; then
-        uninstall_helper_recovery=$(mktemp -d \
-            "$helper_directory/.powertoys-helper.remove.XXXXXX")
-        chmod 0700 "$uninstall_helper_recovery"
-        uninstall_helper_backup=$uninstall_helper_recovery/powertoys-helper
-    fi
-    if [ "$uninstall_policy_existed" = yes ]; then
-        uninstall_policy_recovery=$(mktemp -d \
-            "$policy_directory/.powertoys-policy.remove.XXXXXX")
-        chmod 0700 "$uninstall_policy_recovery"
-        uninstall_policy_backup=$uninstall_policy_recovery/action.policy
-    fi
+    atomic_reserve helper .powertoys-helper.remove powertoys-helper
+    atomic_reserve policy .powertoys-policy.remove action.policy
 
     # Withdraw the executable first. The brief intermediate state is an action
     # naming no helper, never an unreferenced privileged executable. Each move
     # and marker is indivisible to the signal trap; any later failure restores
     # the exact prior pair in cleanup.
-    if [ "$uninstall_helper_existed" = yes ]; then
-        trap '' HUP INT TERM
-        mv -- "$HELPER_DESTINATION" "$uninstall_helper_backup"
-        uninstall_helper_removed=yes
-        arm_failure_trap
-    fi
-    if [ "$uninstall_policy_existed" = yes ]; then
-        trap '' HUP INT TERM
-        mv -- "$POLICY_DESTINATION" "$uninstall_policy_backup"
-        uninstall_policy_removed=yes
-        arm_failure_trap
-    fi
+    atomic_withdraw helper
+    atomic_withdraw policy
 
     # Both public paths now represent the requested safe state. Recovery-copy
     # cleanup may still report a protected leftover, but must never roll the
@@ -184,15 +132,9 @@ policy_directory_existed=no
 [ -d "$helper_directory" ] && helper_directory_existed=yes
 [ -d "$policy_directory" ] && policy_directory_existed=yes
 
-helper_staging=
-policy_staging=
-helper_backup=
-policy_backup=
-helper_backup_ready=no
-policy_backup_ready=no
-helper_published=no
-policy_published=no
 committed=no
+atomic_slot helper "$HELPER_DESTINATION" "policy helper"
+atomic_slot policy "$POLICY_DESTINATION" "polkit action"
 
 cleanup() {
     status=$?
@@ -203,52 +145,12 @@ cleanup() {
         # The helper is published first and restored first. Any old action
         # therefore continues to name a compatible old helper throughout the
         # rollback rather than briefly naming a missing executable.
-        if [ "$helper_published" = yes ]; then
-            if [ "$helper_backup_ready" = yes ]; then
-                if mv -f -- "$helper_backup" "$HELPER_DESTINATION"; then
-                    helper_backup=
-                    helper_published=no
-                else
-                    echo "could not restore the previous policy helper from $helper_backup" >&2
-                    status=1
-                fi
-            elif rm -f -- "$HELPER_DESTINATION"; then
-                helper_published=no
-            else
-                echo "could not remove the uncommitted policy helper" >&2
-                status=1
-            fi
-        fi
-        if [ "$policy_published" = yes ]; then
-            if [ "$policy_backup_ready" = yes ]; then
-                if mv -f -- "$policy_backup" "$POLICY_DESTINATION"; then
-                    policy_backup=
-                    policy_published=no
-                else
-                    echo "could not restore the previous polkit action from $policy_backup" >&2
-                    status=1
-                fi
-            elif rm -f -- "$POLICY_DESTINATION"; then
-                policy_published=no
-            else
-                echo "could not remove the uncommitted polkit action" >&2
-                status=1
-            fi
-        fi
+        atomic_rollback helper || status=1
+        atomic_rollback policy || status=1
     fi
 
-    [ -n "$helper_staging" ] && rm -f -- "$helper_staging"
-    [ -n "$policy_staging" ] && rm -f -- "$policy_staging"
-    # A backup still associated with a published file is the only remaining
-    # recovery copy after a failed rollback. Retain it and name it above.
-    if [ -n "$helper_backup" ] &&
-            { [ "$committed" = yes ] || [ "$helper_published" != yes ]; }; then
-        rm -f -- "$helper_backup"
-    fi
-    if [ -n "$policy_backup" ] &&
-            { [ "$committed" = yes ] || [ "$policy_published" != yes ]; }; then
-        rm -f -- "$policy_backup"
-    fi
+    atomic_discard helper "$committed"
+    atomic_discard policy "$committed"
 
     if [ "$policy_directory_existed" != yes ]; then
         rmdir "$policy_directory" 2>/dev/null || true
@@ -259,44 +161,25 @@ cleanup() {
     exit "$status"
 }
 trap cleanup EXIT
-arm_failure_trap
+atomic_arm_failure_trap
 
 install -d "$helper_directory" "$policy_directory"
-helper_staging=$(mktemp "$helper_directory/.powertoys-helper.new.XXXXXX")
-policy_staging=$(mktemp "$policy_directory/.powertoys-policy.new.XXXXXX")
+atomic_stage helper .powertoys-helper.new
+atomic_stage policy .powertoys-policy.new
 
 # Both desired files are complete, validated copies before either live file is
 # backed up or replaced.
-install -m 0755 "$HELPER_SOURCE" "$helper_staging"
-install -m 0644 "$POLICY_SOURCE" "$policy_staging"
+install -m 0755 "$HELPER_SOURCE" "$(atomic_staging helper)"
+install -m 0644 "$POLICY_SOURCE" "$(atomic_staging policy)"
 
-if [ -e "$HELPER_DESTINATION" ] || [ -L "$HELPER_DESTINATION" ]; then
-    helper_backup=$(mktemp "$helper_directory/.powertoys-helper.old.XXXXXX")
-    rm -f -- "$helper_backup"
-    cp -a -- "$HELPER_DESTINATION" "$helper_backup"
-    helper_backup_ready=yes
-fi
-if [ -e "$POLICY_DESTINATION" ] || [ -L "$POLICY_DESTINATION" ]; then
-    policy_backup=$(mktemp "$policy_directory/.powertoys-policy.old.XXXXXX")
-    rm -f -- "$policy_backup"
-    cp -a -- "$POLICY_DESTINATION" "$policy_backup"
-    policy_backup_ready=yes
-fi
+atomic_backup helper .powertoys-helper.old
+atomic_backup policy .powertoys-policy.old
 
 # Each rename and its publication marker form one state transition with
 # respect to the signal trap. A signal between the two files is handled by the
 # ordinary rollback and restores the helper already published.
-trap '' HUP INT TERM
-mv -f -- "$helper_staging" "$HELPER_DESTINATION"
-helper_staging=
-helper_published=yes
-arm_failure_trap
-
-trap '' HUP INT TERM
-mv -f -- "$policy_staging" "$POLICY_DESTINATION"
-policy_staging=
-policy_published=yes
-arm_failure_trap
+atomic_publish helper
+atomic_publish policy
 
 # Nothing fallible follows as part of the transaction. Cleanup removes the
 # recovery copies without ever rolling back a committed pair.

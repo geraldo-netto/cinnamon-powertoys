@@ -159,7 +159,7 @@ check:
 	@sh -n $(XLET_DIR)/powertoys-helper install.sh tools/check-layout.sh \
 		tools/install-translations.sh \
 		tools/uninstall.sh tools/deployment-lock.sh tools/cinnamon-xlets.sh \
-		tools/transition-lock.sh \
+		tools/transition-lock.sh tools/atomic-replace.sh \
 		tools/rapl-access.sh tools/install-policy.sh \
 		&& echo "shell ok     helper and install scripts"
 	@python3 -c "import json; [json.load(open(f)) for f in ['$(XLET_DIR)/metadata.json','$(XLET_DIR)/settings-schema.json','info.json']]" \

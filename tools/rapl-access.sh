@@ -18,6 +18,9 @@ POWERCAP_ROOT=${POWERTOYS_POWERCAP_ROOT:-/sys/class/powercap}
 
 . "$(dirname "$0")/transition-lock.sh"
 acquire_transition_lock "$LOCK_TARGET" RAPL
+# Staging, backing up, publishing and rolling the rule back is the same
+# transaction the policy pair uses; only the udev replay around it is ours.
+. "$(dirname "$0")/atomic-replace.sh"
 
 reload_rules() {
     udevadm control --reload
@@ -79,29 +82,16 @@ install_rule() {
 
     directory=$(dirname "$DESTINATION")
     install -d "$directory"
-    staging=$(mktemp "$directory/.rapl-rule.new.XXXXXX")
-    backup=
-    backup_ready=no
-    published=no
     committed=no
+    atomic_slot rule "$DESTINATION" "RAPL rule"
 
     install_cleanup() {
         install_status=$?
         trap - EXIT HUP INT TERM
         set +e
 
-        if [ "$committed" != yes ] && [ "$published" = yes ]; then
-            if [ "$backup_ready" = yes ]; then
-                if ! mv -f -- "$backup" "$DESTINATION"; then
-                    echo "could not restore the previous RAPL rule from $backup" >&2
-                    install_status=1
-                else
-                    backup=
-                fi
-            else
-                rm -f -- "$DESTINATION" || install_status=1
-            fi
-
+        if [ "$committed" != yes ] && atomic_is rule published yes; then
+            atomic_rollback rule || install_status=1
             if [ -z "${DESTDIR:-}" ]; then
                 reload_rules || install_status=1
                 reset_live_permissions || install_status=1
@@ -109,30 +99,22 @@ install_rule() {
             fi
         fi
 
-        [ -n "$staging" ] && rm -f -- "$staging"
-        [ -n "$backup" ] && rm -f -- "$backup"
+        atomic_discard rule "$committed"
         exit "$install_status"
     }
     trap install_cleanup EXIT
-    trap 'exit 1' HUP INT TERM
+    atomic_arm_failure_trap
 
+    atomic_stage rule .rapl-rule.new
     sed -e "s/@GROUP@/$GROUP/g" \
         -e "s|@CHGRP@|$chgrp_path|g" \
-        -e "s|@CHMOD@|$chmod_path|g" "$SOURCE" > "$staging"
-    chmod 0644 "$staging"
-    if [ -e "$DESTINATION" ] || [ -L "$DESTINATION" ]; then
-        backup=$(mktemp "$directory/.rapl-rule.old.XXXXXX")
-        cp -p -- "$DESTINATION" "$backup"
-        backup_ready=yes
-    fi
+        -e "s|@CHMOD@|$chmod_path|g" "$SOURCE" > "$(atomic_staging rule)"
+    chmod 0644 "$(atomic_staging rule)"
+    atomic_backup rule .rapl-rule.old
     # Keep publication and its rollback state indivisible to the signal trap.
     # Otherwise cleanup can discard the backup while the new rule is already
-    # visible but `published` still says it is not.
-    trap '' HUP INT TERM
-    mv -f -- "$staging" "$DESTINATION"
-    staging=
-    published=yes
-    trap 'exit 1' HUP INT TERM
+    # visible but the slot still says it is not published.
+    atomic_publish rule
 
     if [ -z "${DESTDIR:-}" ]; then
         reload_rules
@@ -140,8 +122,7 @@ install_rule() {
     fi
 
     committed=yes
-    [ -n "$backup" ] && rm -f -- "$backup"
-    backup=
+    atomic_discard rule yes
     trap - EXIT HUP INT TERM
 }
 
