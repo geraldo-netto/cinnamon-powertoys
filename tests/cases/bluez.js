@@ -484,7 +484,7 @@ cases["owned BlueZ snapshot failures retry with capped backoff"] = function () {
         Harness.equal(control.devices[0].percentage, 64, "the recovery snapshot is adopted");
         Harness.equal(Object.keys(timers.pending).length, 0,
                       "success leaves no redundant retry armed");
-        Harness.equal(control._retryDelay, Bluez.RETRY_INITIAL_MS,
+        Harness.equal(control._retry.delay, Bluez.RETRY_INITIAL_MS,
                       "success resets backoff for a future incident");
         Harness.equal(lines.length, 1, "one continuous owned failure is diagnosed once");
         Harness.ok(lines[0].indexOf("GetManagedObjects timed out") >= 0,
@@ -522,7 +522,7 @@ cases["BlueZ retry is cancelled on owner loss and teardown"] = function () {
     Harness.equal(Object.keys(timers.pending).length, 1, "failure arms a retry");
     watcher.vanished();
     Harness.equal(Object.keys(timers.pending).length, 0, "owner loss cancels it");
-    Harness.equal(control._retryDelay, Bluez.RETRY_INITIAL_MS,
+    Harness.equal(control._retry.delay, Bluez.RETRY_INITIAL_MS,
                   "owner loss resets the incident backoff");
 
     watcher.appeared();

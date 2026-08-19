@@ -14,6 +14,7 @@ const GLib = imports.gi.GLib;
 const Log = require("./lib/log.js");
 const Once = require("./lib/once.js");
 const OwnerWatch = require("./lib/owner-watch.js");
+const Backoff = require("./lib/backoff.js");
 
 const BACKENDS = [
     { name: "net.hadess.PowerProfiles", path: "/net/hadess/PowerProfiles" },
@@ -249,8 +250,14 @@ const PowerProfilesClient = class PowerProfilesClient {
         this._connecting = false;
         this._connectPending = false;
         this._connectCall = null;
-        this._retryTimerId = 0;
-        this._retryDelay = RETRY_INITIAL_MS;
+        this._retry = new Backoff.Backoff({
+            timers: this._bus,
+            initialMs: RETRY_INITIAL_MS,
+            maxMs: RETRY_MAX_MS,
+            allow: () => !this.destroyed && this._ownerAware &&
+                this._ownedBackends().length > 0,
+            run: () => this._connect(),
+        });
         this._failures = new Log.FailureLog();
         /* Built on demand and dropped whenever the daemon says anything has
          * changed - see snapshot(). */
@@ -258,7 +265,7 @@ const PowerProfilesClient = class PowerProfilesClient {
 
         for (let index = 0; index < BACKENDS.length; index++) {
             let backend = BACKENDS[index];
-            let watcher = new OwnerWatch.ResilientOwnerWatch({
+            let watcher = OwnerWatch.watchOwnership({
                 install: (appeared, vanished) =>
                     this._bus.watch(backend.name, appeared, vanished),
                 release: id => this._bus.unwatch(id),
@@ -277,13 +284,7 @@ const PowerProfilesClient = class PowerProfilesClient {
                 failures: this._failures,
                 failureKey: "owner-watch:" + backend.name,
                 failureMessage: "cannot watch " + backend.name + " ownership",
-                timers: {
-                    add: (delay, callback) => this._bus.timeoutAdd
-                        ? this._bus.timeoutAdd(delay, callback)
-                        : GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback),
-                    remove: id => this._bus.removeTimer
-                        ? this._bus.removeTimer(id) : GLib.source_remove(id),
-                },
+                timers: this._bus,
             });
             this._ownerWatches.push(watcher);
             watcher.start();
@@ -490,31 +491,11 @@ const PowerProfilesClient = class PowerProfilesClient {
     }
 
     _scheduleRetry() {
-        if (this.destroyed || !this._ownerAware || this._retryTimerId ||
-            this._ownedBackends().length === 0)
-            return;
-        let delay = this._retryDelay;
-        this._retryDelay = Math.min(delay * 2, RETRY_MAX_MS);
-        let callback = () => {
-            this._retryTimerId = 0;
-            if (!this.destroyed && this._ownedBackends().length > 0)
-                this._connect();
-            return GLib.SOURCE_REMOVE;
-        };
-        this._retryTimerId = this._bus.timeoutAdd
-            ? this._bus.timeoutAdd(delay, callback)
-            : GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback);
+        this._retry.schedule();
     }
 
     _cancelRetry() {
-        if (this._retryTimerId) {
-            if (this._bus.removeTimer)
-                this._bus.removeTimer(this._retryTimerId);
-            else
-                GLib.source_remove(this._retryTimerId);
-            this._retryTimerId = 0;
-        }
-        this._retryDelay = RETRY_INITIAL_MS;
+        this._retry.cancel();
     }
 
     _disconnectProxy(writeError) {

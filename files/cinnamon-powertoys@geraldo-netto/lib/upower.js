@@ -7,13 +7,13 @@
  */
 
 const Gio = imports.gi.Gio;
-const GLib = imports.gi.GLib;
 const UPowerGlib = imports.gi.UPowerGlib;
 
 const Format = require("./lib/format.js");
 const Log = require("./lib/log.js");
 const Once = require("./lib/once.js");
 const OwnerWatch = require("./lib/owner-watch.js");
+const Backoff = require("./lib/backoff.js");
 
 const BUS_NAME = "org.freedesktop.UPower";
 const MANAGER_PATH = "/org/freedesktop/UPower";
@@ -244,8 +244,21 @@ const UPowerMonitor = class UPowerMonitor {
         this._connecting = false;
         this._managerRequest = null;
         this._proxyRequests = new Set();
-        this._retryTimerId = 0;
-        this._retryDelay = RETRY_INITIAL_MS;
+        this._retry = new Backoff.Backoff({
+            timers: this._bus,
+            initialMs: RETRY_INITIAL_MS,
+            maxMs: RETRY_MAX_MS,
+            allow: () => !this.destroyed &&
+                (this._ownerPresent === true || this._watchDegraded),
+            run: () => {
+                let changed = this.available || this._devices.size > 0 ||
+                    this._display !== null;
+                this._disconnectManager();
+                if (changed)
+                    this._onChanged();
+                this._connect();
+            },
+        });
         this._failures = new Log.FailureLog();
         this._readySent = false;
         this.managerAvailable = false;
@@ -504,38 +517,11 @@ const UPowerMonitor = class UPowerMonitor {
     }
 
     _scheduleRetry() {
-        if (this.destroyed ||
-                (this._ownerPresent !== true && !this._watchDegraded) ||
-                this._retryTimerId)
-            return;
-        let delay = this._retryDelay;
-        this._retryDelay = Math.min(delay * 2, RETRY_MAX_MS);
-        let callback = () => {
-            this._retryTimerId = 0;
-            if (!this.destroyed &&
-                    (this._ownerPresent === true || this._watchDegraded)) {
-                let changed = this.available || this._devices.size > 0 || this._display !== null;
-                this._disconnectManager();
-                if (changed)
-                    this._onChanged();
-                this._connect();
-            }
-            return GLib.SOURCE_REMOVE;
-        };
-        this._retryTimerId = this._bus.timeoutAdd
-            ? this._bus.timeoutAdd(delay, callback)
-            : GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback);
+        this._retry.schedule();
     }
 
     _cancelRetry() {
-        if (this._retryTimerId) {
-            if (this._bus.removeTimer)
-                this._bus.removeTimer(this._retryTimerId);
-            else
-                GLib.source_remove(this._retryTimerId);
-            this._retryTimerId = 0;
-        }
-        this._retryDelay = RETRY_INITIAL_MS;
+        this._retry.cancel();
     }
 
     /* Proxy wrappers normally report failure to their callback, but reaching

@@ -8,57 +8,22 @@
  * and owns both the retry timer and the eventual watch handle at teardown.
  */
 
-const GLib = imports.gi.GLib;
 const Log = require("./lib/log.js");
+const Backoff = require("./lib/backoff.js");
 
 const RETRY_INITIAL_MS = 1000;
 const RETRY_MAX_MS = 30000;
 
-/*
- * The one timer port these watches accept.
- *
- * Three backends reach their timers through three conventions - a bus with
- * `timeoutAdd`/`removeTimer`, a GLib-shaped object with `timeout_add`/
- * `source_remove`, and an owner handle with either - so each of them used to
- * write its own adapter and the three could not be exercised through one
- * fake. Normalising here is what lets them share `watchOwnership`. Anything
- * the source does not answer falls back to GLib's main loop.
- */
-function timerPort(source) {
-    source = source || {};
-    return {
-        add: (delay, callback) => {
-            if (typeof source.add === "function")
-                return source.add(delay, callback);
-            if (typeof source.timeoutAdd === "function")
-                return source.timeoutAdd(delay, callback);
-            if (typeof source.timeout_add === "function")
-                return source.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback);
-            return GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback);
-        },
-        remove: id => {
-            if (typeof source.remove === "function")
-                return source.remove(id);
-            if (typeof source.removeTimer === "function")
-                return source.removeTimer(id);
-            if (typeof source.source_remove === "function")
-                return source.source_remove(id);
-            return GLib.source_remove(id);
-        },
-    };
-}
+/* The timer conventions a backend may already hold live with the backoff
+ * that consumes them; watches accept exactly the same shapes. */
+const timerPort = Backoff.timerPort;
 
 /*
  * Build a watch from a backend's own collaborators: `timers` is whatever
  * object that backend already holds, not a pre-shaped port.
  */
 function watchOwnership(options) {
-    options = options || {};
-    let settings = {};
-    for (let name in options)
-        settings[name] = options[name];
-    settings.timers = timerPort(options.timers);
-    return new ResilientOwnerWatch(settings);
+    return new ResilientOwnerWatch(options);
 }
 
 const ResilientOwnerWatch = class ResilientOwnerWatch {
@@ -73,24 +38,23 @@ const ResilientOwnerWatch = class ResilientOwnerWatch {
         this._failures = options.failures || new Log.FailureLog();
         this._failureKey = options.failureKey || "owner-watch";
         this._failureMessage = options.failureMessage || "cannot watch service ownership";
-        this._timers = options.timers || {
-            add: (delay, callback) =>
-                GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback),
-            remove: id => GLib.source_remove(id),
-        };
+        this._timers = options.timers || null;
         this._handle = null;
-        this._timerId = 0;
-        this._retryDelay = options.retryInitialMs || RETRY_INITIAL_MS;
-        this._retryInitial = options.retryInitialMs || RETRY_INITIAL_MS;
-        this._retryMax = options.retryMaxMs || RETRY_MAX_MS;
         this._stopped = false;
+        this._retry = new Backoff.Backoff({
+            timers: this._timers,
+            initialMs: options.retryInitialMs || RETRY_INITIAL_MS,
+            maxMs: options.retryMaxMs || RETRY_MAX_MS,
+            allow: () => !this._stopped && !this._handle,
+            run: () => this.start(),
+        });
     }
 
     start() {
         if (this._stopped || this._handle)
             return !!this._handle;
         /* A caller checking degraded wiring must not bypass the backoff. */
-        if (this._timerId)
+        if (this._retry.pending)
             return false;
 
         let reported = false;
@@ -112,7 +76,7 @@ const ResilientOwnerWatch = class ResilientOwnerWatch {
             if (!handle)
                 throw new Error("watch registration returned no handle");
             this._handle = handle;
-            this._retryDelay = this._retryInitial;
+            this._retry.cancel();
             this._failures.recover(this._failureKey);
             this._onInstalled(reported);
             return true;
@@ -126,15 +90,7 @@ const ResilientOwnerWatch = class ResilientOwnerWatch {
     }
 
     _scheduleRetry() {
-        if (this._stopped || this._handle || this._timerId)
-            return;
-        let delay = this._retryDelay;
-        this._retryDelay = Math.min(delay * 2, this._retryMax);
-        this._timerId = this._timers.add(delay, () => {
-            this._timerId = 0;
-            this.start();
-            return GLib.SOURCE_REMOVE;
-        });
+        this._retry.schedule();
     }
 
     get active() {
@@ -145,14 +101,7 @@ const ResilientOwnerWatch = class ResilientOwnerWatch {
         if (this._stopped)
             return;
         this._stopped = true;
-        if (this._timerId) {
-            try {
-                this._timers.remove(this._timerId);
-            } catch (error) {
-                /* already removed */
-            }
-            this._timerId = 0;
-        }
+        this._retry.cancel();
         if (this._handle) {
             try {
                 this._release(this._handle);
@@ -161,6 +110,5 @@ const ResilientOwnerWatch = class ResilientOwnerWatch {
             }
             this._handle = null;
         }
-        this._retryDelay = this._retryInitial;
     }
 };

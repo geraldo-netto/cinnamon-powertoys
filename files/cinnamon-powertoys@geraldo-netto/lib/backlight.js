@@ -10,11 +10,11 @@
  */
 
 const Gio = imports.gi.Gio;
-const GLib = imports.gi.GLib;
 
 const Log = require("./lib/log.js");
 const Once = require("./lib/once.js");
 const OwnerWatch = require("./lib/owner-watch.js");
+const Backoff = require("./lib/backoff.js");
 
 const BUS_NAME = "org.cinnamon.SettingsDaemon.Power";
 const OBJECT_PATH = "/org/cinnamon/SettingsDaemon/Power";
@@ -156,8 +156,18 @@ const BacklightControl = class BacklightControl {
         this._signalId = 0;
         this._ownerWatch = null;
         this._ownerPresent = false;
-        this._retryTimerId = 0;
-        this._retryDelay = RETRY_INITIAL_MS;
+        this._retry = new Backoff.Backoff({
+            timers: owner,
+            initialMs: RETRY_INITIAL_MS,
+            maxMs: RETRY_MAX_MS,
+            allow: () => !this.destroyed && this._ownerPresent !== false,
+            run: () => this.refresh(() => {
+                if (!this.destroyed) {
+                    this._settleReady();
+                    this._onChanged();
+                }
+            }),
+        });
         this._absenceConfirmations = 0;
         this._failures = new Log.FailureLog();
         this._connecting = false;
@@ -347,36 +357,11 @@ const BacklightControl = class BacklightControl {
     }
 
     _scheduleRetry() {
-        if (this.destroyed || this._ownerPresent === false || this._retryTimerId)
-            return;
-        let delay = this._retryDelay;
-        this._retryDelay = Math.min(delay * 2, RETRY_MAX_MS);
-        let callback = () => {
-            this._retryTimerId = 0;
-            if (this.destroyed || this._ownerPresent === false)
-                return GLib.SOURCE_REMOVE;
-            this.refresh(() => {
-                if (!this.destroyed) {
-                    this._settleReady();
-                    this._onChanged();
-                }
-            });
-            return GLib.SOURCE_REMOVE;
-        };
-        this._retryTimerId = this._owner?.timeoutAdd
-            ? this._owner.timeoutAdd(delay, callback)
-            : GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback);
+        this._retry.schedule();
     }
 
     _cancelRetry() {
-        if (this._retryTimerId) {
-            if (this._owner?.removeTimer)
-                this._owner.removeTimer(this._retryTimerId);
-            else
-                GLib.source_remove(this._retryTimerId);
-            this._retryTimerId = 0;
-        }
-        this._retryDelay = RETRY_INITIAL_MS;
+        this._retry.cancel();
     }
 
     /* Asks the daemon where the backlight is now. An error after a confirmed

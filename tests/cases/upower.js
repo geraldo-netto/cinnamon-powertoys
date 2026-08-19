@@ -558,7 +558,7 @@ cases["owned UPower manager failures retry with capped backoff"] = function () {
         Harness.equal(lines.length, 1, "the continuous manager failure is logged once");
         Harness.equal(monitor.available, true, "the recovered manager is adopted");
         Harness.equal(Object.keys(timers.pending).length, 0, "success cancels further retry");
-        Harness.equal(monitor._retryDelay, UPower.RETRY_INITIAL_MS,
+        Harness.equal(monitor._retry.delay, UPower.RETRY_INITIAL_MS,
                       "success resets backoff for a later incident");
     } finally {
         Log.setSink(null);

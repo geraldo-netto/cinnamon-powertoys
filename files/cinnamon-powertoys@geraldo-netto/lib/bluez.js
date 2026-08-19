@@ -17,6 +17,7 @@ const UPowerGlib = imports.gi.UPowerGlib;
 
 const Log = require("./lib/log.js");
 const OwnerWatch = require("./lib/owner-watch.js");
+const Backoff = require("./lib/backoff.js");
 
 const BUS_NAME = "org.bluez";
 
@@ -219,8 +220,13 @@ const BluezBatteries = class BluezBatteries {
         this._signalIds = [];
         this._signalKeys = new Set();
         this._refreshTimerId = 0;
-        this._retryTimerId = 0;
-        this._retryDelay = RETRY_INITIAL_MS;
+        this._retry = new Backoff.Backoff({
+            timers: this._timers,
+            initialMs: RETRY_INITIAL_MS,
+            maxMs: RETRY_MAX_MS,
+            allow: () => !this.destroyed && this._ownerPresent === true,
+            run: () => this._refresh(),
+        });
         this._failures = new Log.FailureLog();
         if (this._watchName) {
             this._ownerWatch = OwnerWatch.watchOwnership({
@@ -612,25 +618,11 @@ const BluezBatteries = class BluezBatteries {
      * watcher still says this daemon exists. The delay is capped so recovery
      * remains possible without turning an unhealthy bus into a tight loop. */
     _scheduleRetry() {
-        if (this.destroyed || this._ownerPresent !== true || this._retryTimerId)
-            return;
-        let delay = this._retryDelay;
-        this._retryDelay = Math.min(delay * 2, RETRY_MAX_MS);
-        this._retryTimerId = this._timers.timeout_add(
-            GLib.PRIORITY_DEFAULT, delay, () => {
-                this._retryTimerId = 0;
-                if (!this.destroyed && this._ownerPresent === true)
-                    this._refresh();
-                return GLib.SOURCE_REMOVE;
-            });
+        this._retry.schedule();
     }
 
     _cancelRetry() {
-        if (this._retryTimerId) {
-            this._timers.source_remove(this._retryTimerId);
-            this._retryTimerId = 0;
-        }
-        this._retryDelay = RETRY_INITIAL_MS;
+        this._retry.cancel();
     }
 
     _repairWiring() {

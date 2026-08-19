@@ -422,8 +422,8 @@ cases["retry cancellation releases injected and fallback timers"] = function () 
 
     owner.vanished();
     Harness.deepEqual(timers.removed, [1], "owner loss releases the injected timer");
-    Harness.equal(injected._retryTimerId, 0, "and clears its token");
-    Harness.equal(injected._retryDelay, Backlight.RETRY_INITIAL_MS,
+    Harness.equal(injected._retry.pending, false, "and clears its token");
+    Harness.equal(injected._retry.delay, Backlight.RETRY_INITIAL_MS,
                   "cancellation resets backoff for a future owner");
     injected.destroy();
 
@@ -431,9 +431,9 @@ cases["retry cancellation releases injected and fallback timers"] = function () 
     let fallback = new Backlight.BacklightControl(
         Backlight.SCREEN, null, null,
         (xml, onDone) => onDone(null, new Error("proxy unavailable")), fallbackOwner);
-    Harness.ok(fallback._retryTimerId !== 0, "the GLib fallback timer is armed");
+    Harness.ok(fallback._retry.pending, "the GLib fallback timer is armed");
     fallback.destroy();
-    Harness.equal(fallback._retryTimerId, 0, "teardown removes the GLib timer too");
+    Harness.equal(fallback._retry.pending, false, "teardown removes the GLib timer too");
 };
 
 cases["a failed connection is retried on refresh"] = function () {

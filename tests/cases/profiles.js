@@ -273,7 +273,7 @@ cases["owned profile discovery failures retry with capped backoff"] = function (
         Harness.equal(attempts, 8, "the owned backend is retried until it recovers");
         Harness.equal(client.busName, HADESS, "the recovered proxy is adopted");
         Harness.equal(Object.keys(timers.pending).length, 0, "success leaves no retry armed");
-        Harness.equal(client._retryDelay, Profiles.RETRY_INITIAL_MS,
+        Harness.equal(client._retry.delay, Profiles.RETRY_INITIAL_MS,
                       "success resets backoff for another incident");
         Harness.equal(lines.length, 1, "one continuous owned backend failure is logged once");
         Harness.ok(lines[0].indexOf("proxy timeout") >= 0,
