@@ -24,6 +24,7 @@ GRANTED = ("yes",)
 EXEC_PATH = "org.freedesktop.policykit.exec.path"
 ALLOWED_ANNOTATIONS = frozenset({EXEC_PATH})
 
+
 # Each check reports by appending to a list its caller owns, so that a check
 # is a function of what it was given: callable twice in one process, and
 # exercisable on its own without a module global to reset in between.

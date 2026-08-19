@@ -49,12 +49,16 @@ jobs:
       # a runtime lookup and not a dependency anything declares, so without
       # gir1.2-upowerglib-1.0 they fail at load before their tests can run. Gio
       # and GLib arrive with cjs; UPowerGlib is the only one that does not.
-      - name: Install cjs, its UPower typelib and gettext
+      #
+      # shellcheck and flake8 are the two lint gates `make check` runs, and it
+      # fails rather than skips when either is absent - so they are installed
+      # here for the same reason the interpreter is.
+      - name: Install cjs, its UPower typelib, gettext and the lint gates
         timeout-minutes: 10
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
-            cjs gir1.2-upowerglib-1.0 gettext
+            cjs gir1.2-upowerglib-1.0 gettext shellcheck python3-flake8
 
       - name: Check
         timeout-minutes: 10

@@ -10,11 +10,11 @@ POLICY_SOURCE=${4:-}
 POLICY_DESTINATION=${5:-}
 LOCK_TARGET=${6:-}
 
-[ "$#" -eq 6 ] && [ -n "$HELPER_DESTINATION" ] &&
-        [ -n "$POLICY_DESTINATION" ] && [ -n "$LOCK_TARGET" ] || {
+if ! { [ "$#" -eq 6 ] && [ -n "$HELPER_DESTINATION" ] &&
+       [ -n "$POLICY_DESTINATION" ] && [ -n "$LOCK_TARGET" ]; }; then
     echo "usage: install-policy.sh install|uninstall HELPER_SOURCE HELPER_DEST POLICY_SOURCE POLICY_DEST LOCK" >&2
     exit 2
-}
+fi
 case "$ACTION" in
     install|uninstall) ;;
     *) echo "unknown policy transition: $ACTION" >&2; exit 2;;
@@ -34,8 +34,10 @@ if [ "$ACTION" = install ]; then
     }
 fi
 
+# shellcheck source=tools/transition-lock.sh
 . "$(dirname "$0")/transition-lock.sh"
 acquire_transition_lock "$LOCK_TARGET" policy
+# shellcheck source=tools/atomic-replace.sh
 . "$(dirname "$0")/atomic-replace.sh"
 
 helper_directory=$(dirname "$HELPER_DESTINATION")

@@ -299,7 +299,8 @@ uninstall does not have and must not ask for.
 ### To work on it
 
 ```sh
-sudo apt install cjs gettext gir1.2-upowerglib-1.0 make python3
+sudo apt install cjs gettext gir1.2-upowerglib-1.0 make python3 \
+    python3-flake8 shellcheck
 make check
 ```
 
@@ -307,7 +308,11 @@ make check
 parse check run under, so they fail for the same reasons the shell would.
 `python3` checks the JSON and policy metadata, `gettext` is for the
 translations, and the typelib is the runtime dependency for modules that
-consume UPower device data or enums. `cinnamon-xlet-makepot`, which `make pot`
+consume UPower device data or enums. `shellcheck` reads the shipped helper and
+every installation script, and `flake8` the Python tools beside them: `sh -n`
+says a script parses, those two say whether it means what it looks like.
+`make check` fails when either is missing rather than skipping the gate, so
+neither is optional. `cinnamon-xlet-makepot`, which `make pot`
 calls, ships in the `cinnamon` package itself and so is already there on the
 desktop this is written for.
 
@@ -632,7 +637,7 @@ while they are stale.
 ## Tests
 
 ```sh
-make check            # layout, parse check, tests, helper, JSON, policy, helper path
+make check            # layout, parse, tests, shell and Python lint, JSON, policy, paths
 make coverage         # tests plus the per-function coverage gate
 cjs tests/run.js      # tests only
 cjs tests/run.js io   # only cases whose name contains "io"

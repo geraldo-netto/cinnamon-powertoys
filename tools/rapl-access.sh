@@ -10,16 +10,19 @@ GROUP=${4:-}
 LOCK_TARGET=${5:-}
 POWERCAP_ROOT=${POWERTOYS_POWERCAP_ROOT:-/sys/class/powercap}
 
-[ "$#" -eq 5 ] && { [ "$ACTION" = install ] || [ "$ACTION" = uninstall ]; } &&
-        [ -n "$LOCK_TARGET" ] || {
+if ! { [ "$#" -eq 5 ] &&
+       { [ "$ACTION" = install ] || [ "$ACTION" = uninstall ]; } &&
+       [ -n "$LOCK_TARGET" ]; }; then
     echo "usage: rapl-access.sh install|uninstall SOURCE DESTINATION GROUP LOCK" >&2
     exit 2
-}
+fi
 
+# shellcheck source=tools/transition-lock.sh
 . "$(dirname "$0")/transition-lock.sh"
 acquire_transition_lock "$LOCK_TARGET" RAPL
 # Staging, backing up, publishing and rolling the rule back is the same
 # transaction the policy pair uses; only the udev replay around it is ours.
+# shellcheck source=tools/atomic-replace.sh
 . "$(dirname "$0")/atomic-replace.sh"
 
 reload_rules() {

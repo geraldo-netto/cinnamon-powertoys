@@ -68,6 +68,27 @@ MUTANTS_JOBS ?= 4
 DIST_DIR ?= dist
 PACKAGE_TOOL := tools/build-package.py
 
+# Every script this repository ships or runs, and every Python tool beside
+# them, named once. The list used to be written out by hand in the one place
+# that parsed it, so a script added under tools/ was checked by nothing until
+# somebody noticed. A wildcard cannot forget.
+SHELL_SOURCES := $(XLET_DIR)/powertoys-helper install.sh $(wildcard tools/*.sh)
+PYTHON_SOURCES := $(wildcard tools/*.py)
+
+# What the lint gates are allowed to let past, stated here so the reason is
+# next to the exception rather than repeated on forty lines.
+#
+# SC2317 calls a command unreachable when it cannot see who runs it. Every one
+# of these scripts installs an EXIT/HUP/INT/TERM trap that rolls a half-done
+# transaction back, and the body of a trap handler is exactly the code
+# ShellCheck cannot find a caller for. Suppressing it in place would mean a
+# directive on each of them.
+#
+# The Python line length is the one this tree already writes to; pycodestyle's
+# own default of 79 would report the existing files rather than regressions.
+SHELLCHECK_EXCLUDE := SC2317
+PYLINT_MAX_LINE ?= 100
+
 .PHONY: install uninstall install-policy uninstall-policy install-rapl \
 	uninstall-rapl check coverage mutants dist pot restart help
 
@@ -150,18 +171,31 @@ uninstall-rapl:
 	@echo "removed $(RAPL_DIR)/$(RAPL_RULE)"
 	@echo "reapplied the remaining udev policy (root only when no other rule grants access)"
 
+# Parse, run, and read. `sh -n` says a script is syntactically a script;
+# ShellCheck says whether it means what it looks like, which is the class of
+# mistake a shell only reports at the moment it goes wrong on somebody's
+# machine. flake8 does the same for the Python tools beside them.
+#
+# A missing tool fails rather than skips. A gate that prints "not available,
+# skipping" reports success for as long as nobody installs it, which is
+# indistinguishable from having no gate at all.
 check:
 	@command -v cjs >/dev/null 2>&1 || { echo "cjs not found, install the cjs package"; exit 1; }
 	@sh tools/check-layout.sh "$(UUID)" "$(FILES_DIR)"
 	@cjs tools/parse-check.js $(XLET_DIR)/applet.js $(XLET_DIR)/lib/*.js \
 		$(XLET_DIR)/ui/*.js
 	@cjs tests/run.js
-	@sh -n $(XLET_DIR)/powertoys-helper install.sh tools/check-layout.sh \
-		tools/install-translations.sh \
-		tools/uninstall.sh tools/deployment-lock.sh tools/cinnamon-xlets.sh \
-		tools/transition-lock.sh tools/atomic-replace.sh \
-		tools/rapl-access.sh tools/install-policy.sh \
+	@sh -n $(SHELL_SOURCES) \
 		&& echo "shell ok     helper and install scripts"
+	@command -v shellcheck >/dev/null 2>&1 || \
+		{ echo "shellcheck not found, install the shellcheck package"; exit 1; }
+	@shellcheck --shell=sh --severity=style --external-sources \
+		--exclude=$(SHELLCHECK_EXCLUDE) $(SHELL_SOURCES) \
+		&& echo "lint ok      shell, semantic"
+	@command -v flake8 >/dev/null 2>&1 || \
+		{ echo "flake8 not found, install the python3-flake8 package"; exit 1; }
+	@flake8 --max-line-length=$(PYLINT_MAX_LINE) $(PYTHON_SOURCES) \
+		&& echo "lint ok      python developer tooling"
 	@python3 -c "import json; [json.load(open(f)) for f in ['$(XLET_DIR)/metadata.json','$(XLET_DIR)/settings-schema.json','info.json']]" \
 		&& echo "json ok      runtime metadata, settings and Spices info"
 	@python3 $(POLICY_CHECKER) polkit/$(POLICY) $(HELPER_PATH)
