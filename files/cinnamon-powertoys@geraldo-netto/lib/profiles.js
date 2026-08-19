@@ -232,20 +232,36 @@ function systemBus(gio) {
     };
 }
 
-const PowerProfilesClient = class PowerProfilesClient {
-    constructor(onChanged, bus) {
-        this._onChanged = onChanged || function () {};
-        this._bus = bus || systemBus();
-        this._proxy = null;
+/*
+ * Which power-profiles daemon this applet is talking to, and staying talked to.
+ *
+ * Two bus names publish the same interface, one per daemon generation, and
+ * either may appear or vanish while Cinnamon is running. Everything that
+ * follows from that - a name watch per backend, the priority order between
+ * them, building and tearing down the proxy, the capped-doubling retry when
+ * no candidate answered, and the failure log that keeps one owned backend's
+ * repeated refusals to one line - is this object and nothing else. What is
+ * read off the proxy, and what is written to it, are somebody else's.
+ *
+ * `onChanged` says the connection or the daemon's properties moved. `onDropped`
+ * says the proxy has gone, with the error a pending write should be refused
+ * with, or null when nothing needs answering.
+ */
+const ProfileBackendConnection = class ProfileBackendConnection {
+    constructor(bus, options) {
+        let configuration = options || {};
+        this.bus = bus;
+        this._onChanged = configuration.onChanged || function () {};
+        this._onDropped = configuration.onDropped || function () {};
+        this._bus = bus;
+        this.proxy = null;
+        this.busName = null;
+        this.busPath = null;
+        this.destroyed = false;
         this._propSignalId = 0;
         this._ownerWatches = [];
         this._ownerAware = this._bus.watchReportsInitialState === true;
         this._ownerStates = BACKENDS.map(() => null);
-        this._setCall = null;
-        this._setQueued = null;
-        this.busName = null;
-        this.busPath = null;
-        this.destroyed = false;
         /* A search for the daemon is under way; see _connect. */
         this._connecting = false;
         this._connectPending = false;
@@ -258,11 +274,16 @@ const PowerProfilesClient = class PowerProfilesClient {
                 this._ownedBackends().length > 0,
             run: () => this._connect(),
         });
-        this._failures = new Log.FailureLog();
-        /* Built on demand and dropped whenever the daemon says anything has
-         * changed - see snapshot(). */
-        this._snapshot = null;
+        this.failures = new Log.FailureLog();
+    }
 
+    /* The backend a write should be addressed to, or null while there is
+     * none. */
+    target() {
+        return this.proxy ? { name: this.busName, path: this.busPath } : null;
+    }
+
+    start() {
         for (let index = 0; index < BACKENDS.length; index++) {
             let backend = BACKENDS[index];
             let watcher = OwnerWatch.watchOwnership({
@@ -281,7 +302,7 @@ const PowerProfilesClient = class PowerProfilesClient {
                     if (this._ownerAware)
                         this._ownerStates[index] = OWNER_WATCH_FAILED;
                 },
-                failures: this._failures,
+                failures: this.failures,
                 failureKey: "owner-watch:" + backend.name,
                 failureMessage: "cannot watch " + backend.name + " ownership",
                 timers: this._bus,
@@ -306,19 +327,19 @@ const PowerProfilesClient = class PowerProfilesClient {
 
         let backend = BACKENDS[index];
         if (!present)
-            this._failures.recover("backend:" + backend.name);
+            this.failures.recover("backend:" + backend.name);
         if (!present && this.busName === backend.name) {
             this._disconnectProxy(new Error("power-profiles-daemon stopped"));
-            this._invalidate();
+            this._onChanged();
         }
 
         if (this._ownerAware && this._ownerStates.every(state => state !== null)) {
             let wanted = this._ownedBackends()[0] || null;
             /* A newly available higher-priority name replaces the fallback;
              * an in-flight search for a name no longer selected is obsolete. */
-            if (this._proxy && (!wanted || this.busName !== wanted.name)) {
+            if (this.proxy && (!wanted || this.busName !== wanted.name)) {
                 this._disconnectProxy(new Error("power profile backend changed"));
-                this._invalidate();
+                this._onChanged();
             }
             if (this._connectCall &&
                 (!wanted || this._connectCall.backend.name !== wanted.name))
@@ -350,7 +371,7 @@ const PowerProfilesClient = class PowerProfilesClient {
      * once at startup.
      */
     _connect() {
-        if (this.destroyed || this._proxy)
+        if (this.destroyed || this.proxy)
             return;
         if (this._ownerAware && this._ownerStates.includes(null))
             return;
@@ -374,7 +395,7 @@ const PowerProfilesClient = class PowerProfilesClient {
             return;
         }
         if (failed)
-            this._scheduleRetry();
+            this._retry.schedule();
     }
 
     _backendIsOwned(backend) {
@@ -387,13 +408,9 @@ const PowerProfilesClient = class PowerProfilesClient {
     _reportBackendFailure(backend, reason) {
         if (!this._backendIsOwned(backend))
             return;
-        this._failures.report(
+        this.failures.report(
             "backend:" + backend.name,
             "cannot use owned power profile backend " + backend.name + ": " + reason);
-    }
-
-    _recoverBackend(backend) {
-        this._failures.recover("backend:" + backend.name);
     }
 
     _tryBackend(index, candidates) {
@@ -443,7 +460,7 @@ const PowerProfilesClient = class PowerProfilesClient {
                 let signalId = 0;
                 try {
                     signalId = proxy.connect("g-properties-changed",
-                                             () => this._invalidate());
+                                             () => this._onChanged());
                 } catch (e) {
                     this._reportBackendFailure(
                         backend, "property change subscription failed: " + e);
@@ -457,15 +474,15 @@ const PowerProfilesClient = class PowerProfilesClient {
                     return;
                 }
 
-                this._recoverBackend(backend);
+                this.failures.recover("backend:" + backend.name);
                 this._connecting = false;
                 this._connectPending = false;
                 this._cancelRetry();
-                this._proxy = proxy;
+                this.proxy = proxy;
                 this.busName = backend.name;
                 this.busPath = backend.path;
                 this._propSignalId = signalId;
-                this._invalidate();
+                this._onChanged();
             }, cancellable);
         } catch (e) {
             if (this._connectCall !== operation)
@@ -490,35 +507,133 @@ const PowerProfilesClient = class PowerProfilesClient {
         }
     }
 
-    _scheduleRetry() {
-        this._retry.schedule();
-    }
-
     _cancelRetry() {
         this._retry.cancel();
     }
 
     _disconnectProxy(writeError) {
-        this._cancelProfileWrites(writeError, !!writeError);
-        if (this._proxy && this._propSignalId) {
+        this._onDropped(writeError || null);
+        if (this.proxy && this._propSignalId) {
             try {
-                this._proxy.disconnect(this._propSignalId);
+                this.proxy.disconnect(this._propSignalId);
             } catch (e) {
                 /* already gone */
             }
         }
-        this._proxy = null;
+        this.proxy = null;
         this._propSignalId = 0;
         this.busName = null;
         this.busPath = null;
-        this._snapshot = null;
     }
 
-    _cancelProfileWrites(error, notify) {
-        let current = this._setCall;
-        let queued = this._setQueued;
-        this._setCall = null;
-        this._setQueued = null;
+    destroy() {
+        /* A search may still be out on the bus; what it finds is no longer
+         * wanted, the same way a probe in flight is disowned in lib/ddc.js. */
+        this.destroyed = true;
+        this._connectPending = false;
+        this._cancelRetry();
+        this._cancelConnect();
+        this._disconnectProxy(null);
+        for (let watcher of this._ownerWatches)
+            watcher.stop();
+        this._ownerWatches = [];
+    }
+};
+
+/*
+ * One profile write on the bus at a time, with the newest choice winning.
+ *
+ * The property setter the proxy wrapper generates fires the Set call and
+ * forgets about it, so a refusal - polkit says no, the daemon does not know
+ * the profile, it went away between the click and the call - never reaches
+ * the caller and the menu silently keeps its old selection. Issuing Set here
+ * keeps hold of the reply.
+ *
+ * A second choice made while the first is still out does not queue behind it
+ * indefinitely: one write is in flight, exactly one is waiting, and a third
+ * replaces the waiting one, which is told it was superseded rather than
+ * refused. Turning the wheel through five profiles is then two calls.
+ */
+const ProfileWriteQueue = class ProfileWriteQueue {
+    /* `target` answers { name, path } for the backend a write goes to, or
+     * null while there is nothing to write to. */
+    constructor(bus, target) {
+        this._bus = bus;
+        this._target = target;
+        this._current = null;
+        this._queued = null;
+        this._destroyed = false;
+    }
+
+    /*
+     * onResult is called with null when the daemon accepted the change, with
+     * an Error when it did not, and with PROFILE_SUPERSEDED when a newer
+     * queued choice replaced this one. Answers whether the write was taken on.
+     */
+    write(name, onResult) {
+        let done = onResult || function () {};
+        if (this._destroyed || !this._target()) {
+            done(new Error("power-profiles-daemon is not available"));
+            return false;
+        }
+
+        let operation = { name: name, done: Once.once(done), cancellable: null };
+        if (this._current) {
+            if (this._queued)
+                this._queued.done(PROFILE_SUPERSEDED);
+            this._queued = operation;
+            return true;
+        }
+        this._queued = operation;
+        return this._drain();
+    }
+
+    get busy() {
+        return this._current !== null;
+    }
+
+    _drain() {
+        if (this._destroyed || this._current || !this._queued)
+            return false;
+
+        let call = this._queued;
+        this._queued = null;
+        let target = this._target();
+        if (!target) {
+            call.done(new Error("power-profiles-daemon is not available"));
+            return false;
+        }
+
+        call.cancellable = this._bus.cancellable ? this._bus.cancellable() : null;
+        this._current = call;
+        let finish = error => {
+            if (this._current !== call)
+                return;
+            this._current = null;
+            if (!this._destroyed)
+                call.done(error);
+            this._drain();
+        };
+        try {
+            this._bus.setProperty(target.name, target.path, "ActiveProfile", call.name,
+                                  call.cancellable, finish);
+        } catch (error) {
+            this._current = null;
+            call.done(error);
+            this._drain();
+            return false;
+        }
+        return true;
+    }
+
+    /* Drops the write in flight and the one waiting. With `notify`, each is
+     * answered with `error` rather than left waiting for a reply that the
+     * cancelled call will never bring. */
+    cancel(error, notify) {
+        let current = this._current;
+        let queued = this._queued;
+        this._current = null;
+        this._queued = null;
         if (current?.cancellable) {
             try {
                 current.cancellable.cancel();
@@ -532,6 +647,54 @@ const PowerProfilesClient = class PowerProfilesClient {
             if (queued)
                 queued.done(error);
         }
+    }
+
+    destroy() {
+        this._destroyed = true;
+        this.cancel(null, false);
+    }
+};
+
+/*
+ * The power profile backend the rest of the applet holds.
+ *
+ * Two objects underneath: one that keeps a connection to whichever daemon is
+ * on the bus, and one that writes profiles to it. What is left here is what a
+ * reading needs - the six properties, unpacked once per change and kept until
+ * the daemon says something moved.
+ */
+const PowerProfilesClient = class PowerProfilesClient {
+    constructor(onChanged, bus) {
+        this._onChanged = onChanged || function () {};
+        this.destroyed = false;
+        /* Built on demand and dropped whenever the daemon says anything has
+         * changed - see snapshot(). */
+        this._snapshot = null;
+
+        this._connection = new ProfileBackendConnection(bus || systemBus(), {
+            onChanged: () => this._invalidate(),
+            /* The proxy is going away, so a Set already out on it will never
+             * be answered by the daemon. */
+            onDropped: error => {
+                this._snapshot = null;
+                this._writes.cancel(error, !!error);
+            },
+        });
+        this._writes = new ProfileWriteQueue(this._connection.bus,
+                                             () => this._connection.target());
+        this._connection.start();
+    }
+
+    get busName() {
+        return this._connection.busName;
+    }
+
+    get busPath() {
+        return this._connection.busPath;
+    }
+
+    get _proxy() {
+        return this._connection.proxy;
     }
 
     /* The daemon has spoken, so what was worked out from it is stale. */
@@ -610,66 +773,9 @@ const PowerProfilesClient = class PowerProfilesClient {
         }));
     }
 
-    /*
-     * The property setter the proxy wrapper generates fires the Set call and
-     * forgets about it, so a refusal - polkit says no, the daemon does not
-     * know the profile, it went away between the click and the call - never
-     * reaches the caller and the menu silently keeps its old selection.
-     * Issuing Set here keeps hold of the reply. onResult is called with null
-     * when the daemon accepted the change, with an Error when it did not, and
-     * with PROFILE_SUPERSEDED when a newer queued choice replaces this one.
-     */
+    /* See ProfileWriteQueue.write for what onResult is told. */
     setProfile(name, onResult) {
-        let done = onResult || function () {};
-        if (!this._proxy) {
-            done(new Error("power-profiles-daemon is not available"));
-            return false;
-        }
-
-        let operation = { name: name, done: Once.once(done), cancellable: null };
-        if (this._setCall) {
-            if (this._setQueued)
-                this._setQueued.done(PROFILE_SUPERSEDED);
-            this._setQueued = operation;
-            return true;
-        }
-        this._setQueued = operation;
-        return this._drainProfileWrites();
-    }
-
-    _drainProfileWrites() {
-        if (this.destroyed || this._setCall || !this._setQueued)
-            return false;
-
-        let call = this._setQueued;
-        this._setQueued = null;
-        if (!this._proxy) {
-            call.done(new Error("power-profiles-daemon is not available"));
-            return false;
-        }
-
-        call.cancellable = this._bus.cancellable ? this._bus.cancellable() : null;
-        this._setCall = call;
-        let busName = this.busName;
-        let busPath = this.busPath;
-        let finish = error => {
-            if (this._setCall !== call)
-                return;
-            this._setCall = null;
-            if (!this.destroyed)
-                call.done(error);
-            this._drainProfileWrites();
-        };
-        try {
-            this._bus.setProperty(busName, busPath, "ActiveProfile", call.name,
-                                  call.cancellable, finish);
-        } catch (error) {
-            this._setCall = null;
-            call.done(error);
-            this._drainProfileWrites();
-            return false;
-        }
-        return true;
+        return this._writes.write(name, onResult);
     }
 
     /* Stepping through profiles lives in the applet, which also has to handle
@@ -677,16 +783,8 @@ const PowerProfilesClient = class PowerProfilesClient {
      * part. */
 
     destroy() {
-        /* A search may still be out on the bus; what it finds is no longer
-         * wanted, the same way a probe in flight is disowned in lib/ddc.js. */
         this.destroyed = true;
-        this._connectPending = false;
-        this._cancelRetry();
-        this._cancelConnect();
-        this._cancelProfileWrites(null, false);
-        this._disconnectProxy();
-        for (let watcher of this._ownerWatches)
-            watcher.stop();
-        this._ownerWatches = [];
+        this._writes.destroy();
+        this._connection.destroy();
     }
 };

@@ -273,7 +273,7 @@ cases["owned profile discovery failures retry with capped backoff"] = function (
         Harness.equal(attempts, 8, "the owned backend is retried until it recovers");
         Harness.equal(client.busName, HADESS, "the recovered proxy is adopted");
         Harness.equal(Object.keys(timers.pending).length, 0, "success leaves no retry armed");
-        Harness.equal(client._retry.delay, Profiles.RETRY_INITIAL_MS,
+        Harness.equal(client._connection._retry.delay, Profiles.RETRY_INITIAL_MS,
                       "success resets backoff for another incident");
         Harness.equal(lines.length, 1, "one continuous owned backend failure is logged once");
         Harness.ok(lines[0].indexOf("proxy timeout") >= 0,
@@ -597,25 +597,26 @@ cases["profile write setup failures settle and release the queue"] = function ()
     Harness.equal(client.setProfile("performance", answer => { error = answer; }), false,
                   "the write reports it did not start");
     Harness.equal(error.message, "cannot start Set", "the setup failure reaches the caller");
-    Harness.equal(client._setCall, null, "no in-flight call is stranded");
-    Harness.equal(client._setQueued, null, "nor queued work");
+    Harness.equal(client._writes._current, null, "no in-flight call is stranded");
+    Harness.equal(client._writes._queued, null, "nor queued work");
     client.destroy();
 };
 
 cases["the profile write drain rejects unavailable and terminal states"] = function () {
     let client = new Profiles.PowerProfilesClient(null, bus({ [HADESS]: daemon() }));
+    let writes = client._writes;
     let outcome = null;
-    client._setQueued = { name: "performance", cancellable: null,
-                          done: error => { outcome = error; } };
-    client._proxy = null;
-    Harness.equal(client._drainProfileWrites(), false, "a lost proxy cannot start a write");
+    writes._queued = { name: "performance", cancellable: null,
+                       done: error => { outcome = error; } };
+    client._connection.proxy = null;
+    Harness.equal(writes._drain(), false, "a lost proxy cannot start a write");
     Harness.ok(outcome && outcome.message, "the accepted request is still settled");
 
-    client._setQueued = null;
-    Harness.equal(client._drainProfileWrites(), false, "an empty queue is idle");
-    client.destroyed = true;
-    client._setQueued = { name: "balanced", done: () => {} };
-    Harness.equal(client._drainProfileWrites(), false, "a destroyed client remains idle");
+    writes._queued = null;
+    Harness.equal(writes._drain(), false, "an empty queue is idle");
+    writes._destroyed = true;
+    writes._queued = { name: "balanced", done: () => {} };
+    Harness.equal(writes._drain(), false, "a destroyed queue remains idle");
 };
 
 cases["profile writes serialize and retain only the latest request"] = function () {
