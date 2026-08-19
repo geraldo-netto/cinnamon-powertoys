@@ -257,10 +257,6 @@ function batteryReading(device) {
              text: percent(percentage), precise: percentage !== null };
 }
 
-function reportsPrecisePercentage(device) {
-    return batteryReading(device).precise;
-}
-
 /*
  * Device icons, each with what to use when the first one is not installed.
  *

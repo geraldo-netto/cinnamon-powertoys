@@ -342,10 +342,11 @@ cases["a device is named by vendor and model, or by what it is"] = function () {
 cases["a device that cannot measure itself is described in words"] = function () {
     Harness.equal(Format.batteryLevelName(UPowerGlib.DeviceLevel.LOW), "Low", "low");
     Harness.equal(Format.batteryLevelName(UPowerGlib.DeviceLevel.CRITICAL), "Critical", "critical");
-    Harness.equal(Format.reportsPrecisePercentage(
-        { batteryLevel: UPowerGlib.DeviceLevel.NONE, percentage: 42 }), true, "a real percentage");
-    Harness.equal(Format.reportsPrecisePercentage(
-        { batteryLevel: UPowerGlib.DeviceLevel.LOW, percentage: 42 }), false,
+    Harness.equal(Format.batteryReading(
+        { batteryLevel: UPowerGlib.DeviceLevel.NONE, percentage: 42 }).precise, true,
+        "a real percentage");
+    Harness.equal(Format.batteryReading(
+        { batteryLevel: UPowerGlib.DeviceLevel.LOW, percentage: 42 }).precise, false,
         "a coarse level, whatever number came with it");
     Harness.deepEqual(Format.batteryReading(
         { batteryLevel: UPowerGlib.DeviceLevel.LOW, percentage: 0 }),

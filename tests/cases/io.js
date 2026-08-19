@@ -59,7 +59,6 @@ cases["a node that is not there reads as nothing, not as an error"] = function (
     Harness.deepEqual(IO.readWords("/definitely/not/here"), [], "nor a list");
     Harness.equal(IO.readLink("/definitely/not/here"), null, "nor a link");
     Harness.equal(IO.exists("/definitely/not/here"), false, "and it says so");
-    Harness.equal(IO.isReadable("/definitely/not/here"), false, "and it cannot be read");
     Harness.deepEqual(IO.listDir("/definitely/not/here"), [], "an empty listing, not a throw");
 };
 

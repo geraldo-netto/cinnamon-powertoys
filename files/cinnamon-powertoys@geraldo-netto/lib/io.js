@@ -337,10 +337,6 @@ function exists(path) {
     return GLib.file_test(resolve(path), GLib.FileTest.EXISTS);
 }
 
-function isReadable(path) {
-    return readString(path) !== null;
-}
-
 /* Whether this process may read a path, without reading the path itself. This
  * is for topology checks: an energy counter changes from root-only to readable
  * without changing its directory name, and sampling it just to ask would both
