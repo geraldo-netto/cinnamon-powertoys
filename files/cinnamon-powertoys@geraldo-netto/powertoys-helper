@@ -57,6 +57,39 @@ contains() {
     return 1
 }
 
+# advertises <value> <the kernel's list, as one string>
+#
+# The list arrives as one string and has to be split into words, which means an
+# unquoted expansion - and that invites pathname expansion as well, so a list
+# carrying a `*` would match a filename in the caller's working directory
+# rather than something the kernel offered. pkexec does not chdir, so that
+# directory is the caller's. Globbing is off for the split alone.
+advertises() {
+    advertises_needle=$1
+    advertises_list=$2
+    set -f
+    # shellcheck disable=SC2086
+    if contains "$advertises_needle" $advertises_list; then
+        advertises_status=0
+    else
+        advertises_status=1
+    fi
+    set +f
+    return "$advertises_status"
+}
+
+# plan_append <plan> <node> <old> <new>
+#
+# One record per line, tab separated, in the order they will be applied. The
+# plan is a string rather than a file because it never leaves this process and
+# apply_transaction reads it the same way.
+plan_append() {
+    plan_existing=$1
+    plan_record="$2	$3	$4"
+    printf '%s' "${plan_existing:+$plan_existing
+}$plan_record"
+}
+
 # Hold one machine-wide transaction boundary. /run is root-owned, so an
 # unprivileged caller cannot redirect this fixed path before pkexec starts.
 acquire_lock() {
@@ -75,21 +108,17 @@ acquire_lock() {
 # shell to the next, and on some of them not said at all. The applet reports
 # the last line of stderr as the reason, so every way this script can fail has
 # to be a line this script wrote.
-write_node() {
-    node=$1
-    value=$2
-    what=$3
-    # the subshell keeps the shell's own message about the redirect quiet
-    if ( printf '%s\n' "$value" > "$node" ) 2>/dev/null; then
-        return 0
-    fi
-    die write-failed "$what"
-}
-
+# try_write is the one place anything here writes: the subshell keeps the
+# shell's own message about a refused redirect quiet, so that every way this
+# script can fail is a line this script wrote.
 try_write() {
     write_target=$1
     write_value=$2
     ( printf '%s\n' "$write_value" > "$write_target" ) 2>/dev/null
+}
+
+write_node() {
+    try_write "$1" "$2" || die write-failed "$3"
 }
 
 # apply_transaction <newline separated node<TAB>old<TAB>new records>
@@ -135,7 +164,45 @@ EOF
     die change-failed-restored "write refused: $transaction_failed; previous settings restored"
 }
 
+# validate_policy_node <policy path> <node> <choices node> <value> <all|exposed>
+#
+# Whether this policy is a target, and if it is, what it holds now. Returns 1
+# for a policy that simply does not expose the node under the `exposed` scope;
+# every other disagreement is fatal here rather than at write time. Publishes
+# `policy_old` for the caller's plan.
+validate_policy_node() {
+    validate_path=$1
+    validate_node=$2
+    validate_choices=$3
+    validate_value=$4
+    validate_scope=$5
+
+    if [ ! -f "$validate_node" ]; then
+        if [ "$validate_scope" = all ]; then
+            die unsupported "cpufreq policy does not expose $policy_node_name: $validate_path"
+        fi
+        return 1
+    fi
+    [ -f "$validate_choices" ] ||
+        die unsupported "cpufreq policy does not expose $policy_choices_name: $validate_path"
+    if [ ! -r "$validate_node" ] || [ ! -w "$validate_node" ] || [ ! -r "$validate_choices" ]; then
+        die unavailable "cpufreq policy is not readable and writable: $validate_path"
+    fi
+
+    policy_old=$(cat "$validate_node" 2>/dev/null || echo "")
+    validate_available=$(cat "$validate_choices" 2>/dev/null || echo "")
+    if [ -z "$policy_old" ] || [ -z "$validate_available" ]; then
+        die unavailable "cpufreq policy did not answer: $validate_path"
+    fi
+    advertises "$validate_value" "$validate_available" ||
+        die invalid-value "$policy_node_name=$validate_value is unavailable on $validate_path"
+    return 0
+}
+
 # write_policies <node name> <choices node> <value> <all|exposed>
+#
+# Plan every policy first, then apply: a value one policy will not take must
+# not leave the others changed.
 write_policies() {
     policy_node_name=$1
     policy_choices_name=$2
@@ -151,35 +218,11 @@ write_policies() {
         policy_node="$policy_path/$policy_node_name"
         policy_choices="$policy_path/$policy_choices_name"
 
-        if [ ! -f "$policy_node" ]; then
-            if [ "$policy_scope" = all ]; then
-                die unsupported "cpufreq policy does not expose $policy_node_name: $policy_path"
-            fi
-            continue
-        fi
-        [ -f "$policy_choices" ] ||
-            die unsupported "cpufreq policy does not expose $policy_choices_name: $policy_path"
-        if [ ! -r "$policy_node" ] || [ ! -w "$policy_node" ] || [ ! -r "$policy_choices" ]; then
-            die unavailable "cpufreq policy is not readable and writable: $policy_path"
-        fi
-
-        policy_old=$(cat "$policy_node" 2>/dev/null || echo "")
-        policy_available=$(cat "$policy_choices" 2>/dev/null || echo "")
-        if [ -z "$policy_old" ] || [ -z "$policy_available" ]; then
-            die unavailable "cpufreq policy did not answer: $policy_path"
-        fi
-        # shellcheck disable=SC2086
-        contains "$policy_value" $policy_available ||
-            die invalid-value "$policy_node_name=$policy_value is unavailable on $policy_path"
+        validate_policy_node "$policy_path" "$policy_node" "$policy_choices" \
+            "$policy_value" "$policy_scope" || continue
 
         policy_targets=$((policy_targets + 1))
-        policy_record="$policy_node	$policy_old	$policy_value"
-        if [ -n "$policy_plan" ]; then
-            policy_plan="$policy_plan
-$policy_record"
-        else
-            policy_plan=$policy_record
-        fi
+        policy_plan=$(plan_append "$policy_plan" "$policy_node" "$policy_old" "$policy_value")
     done
     [ "$policy_count" -gt 0 ] || die unavailable "no cpufreq policy found"
     [ "$policy_targets" -gt 0 ] || die unsupported "no cpufreq policy exposes $policy_node_name"
@@ -222,79 +265,87 @@ set_platform_profile() {
     value=$1
     [ -f "$PLATFORM_PROFILE" ] || die unsupported "no ACPI platform profile on this system"
     choices=$(cat "$PLATFORM_PROFILE_CHOICES" 2>/dev/null || echo "")
-    # shellcheck disable=SC2086
-    contains "$value" $choices || die invalid-value "unknown platform profile: $value"
+    advertises "$value" "$choices" || die invalid-value "unknown platform profile: $value"
     write_node "$PLATFORM_PROFILE" "$value" "the firmware would not take the profile: $value"
+}
+
+validate_threshold() {
+    case "$1" in
+        ''|*[!0-9]*) die invalid-value "charge threshold expects a number" ;;
+    esac
+    if [ "$1" -lt 20 ] || [ "$1" -gt 100 ]; then
+        die invalid-value "charge threshold must be between 20 and 100"
+    fi
+}
+
+is_battery() {
+    battery_type_node="$1/type"
+    [ -r "$battery_type_node" ] || return 1
+    battery_type=$(cat "$battery_type_node" 2>/dev/null || echo "")
+    [ "$battery_type" = Battery ]
+}
+
+# read_threshold <node> <what it is called>
+#
+# Publishes `threshold_value`. A threshold this script is about to change has
+# to be readable, writable and numeric before anything is written, so that a
+# rollback has somewhere to go back to. Publishes rather than prints: a `die`
+# inside a command substitution would report from a subshell.
+read_threshold() {
+    threshold_node=$1
+    threshold_what=$2
+    if [ ! -r "$threshold_node" ] || [ ! -w "$threshold_node" ]; then
+        die unavailable "$threshold_what is not readable and writable: $threshold_node"
+    fi
+    threshold_value=$(cat "$threshold_node" 2>/dev/null || echo "")
+    case "$threshold_value" in
+        ''|*[!0-9]*) die unavailable "$threshold_what is not numeric: $threshold_node" ;;
+    esac
+}
+
+# The kernel rejects a start value that is not below the end value, so a start
+# threshold at or above the requested end is lowered out of the way. See PT-379
+# in todo.md: whether that silent change is the right answer is still open.
+coerced_start() {
+    coerced_old=$1
+    coerced_end=$2
+    if [ "$coerced_old" -lt "$coerced_end" ]; then
+        coerced_start_value=$coerced_old
+        return 0
+    fi
+    coerced_start_value=$((coerced_end - 5))
+    if [ "$coerced_start_value" -lt 0 ]; then
+        coerced_start_value=0
+    fi
 }
 
 set_charge_threshold() {
     value=$1
-    case "$value" in
-        ''|*[!0-9]*) die invalid-value "charge threshold expects a number" ;;
-    esac
-    if [ "$value" -lt 20 ] || [ "$value" -gt 100 ]; then
-        die invalid-value "charge threshold must be between 20 and 100"
-    fi
+    validate_threshold "$value"
 
     targets=0
     plan=
     for battery in "$POWER_SUPPLY_DIR"/*; do
-        type="$battery/type"
-        [ -r "$type" ] || continue
-        battery_type=$(cat "$type" 2>/dev/null || echo "")
-        [ "$battery_type" = Battery ] || continue
+        is_battery "$battery" || continue
 
         end="$battery/charge_control_end_threshold"
         [ -f "$end" ] || continue
         targets=$((targets + 1))
 
-        if [ ! -r "$end" ] || [ ! -w "$end" ]; then
-            die unavailable "charge threshold is not readable and writable: $end"
-        fi
-        old_end=$(cat "$end" 2>/dev/null || echo "")
-        case "$old_end" in
-            ''|*[!0-9]*) die unavailable "charge threshold is not numeric: $end" ;;
-        esac
+        read_threshold "$end" "charge threshold"
+        old_end=$threshold_value
 
         start="$battery/charge_control_start_threshold"
-        old_start=-
-        new_start=-
         if [ -f "$start" ]; then
-            if [ ! -r "$start" ] || [ ! -w "$start" ]; then
-                die unavailable "charge start threshold is not readable and writable: $start"
+            read_threshold "$start" "charge start threshold"
+            old_start=$threshold_value
+            coerced_start "$old_start" "$value"
+            if [ "$coerced_start_value" != "$old_start" ]; then
+                plan=$(plan_append "$plan" "$start" "$old_start" "$coerced_start_value")
             fi
-            old_start=$(cat "$start" 2>/dev/null || echo "")
-            case "$old_start" in
-                ''|*[!0-9]*) die unavailable "charge start threshold is not numeric: $start" ;;
-            esac
-            new_start=$old_start
-            # the kernel rejects a start value that is not below the end value
-            if [ "$old_start" -ge "$value" ]; then
-                new_start=$((value - 5))
-                if [ "$new_start" -lt 0 ]; then
-                    new_start=0
-                fi
-            fi
-        else
-            start=-
         fi
 
-        if [ "$start" != - ] && [ "$new_start" != "$old_start" ]; then
-            record="$start	$old_start	$new_start"
-            if [ -n "$plan" ]; then
-                plan="$plan
-$record"
-            else
-                plan=$record
-            fi
-        fi
-        record="$end	$old_end	$value"
-        if [ -n "$plan" ]; then
-            plan="$plan
-$record"
-        else
-            plan=$record
-        fi
+        plan=$(plan_append "$plan" "$end" "$old_end" "$value")
     done
     [ "$targets" -gt 0 ] || die unsupported "no battery exposes a charge threshold"
 
