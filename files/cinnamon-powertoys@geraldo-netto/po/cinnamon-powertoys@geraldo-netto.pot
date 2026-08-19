@@ -18,88 +18,88 @@ msgstr ""
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
 #. metadata.json->name
-#: applet.js:512 applet.js:1477 applet.js:1491 applet.js:1554 applet.js:1596
-#: applet.js:1601 applet.js:1715
+#: applet.js:312 applet.js:521 applet.js:1486 applet.js:1500 applet.js:1563
+#: applet.js:1605 applet.js:1610
 msgid "Power Toys"
 msgstr ""
 
-#: applet.js:513
+#: applet.js:313
+msgid "Shortcut is already in use: %{shortcut}"
+msgstr ""
+
+#: applet.js:522
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "
 "the keyboard backlight. Right click to configure those, and to set shortcuts."
 msgstr ""
 
-#: applet.js:1396
+#: applet.js:1405
 msgid "Privileged controls are turned off"
 msgstr ""
 
-#: applet.js:1437
+#: applet.js:1446
 msgid "The requested value is not valid for this control."
 msgstr ""
 
-#: applet.js:1439
+#: applet.js:1448
 msgid "This control is not supported on this system."
 msgstr ""
 
-#: applet.js:1441
+#: applet.js:1450
 msgid "This control is currently unavailable."
 msgstr ""
 
-#: applet.js:1443
+#: applet.js:1452
 msgid "The system refused the requested change."
 msgstr ""
 
-#: applet.js:1445
+#: applet.js:1454
 msgid "The change failed; the previous settings were restored."
 msgstr ""
 
-#: applet.js:1447
+#: applet.js:1456
 msgid "The change failed and some previous settings could not be restored."
 msgstr ""
 
-#: applet.js:1450
+#: applet.js:1459
 msgid "Install or repair the privileged helper with sudo make install-policy."
 msgstr ""
 
-#: applet.js:1456
+#: applet.js:1465
 msgid ""
 "The system could not ask for authorisation. Check that an authentication "
 "agent is running, and that the policy is installed with sudo make install-"
 "policy."
 msgstr ""
 
-#: applet.js:1463
+#: applet.js:1472
 msgid "The privileged helper did not answer in time. Try that again."
 msgstr ""
 
-#: applet.js:1465 applet.js:1478
+#: applet.js:1474 applet.js:1487
 msgid ""
 "The installed privileged helper is outdated. Re-run the policy installation."
 msgstr ""
 
-#: applet.js:1467
+#: applet.js:1476
 msgid "The privileged helper is incompatible with this applet version."
 msgstr ""
 
-#: applet.js:1469
+#: applet.js:1478
 msgid "The change could not be applied."
 msgstr ""
 
-#: applet.js:1488
+#: applet.js:1497
 msgid "Could not switch to %{profile}: %{detail}"
 msgstr ""
 
-#: applet.js:1489
+#: applet.js:1498
 msgid "Could not switch to %{profile}"
 msgstr ""
 
-#: applet.js:1555
+#: applet.js:1564
 msgid "Power profile: %{profile}"
-msgstr ""
-
-#: applet.js:1716
-msgid "Shortcut is already in use: %{shortcut}"
 msgstr ""
 
 #: ui/controls.js:438 ui/controls.js:475

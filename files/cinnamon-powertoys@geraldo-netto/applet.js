@@ -33,6 +33,7 @@ const Bluez = require("./lib/bluez.js");
 const Cpu = require("./lib/cpu.js");
 const Ddc = require("./lib/ddc.js");
 const Device = require("./lib/device.js");
+const Input = require("./lib/input.js");
 const SensorRows = require("./lib/sensor-rows.js");
 const Log = require("./lib/log.js");
 const MonitorWatch = require("./lib/monitor-watch.js");
@@ -209,7 +210,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this.menuManager = null;
         this.menu = null;
         this._menuPresenter = null;
-        this._hotkeyIds = [];
+        this._hotkeys = null;
         this._actorSignalIds = [];
         this._iconTheme = null;
         this._iconThemeId = 0;
@@ -303,7 +304,15 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * menu keeps probing. The tooltip itself names no monitor. */
         this._panel = new Panel.PanelPresenter(this, metadata.path + "/icons",
                                          shown => this._onTooltipChanged(shown));
-        this._hotkeyIds = [];
+        /* A shortcut the manager refuses is somebody else's already, and the
+         * only thing to do about it is say so. lib/input.js reports the
+         * conflict; the tray to say it in is the applet's. */
+        this._hotkeys = new Input.Hotkeys(Main.keybindingManager, accelerator => {
+            this._notifications.error(
+                _("Power Toys"), Translate.interpolate(
+                    _("Shortcut is already in use: %{shortcut}"),
+                    { shortcut: accelerator }));
+        });
         this._normalizingAlertLevels = false;
 
         this._bindSettings();
@@ -1618,25 +1627,35 @@ class PowerToysApplet extends Applet.TextIconApplet {
         if (amount === 0)
             return Clutter.EVENT_PROPAGATE;
 
-        /*
-         * Brightness, which is what the applet this one replaces does with
-         * the wheel. The notch is the control's own, so on a kernel backlight
-         * this moves by the same amount the brightness keys do.
-         */
-        if (this.scrollAction === "brightness") {
-            if (!this._brightnessControl())
+        /* Which of the two the setting asks for, and whether this machine can
+         * do it, is lib/input.js. The brightness notch is the control's own,
+         * so on a kernel backlight this moves by the same amount the
+         * brightness keys do; the profile step is announced, because the panel
+         * is not necessarily showing the profile and otherwise nothing would
+         * say it had changed. */
+        switch (Input.wheelAction(this.scrollAction, this._inputCapabilities())) {
+            case "brightness":
+                this._gatherScroll(amount, notches => this._stepBrightness(notches));
+                return Clutter.EVENT_STOP;
+            case "profile":
+                this._gatherScroll(amount,
+                                   notches => this._stepProfile(notches, false, true));
+                return Clutter.EVENT_STOP;
+            default:
                 return Clutter.EVENT_PROPAGATE;
-            this._gatherScroll(amount, notches => this._stepBrightness(notches));
-            return Clutter.EVENT_STOP;
         }
+    }
 
-        if (this.scrollAction !== "profile" || !this._profileState())
-            return Clutter.EVENT_PROPAGATE;
-
-        /* Announced, because the panel is not necessarily showing the profile
-         * and otherwise nothing would say it had changed. */
-        this._gatherScroll(amount, notches => this._stepProfile(notches, false, true));
-        return Clutter.EVENT_STOP;
+    /* What this machine can actually be asked to do with a wheel or a middle
+     * click, at this moment: a monitor can be unplugged and a profile daemon
+     * can go away while the applet is on the panel. */
+    _inputCapabilities() {
+        return {
+            brightness: !!this._brightnessControl(),
+            keyboardBacklight: !!(this._backlights.keyboard &&
+                                  this._backlights.keyboard.available),
+            profile: !!this._profileState(),
+        };
     }
 
     /*
@@ -1660,28 +1679,24 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._externalDisplayMode());
     }
 
-    /*
-     * Middle click. The stock applet toggles the keyboard backlight, which is
+    /* Middle click. The stock applet toggles the keyboard backlight, which is
      * the sort of thing nobody discovers but everybody who knew about it
-     * misses.
-     */
+     * misses; what the setting means is lib/input.js. */
     _onButtonPress(actor, event) {
         if (event.get_button() !== 2)
             return Clutter.EVENT_PROPAGATE;
 
-        if (this.middleClickAction === "keyboard-backlight") {
-            if (!this._backlights.keyboard.available)
+        switch (Input.middleClickAction(this.middleClickAction,
+                                        this._inputCapabilities())) {
+            case "keyboard-backlight":
+                this._backlights.keyboard.toggle(() => this._onBacklightChanged());
+                return Clutter.EVENT_STOP;
+            case "profile":
+                this._cycleProfile();
+                return Clutter.EVENT_STOP;
+            default:
                 return Clutter.EVENT_PROPAGATE;
-            this._backlights.keyboard.toggle(() => this._onBacklightChanged());
-            return Clutter.EVENT_STOP;
         }
-
-        if (this.middleClickAction === "profile" && this._profileState()) {
-            this._cycleProfile();
-            return Clutter.EVENT_STOP;
-        }
-
-        return Clutter.EVENT_PROPAGATE;
     }
 
     _gatherScroll(step, apply) {
@@ -1694,32 +1709,21 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._scrollApply = null;
     }
 
+    /* The two accelerators, named per applet instance so two copies on the
+     * panel do not fight over one keybinding name. */
     _registerHotkeys() {
-        this._removeHotkeys();
-        if (this.cycleProfileHotkey) {
-            let name = UUID + "-cycle-profile-" + this.instanceId;
-            this._registerHotkey(name, this.cycleProfileHotkey, () => this._cycleProfile());
-        }
-        if (this.toggleMenuHotkey) {
-            let name = UUID + "-toggle-menu-" + this.instanceId;
-            this._registerHotkey(name, this.toggleMenuHotkey, () => this.menu.toggle());
-        }
-    }
-
-    _registerHotkey(name, accelerator, action) {
-        if (Main.keybindingManager.addHotKey(name, accelerator, action)) {
-            this._hotkeyIds.push(name);
-            return;
-        }
-        this._notifications.error(
-            _("Power Toys"), Translate.interpolate(
-                _("Shortcut is already in use: %{shortcut}"), { shortcut: accelerator }));
-    }
-
-    _removeHotkeys() {
-        for (let name of this._hotkeyIds)
-            Main.keybindingManager.removeHotKey(name);
-        this._hotkeyIds = [];
+        this._hotkeys.apply([
+            {
+                name: UUID + "-cycle-profile-" + this.instanceId,
+                accelerator: this.cycleProfileHotkey,
+                action: () => this._cycleProfile(),
+            },
+            {
+                name: UUID + "-toggle-menu-" + this.instanceId,
+                accelerator: this.toggleMenuHotkey,
+                action: () => this.menu.toggle(),
+            },
+        ]);
     }
 
     /* ------------------------------------------------------------------ */
@@ -1787,7 +1791,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._idleId = 0;
             release("update callback", () => Mainloop.source_remove(id));
         }
-        release("hotkeys", () => this._removeHotkeys());
+        release("hotkeys", () => {
+            if (this._hotkeys)
+                this._hotkeys.release();
+        });
 
         for (let id of this._actorSignalIds)
             release("applet signal", () => this.actor.disconnect(id));
