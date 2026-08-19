@@ -167,6 +167,7 @@ check:
 	@python3 $(POLICY_CHECKER) polkit/$(POLICY) $(HELPER_PATH)
 	@grep -q '"$(HELPER_PATH)"' $(XLET_DIR)/applet.js \
 		&& grep -q '>$(HELPER_PATH)<' polkit/$(POLICY) \
+		&& grep -q '=$(HELPER_PATH)$$' tools/uninstall.sh \
 		&& echo "paths ok     $(HELPER_PATH)"
 
 # Coverage, per function, from the interpreter rather than from a guess.

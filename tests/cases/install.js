@@ -36,8 +36,21 @@ function scratch(options, body) {
         GLib.file_set_contents(source + "/install.sh",
                                Harness.readFile(Harness.testsDir() + "/../install.sh"));
         GLib.chmod(source + "/install.sh", 0o700);
+        /* The root-owned pair uninstall.sh can only report on. Pointed at
+         * this private tree so no case depends on what is installed on the
+         * machine running it; the files exist only where a case says so. */
+        options.privilegedHelper = directory + "/privileged-helper";
+        options.privilegedPolicy = directory + "/privileged.policy";
+        if (options.privilegedPairInstalled) {
+            GLib.file_set_contents(options.privilegedHelper, "helper\n");
+            GLib.file_set_contents(options.privilegedPolicy, "policy\n");
+        }
         GLib.file_set_contents(tools + "/uninstall.sh",
-                               Harness.readFile(Harness.testsDir() + "/../tools/uninstall.sh"));
+                               Harness.readFile(Harness.testsDir() + "/../tools/uninstall.sh")
+                                   .replace(/^PRIVILEGED_HELPER=.*$/m,
+                                            "PRIVILEGED_HELPER=\"" + options.privilegedHelper + "\"")
+                                   .replace(/^PRIVILEGED_POLICY=.*$/m,
+                                            "PRIVILEGED_POLICY=\"" + options.privilegedPolicy + "\""));
         GLib.file_set_contents(tools + "/deployment-lock.sh",
                                Harness.readFile(Harness.testsDir() +
                                                 "/../tools/deployment-lock.sh"));
@@ -242,7 +255,8 @@ function uninstall(tree, live) {
         environment.push("DESTDIR=" + tree.stage, "PREFIX=/share");
     environment.push("sh", tree.source + "/tools/uninstall.sh");
     return Harness.settle(done => Privileged._spawn(
-        environment, (status, stderr) => done({ status: status, stderr: stderr })),
+        environment, (status, stderr, stdout) => done({
+            status: status, stderr: stderr, stdout: stdout || "" })),
     live ? "the live uninstall" : "the staged uninstall");
 }
 
@@ -641,5 +655,41 @@ cases["a live uninstall proceeds when Eval is refused"] = function () {
                       "and its panel entry with it");
         Harness.ok(outcome.stderr.indexOf("could not check where the running") >= 0,
                    "the unverified source is stated: " + outcome.stderr);
+    });
+};
+
+cases["an uninstall names the privileged pair it cannot remove"] = function () {
+    let options = { uninstallRuntime: true, privilegedPairInstalled: true };
+    scratch(options, tree => {
+        let outcome = uninstall(tree, true);
+        Harness.equal(outcome.status, 0, "the uninstall completed: " + outcome.stderr);
+        Harness.ok(outcome.stdout.indexOf(options.privilegedHelper) >= 0,
+                   "the root-owned helper that is still installed is named");
+        Harness.ok(outcome.stdout.indexOf(options.privilegedPolicy) >= 0,
+                   "and so is the polkit action that names it");
+        Harness.ok(outcome.stdout.indexOf("sudo make uninstall-policy") >= 0,
+                   "with the one command that removes them");
+    });
+};
+
+cases["an uninstall with no privileged pair installed says nothing about one"] = function () {
+    let options = { uninstallRuntime: true };
+    scratch(options, tree => {
+        let outcome = uninstall(tree, true);
+        Harness.equal(outcome.status, 0, "the uninstall completed: " + outcome.stderr);
+        Harness.equal(outcome.stdout.indexOf("uninstall-policy"), -1,
+                      "nothing is said about a pair that is not there");
+    });
+};
+
+cases["a staged uninstall says nothing about the running system"] = function () {
+    /* A package manager works on a filesystem image; what is installed on the
+     * machine building it is none of its business. */
+    let options = { privilegedPairInstalled: true };
+    scratch(options, tree => {
+        let outcome = uninstall(tree, false);
+        Harness.equal(outcome.status, 0, "the staged uninstall completed: " + outcome.stderr);
+        Harness.equal(outcome.stdout.indexOf("uninstall-policy"), -1,
+                      "a staged removal reports nothing about this machine");
     });
 };

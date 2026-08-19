@@ -10,6 +10,14 @@ SOURCE_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 LOCALE_DIR=${DESTDIR:-}$PREFIX/locale
 TARGET_PARENT=$(dirname "$TARGET_DIR")
 
+# The root-owned pair that `sudo make install-policy` puts on the system.
+# Removing them needs root, which this script does not have and must not ask
+# for, so the most it can do is say they are still there - see the end of the
+# file. These are the Makefile's HELPER_PATH and POLICY_DIR/POLICY, and
+# `make check` holds every copy of that path together.
+PRIVILEGED_HELPER=/usr/local/lib/cinnamon-powertoys/powertoys-helper
+PRIVILEGED_POLICY=/usr/share/polkit-1/actions/io.github.geraldo-netto.cinnamon-powertoys.policy
+
 . "$SOURCE_ROOT/tools/deployment-lock.sh"
 acquire_deployment_lock "$TARGET_DIR"
 . "$SOURCE_ROOT/tools/cinnamon-xlets.sh"
@@ -233,3 +241,28 @@ if ! rm -rf -- "$TRANSLATION_BACKUP"; then
     echo "warning: applet removed, but translation backup remains at $TRANSLATION_BACKUP" >&2
 fi
 echo "removed $TARGET_DIR"
+
+# What this cannot remove, it names.
+#
+# The applet is gone, and an admin-authenticated polkit action and the
+# root-owned executable it names are still installed - with nothing on screen
+# to say so, and nothing left on the panel to remind anybody. Somebody who has
+# just uninstalled the applet has said what they want; being told what is still
+# there, and the one command that removes it, is the least this owes them.
+if [ -z "${DESTDIR:-}" ]; then
+    leftover=no
+    if [ -e "$PRIVILEGED_HELPER" ] || [ -e "$PRIVILEGED_POLICY" ]; then
+        leftover=yes
+    fi
+    if [ "$leftover" = yes ]; then
+        echo
+        echo "Note: the privileged helper installed for this applet is still on this system:"
+        if [ -e "$PRIVILEGED_HELPER" ]; then
+            echo "  $PRIVILEGED_HELPER"
+        fi
+        if [ -e "$PRIVILEGED_POLICY" ]; then
+            echo "  $PRIVILEGED_POLICY"
+        fi
+        echo "Removing them needs root:  sudo make uninstall-policy"
+    fi
+fi

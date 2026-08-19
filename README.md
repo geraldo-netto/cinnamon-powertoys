@@ -292,7 +292,9 @@ make uninstall
 That removes the per-user applet, its compiled translations and its panel
 entry. Remove the privileged helper/action pair and any optional RAPL grant
 separately with `sudo make uninstall-policy` and/or `sudo make uninstall-rapl`,
-as described in their sections below.
+as described in their sections below. The uninstall names the pair on its way
+out when it is still installed, because removing it needs a root the per-user
+uninstall does not have and must not ask for.
 
 ### To work on it
 
