@@ -513,6 +513,126 @@ const DdcMonitor = class DdcMonitor {
 };
 
 /*
+ * One external command at a time, with writes ahead of everything else.
+ *
+ * Nothing here knows what ddcutil is. It takes a runner, accepts jobs, keeps
+ * exactly one of them talking to the world, and answers `busy` for as long as
+ * anything is accepted but unfinished - which is the single ownership
+ * invariant a caller needs in order to know that no independent path is using
+ * the transport.
+ *
+ * Writes are inserted before the reads and probes already waiting, preserving
+ * order within each class: a drag on a slider must not sit behind a
+ * whole-machine probe that will take seconds, and a read taken because of a
+ * write must not overtake the write that caused it.
+ *
+ * A job answers exactly once. A runner that throws, a runner that calls back
+ * twice, and a cancelled job all arrive at the caller as one settled answer,
+ * because a caller counting outstanding work cannot survive either a missing
+ * reply or a second one.
+ */
+const CommandQueue = class CommandQueue {
+    /* `run(argv, onDone)` may answer with a handle carrying cancel(); an
+     * injected runner need not, so it stays optional. `onIdle` is called after
+     * every completed job, once the queue has had its chance to start the
+     * next. */
+    constructor(run, onIdle) {
+        this._run = run;
+        this._onIdle = onIdle || function () {};
+        /* The count includes the active job and everything queued. */
+        this._inFlight = 0;
+        this._active = null;
+        /* What the transport gave back for the active job, when it gave
+         * anything: the handle cancelActive() ends a running command with. */
+        this._activeCancel = null;
+        this._queue = [];
+        this._destroyed = false;
+    }
+
+    get busy() {
+        return this._inFlight > 0;
+    }
+
+    run(argv, onDone, kind) {
+        let job = { argv: argv, onDone: onDone, kind: kind || "read" };
+        this._inFlight++;
+        if (job.kind === "write") {
+            let before = this._queue.findIndex(queued => queued.kind !== "write");
+            if (before < 0)
+                this._queue.push(job);
+            else
+                this._queue.splice(before, 0, job);
+        } else {
+            this._queue.push(job);
+        }
+        this._drain();
+    }
+
+    _drain() {
+        if (this._destroyed || this._active || this._queue.length === 0)
+            return;
+        let job = this._queue.shift();
+        this._active = job;
+        let answered = false;
+        let finish = (output, status) => {
+            if (answered)
+                return;
+            answered = true;
+            try {
+                job.onDone(output, status);
+            } finally {
+                this._activeCancel = null;
+                this._active = null;
+                this._inFlight--;
+                this._drain();
+                this._onIdle();
+            }
+        };
+        try {
+            this._activeCancel = this._run(job.argv, finish) || null;
+        } catch (error) {
+            Log.error("could not run ddcutil: " + error);
+            finish("", -1);
+        }
+    }
+
+    /* End the command that is already talking to the world. The transport
+     * settles it as a failure, which returns it through _drain's finish and so
+     * keeps the in-flight count and the queue honest. */
+    cancelActive() {
+        let handle = this._activeCancel;
+        this._activeCancel = null;
+        if (!handle || typeof handle.cancel !== "function")
+            return;
+        try {
+            handle.cancel();
+        } catch (error) {
+            Log.error("could not stop the running ddcutil: " + error);
+        }
+    }
+
+    /* Nothing waiting has reached the transport, so each is answered as a
+     * failure without anything being cancelled. */
+    cancelQueued() {
+        let queued = this._queue.splice(0);
+        for (let job of queued) {
+            this._inFlight--;
+            try {
+                job.onDone("", -1);
+            } catch (error) {
+                Log.error("could not settle cancelled ddcutil work: " + error);
+            }
+        }
+    }
+
+    destroy() {
+        this._destroyed = true;
+        this.cancelQueued();
+        this.cancelActive();
+    }
+};
+
+/*
  * Every monitor on this machine, and the one control that stands for all of
  * them.
  *
@@ -560,16 +680,11 @@ const DdcBacklight = class DdcBacklight {
         this._commandFailures = new Log.FailureLog();
         this._runCommand = run || ((argv, onDone) =>
             runCommand(argv, onDone, this._commandFailures));
-        /* The scheduler owns every accepted command. The count includes its
-         * active job and queue, independently of monitor lifetimes. */
-        this._commandsInFlight = 0;
-        this._activeCommand = null;
-        /* What the transport gave back for the active job, when it gave
-         * anything: the handle destroy() and stop() end a running command
-         * with. An injected run may hand back nothing, so it stays optional. */
-        this._activeCancel = null;
-        this._commandQueue = [];
-        this._run = (argv, onDone, kind) => this._invoke(argv, onDone, kind);
+        /* The scheduler owns every accepted command, independently of monitor
+         * lifetimes; _drainWork is what this control does with the moment the
+         * bus falls quiet. */
+        this._commands = new CommandQueue(this._runCommand, () => this._drainWork());
+        this._run = (argv, onDone, kind) => this._commands.run(argv, onDone, kind);
         this._started = false;
         this._startPending = false;
         /* Which probe is the current one; see _detect. */
@@ -633,8 +748,8 @@ const DdcBacklight = class DdcBacklight {
         /* Nothing still waiting has touched a bus yet, so settle those jobs
          * before ending the one that has: obsolete reads must not run after
          * DDC was disabled, and the active ddcutil must let the bus go. */
-        this._cancelQueuedCommands();
-        this._cancelActiveCommand();
+        this._commands.cancelQueued();
+        this._commands.cancelActive();
         /* Emptying the list is a change like any other; see lib/bluez.js,
          * where the same silence kept dead rows in the menu. */
         this._onChanged();
@@ -644,80 +759,7 @@ const DdcBacklight = class DdcBacklight {
      * one command is active or waiting and no independent path may call the
      * transport. It covers detect, reads and writes across every monitor. */
     get busy() {
-        return this._commandsInFlight > 0;
-    }
-
-    /* Every command crosses this boundary. Writes are inserted before
-     * automatic reads and probes while preserving order within each class;
-     * only _drainCommands calls the transport. */
-    _invoke(argv, onDone, kind) {
-        let job = { argv: argv, onDone: onDone, kind: kind || "read" };
-        this._commandsInFlight++;
-        if (job.kind === "write") {
-            let before = this._commandQueue.findIndex(queued => queued.kind !== "write");
-            if (before < 0)
-                this._commandQueue.push(job);
-            else
-                this._commandQueue.splice(before, 0, job);
-        } else {
-            this._commandQueue.push(job);
-        }
-        this._drainCommands();
-    }
-
-    _drainCommands() {
-        if (this.destroyed || this._activeCommand || this._commandQueue.length === 0)
-            return;
-        let job = this._commandQueue.shift();
-        this._activeCommand = job;
-        let answered = false;
-        let finish = (output, status) => {
-            if (answered)
-                return;
-            answered = true;
-            try {
-                job.onDone(output, status);
-            } finally {
-                this._activeCancel = null;
-                this._activeCommand = null;
-                this._commandsInFlight--;
-                this._drainCommands();
-                this._drainWork();
-            }
-        };
-        try {
-            this._activeCancel = this._runCommand(job.argv, finish) || null;
-        } catch (error) {
-            Log.error("could not run ddcutil: " + error);
-            finish("", -1);
-        }
-    }
-
-    /* End the command that is already talking to the bus. The transport
-     * settles it as a failure, which returns it through _drainCommands' finish
-     * and so keeps the in-flight count and the queue honest. */
-    _cancelActiveCommand() {
-        let handle = this._activeCancel;
-        this._activeCancel = null;
-        if (!handle || typeof handle.cancel !== "function")
-            return;
-        try {
-            handle.cancel();
-        } catch (error) {
-            Log.error("could not stop the running ddcutil: " + error);
-        }
-    }
-
-    _cancelQueuedCommands() {
-        let queued = this._commandQueue.splice(0);
-        for (let job of queued) {
-            this._commandsInFlight--;
-            try {
-                job.onDone("", -1);
-            } catch (error) {
-                Log.error("could not settle cancelled ddcutil work: " + error);
-            }
-        }
+        return this._commands.busy;
     }
 
     _drainWork() {
@@ -858,7 +900,11 @@ const DdcBacklight = class DdcBacklight {
 
     /* A probe is detect plus the reads it schedules. The command boundary
      * keeps that sequence exclusive, while redetect retains one later request.
-     * The token rejects a probe stop() disowned before its answer arrived. */
+     * The token rejects a probe stop() disowned before its answer arrived.
+     *
+     * This half is only the transport and the staleness question: run the
+     * command, and decide whether its answer still describes this control.
+     * What the answer means is _adoptDetection's. */
     _detect() {
         this._prepareMonitorNames();
         let probe = {};
@@ -883,48 +929,61 @@ const DdcBacklight = class DdcBacklight {
                 settled();
                 return;
             }
-            if (status !== 0) {
-                /* A failed command says nothing about which displays exist.
-                 * Keep the last topology briefly, then stop presenting stale
-                 * controls if the tool or permissions stay broken. */
-                this._missingSignature = null;
-                this._missingConfirmations = 0;
-                this._detectFailures++;
-                if (this._detectFailures >= FAILURE_GRACE)
-                    this._clearTopology();
-                settled();
-                this._onChanged();
-                return;
-            }
+            this._adoptDetection(output, status, settled);
+        }, "probe");
+    }
 
-            let found = nameDisplays(parseDisplays(output));
-            this._detectFailures = 0;
-            let visible = found.slice(0, MAX_DISPLAYS);
-            if (!this._missingTopologyIsConfirmed(visible)) {
-                /* One successful empty/partial detect is commonly a sleeping
-                 * monitor. Do not renumber or query the old controls from an
-                 * unconfirmed topology. */
-                settled();
-                this._onChanged();
-                return;
-            }
-
+    /*
+     * What a current probe's answer does to the monitor list.
+     *
+     * Three policies, none of which are about running a command: how many
+     * consecutive failures are tolerated before the controls on screen stop
+     * standing for hardware nobody can reach, how many identical answers it
+     * takes to believe a monitor has really gone rather than gone to sleep,
+     * and how many of them fit on the menu at all.
+     */
+    _adoptDetection(output, status, settled) {
+        if (status !== 0) {
+            /* A failed command says nothing about which displays exist.
+             * Keep the last topology briefly, then stop presenting stale
+             * controls if the tool or permissions stay broken. */
             this._missingSignature = null;
             this._missingConfirmations = 0;
-            this.hidden = Math.max(0, found.length - MAX_DISPLAYS);
+            this._detectFailures++;
+            if (this._detectFailures >= FAILURE_GRACE)
+                this._clearTopology();
+            settled();
+            this._onChanged();
+            return;
+        }
 
-            this.monitors = this._adopt(visible);
-            if (this.monitors.length === 0) {
-                settled();
-                this._sync();
-                this._onChanged();
-                return;
-            }
-            this.refresh(() => {
-                settled();
-                this._onChanged();
-            });
-        }, "probe");
+        let found = nameDisplays(parseDisplays(output));
+        this._detectFailures = 0;
+        let visible = found.slice(0, MAX_DISPLAYS);
+        if (!this._missingTopologyIsConfirmed(visible)) {
+            /* One successful empty/partial detect is commonly a sleeping
+             * monitor. Do not renumber or query the old controls from an
+             * unconfirmed topology. */
+            settled();
+            this._onChanged();
+            return;
+        }
+
+        this._missingSignature = null;
+        this._missingConfirmations = 0;
+        this.hidden = Math.max(0, found.length - MAX_DISPLAYS);
+
+        this.monitors = this._adopt(visible);
+        if (this.monitors.length === 0) {
+            settled();
+            this._sync();
+            this._onChanged();
+            return;
+        }
+        this.refresh(() => {
+            settled();
+            this._onChanged();
+        });
     }
 
     /* Queue one read per monitor. DdcBacklight's boundary runs them one at a
@@ -1038,7 +1097,6 @@ const DdcBacklight = class DdcBacklight {
         for (let monitor of this.monitors)
             monitor.destroy();
         this.monitors = [];
-        this._cancelQueuedCommands();
-        this._cancelActiveCommand();
+        this._commands.destroy();
     }
 };

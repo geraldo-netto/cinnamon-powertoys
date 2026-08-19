@@ -188,13 +188,47 @@ cases["timeout suppression is bounded to one DDC owner"] = function () {
     });
 };
 
+cases["the command queue runs one job and lets writes past the rest"] = function () {
+    /*
+     * The scheduler on its own, with no monitors and no ddcutil. A drag on a
+     * slider must not wait behind a whole-machine probe, and the reads a probe
+     * schedules must still come out in the order they were asked for.
+     */
+    let started = [];
+    let replies = [];
+    let idle = 0;
+    let queue = new Ddc.CommandQueue((argv, onDone) => {
+        started.push(argv[0]);
+        replies.push(onDone);
+        return { cancel: () => onDone("", -1) };
+    }, () => idle++);
+
+    let answered = [];
+    queue.run(["probe"], () => answered.push("probe"), "probe");
+    queue.run(["read-a"], () => answered.push("read-a"));
+    queue.run(["write-a"], () => answered.push("write-a"), "write");
+    queue.run(["write-b"], () => answered.push("write-b"), "write");
+    queue.run(["read-b"], () => answered.push("read-b"));
+
+    Harness.deepEqual(started, ["probe"], "only the first job reached the runner");
+    Harness.equal(queue.busy, true, "and everything accepted is still outstanding");
+
+    while (replies.length > 0)
+        replies.shift()("", 0);
+    Harness.deepEqual(answered,
+                      ["probe", "write-a", "write-b", "read-a", "read-b"],
+                      "writes jumped the waiting reads, each class in its own order");
+    Harness.equal(queue.busy, false, "nothing is left outstanding");
+    Harness.equal(idle, 5, "and the owner heard about every quiet moment");
+};
+
 cases["the shared DDC command boundary settles throws and duplicate replies"] = function () {
     let lines = [];
     Log.setSink(line => lines.push(line));
     try {
         let failed = new Ddc.DdcBacklight(null, () => { throw new Error("spawn failed"); });
         let outcome = null;
-        failed._invoke(["ddcutil"], (output, status) => {
+        failed._commands.run(["ddcutil"], (output, status) => {
             outcome = { output: output, status: status };
         });
         Harness.deepEqual(outcome, { output: "", status: -1 }, "a thrown runner is an answer");
@@ -203,7 +237,7 @@ cases["the shared DDC command boundary settles throws and duplicate replies"] = 
         let reply = null;
         let control = new Ddc.DdcBacklight(null, (argv, onDone) => { reply = onDone; });
         let answers = 0;
-        control._invoke(["ddcutil"], () => answers++);
+        control._commands.run(["ddcutil"], () => answers++);
         Harness.equal(control.busy, true, "the held command is counted");
         reply("", 0);
         reply("", 0);
@@ -219,9 +253,9 @@ cases["destroying the DDC boundary settles work that has not started"] = functio
     let run = held();
     let control = new Ddc.DdcBacklight(null, run);
     let answers = [];
-    control._invoke(["ddcutil", "first"], (output, status) => answers.push(["first", status]));
-    control._invoke(["ddcutil", "second"], (output, status) => answers.push(["second", status]));
-    control._invoke(["ddcutil", "third"], () => { throw new Error("owner left"); });
+    control._commands.run(["ddcutil", "first"], (output, status) => answers.push(["first", status]));
+    control._commands.run(["ddcutil", "second"], (output, status) => answers.push(["second", status]));
+    control._commands.run(["ddcutil", "third"], () => { throw new Error("owner left"); });
     Harness.equal(run.waiting.length, 1, "only the first command reaches the transport");
 
     let lines = [];
