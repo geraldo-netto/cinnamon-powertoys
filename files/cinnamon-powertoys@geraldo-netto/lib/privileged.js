@@ -235,16 +235,28 @@ function _failure(stderr) {
     };
 }
 
-const PrivilegedHelper = class PrivilegedHelper {
+/*
+ * Which installed helper is going to be run, and whether it can be trusted
+ * with root.
+ *
+ * Candidate order, the trust inspection, the protocol handshake and the walk
+ * down the list are one job and nothing to do with queueing or spawning:
+ * select() answers with a path or null, plus the first issue worth reporting
+ * about the candidates that were passed over.
+ *
+ * Selection is repeated for every job rather than remembered, so a deployment
+ * that adds, replaces or removes the system helper while Cinnamon is alive is
+ * adopted without reloading the applet.
+ */
+const HelperLocator = class HelperLocator {
     /*
      * `candidates` are installed helper paths to try in order. `inspect` is
      * injectable so selection can be checked without requiring root-owned
      * fixtures; runtime uses inspectTrustedHelper above.
      */
-    constructor(candidates, inspect, spawn, probe) {
+    constructor(candidates, inspect, probe) {
         this._candidates = candidates || [];
         this._inspect = inspect || inspectTrustedHelper;
-        this._spawn = spawn || _spawn;
         /* The protocol handshake is how a helper says it understands this
          * applet, and it is not something a collaborator can switch off by
          * accident: injecting a spawn - a legitimate integration seam and not
@@ -253,86 +265,36 @@ const PrivilegedHelper = class PrivilegedHelper {
          * it actually wants. */
         this._probe = probe || _probeHelper;
         this._activeProbe = null;
-
-        /*
-         * One at a time. Two clicks in quick succession used to spawn two
-         * pkexec processes and put two password dialogs on screen, one behind
-         * the other, for two settings - and whichever the user answered
-         * first, the other was still waiting. A queue makes it one dialog and
-         * one change after another, in the order they were asked for.
-         */
-        this._queue = [];
-        this._running = false;
         this._destroyed = false;
     }
 
     /*
-     * The applet is leaving the panel. Whatever has not been started is
-     * dropped, and nothing new is taken.
-     *
-     * Every other backend has one of these and this one did not, which went
-     * unnoticed because everything that comes *back* from here checks whether
-     * the applet is still there. A pkexec dialog is not something that comes
-     * back: with two changes queued, removing the applet left the second one
-     * still to be spawned, so a password dialog appeared for an applet that
-     * was no longer on the panel, to make a change nobody could see the result
-     * of.
-     *
-     * The job already running is deliberately left alone. Its dialog is on
-     * screen, the user asked for it and may be halfway through answering, and
-     * taking that away is worse than letting a change they asked for finish.
-     */
-    destroy() {
-        this._destroyed = true;
-        /* Answered, not dropped. run() gives this exact outcome to a caller
-         * that arrives after teardown, and a queued caller is owed the same:
-         * one that is never called back waits for ever. Nothing hangs today
-         * only because the applet happens to destroy its writers before its
-         * helper, which is an ordering and not a contract. */
-        let waiting = this._queue;
-        this._queue = [];
-        for (let job of waiting) {
-            try {
-                job.done({ applied: false, code: "shutting-down",
-                           diagnostic: "the applet is shutting down",
-                           error: "the applet is shutting down" });
-            } catch (error) {
-                Log.error("could not settle a queued privileged job: " + error);
-            }
-        }
-        this._cancelActiveProbe();
-    }
-
-    /*
      * Hands the trusted helper that will actually be run to onDone, or null
-     * where there is none. Selection is repeated for every job so an
-     * installation changed while Cinnamon is alive is adopted without
-     * reloading the applet.
-     *
-     * It was called path() and looked like a getter, which it never was: the
-     * answer only ever arrives at the callback and the return was a dead null.
+     * where there is none.
      *
      * A probe still outstanding belongs to a selection nobody is waiting for
      * any more, and _activeProbe holds exactly one - so starting another
      * without ending that one put its subprocess, its pipes and its two second
-     * timer beyond the reach of destroy(). _next() serialises real jobs, but
-     * this is reachable from anywhere the object is.
+     * timer beyond the reach of destroy(). The caller serialises real jobs,
+     * but this is reachable from anywhere the object is.
      */
-    _selectHelper(onDone) {
+    select(onDone) {
         let done = onDone || function () {};
-        this._cancelActiveProbe();
-        /* A deployment can add, replace or remove the system candidate while
-         * Cinnamon keeps this object alive, so nothing is remembered between
-         * jobs: every one of them rechecks the candidates in priority order
-         * and repeats the protocol handshake. */
+        this.cancel();
         this._tryCandidate(0, null, done);
     }
 
-    _cancelActiveProbe() {
+    /* Ends the probe that is out, if there is one. */
+    cancel() {
         let activeProbe = this._activeProbe;
         this._activeProbe = null;
         if (activeProbe?.cancel)
             activeProbe.cancel();
+    }
+
+    destroy() {
+        this._destroyed = true;
+        this.cancel();
     }
 
     _tryCandidate(index, issue, onDone) {
@@ -386,6 +348,72 @@ const PrivilegedHelper = class PrivilegedHelper {
         if (this._activeProbe === activeProbe && typeof cancel === "function")
             activeProbe.cancel = cancel;
     }
+};
+
+/* The one answer every path gives once the applet is going away. */
+function SHUTTING_DOWN() {
+    return { applied: false, code: "shutting-down",
+             diagnostic: "the applet is shutting down",
+             error: "the applet is shutting down" };
+}
+
+const PrivilegedHelper = class PrivilegedHelper {
+    /*
+     * `candidates`, `inspect` and `probe` describe which helper to run and
+     * are handed straight to a HelperLocator; `spawn` is how the chosen one
+     * is executed. Both are injectable so a caller that cannot execute its
+     * candidates - a test, another integration - supplies its own.
+     */
+    constructor(candidates, inspect, spawn, probe) {
+        this._locator = new HelperLocator(candidates, inspect, probe);
+        this._spawn = spawn || _spawn;
+
+        /*
+         * One at a time. Two clicks in quick succession used to spawn two
+         * pkexec processes and put two password dialogs on screen, one behind
+         * the other, for two settings - and whichever the user answered
+         * first, the other was still waiting. A queue makes it one dialog and
+         * one change after another, in the order they were asked for.
+         */
+        this._queue = [];
+        this._running = false;
+        this._destroyed = false;
+    }
+
+    /*
+     * The applet is leaving the panel. Whatever has not been started is
+     * dropped, and nothing new is taken.
+     *
+     * Every other backend has one of these and this one did not, which went
+     * unnoticed because everything that comes *back* from here checks whether
+     * the applet is still there. A pkexec dialog is not something that comes
+     * back: with two changes queued, removing the applet left the second one
+     * still to be spawned, so a password dialog appeared for an applet that
+     * was no longer on the panel, to make a change nobody could see the result
+     * of.
+     *
+     * The job already running is deliberately left alone. Its dialog is on
+     * screen, the user asked for it and may be halfway through answering, and
+     * taking that away is worse than letting a change they asked for finish.
+     */
+    destroy() {
+        this._destroyed = true;
+        /* Answered, not dropped. run() gives this exact outcome to a caller
+         * that arrives after teardown, and a queued caller is owed the same:
+         * one that is never called back waits for ever. Nothing hangs today
+         * only because the applet happens to destroy its writers before its
+         * helper, which is an ordering and not a contract. */
+        let waiting = this._queue;
+        this._queue = [];
+        for (let job of waiting) {
+            try {
+                job.done(SHUTTING_DOWN());
+            } catch (error) {
+                Log.error("could not settle a queued privileged job: " + error);
+            }
+        }
+        this._locator.destroy();
+    }
 
     /*
      * Runs one command. onDone gets an outcome:
@@ -400,9 +428,7 @@ const PrivilegedHelper = class PrivilegedHelper {
     run(args, onDone) {
         let done = onDone || function () {};
         if (this._destroyed) {
-            done({ applied: false, code: "shutting-down",
-                   diagnostic: "the applet is shutting down",
-                   error: "the applet is shutting down" });
+            done(SHUTTING_DOWN());
             return;
         }
         this._queue.push({ args: args, done: done });
@@ -421,42 +447,57 @@ const PrivilegedHelper = class PrivilegedHelper {
 
         let job = this._queue.shift();
         this._running = true;
-        this._selectHelper((helper, issue) => {
+        this._locator.select((helper, issue) => {
             /* Selecting a helper is asynchronous on the first run. Destroying
              * the applet while its protocol probe is out means no pkexec
              * process has reached the screen yet, so this job is still safe
              * to stop rather than treating it as the already-visible dialog
              * destroy() deliberately leaves alone. */
             if (this._destroyed) {
-                this._running = false;
-                job.done({ applied: false, code: "shutting-down",
-                           diagnostic: "the applet is shutting down",
-                           error: "the applet is shutting down" });
+                this._finishJob(job, SHUTTING_DOWN());
                 return;
             }
             if (!helper) {
-                this._running = false;
                 let diagnostic = issue ? issue.diagnostic : "the helper script could not be found";
-                job.done({ applied: false,
-                           code: issue ? issue.code : "helper-not-found",
-                           diagnostic: diagnostic, error: diagnostic });
-                this._next();
+                this._finishJob(job, { applied: false,
+                                       code: issue ? issue.code : "helper-not-found",
+                                       diagnostic: diagnostic, error: diagnostic });
                 return;
             }
 
             let argv = ["pkexec", helper].concat(job.args.map(String));
             this._spawn(argv, (status, stderr) => {
-                this._running = false;
                 let outcome = this._outcome(status, stderr);
                 if (issue)
                     outcome = { ...outcome,
                         warningCode: issue.code,
                         warningDiagnostic: issue.diagnostic,
                     };
-                job.done(outcome);
-                this._next();
+                this._finishJob(job, outcome);
             });
         });
+    }
+
+    /*
+     * The one way a job ends. Releasing the queue, answering the caller and
+     * starting the next job were three separate sequences across three
+     * branches of _next(), each of which had to remember to do all three in
+     * the right order; a branch that forgot to clear _running stopped the
+     * queue for the rest of the session, and one that answered after starting
+     * the next job reordered the answers.
+     *
+     * A caller that throws must not take the queue with it: the next job is
+     * started regardless, and the throw is reported rather than propagated
+     * into a Gio callback where nothing would catch it.
+     */
+    _finishJob(job, outcome) {
+        this._running = false;
+        try {
+            job.done(outcome);
+        } catch (error) {
+            Log.error("a privileged job caller failed: " + error);
+        }
+        this._next();
     }
 
     _outcome(status, stderr) {

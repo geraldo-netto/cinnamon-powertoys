@@ -43,7 +43,7 @@ var cases = {};
 
 cases["the root owned helper is preferred"] = function () {
     let helper = helperWith([SYSTEM, OWN], [0, ""]);
-    let path = Harness.settle(done => helper._selectHelper(done), "helper selection");
+    let path = Harness.settle(done => helper._locator.select(done), "helper selection");
     Harness.equal(path, SYSTEM, "the one the polkit action names");
 };
 
@@ -79,7 +79,7 @@ cases["runtime trust rejects a helper below a user-owned directory"] = function 
 
 cases["without an installed helper no user-owned copy is selected"] = function () {
     let helper = helperWith([], [0, ""]);
-    let path = Harness.settle(done => helper._selectHelper(done), "helper selection");
+    let path = Harness.settle(done => helper._locator.select(done), "helper selection");
     Harness.equal(path, null, "a path below the applet is never a candidate");
 };
 
@@ -175,6 +175,34 @@ cases["a spawn failure forces helper reselection"] = function () {
     Harness.equal(probes, 2, "the next job repeats the compatibility handshake");
 };
 
+cases["one caller that throws does not stop the queue"] = function () {
+    /*
+     * Every job ends the same way - release the queue, answer the caller,
+     * start the next - and the answer is a callback that reaches applet code.
+     * A throw out of one of them used to leave _running set inside a Gio
+     * callback that nothing catches, so the applet would take no further
+     * privileged change for the rest of the session.
+     */
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    try {
+        let helper = helperWith([SYSTEM], [0, ""]);
+        let answers = [];
+        helper.run(["boost", "1"], () => { throw new Error("caller exploded"); });
+        helper.run(["boost", "0"], outcome => answers.push(outcome.applied));
+
+        Harness.deepEqual(answers, [true], "the job behind the throwing one still ran");
+        Harness.deepEqual(helper.spawned,
+                          ["pkexec " + SYSTEM + " boost 1", "pkexec " + SYSTEM + " boost 0"],
+                          "and both reached pkexec, in order");
+        Harness.equal(helper.busy, false, "the queue is not stuck");
+        Harness.equal(lines.filter(line => line.indexOf("caller exploded") >= 0).length, 1,
+                      "with the failure reported once");
+    } finally {
+        Log.setSink(null);
+    }
+};
+
 cases["a second selection ends the probe the first one left running"] = function () {
     /*
      * _activeProbe holds one probe, and it is what destroy() cancels. Starting
@@ -194,9 +222,9 @@ cases["a second selection ends the probe the first one left running"] = function
             };
         });
 
-    helper._selectHelper(path => settled.push(path));
+    helper._locator.select(path => settled.push(path));
     Harness.equal(cancelled, 0, "the first probe is still out");
-    helper._selectHelper(path => settled.push(path));
+    helper._locator.select(path => settled.push(path));
     Harness.equal(cancelled, 1, "and the second selection ended it");
     Harness.deepEqual(settled, [null], "the abandoned selection is answered too");
 
