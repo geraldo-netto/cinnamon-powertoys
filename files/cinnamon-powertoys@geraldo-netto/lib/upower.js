@@ -255,7 +255,7 @@ const UPowerMonitor = class UPowerMonitor {
         this._watchDegraded = false;
 
         if (this._bus.watch) {
-            this._ownerWatch = new OwnerWatch.ResilientOwnerWatch({
+            this._ownerWatch = OwnerWatch.watchOwnership({
                 install: (appeared, vanished) => this._bus.watch(appeared, vanished),
                 release: id => this._bus.unwatch(id),
                 appeared: () => this._onNameAppeared(),
@@ -265,13 +265,7 @@ const UPowerMonitor = class UPowerMonitor {
                 failures: this._failures,
                 failureKey: "owner-watch",
                 failureMessage: "cannot watch UPower",
-                timers: {
-                    add: (delay, callback) => this._bus.timeoutAdd
-                        ? this._bus.timeoutAdd(delay, callback)
-                        : GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback),
-                    remove: id => this._bus.removeTimer
-                        ? this._bus.removeTimer(id) : GLib.source_remove(id),
-                },
+                timers: this._bus,
             });
             /* Ownership edges are optional for the initial state. Keep the
              * direct discovery path while registration is degraded. */

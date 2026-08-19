@@ -14,6 +14,53 @@ const Log = require("./lib/log.js");
 const RETRY_INITIAL_MS = 1000;
 const RETRY_MAX_MS = 30000;
 
+/*
+ * The one timer port these watches accept.
+ *
+ * Three backends reach their timers through three conventions - a bus with
+ * `timeoutAdd`/`removeTimer`, a GLib-shaped object with `timeout_add`/
+ * `source_remove`, and an owner handle with either - so each of them used to
+ * write its own adapter and the three could not be exercised through one
+ * fake. Normalising here is what lets them share `watchOwnership`. Anything
+ * the source does not answer falls back to GLib's main loop.
+ */
+function timerPort(source) {
+    source = source || {};
+    return {
+        add: (delay, callback) => {
+            if (typeof source.add === "function")
+                return source.add(delay, callback);
+            if (typeof source.timeoutAdd === "function")
+                return source.timeoutAdd(delay, callback);
+            if (typeof source.timeout_add === "function")
+                return source.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback);
+            return GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback);
+        },
+        remove: id => {
+            if (typeof source.remove === "function")
+                return source.remove(id);
+            if (typeof source.removeTimer === "function")
+                return source.removeTimer(id);
+            if (typeof source.source_remove === "function")
+                return source.source_remove(id);
+            return GLib.source_remove(id);
+        },
+    };
+}
+
+/*
+ * Build a watch from a backend's own collaborators: `timers` is whatever
+ * object that backend already holds, not a pre-shaped port.
+ */
+function watchOwnership(options) {
+    options = options || {};
+    let settings = {};
+    for (let name in options)
+        settings[name] = options[name];
+    settings.timers = timerPort(options.timers);
+    return new ResilientOwnerWatch(settings);
+}
+
 const ResilientOwnerWatch = class ResilientOwnerWatch {
     constructor(options) {
         options = options || {};

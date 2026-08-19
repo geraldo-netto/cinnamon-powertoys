@@ -102,3 +102,63 @@ cases["the default GLib retry timer is owned and cannot be duplicated"] = functi
         Log.setSink(null);
     }
 };
+
+cases["one timer port adapts each convention a backend already has"] = function () {
+    let calls = [];
+    let camel = OwnerWatch.timerPort({
+        timeoutAdd: (delay, callback) => { calls.push(["camel", delay, callback]); return 7; },
+        removeTimer: id => calls.push(["camel-remove", id]),
+    });
+    let snake = OwnerWatch.timerPort({
+        timeout_add: (priority, delay, callback) => {
+            calls.push(["snake", delay, callback]);
+            return 8;
+        },
+        source_remove: id => calls.push(["snake-remove", id]),
+    });
+    let port = OwnerWatch.timerPort({
+        add: (delay, callback) => { calls.push(["port", delay, callback]); return 9; },
+        remove: id => calls.push(["port-remove", id]),
+    });
+    let noop = () => {};
+
+    Harness.equal(camel.add(5, noop), 7, "a bus-shaped source keeps its id");
+    Harness.equal(snake.add(6, noop), 8, "a GLib-shaped source keeps its id");
+    Harness.equal(port.add(7, noop), 9, "an already-shaped port is passed through");
+    camel.remove(7);
+    snake.remove(8);
+    port.remove(9);
+    Harness.deepEqual(calls.map(call => call[0]), [
+        "camel", "snake", "port", "camel-remove", "snake-remove", "port-remove",
+    ], "each convention reaches its own timer");
+    Harness.deepEqual(calls.slice(0, 3).map(call => call[1]), [5, 6, 7],
+        "the delay is passed on unchanged");
+};
+
+cases["watchOwnership retries through a backend's own timers"] = function () {
+    let clock = timers();
+    let attempts = 0;
+    let watch = OwnerWatch.watchOwnership({
+        install: () => {
+            attempts++;
+            if (attempts < 2)
+                throw new Error("offline");
+            return 3;
+        },
+        timers: {
+            timeoutAdd: (delay, callback) => clock.add(delay, callback),
+            removeTimer: id => clock.remove(id),
+        },
+        retryInitialMs: 5,
+    });
+    Log.setSink(() => {});
+    try {
+        Harness.equal(watch.start(), false, "the first registration fails safely");
+        Harness.deepEqual(clock.delays, [5], "the retry was armed on the injected timer");
+        clock.fire();
+        Harness.equal(watch.active, true, "the retry installed the watch");
+        watch.stop();
+    } finally {
+        Log.setSink(null);
+    }
+};

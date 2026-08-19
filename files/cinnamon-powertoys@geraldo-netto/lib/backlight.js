@@ -188,7 +188,7 @@ const BacklightControl = class BacklightControl {
              * hardware-absence decision. */
             this._ownerPresent = null;
             let install = owner ? owner.watch : watchOwner;
-            this._ownerWatch = new OwnerWatch.ResilientOwnerWatch({
+            this._ownerWatch = OwnerWatch.watchOwnership({
                 install: (appeared, vanished) => install(appeared, vanished),
                 release: id => {
                     if (owner?.unwatch)
@@ -201,13 +201,7 @@ const BacklightControl = class BacklightControl {
                 failures: this._failures,
                 failureKey: "owner-watch",
                 failureMessage: "cannot watch backlight service ownership",
-                timers: {
-                    add: (delay, callback) => owner?.timeoutAdd
-                        ? owner.timeoutAdd(delay, callback)
-                        : GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback),
-                    remove: id => owner?.removeTimer
-                        ? owner.removeTimer(id) : GLib.source_remove(id),
-                },
+                timers: owner,
             });
             watching = this._ownerWatch.start();
         }

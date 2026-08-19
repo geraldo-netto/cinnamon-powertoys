@@ -223,7 +223,7 @@ const BluezBatteries = class BluezBatteries {
         this._retryDelay = RETRY_INITIAL_MS;
         this._failures = new Log.FailureLog();
         if (this._watchName) {
-            this._ownerWatch = new OwnerWatch.ResilientOwnerWatch({
+            this._ownerWatch = OwnerWatch.watchOwnership({
                 install: (appeared, vanished) =>
                     this._watchName(appeared, vanished),
                 release: unwatch => unwatch(),
@@ -232,11 +232,7 @@ const BluezBatteries = class BluezBatteries {
                 failures: this._failures,
                 failureKey: "owner-watch",
                 failureMessage: "cannot watch ownership of BlueZ",
-                timers: {
-                    add: (delay, callback) => this._timers.timeout_add(
-                        GLib.PRIORITY_DEFAULT, delay, callback),
-                    remove: id => this._timers.source_remove(id),
-                },
+                timers: this._timers,
             });
         }
         this._degradedTimerId = 0;
