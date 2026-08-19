@@ -237,14 +237,14 @@ cases["a late collection stops when its applet is destroyed"] = function () {
      * shell-free runner. Exercise its collection method with only the two
      * asynchronous backend contracts it uses. */
     let source = Harness.shellSource();
-    let match = /    _collect\(onDone, sampleCpu\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* The sensor readings/.exec(source);
+    let match = /    _collect\(onDone, sampleCpu\) \{([\s\S]*?)\n    \}\n/.exec(source);
     Harness.ok(match, "the collection method can be isolated");
 
     let logged = [];
-    let collect = Function("Log", "return function (onDone, sampleCpu) {" +
-        match[1] + "\n};")({
-        error: message => logged.push(message),
-    });
+    let collect = Function("Collection", "Log",
+        "return function (onDone, sampleCpu) {" + match[1] + "\n};")(
+        Harness.requireXlet("./lib/collection.js"),
+        { error: message => logged.push(message) });
     let sensorDone = null;
     let cpuDone = null;
     let assembled = 0;
@@ -278,12 +278,12 @@ cases["a late collection stops when its applet is destroyed"] = function () {
 
 cases["collection waits for asynchronous charge and firmware samples"] = function () {
     let source = Harness.shellSource();
-    let match = /    _collect\(onDone, sampleCpu\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* The sensor readings/.exec(source);
+    let match = /    _collect\(onDone, sampleCpu\) \{([\s\S]*?)\n    \}\n/.exec(source);
     Harness.ok(match, "the collection method can be isolated");
-    let collect = Function("Log", "return function (onDone, sampleCpu) {" +
-        match[1] + "\n};")({
-        error: message => { throw new Error(message); },
-    });
+    let collect = Function("Collection", "Log",
+        "return function (onDone, sampleCpu) {" + match[1] + "\n};")(
+        Harness.requireXlet("./lib/collection.js"),
+        { error: message => { throw new Error(message); } });
     let pending = {};
     let answers = [];
     let applet = {
@@ -318,10 +318,12 @@ cases["collection waits for asynchronous charge and firmware samples"] = functio
 
 cases["hidden collections skip live CPU sampling"] = function () {
     let source = Harness.shellSource();
-    let match = /    _collect\(onDone, sampleCpu\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* The sensor readings/.exec(source);
+    let match = /    _collect\(onDone, sampleCpu\) \{([\s\S]*?)\n    \}\n/.exec(source);
     Harness.ok(match, "the collection method can be isolated");
-    let collect = Function("Log", "return function (onDone, sampleCpu) {" +
-        match[1] + "\n};")({ error: message => { throw new Error(message); } });
+    let collect = Function("Collection", "Log",
+        "return function (onDone, sampleCpu) {" + match[1] + "\n};")(
+        Harness.requireXlet("./lib/collection.js"),
+        { error: message => { throw new Error(message); } });
     let sampled = 0;
     let answer = null;
     let backend = { available: true, snapshot: () => ({ active: "balanced" }) };
@@ -365,14 +367,14 @@ cases["CPU sampling follows visible consumers"] = function () {
 
 cases["profile collections and controls reject a backend transition"] = function () {
     let source = Harness.shellSource();
-    let collectMatch = /    _collect\(onDone, sampleCpu\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* The sensor readings/.exec(source);
+    let collectMatch = /    _collect\(onDone, sampleCpu\) \{([\s\S]*?)\n    \}\n/.exec(source);
     let contextMatch = /    _profileContext\(\) \{([\s\S]*?)\n    \}/.exec(source);
     Harness.ok(collectMatch && contextMatch, "the profile wiring can be isolated");
 
-    let collect = Function("Log", "return function (onDone, sampleCpu) {" +
-        collectMatch[1] + "\n};")({
-        error: message => { throw new Error(message); },
-    });
+    let collect = Function("Collection", "Log",
+        "return function (onDone, sampleCpu) {" + collectMatch[1] + "\n};")(
+        Harness.requireXlet("./lib/collection.js"),
+        { error: message => { throw new Error(message); } });
     /* _profileState is one call now: the rule is lib/profile-view.js and what
      * is left in the applet is assembling the context to ask it with. That
      * assembly is what this isolates; the rule has its own cases. */

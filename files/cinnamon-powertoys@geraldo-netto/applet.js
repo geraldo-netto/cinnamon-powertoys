@@ -30,6 +30,7 @@ const St = imports.gi.St;
 const Alerts = require("./lib/alerts.js");
 const Backlight = require("./lib/backlight.js");
 const Bluez = require("./lib/bluez.js");
+const Collection = require("./lib/collection.js");
 const Cpu = require("./lib/cpu.js");
 const Ddc = require("./lib/ddc.js");
 const Device = require("./lib/device.js");
@@ -720,18 +721,28 @@ class PowerToysApplet extends Applet.TextIconApplet {
     /* ------------------------------------------------------------------ */
 
     /* Answers exactly once, with the reading or with null when there is not
-     * one. The caller has an in-flight flag riding on that promise. */
+     * one. The caller has an in-flight flag riding on that promise.
+     *
+     * The waiting and the assembly are lib/collection.js; what is here is the
+     * parts this applet has to offer it and the two reasons a finished
+     * collection is still thrown away. */
     _collect(onDone, sampleCpu) {
         let readings = null;
         let profileBackend = this._profileSelection.backend;
         let profileGeneration = this._profileSelection.generation;
-        let sensorsReady = false;
-        let cpuReady = false;
-        let chargeReady = false;
-        let profileReady = false;
-        let finish = () => {
-            if (!sensorsReady || !cpuReady || !chargeReady || !profileReady)
-                return;
+
+        let parts = [done => this._sensors.readAsync(this._sensorFilter(), answer => {
+            readings = answer;
+            done();
+        })];
+        if (sampleCpu !== false)
+            parts.push(done => this._cpu.sample(done));
+        if (this.menu?.isOpen && typeof this._chargeControl?.sample === "function")
+            parts.push(done => this._chargeControl.sample(done));
+        if (profileBackend && typeof profileBackend.sample === "function")
+            parts.push(done => profileBackend.sample(done));
+
+        Collection.gather(parts, () => {
             /* Teardown destroys the backends after a read has started. A
              * backend still settles its callback so the collection can let
              * go, but there is no machine left to assemble for this applet. */
@@ -756,95 +767,26 @@ class PowerToysApplet extends Applet.TextIconApplet {
                 this._failures.report("collection", "collection failed: " + error);
             }
             onDone(data);
-        };
-
-        this._sensors.readAsync(this._sensorFilter(), answer => {
-            readings = answer;
-            sensorsReady = true;
-            finish();
         });
-        if (sampleCpu !== false) {
-            this._cpu.sample(() => {
-                cpuReady = true;
-                finish();
-            });
-        } else {
-            cpuReady = true;
-            finish();
-        }
-        if (this.menu?.isOpen &&
-                typeof this._chargeControl?.sample === "function") {
-            this._chargeControl.sample(() => {
-                chargeReady = true;
-                finish();
-            });
-        } else {
-            chargeReady = true;
-            finish();
-        }
-        if (profileBackend && typeof profileBackend.sample === "function") {
-            profileBackend.sample(() => {
-                profileReady = true;
-                finish();
-            });
-        } else {
-            profileReady = true;
-            finish();
-        }
     }
 
     /*
-     * The sensor readings, and everything else that describes the machine,
-     * put side by side.
+     * What this applet has read, handed to the assembly.
      *
      * The other backends answer from memory. UPower and the profile daemon
      * keep their proxies current; processor and sensor nodes were loaded
      * concurrently off the main loop and arrive here as coherent snapshots.
      */
     _assemble(readings, profile) {
-        let upower = this._upower.read();
-        /* Anything with a charge that UPower did not mention. */
-        let devices = upower.devices.concat(this._bluetooth.missingFrom(upower.devices));
-        devices = Device.withPrimary(devices, upower.primary);
-
-        /* The batteries are sensors too, and what they contribute to the two
-         * lists is a function of the devices UPower reported. */
-        let battery = SensorRows.batteryReadings(upower.devices);
-        let temperatures = readings.temperatures.concat(battery.temperatures);
-        let powers = readings.powers.concat(battery.powers);
-        let power = Reading.pickPower(upower.primary, readings.packageWatts, powers);
-        let picked = Reading.pickTemperature(temperatures, this.cpuSensorHint,
-                                             Sensors.sensorMatches);
-        let charge = this._readChargeLimit();
-
-        return {
-            upowerAvailable: upower.available,
-            bluezAvailable: this._bluetooth.available,
-            devices: devices,
-            lines: upower.lines,
-            primary: upower.primary,
-            onBattery: upower.onBattery,
-            temperatures: temperatures,
-            fans: readings.fans,
-            powers: powers,
-            packageWatts: readings.packageWatts,
-            cpu: this._cpu.snapshot(),
+        return Collection.assemble({
+            readings: readings,
             profile: profile,
-            /* whether this machine has a battery whose limit can be written */
-            chargeLimitAvailable: charge.available,
-            chargeLimit: charge.limit,
-            chargeLimitState: charge.state,
-            /* The picker can deliberately choose a GPU, battery or explicitly
-             * hinted sensor. Keep its identity beside the value so an alert
-             * and the tooltip can say what they are reporting. */
-            selectedTemperature: picked.sensor,
-            /* whether the user's hint is the reason it came from there -
-             * false means they asked for a sensor and it was not found,
-             * which is worth saying out loud */
-            hintMatched: picked.hintMatched,
-            systemWatts: power.watts,
-            systemWattsSource: power.source,
-        };
+            upower: this._upower.read(),
+            bluetooth: this._bluetooth,
+            cpu: this._cpu.snapshot(),
+            charge: this._readChargeLimit(),
+            sensorHint: this.cpuSensorHint,
+        });
     }
 
     /*
