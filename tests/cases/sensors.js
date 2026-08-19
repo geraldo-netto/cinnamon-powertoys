@@ -1116,6 +1116,35 @@ cases["an asynchronous topology change completes through rediscovery"] = functio
     });
 };
 
+cases["a topology change is rediscovered from the sweep that found it"] = function () {
+    on("machine", function () {
+        let set = Harness.settle(function (done) {
+            let created = new Sensors.SensorSet({ asynchronous: true,
+                                                  onChanged: () => done(created) });
+        }, "initial sensor discovery");
+
+        /* The refresh check reads every path the snapshot is built from, so
+         * finding the machine changed must not send it round sysfs again. */
+        let original = IO.listDirsAsync;
+        let sweeps = 0;
+        IO.listDirsAsync = function (paths, done, concurrency, factory, options) {
+            if (paths.indexOf("/sys/class/hwmon") >= 0)
+                sweeps++;
+            return original(paths, done, concurrency, factory, options);
+        };
+        try {
+            IO.setRoot(Harness.fixture("inverted-boost"));
+            let changed = Harness.settle(done => set.refresh(done),
+                                         "changed asynchronous topology");
+            Harness.equal(changed, true, "the refresh reports the rediscovery");
+            Harness.equal(sweeps, 1, "one walk of sysfs, not two");
+        } finally {
+            IO.listDirsAsync = original;
+            set.destroy();
+        }
+    });
+};
+
 cases["an asynchronous directory listing matches the synchronous one"] = function () {
     on("machine", function () {
         let expected = IO.listDir("/sys/class/hwmon");

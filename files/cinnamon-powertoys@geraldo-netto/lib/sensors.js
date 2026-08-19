@@ -842,11 +842,18 @@ function _topologyFromInventory(directories, readString, readLink, canRead) {
     ]);
 }
 
-/* The refresh check follows the same asynchronous directory, metadata and
- * link route as discovery. Values that move on every reading are excluded;
- * everything retained is something discovery uses to classify or name a
- * sensor. Nothing here blocks Cinnamon's main thread. */
-function topologyKeyAsync(onDone, ioOptions) {
+/*
+ * One asynchronous sweep of sysfs, and the three readers built on it.
+ *
+ * The directory listing, the metadata load with its moving-value filter, the
+ * device links and the powercap access check are the same four questions
+ * whether the answer is wanted as a topology key or as a whole snapshot, and
+ * they were written out twice - a tri-null barrier each, the same regular
+ * expression each, the same three adapters each. A rule corrected in one copy
+ * was a rule still wrong in the other. Nothing here blocks Cinnamon's main
+ * thread.
+ */
+function _loadInventoryAsync(onDone, ioOptions) {
     _directoryInventoryAsync(directories => {
         let metadata = null;
         let links = null;
@@ -854,11 +861,15 @@ function topologyKeyAsync(onDone, ioOptions) {
         let finish = () => {
             if (metadata === null || links === null || access === null)
                 return;
-            let read = path => metadata[path] === undefined ? null : metadata[path];
-            let readLink = path => links[path] === undefined ? null : links[path];
-            let readable = path => access[path] === true;
-            onDone(_topologyFromInventory(directories, read, readLink, readable));
+            onDone({
+                directories: directories,
+                read: path => metadata[path] === undefined ? null : metadata[path],
+                readLink: path => links[path] === undefined ? null : links[path],
+                readable: path => access[path] === true,
+            });
         };
+        /* Values that move on every reading are excluded; everything retained
+         * is something discovery uses to classify or name a sensor. */
         IO.readStringsAsync(_metadataPaths(directories).filter(path =>
             !/\/(?:energy_uj|power_uw)$/.test(path)), values => {
             metadata = values;
@@ -876,49 +887,40 @@ function topologyKeyAsync(onDone, ioOptions) {
     }, ioOptions);
 }
 
+/* The refresh check's answer: what is present, from one loaded inventory. */
+function _inventoryTopology(inventory) {
+    return _topologyFromInventory(inventory.directories, inventory.read,
+                                  inventory.readLink, inventory.readable);
+}
+
+/*
+ * One complete sensor snapshot from an inventory already in hand, assembled
+ * only after the machine names have answered too. Separate from the sweep so
+ * that a refresh which has just swept can go straight on to the snapshot
+ * rather than sweeping a second time to build it.
+ */
+function snapshotFromInventoryAsync(inventory, onDone, ioOptions) {
+    let read = inventory.read;
+    let readable = inventory.readable;
+    let powercap = inventory.directories[POWERCAP_DIR] || [];
+    let scanned = _scanSensors(inventory.directories, read, inventory.readLink);
+    let addresses = scanned.groups.map(group => group.pciAddress);
+    Hardware.machineNamesAsync(addresses, names => {
+        let labels = _nameGroupsFrom(scanned.groups, names.cpuName, names.pciNames);
+        onDone({
+            sensors: _finishSensors(scanned, labels),
+            counters: _energyCounters(powercap, read, readable),
+            directPowers: _directPowercapSensors(powercap, read, readable),
+            topology: _inventoryTopology(inventory),
+        });
+    }, ioOptions);
+}
+
 /* One complete sensor snapshot, assembled only after every asynchronous part
  * has answered. Until this callback, callers keep using the prior snapshot. */
 function discoverSnapshotAsync(onDone, ioOptions) {
-    _directoryInventoryAsync(directories => {
-        let metadata = null;
-        let links = null;
-        let access = null;
-        let finish = () => {
-            if (metadata === null || links === null || access === null)
-                return;
-            let values = metadata;
-            let read = path => values[path] === undefined ? null : values[path];
-            let readLink = path => links[path] === undefined ? null : links[path];
-            let readable = path => access[path] === true;
-            let scanned = _scanSensors(directories, read, readLink);
-            let addresses = scanned.groups.map(group => group.pciAddress);
-            Hardware.machineNamesAsync(addresses, names => {
-                let labels = _nameGroupsFrom(scanned.groups, names.cpuName, names.pciNames);
-                onDone({
-                    sensors: _finishSensors(scanned, labels),
-                    counters: _energyCounters(
-                        directories[POWERCAP_DIR] || [], read, readable),
-                    directPowers: _directPowercapSensors(
-                        directories[POWERCAP_DIR] || [], read, readable),
-                    topology: _topologyFromInventory(directories, read, readLink, readable),
-                });
-            }, ioOptions);
-        };
-        IO.readStringsAsync(_metadataPaths(directories).filter(path =>
-            !/\/(?:energy_uj|power_uw)$/.test(path)), values => {
-            metadata = values;
-            finish();
-        }, 32, null, ioOptions);
-        IO.readLinksAsync(_linkPaths(directories), values => {
-            links = values;
-            finish();
-        }, 32, null, ioOptions);
-        IO.pathsReadableAsync(_powercapAccessPaths(directories[POWERCAP_DIR] || []),
-            values => {
-                access = values;
-                finish();
-            }, 32, null, ioOptions);
-    }, ioOptions);
+    _loadInventoryAsync(inventory =>
+        snapshotFromInventoryAsync(inventory, onDone, ioOptions), ioOptions);
 }
 
 function discoverSensorsAsync(onDone, ioOptions) {
@@ -1042,7 +1044,17 @@ const SensorSet = class SensorSet {
                     discoverDirectPowercapSensors());
     }
 
-    discoverAsync(onDone) {
+    /*
+     * A complete sweep, adopted when it lands.
+     *
+     * `inventory` is an optional sweep already in hand: the refresh check has
+     * just read every path this needs, so when it finds the machine changed
+     * the snapshot is assembled from what it read rather than from a second
+     * walk of sysfs. A caller arriving while one of these is in flight is
+     * replayed against a fresh sweep as before, so a handed-in inventory is
+     * only ever used by the call that loaded it.
+     */
+    discoverAsync(onDone, inventory) {
         if (this._destroyed)
             return;
         if (this._discovering) {
@@ -1057,7 +1069,7 @@ const SensorSet = class SensorSet {
         if (onDone)
             this._discoverWaiters.push(onDone);
         this._discovering = true;
-        discoverSnapshotAsync(snapshot => {
+        let adopt = snapshot => {
             if (this._destroyed)
                 return;
             this._discovering = false;
@@ -1079,7 +1091,11 @@ const SensorSet = class SensorSet {
                 this._refreshPending = false;
                 this._startRefresh();
             }
-        }, this._ioOptions);
+        };
+        if (inventory)
+            snapshotFromInventoryAsync(inventory, adopt, this._ioOptions);
+        else
+            discoverSnapshotAsync(adopt, this._ioOptions);
     }
 
     _adopt(found, counters, topology, directPowers) {
@@ -1145,14 +1161,16 @@ const SensorSet = class SensorSet {
         if (this._destroyed)
             return;
         this._refreshing = true;
-        topologyKeyAsync(topology => {
+        _loadInventoryAsync(inventory => {
             if (this._destroyed)
                 return;
-            if (topology === this._topology) {
+            if (_inventoryTopology(inventory) === this._topology) {
                 this._finishRefresh(false);
                 return;
             }
-            this.discoverAsync(() => this._finishRefresh(true));
+            /* The machine changed, and this sweep already holds everything
+             * the snapshot is built from. */
+            this.discoverAsync(() => this._finishRefresh(true), inventory);
         }, this._ioOptions);
     }
 
