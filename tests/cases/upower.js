@@ -977,6 +977,37 @@ cases["a device that goes away while its proxy is on the way is not taken on"] =
     monitor.destroy();
 };
 
+cases["one announced device that cannot be proxied is one device"] = function () {
+    /*
+     * A bluetooth peripheral that disconnects between DeviceAdded and the
+     * proxy's reply is the ordinary way this happens, and it used to set
+     * available = false and arm the retry - whose timer drops the manager, the
+     * display device and every device proxy and builds them all again. One
+     * peripheral flickering blanked the whole battery list.
+     */
+    logging(function (lines) {
+        let manager = managerFor([BAT0]);
+        let bus = busFor(manager, { [DISPLAY]: proxyFor(), [BAT0]: proxyFor() });
+        let timers = retryTimers(bus);
+        let monitor = monitorOn(bus);
+        Harness.equal(monitor.snapshot().length, 1, "the battery is on the list");
+
+        manager.signals["DeviceAdded"](manager, null, [MOUSE]);
+
+        Harness.equal(monitor.snapshot().length, 1, "the battery is still on the list");
+        Harness.equal(monitor.available, true, "and UPower is still available");
+        Harness.deepEqual(timers.delays, [], "no rebuild of everything was scheduled");
+        Harness.equal(lines.length, 1, "the one path that failed is reported once");
+        Harness.ok(lines[0].indexOf(MOUSE) >= 0, "and named: " + lines[0]);
+
+        /* The same path failing again is the same trouble, not new trouble;
+         * and the device that finally arrives clears it. */
+        manager.signals["DeviceAdded"](manager, null, [MOUSE]);
+        Harness.equal(lines.length, 1, "a repeat is not reported again");
+        monitor.destroy();
+    });
+};
+
 cases["owner loss cancels every pending UPower proxy"] = function () {
     let manager = managerFor([BAT0]);
     let bus = busFor(manager, { [DISPLAY]: proxyFor(), [BAT0]: proxyFor() },

@@ -641,11 +641,10 @@ const UPowerMonitor = class UPowerMonitor {
                 return;
             }
             if (error || !proxy) {
-                if (!done) {
-                    this.available = false;
-                    this._onChanged();
-                    this._scheduleRetry();
-                }
+                this._dropAnnouncedDevice(
+                    path, done,
+                    "cannot proxy " + path + ": " +
+                    (error ? error.message : "no proxy"));
                 settle(false);
                 return;
             }
@@ -653,15 +652,14 @@ const UPowerMonitor = class UPowerMonitor {
             let signalId;
             try {
                 signalId = proxy.connect("g-properties-changed", changed);
-            } catch (error) {
-                if (!done) {
-                    this.available = false;
-                    this._onChanged();
-                    this._scheduleRetry();
-                }
+            } catch (signalError) {
+                this._dropAnnouncedDevice(
+                    path, done,
+                    "cannot subscribe to " + path + ": " + signalError);
                 settle(false);
                 return;
             }
+            this._failures.recover("device:" + path);
             this._devices.set(path, proxy);
             this._deviceSignals.set(path, signalId);
             if (done)
@@ -671,11 +669,38 @@ const UPowerMonitor = class UPowerMonitor {
         });
     }
 
+    /*
+     * One announced device that could not be proxied is one device, not the
+     * daemon.
+     *
+     * This used to set available = false and call _scheduleRetry(), whose
+     * timer runs _disconnectManager() - the manager, the display device and
+     * every device proxy dropped and rebuilt from scratch. The ordinary
+     * trigger is entirely benign: a bluetooth peripheral that disconnects
+     * between DeviceAdded and the proxy's reply. One peripheral flickering
+     * blanked the whole battery list.
+     *
+     * So the path is simply not adopted and the trouble is reported under a
+     * key of its own, which recovers by itself when the same path is proxied
+     * later. Manager-level failures - _onManagerReady, _onEnumerated - keep
+     * available = false and the retry, because there the daemon really is the
+     * thing that did not answer.
+     *
+     * An enumeration walk passes a `done`, and it already reports its own
+     * outcome to the caller, so it is only told.
+     */
+    _dropAnnouncedDevice(path, done, message) {
+        this._failures.report("device:" + path, message);
+        if (!done)
+            this._onChanged();
+    }
+
     /* Devices come and go all the time (bluetooth, docks, USB), so the
      * property handler has to go with them or it accumulates for the life of
      * the session - and one that is still being proxied has to be taken off
      * the list of asks, or its answer arrives and puts it back. */
     _removeDevice(path) {
+        this._failures.recover("device:" + path);
         this._adding.delete(path);
         this._cancelProxyRequests(path);
         let proxy = this._devices.get(path);
