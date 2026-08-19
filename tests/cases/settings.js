@@ -172,3 +172,73 @@ cases["external monitor documentation includes closed laptops"] = function () {
     Harness.ok(readme.indexOf("while UPower reports its lid closed") >= 0,
                "the README promises the same closed-lid behavior");
 };
+
+/*
+ * The schema on its own, and the two pairs of keys that are one setting.
+ *
+ * Everything above holds the schema against the applet's table. Nothing held
+ * the schema against itself: a default outside its own range or off its own
+ * list is a value the user never chose and cannot see chosen, and the two
+ * pairs below are each a single quantity kept as two keys, where a drift in
+ * one of them is only visible as the applet quietly rewriting a shipped
+ * default or converting a limit into a number the other row cannot hold.
+ */
+
+function schema() {
+    return JSON.parse(readFile(Harness.xletDir() + "/settings-schema.json"));
+}
+
+function celsiusFrom(fahrenheit) {
+    return (fahrenheit - 32) * 5 / 9;
+}
+
+cases["every default is a value its own setting allows"] = function () {
+    let all = schema();
+    let wrong = [];
+    for (let key in all) {
+        let setting = all[key];
+        if (setting.type === "section" || setting.default === undefined)
+            continue;
+        if (setting.type === "spinbutton") {
+            if (typeof setting.min === "number" && setting.default < setting.min)
+                wrong.push(key + " defaults to " + setting.default + ", below its own minimum " + setting.min);
+            if (typeof setting.max === "number" && setting.default > setting.max)
+                wrong.push(key + " defaults to " + setting.default + ", above its own maximum " + setting.max);
+        }
+        if (setting.type === "combobox") {
+            let offered = Object.keys(setting.options || {}).map(label => setting.options[label]);
+            if (offered.indexOf(setting.default) < 0)
+                wrong.push(key + " defaults to " + JSON.stringify(setting.default) +
+                           ", which is not one of " + JSON.stringify(offered));
+        }
+    }
+    Harness.deepEqual(wrong, [], "a default nobody can choose is a value nobody chose");
+};
+
+cases["the shipped alert levels do not need correcting on first run"] = function () {
+    let all = schema();
+    /* lib/alerts.js keeps critical under low, and the applet writes the
+     * correction into the settings the first time it runs. Shipped defaults
+     * that need it would rewrite a user's settings file before they had ever
+     * opened the window. */
+    Harness.ok(all["critical-battery-threshold"].default < all["low-battery-threshold"].default,
+               "the critical level is below the low one it has to fire before");
+    Harness.ok(all["critical-battery-threshold"].min >= 1,
+               "and no level is offered at zero, where nothing could fire");
+};
+
+cases["the two temperature keys describe one limit"] = function () {
+    let all = schema();
+    let celsius = all["high-temp-threshold"];
+    let fahrenheit = all["high-temp-threshold-fahrenheit"];
+
+    /* Switching the unit converts the value across, so the two rows have to
+     * be the same limit and the same span. A default or a bound that drifts
+     * shows up as a limit changing when only the unit was changed. */
+    Harness.near(celsiusFrom(fahrenheit.default), celsius.default, 1,
+                 "both defaults are the same temperature");
+    Harness.near(celsiusFrom(fahrenheit.min), celsius.min, 1,
+                 "and both rows start at the same temperature");
+    Harness.near(celsiusFrom(fahrenheit.max), celsius.max, 1,
+                 "and end at the same one, so a converted value always fits");
+};
