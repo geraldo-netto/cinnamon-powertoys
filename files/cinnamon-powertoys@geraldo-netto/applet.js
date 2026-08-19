@@ -985,7 +985,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
         let temperatures = readings.temperatures.concat(upower.temperatures);
         let powers = readings.powers.concat(upower.powers);
         let power = Reading.pickPower(upower.primary, readings.packageWatts, powers);
-        let picked = Reading.pickTemperature(temperatures, this.cpuSensorHint);
+        let picked = Reading.pickTemperature(temperatures, this.cpuSensorHint,
+                                             Sensors.sensorMatches);
         let charge = this._readChargeLimit();
 
         return {

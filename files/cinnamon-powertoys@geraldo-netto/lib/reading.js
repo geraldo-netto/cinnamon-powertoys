@@ -14,9 +14,8 @@
 
 const UPowerGlib = imports.gi.UPowerGlib;
 
-const PowerSupply = require("./lib/power-supply.js");
+const Backends = require("./lib/backends.js");
 const Format = require("./lib/format.js");
-const Sensors = require("./lib/sensors.js");
 const Translate = require("./lib/gettext.js");
 
 const _ = Translate._;
@@ -110,14 +109,14 @@ function shownProfile(data, options) {
  */
 function profileOwnsGovernor(data) {
     return data.profile.available && !!data.profile.backend &&
-           data.profile.backend !== PowerSupply.PLATFORM_BACKEND;
+           data.profile.backend !== Backends.PLATFORM_BACKEND;
 }
 
 /* Daemon profiles are ordinary session D-Bus writes. The ACPI fallback is a
  * root-owned sysfs node and follows the user's privileged-control setting. */
 function profileCanChange(data, privileged) {
     return data.profile.available &&
-           (data.profile.backend !== PowerSupply.PLATFORM_BACKEND || !!privileged);
+           (data.profile.backend !== Backends.PLATFORM_BACKEND || !!privileged);
 }
 
 /*
@@ -171,15 +170,20 @@ function describeChange(args) {
  * hint chose the sensor, false where they set one and nothing matched - which
  * is worth saying out loud, since there is no other way to find out a typed
  * name was ignored - and null where they set none.
+ *
+ * `matches(sensor, fragment)` is passed in rather than reached for: this file
+ * is a derivation over a reading, and requiring lib/sensors.js for one
+ * predicate would drag the whole discovery backend into everything that loads
+ * a reading. lib/sensors.js exports exactly that predicate as sensorMatches.
  */
-function pickTemperature(temperatures, hint) {
+function pickTemperature(temperatures, hint, matches) {
     let wanted = (hint || "").trim();
     let readable = temperatures.filter(sensor => sensor.celsius !== null);
     if (readable.length === 0)
         return { sensor: null, hintMatched: null };
 
     if (wanted) {
-        let match = readable.find(sensor => Sensors.sensorMatches(sensor, wanted));
+        let match = readable.find(sensor => matches(sensor, wanted));
         if (match)
             return { sensor: match, hintMatched: true };
     }
@@ -187,7 +191,7 @@ function pickTemperature(temperatures, hint) {
     let matched = wanted === "" ? null : false;
     let cpus = readable.filter(sensor => sensor.kind === "cpu");
     for (let name of PREFERRED_CPU_SENSORS) {
-        let match = cpus.find(sensor => Sensors.sensorMatches(sensor, name));
+        let match = cpus.find(sensor => matches(sensor, name));
         if (match)
             return { sensor: match, hintMatched: matched };
     }

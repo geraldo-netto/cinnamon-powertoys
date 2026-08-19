@@ -11,8 +11,14 @@ const Harness = imports.harness;
 const Fuzz = imports.fuzz;
 const UPowerGlib = imports.gi.UPowerGlib;
 
-const PowerSupply = Harness.requireXlet("./lib/power-supply.js");
+const Backends = Harness.requireXlet("./lib/backends.js");
 const Reading = Harness.requireXlet("./lib/reading.js");
+const Sensors = Harness.requireXlet("./lib/sensors.js");
+
+/* The matcher is the caller's to supply; the applet supplies this one. */
+function pickTemperature(temperatures, hint) {
+    return Reading.pickTemperature(temperatures, hint, Sensors.sensorMatches);
+}
 
 const State = UPowerGlib.DeviceState;
 
@@ -90,7 +96,7 @@ cases["the firmware profile does not own the governor"] = function () {
     /* It writes firmware and never goes near cpufreq, so there the governor is
      * the only way to ask for speed and stays a control. */
     Harness.equal(
-        Reading.profileOwnsGovernor(profile({ backend: PowerSupply.PLATFORM_BACKEND })),
+        Reading.profileOwnsGovernor(profile({ backend: Backends.PLATFORM_BACKEND })),
         false, "ACPI writes firmware, not cpufreq");
 };
 
@@ -104,7 +110,7 @@ cases["a machine with no profiles does not own the governor either"] = function 
 cases["only firmware profiles follow the privileged setting"] = function () {
     Harness.equal(Reading.profileCanChange(profile(), false), true,
                   "the session daemon remains writable");
-    let firmware = profile({ backend: PowerSupply.PLATFORM_BACKEND });
+    let firmware = profile({ backend: Backends.PLATFORM_BACKEND });
     Harness.equal(Reading.profileCanChange(firmware, true), true,
                   "ACPI is writable when privileged controls are allowed");
     Harness.equal(Reading.profileCanChange(firmware, false), false,
@@ -153,7 +159,7 @@ const AMDGPU = temperature("amdgpu", "edge", "gpu", 41.0);
 const NVME = temperature("nvme", null, "disk", 38.0);
 
 cases["the processor's own reading is what stands for the machine"] = function () {
-    let picked = Reading.pickTemperature([NVME, AMDGPU, CCD, K10], "");
+    let picked = pickTemperature([NVME, AMDGPU, CCD, K10], "");
     Harness.equal(picked.sensor.rawLabel, "Tctl",
                   "the one AMD publishes as the package's control value");
     Harness.equal(picked.hintMatched, null, "nobody asked for a particular one");
@@ -162,26 +168,26 @@ cases["the processor's own reading is what stands for the machine"] = function (
 cases["the preference order is followed, not the discovery order"] = function () {
     /* Tccd1 comes off the same chip and is discovered first here; it is one
      * chiplet, not the package. */
-    Harness.equal(Reading.pickTemperature([CCD, TDIE], "").sensor.rawLabel, "Tdie", "Tdie over Tccd1");
-    Harness.equal(Reading.pickTemperature([CCD, TDIE, K10], "").sensor.rawLabel, "Tctl",
+    Harness.equal(pickTemperature([CCD, TDIE], "").sensor.rawLabel, "Tdie", "Tdie over Tccd1");
+    Harness.equal(pickTemperature([CCD, TDIE, K10], "").sensor.rawLabel, "Tctl",
                   "and Tctl over Tdie");
 };
 
 cases["a processor with nothing recognisable still answers"] = function () {
     let odd = temperature("soc_thermal", null, "cpu", 55.0);
-    Harness.equal(Reading.pickTemperature([AMDGPU, odd], "").sensor.chip, "soc_thermal",
+    Harness.equal(pickTemperature([AMDGPU, odd], "").sensor.chip, "soc_thermal",
                   "any CPU sensor beats a GPU one");
 };
 
 cases["a machine with no processor sensor falls back to the graphics card"] = function () {
-    Harness.equal(Reading.pickTemperature([NVME, AMDGPU], "").sensor.chip, "amdgpu", "the GPU");
-    Harness.equal(Reading.pickTemperature([NVME], "").sensor.chip, "nvme",
+    Harness.equal(pickTemperature([NVME, AMDGPU], "").sensor.chip, "amdgpu", "the GPU");
+    Harness.equal(pickTemperature([NVME], "").sensor.chip, "nvme",
                   "and then to whatever there is, rather than to nothing");
 };
 
 cases["a machine that reports nothing readable says so"] = function () {
     let dead = temperature("amdgpu", "edge", "gpu", null);
-    let picked = Reading.pickTemperature([dead], "");
+    let picked = pickTemperature([dead], "");
     Harness.equal(picked.sensor, null, "no sensor");
     Harness.equal(picked.hintMatched, null, "and no hint to have failed");
 };
@@ -189,22 +195,22 @@ cases["a machine that reports nothing readable says so"] = function () {
 cases["a hint chooses the sensor, whatever kind it is"] = function () {
     /* Matched on what the driver calls it, so a disk can be named on purpose
      * and the sensor filter keeps it for that reason. */
-    let picked = Reading.pickTemperature([K10, AMDGPU, NVME], "nvme");
+    let picked = pickTemperature([K10, AMDGPU, NVME], "nvme");
     Harness.equal(picked.sensor.chip, "nvme", "the one that was asked for");
     Harness.equal(picked.hintMatched, true, "and it was found");
 };
 
 cases["a hint is matched on the driver's word, not the menu's"] = function () {
-    Harness.equal(Reading.pickTemperature([K10, AMDGPU], "Tctl").sensor.rawLabel, "Tctl",
+    Harness.equal(pickTemperature([K10, AMDGPU], "Tctl").sensor.rawLabel, "Tctl",
                   "the label");
-    Harness.equal(Reading.pickTemperature([K10, AMDGPU], "amdgpu").sensor.chip, "amdgpu",
+    Harness.equal(pickTemperature([K10, AMDGPU], "amdgpu").sensor.chip, "amdgpu",
                   "or the chip");
 };
 
 cases["a hint that matches nothing is reported, not swallowed"] = function () {
     /* Somebody who typed a name has no other way of finding out it was
      * ignored, so the menu says so - which it can only do because of this. */
-    let picked = Reading.pickTemperature([K10, AMDGPU], "coretemp");
+    let picked = pickTemperature([K10, AMDGPU], "coretemp");
     Harness.equal(picked.sensor.rawLabel, "Tctl", "the automatic choice still happens");
     Harness.equal(picked.hintMatched, false, "but the hint did not, and that is worth saying");
 };
@@ -303,7 +309,7 @@ cases["which sensor the machine is judged by is always one that answered"] = fun
         }
         return { sensors: sensors, hint: random.chance(3) ? Fuzz.text(random, 2) : "" };
     }, input => {
-        let picked = Fuzz.answers(() => Reading.pickTemperature(input.sensors, input.hint));
+        let picked = Fuzz.answers(() => pickTemperature(input.sensors, input.hint));
 
         if (picked.sensor !== null) {
             if (input.sensors.indexOf(picked.sensor) < 0)
@@ -329,12 +335,12 @@ cases["a hint that matches nothing is said so rather than ignored"] = function (
      * applet quietly falls back to the processor and the row somebody was
      * looking for never appears. */
     let sensors = [{ id: "a", kind: "cpu", chip: "k10temp", rawLabel: "Tctl", celsius: 50 }];
-    Harness.equal(Reading.pickTemperature(sensors, "k10temp").hintMatched, true, "chip matched");
-    Harness.equal(Reading.pickTemperature(sensors, "Tctl").hintMatched, true, "label matched");
-    Harness.equal(Reading.pickTemperature(sensors, "nvme").hintMatched, false,
+    Harness.equal(pickTemperature(sensors, "k10temp").hintMatched, true, "chip matched");
+    Harness.equal(pickTemperature(sensors, "Tctl").hintMatched, true, "label matched");
+    Harness.equal(pickTemperature(sensors, "nvme").hintMatched, false,
                   "asked for, and not there");
-    Harness.equal(Reading.pickTemperature(sensors, "  ").hintMatched, null, "asked for nothing");
-    Harness.equal(Reading.pickTemperature([], "k10temp").hintMatched, null,
+    Harness.equal(pickTemperature(sensors, "  ").hintMatched, null, "asked for nothing");
+    Harness.equal(pickTemperature([], "k10temp").hintMatched, null,
                   "nothing readable, so the hint was never the reason");
 };
 

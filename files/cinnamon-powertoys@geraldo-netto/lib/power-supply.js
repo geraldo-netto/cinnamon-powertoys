@@ -7,19 +7,17 @@
  * throwing.
  */
 
+const Backends = require("./lib/backends.js");
 const IO = require("./lib/io.js");
 
 const POWER_SUPPLY_DIR = "/sys/class/power_supply";
 const PLATFORM_PROFILE = "/sys/firmware/acpi/platform_profile";
 const PLATFORM_PROFILE_CHOICES = "/sys/firmware/acpi/platform_profile_choices";
 
-/*
- * What this backend answers when a reading asks where its profiles came from.
- * It is compared against, not just displayed: this backend writes firmware and
- * never touches cpufreq, so unlike power-profiles-daemon it does not own the
- * governor or the energy preference, and the menu has to be able to tell.
- */
-const PLATFORM_BACKEND = "acpi-platform-profile";
+/* Re-exported so a caller holding this backend need not know where the name
+ * is kept; the name itself lives in lib/backends.js, where a derivation can
+ * reach it without requiring this module. */
+const PLATFORM_BACKEND = Backends.PLATFORM_BACKEND;
 
 function _chargeReading(values) {
     let readable = values.filter(value => value !== null);
