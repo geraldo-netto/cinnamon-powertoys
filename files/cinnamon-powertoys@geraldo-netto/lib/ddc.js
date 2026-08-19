@@ -47,9 +47,10 @@ const STEP = 5;
  */
 const MAX_DISPLAYS = 10;
 
-/* Removal needs confirmation; command failures get one extra chance because
- * they say nothing about topology at all. Both bounds are deliberately small
- * while the menu probes once a second. */
+/* Removal needs confirmation; command failures get two extra chances because
+ * they say nothing about topology at all - the third consecutive failure is
+ * what clears it. Both bounds are deliberately small while the menu probes
+ * once a second. */
 const MISSING_CONFIRMATIONS = 2;
 const FAILURE_GRACE = 3;
 
