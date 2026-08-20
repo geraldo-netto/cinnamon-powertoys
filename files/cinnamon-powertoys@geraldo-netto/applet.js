@@ -50,6 +50,7 @@ const ShellMetrics = require("./lib/shell-metrics.js");
 const Privileged = require("./lib/privileged.js");
 const ProfileSelection = require("./lib/profile-selection.js");
 const ProfileView = require("./lib/profile-view.js");
+const ProfileStepping = require("./lib/profile-stepping.js");
 const Panel = require("./lib/panel-presenter.js");
 const Sensors = require("./lib/sensors.js");
 const Translate = require("./lib/gettext.js");
@@ -150,6 +151,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._profiles = null;
         this._platformProfiles = null;
         this._profileSelection = null;
+        this._profileStep = null;
         this._upower = null;
         this.menuManager = null;
         this.menu = null;
@@ -405,6 +407,23 @@ class PowerToysApplet extends Applet.TextIconApplet {
              * presented after ownership moved. */
             () => this._pending.forget());
         this._profileSelection.choose();
+        /* What a wheel notch or a hotkey means for the profile -
+         * lib/profile-stepping.js. Which writer answers, what has been
+         * asked for and what is allowed are read through ports rather
+         * than captured, because every one of them changes while the
+         * applet is on the panel. The write itself stays here: a pending
+         * request, a writer that can be replaced mid-flight and a redraw
+         * are the applet's. */
+        this._profileStep = new ProfileStepping.ProfileStepper({
+            reading: () => this._latest,
+            pending: () => this._pending.value,
+            selection: this._profileSelection,
+            platformProfiles: this._platformProfiles,
+            helper: this._helper,
+            privileged: () => this.enablePrivilegedControls,
+            setProfile: (name, onResult) => this._setProfile(name, onResult),
+            notifications: this._notifications,
+        });
         if (typeof this._platformProfiles.refresh === "function")
             this._platformProfiles.refresh();
         this._upower = this._backends.upowerMonitor(() => this._onUPowerChanged(),
@@ -1196,12 +1215,12 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * was one. Asking again for the profile already in flight is not one.
      */
     _setProfile(name, onResult) {
-        let state = this._profileState();
+        let state = this._profileStep.state();
         if (!state)
             return false;
         let backend = state.source;
         let generation = state.generation;
-        if (name === this._shownProfile())
+        if (name === this._profileStep.shown())
             return false;
         let accepted = this._pending.request(name,
             done => backend.setProfile(name, done), (outcome, matching) => {
@@ -1272,90 +1291,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
     }
 
     /*
-     * A profile block the applet is currently allowed to change. The daemon
-     * is unprivileged; the ACPI fallback follows the privileged-control
-     * setting, so wheel, middle click and hotkey stop at the same gate as the
-     * menu segment.
-     */
-    _profileState() {
-        return ProfileView.steppableState(this._latest, this._profileContext());
-    }
-
-    /* What the applet knows about the profile control that the reading does
-     * not: who it is talking to, whether that writer is the ACPI platform
-     * profile, whether a password dialog is already up for it, and whether
-     * privileged changes are allowed at all. */
-    _profileContext() {
-        return {
-            backend: this._profileSelection.backend,
-            generation: this._profileSelection.generation,
-            platformProfiles: this._platformProfiles,
-            busy: !!this._helper?.busy,
-            privileged: this.enablePrivilegedControls,
-        };
-    }
-
-    /*
-     * One step along that list, from the profile that has been asked for
-     * rather than from the one the machine has got round to.
-     *
-     * Those are the same value except while a change is in flight, and that
-     * window is not always short. Under power-profiles-daemon it is a D-Bus
-     * round trip; on the ACPI platform profile the write goes through a
-     * password dialog and stays pending for as long as that is on screen.
-     * Stepping from the old value there computed the same target again,
-     * _setProfile dropped it as a duplicate, and the wheel and the hotkey did
-     * nothing at all for the whole of it - while the hotkey went on announcing
-     * a change that was not happening, because it announced whether or not the
-     * call had been taken.
-     *
-     * "The profile that has been asked for" is the same question the panel
-     * gauge, the panel label and the filled segment all ask, so it is asked of
-     * the same function. _profileState has already established that there is a
-     * reading to ask it about.
-     */
-    _stepProfile(step, wrap, announce) {
-        let state = this._profileState();
-        if (!state)
-            return false;
-
-        /* Stepped from the profile being shown rather than the one the machine
-         * has got round to, and null where the step lands where it already
-         * was; both rules are lib/profiles.js. */
-        let name = Profiles.nextProfile(state.list, this._shownProfile(), step, wrap);
-        if (!name)
-            return false;
-
-        /* Acceptance means a write is in progress, not that it happened.
-         * Announce only when this exact request answers successfully; the
-         * pending panel state is the feedback while it is in flight. */
-        return this._setProfile(name, error => {
-            if (announce && !error)
-                this._notifications.notify(_("Power Toys"),
-                                           ProfileView.announcement(name));
-        });
-    }
-
-    /*
-     * The profile that has been asked for, rather than the one the machine has
-     * got round to.
-     *
-     * Those are the same value except while a change is in flight, and that
-     * window is not always short: on the firmware path it is as long as a
-     * password dialog is on screen. Every caller here wants the same one, and
-     * it is the same question the panel gauge, the panel label and the filled
-     * segment ask.
-     */
-    _shownProfile() {
-        return Reading.shownProfile(this._latest,
-                                    { pendingProfile: this._pending.value });
-    }
-
-    _cycleProfile() {
-        this._stepProfile(1, true, true);
-    }
-
-    /*
      * The wheel counts, and the count is applied once it settles.
      *
      * Three clicks in one direction means three steps, clamped at the ends -
@@ -1379,7 +1314,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
                 return Clutter.EVENT_STOP;
             case "profile":
                 this._gatherScroll(amount,
-                                   notches => this._stepProfile(notches, false, true));
+                                   notches => this._profileStep.step(notches, false, true));
                 return Clutter.EVENT_STOP;
             default:
                 return Clutter.EVENT_PROPAGATE;
@@ -1394,7 +1329,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             brightness: !!this._brightnessControl(),
             keyboardBacklight: !!(this._backlights.keyboard &&
                                   this._backlights.keyboard.available),
-            profile: !!this._profileState(),
+            profile: !!this._profileStep.state(),
         };
     }
 
@@ -1432,7 +1367,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
                 this._backlights.keyboard.toggle(() => this._onBacklightChanged());
                 return Clutter.EVENT_STOP;
             case "profile":
-                this._cycleProfile();
+                this._profileStep.cycle();
                 return Clutter.EVENT_STOP;
             default:
                 return Clutter.EVENT_PROPAGATE;
@@ -1456,7 +1391,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             {
                 name: UUID + "-cycle-profile-" + this.instanceId,
                 accelerator: this.cycleProfileHotkey,
-                action: () => this._cycleProfile(),
+                action: () => this._profileStep.cycle(),
             },
             {
                 name: UUID + "-toggle-menu-" + this.instanceId,

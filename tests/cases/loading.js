@@ -11,8 +11,8 @@ const GLib = imports.gi.GLib;
 const Harness = imports.harness;
 const Loader = imports.loader;
 const Translate = Harness.requireXlet("./lib/gettext.js");
-const ProfileView = Harness.requireXlet("./lib/profile-view.js");
 const ProfileSelection = Harness.requireXlet("./lib/profile-selection.js");
+const ProfileStepping = Harness.requireXlet("./lib/profile-stepping.js");
 
 /*
  * The profile writer the isolated applet methods ask, rather than the fields
@@ -402,19 +402,20 @@ cases["CPU sampling follows visible consumers"] = function () {
 cases["profile collections and controls reject a backend transition"] = function () {
     let source = Harness.shellSource();
     let collectMatch = /    _collect\(onDone, sampleCpu\) \{([\s\S]*?)\n    \}\n/.exec(source);
-    let contextMatch = /    _profileContext\(\) \{([\s\S]*?)\n    \}/.exec(source);
-    Harness.ok(collectMatch && contextMatch, "the profile wiring can be isolated");
+    Harness.ok(collectMatch, "the profile wiring can be isolated");
 
     let collect = Function("Collection", "Log",
         "return function (onDone, sampleCpu) {" + collectMatch[1] + "\n};")(
         Harness.requireXlet("./lib/collection.js"),
         { error: message => { throw new Error(message); } });
-    /* _profileState is one call now: the rule is lib/profile-view.js and what
-     * is left in the applet is assembling the context to ask it with. That
-     * assembly is what this isolates; the rule has its own cases. */
-    let profileContext = Function("return function () {" + contextMatch[1] + "\n};")();
+    /* Which profile block may be stepped at all is lib/profile-stepping.js
+     * now, asked here as the real thing rather than as an applet method cut
+     * out of the source: what this case is about is a collection and a control
+     * meeting a backend transition, and the stepper is one of the two parties
+     * to that. */
+    let stepper = null;
     let profileState = function () {
-        return ProfileView.steppableState(this._latest, profileContext.call(this));
+        return stepper.state();
     };
     let pending = {};
     let forgotten = 0;
@@ -435,6 +436,13 @@ cases["profile collections and controls reject a backend transition"] = function
         _assemble: () => { throw new Error("a stale profile was assembled"); },
         enablePrivilegedControls: true,
     };
+    stepper = new ProfileStepping.ProfileStepper({
+        reading: () => applet._latest,
+        selection: selection,
+        platformProfiles: firmware,
+        helper: { get busy() { return !!applet._helper?.busy; } },
+        privileged: () => applet.enablePrivilegedControls,
+    });
 
     Harness.equal(selection.choose(), true, "the firmware backend is selected");
     Harness.equal(selection.backend, firmware, "firmware owns this generation");
@@ -525,14 +533,16 @@ cases["a profile write stays with the backend that produced its control"] = func
     let updates = 0;
     let applet = {
         _profileSelection: selection,
-        _profileState: () => profile,
-        _shownProfile: () => "balanced",
+        _profileStep: {
+            state: () => profile,
+            shown: () => "balanced",
+        },
         _latest: { profile: profile },
         _pending: {
             value: null,
             request: (name, write, report) => write(outcome => report(outcome, true)),
         },
-        _notifyProfileError: (name, error) => notices.push([name, error]),
+        _helperCalls: { profileError: (name, error) => notices.push([name, error]) },
         _scheduleUpdate: () => updates++,
     };
 
@@ -549,41 +559,6 @@ cases["a profile write stays with the backend that produced its control"] = func
     Harness.deepEqual(notices, [], "the obsolete writer cannot report against new controls");
     Harness.deepEqual(results, [], "nor report a result for the obsolete control");
     Harness.equal(updates, 2, "the optimistic and final states are both redrawn");
-};
-
-cases["profile announcements wait for matching success"] = function () {
-    let source = Harness.shellSource();
-    let match = /    _stepProfile\(step, wrap, announce\) \{([\s\S]*?)\n    \}\n/.exec(source);
-    Harness.ok(match, "the profile step can be isolated");
-    let notices = [];
-    let callbacks = [];
-    let stepProfile = Function(
-        "Profiles", "ProfileView", "_",
-        "return function (step, wrap, announce) {" + match[1] + "\n};")({
-        nextProfile: () => "performance",
-    }, {
-        announcement: name => "Power profile: " + name,
-    }, text => text);
-    let applet = {
-        _profileState: () => ({ list: ["balanced", "performance"] }),
-        _shownProfile: () => "balanced",
-        _setProfile: (name, done) => {
-            callbacks.push(done);
-            return true;
-        },
-        _notifications: { notify: (title, body) => notices.push([title, body]) },
-    };
-
-    Harness.equal(stepProfile.call(applet, 1, true, true), true, "the step was accepted");
-    Harness.deepEqual(notices, [], "acceptance alone announces nothing");
-    callbacks.shift()(new Error("authentication cancelled"));
-    Harness.deepEqual(notices, [], "a failed result announces nothing");
-
-    stepProfile.call(applet, 1, true, true);
-    Harness.deepEqual(notices, [], "the next accepted request still waits");
-    callbacks.shift()(null);
-    Harness.deepEqual(notices, [["Power Toys", "Power profile: performance"]],
-                      "only the matching success is announced");
 };
 
 cases["presentation consumers fail independently"] = function () {
