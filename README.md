@@ -677,9 +677,11 @@ make dist             # dist/<uuid>-<version>.zip and its .sha256
 
 The archive holds the Cinnamon Spices submission layout — the payload
 directory plus `info.json`, `README.md` and `screenshot.png` — and nothing
-from the development tree. It is built before anything else is checked: the
-layout rules, the polkit action and the helper path all have to pass, so a
-release cannot be cut from a tree `make check` would reject.
+from the development tree. Nothing is written until three of the rules `make
+check` applies have passed: the layout rules, the polkit action and the helper
+path. It does not run the test suite — on CI it does not have to, because the
+package job needs the check job, but locally `make check` is a separate command
+and `make dist` will happily package a tree whose tests fail. Run it first.
 
 The same commit produces the same bytes, every time and on any machine: entries
 are written sorted, with a fixed timestamp and fixed modes. That is what makes
