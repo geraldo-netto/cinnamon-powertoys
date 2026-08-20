@@ -1403,7 +1403,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         destroy("_upower", "UPower monitor");
         destroy("_platformProfiles", "platform profile backend");
         destroy("_profiles", "profile backend");
-        this._profileSelection?.release();
+        release("profile selection", () => this._profileSelection?.release());
         destroy("_bluetooth", "Bluetooth backend");
         let backlights = this._backlights;
         this._backlights = {};

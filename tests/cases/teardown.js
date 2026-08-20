@@ -155,9 +155,22 @@ cases["a release that throws does not strand the ones after it"] = function () {
     Harness.ok(helper[1].indexOf("Log.error") >= 0,
                "and says so rather than swallowing it");
 
+    /*
+     * A statement of _teardown's own - eight spaces in, since anything deeper
+     * is already inside one of the helper's callbacks - that lets go of a
+     * field without going through the helper. It was written as "any line
+     * with .destroy() on it that does not also say release(", which passed
+     * two ways it should not have: `this._hotkeys.release()` only because
+     * "release()" happens to contain the text "release(", and
+     * `this._profileSelection.release()` because the vocabulary here was
+     * destroy and finalize while releasable() above - the function that
+     * decides what counts as having something to let go of - has always
+     * called it destroy, release, cancel or finalize. The two now agree, and
+     * what identifies an unguarded line is where it sits rather than what
+     * text it happens to contain.
+     */
     let direct = teardown.split("\n").filter(line =>
-        /\.(destroy|finalize)\(\)/.test(line) && line.indexOf("release(") < 0 &&
-        line.indexOf("destroy(") !== line.indexOf("."));
+        /^ {8}this\.[\w?.[\]"]*\.(destroy|finalize|release|cancel)\(\)/.test(line));
     Harness.deepEqual(direct, [],
-                      "every destroy goes through the helper that contains a failure");
+                      "every release goes through the helper that contains a failure");
 };
