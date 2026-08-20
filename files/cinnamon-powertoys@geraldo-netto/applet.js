@@ -58,6 +58,7 @@ const Profiles = require("./lib/profiles.js");
 const Reading = require("./lib/reading.js");
 const Format = require("./lib/format.js");
 const HelperMessages = require("./lib/helper-messages.js");
+const HelperCalls = require("./lib/helper-calls.js");
 const Menu = require("./ui/menu.js");
 
 const UUID = Translate.UUID;
@@ -139,6 +140,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._panel = null;
         this.settings = null;
         this._helper = null;
+        this._helperCalls = null;
         this._notifications = null;
         this._sensors = null;
         this._cpu = null;
@@ -314,13 +316,29 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _buildBackends() {
 
         this._helper = this._backends.privilegedHelper([SYSTEM_HELPER]);
+        /* When a privileged call is worth a notification, and in whose
+         * words - lib/helper-calls.js. The tray, the setting and the menu
+         * grab are the applet's, so they are handed over as ports; what is
+         * done with them is not the applet's and is no longer here. */
+        this._helperCalls = new HelperCalls.HelperCalls({
+            helper: this._helper,
+            notifications: this._notifications,
+            allowed: () => this.enablePrivilegedControls,
+            gone: () => this._destroyed,
+            settled: () => {
+                this._cpu.refresh();
+                this._update();
+            },
+            accepted: () => this._scheduleUpdate(),
+            closeMenu: () => this._closeMenuForAuthentication(),
+        });
 
         /* Discovery opens many metadata files and may load pci.ids. The
          * backend keeps its prior complete snapshot while doing that work and
          * asks for a new reading only after the replacement is ready. */
         this._sensors = this._backends.sensors(() => this._scheduleUpdate());
         this._cpu = this._backends.cpuControl(
-            (args, onDone) => this._runHelper(args, onDone),
+            (args, onDone) => this._helperCalls.run(args, onDone),
             () => this._scheduleUpdate());
         this._chargeControl = null;
         this._rediscoverChargeControl();
@@ -372,7 +390,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this._scheduleUpdate();
         });
         this._platformProfiles = this._backends.platformProfileClient(
-            (args, onDone) => this._runHelperQuietly(args, onDone), () => {
+            (args, onDone) => this._helperCalls.quietly(args, onDone), () => {
                 this._profileSelection?.choose();
                 this._scheduleUpdate();
             });
@@ -860,7 +878,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _rediscoverChargeControl() {
         if (!this._chargeControl) {
             this._chargeControl = this._backends.chargeControl(
-                (args, onDone) => this._runHelper(args, onDone),
+                (args, onDone) => this._helperCalls.run(args, onDone),
                 () => this._scheduleUpdate());
         }
         if (this._chargeControl && typeof this._chargeControl.refresh === "function")
@@ -1199,7 +1217,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
                 if (error) {
                     /* Cancelling a password dialog is not news; the user did it. */
                     if (error.message !== "cancelled")
-                        this._notifyProfileError(name, error);
+                        this._helperCalls.profileError(name, error);
                 }
                 if (matching && onResult)
                     onResult(error);
@@ -1251,74 +1269,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
     _closeMenuForAuthentication() {
         if (this.menu?.isOpen)
             this.menu.close(false);
-    }
-
-    /*
-     * The spine both privileged callers share.
-     *
-     * The privileged-controls gate answered in one sentence, the menu closed
-     * for the password dialog, the helper run, and - if the applet is still
-     * alive when it answers - the stale-helper warning, a CPU re-read and a
-     * redraw. What an outcome is worth telling the user is the caller's, and
-     * only the caller's: `handlers.report` turns an outcome into the one
-     * `onDone` receives, and `handlers.accepted` runs once the gate has
-     * passed and before the dialog. Both are optional.
-     *
-     * `onDone` is optional and is answered exactly once either way, including
-     * when the gate refuses. lib/backlight.js and lib/ddc.js pay for the same
-     * guarantee on the other side of the applet: a caller that waits on a call
-     * which never answers waits for ever, and "nobody waits on this one today"
-     * is a fact about today's callers rather than about this method.
-     */
-    _callHelper(args, handlers, onDone) {
-        handlers = handlers || {};
-        let settle = outcome => {
-            if (onDone)
-                onDone(outcome);
-        };
-
-        if (!this.enablePrivilegedControls) {
-            settle(HelperMessages.disabledOutcome());
-            return;
-        }
-
-        if (handlers.accepted)
-            handlers.accepted();
-        this._closeMenuForAuthentication();
-
-        this._helper.run(args, outcome => {
-            if (this._destroyed)
-                return;
-            this._reportHelperWarning(outcome);
-            this._cpu.refresh();
-            this._update();
-            settle(handlers.report ? handlers.report(outcome) : outcome);
-        });
-    }
-
-    /*
-     * The helper without the notification policy, for a caller that reports
-     * the outcome in its own words - a profile that will not switch is not
-     * the same news as a governor that will not.
-     */
-    _runHelperQuietly(args, onDone) {
-        this._callHelper(args, {
-            report: outcome => HelperMessages.describedOutcome(outcome),
-        }, onDone);
-    }
-
-    /* An outdated helper is worth saying beside a change that worked, because
-     * a warning that only fired on failure would never be seen on the machine
-     * it is about. What to say is lib/helper-messages.js; the tray is here. */
-    _reportHelperWarning(outcome) {
-        let message = HelperMessages.warningMessage(outcome);
-        if (message)
-            this._notifications.error(_("Power Toys"), message);
-    }
-
-    _notifyProfileError(name, error) {
-        this._notifications.error(
-            _("Power Toys"), HelperMessages.profileErrorMessage(name, error));
     }
 
     /*
@@ -1403,49 +1353,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
     _cycleProfile() {
         this._stepProfile(1, true, true);
-    }
-
-    /*
-     * Governor, energy preference, boost and charge limit are root owned, so
-     * they go through a small validating helper launched with pkexec.
-     *
-     * The gate is in _callHelper rather than inside the helper: whether the
-     * user has allowed these changes at all is a setting, and a setting is the
-     * applet's business. What the helper answers is turned into a notification
-     * here, because deciding what is worth interrupting somebody for is not
-     * something a library should do.
-     */
-    _runHelper(args, onDone) {
-        this._callHelper(args, {
-            /* So the menu shows the change as in flight straight away rather
-             * than when the helper answers. */
-            accepted: () => this._scheduleUpdate(),
-            report: outcome => {
-                if (outcome.applied) {
-                    /*
-                     * A privileged change ends with a password dialog and
-                     * then, until now, nothing - so the last thing that
-                     * happened was being asked for a password, and whether it
-                     * worked had to be inferred from the menu reading
-                     * differently next time it was opened. Say what changed.
-                     *
-                     * Power profiles are not confirmed this way and do not
-                     * need to be: the panel icon is green, yellow or red, and
-                     * it changes colour as they take effect.
-                     */
-                    let changed = Reading.describeChange(args);
-                    if (changed)
-                        this._notifications.notify(_("Power Toys"), changed);
-                } else if (!outcome.cancelled) {
-                    /* Cancelled means the user closed the dialog or the
-                     * password did not check out; they do not need telling
-                     * what they just did. */
-                    this._notifications.error(
-                        _("Power Toys"), HelperMessages.errorMessage(outcome));
-                }
-                return outcome;
-            },
-        }, onDone);
     }
 
     /*
