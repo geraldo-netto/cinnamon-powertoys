@@ -18,6 +18,8 @@
 
 const GLib = imports.gi.GLib;
 
+const Backoff = require("./lib/backoff.js");
+
 const Backlight = require("./lib/backlight.js");
 
 /*
@@ -49,11 +51,7 @@ const MonitorWatch = class MonitorWatch {
         this._probe = options.onProbe || function () {};
         this._scopeChanged = options.onScopeChanged || function () {};
         this._intervalSeconds = options.intervalSeconds || PROBE_SECONDS;
-        this._timers = options.timers || {
-            add: (seconds, callback) =>
-                GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, seconds, callback),
-            remove: id => GLib.source_remove(id),
-        };
+        this._timers = Backoff.timerPort(options.timers, { seconds: true });
 
         /* Why monitors are being looked for. Empty means nobody is looking at
          * the applet. */

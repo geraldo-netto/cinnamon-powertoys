@@ -24,9 +24,15 @@ const MAX_MS = 30000;
  * (`add`/`remove`), a bus (`timeoutAdd`/`removeTimer`) or a GLib-shaped object
  * (`timeout_add`/`source_remove`). Anything unanswered falls back to GLib's
  * main loop, which is what every production caller uses.
+ *
+ * `options.seconds` picks GLib's second-resolution timer for a delay that is
+ * counted in seconds rather than milliseconds - a probe once a minute has no
+ * business waking the process on a millisecond boundary. It changes only the
+ * fallback: a source that answered has already decided its own unit.
  */
-function timerPort(source) {
+function timerPort(source, options) {
     source = source || {};
+    let seconds = !!(options && options.seconds);
     return {
         add: (delay, callback) => {
             if (typeof source.add === "function")
@@ -35,7 +41,9 @@ function timerPort(source) {
                 return source.timeoutAdd(delay, callback);
             if (typeof source.timeout_add === "function")
                 return source.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback);
-            return GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback);
+            return seconds
+                ? GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, delay, callback)
+                : GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback);
         },
         remove: id => {
             if (typeof source.remove === "function")

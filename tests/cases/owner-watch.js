@@ -128,6 +128,19 @@ cases["one timer port adapts each convention a backend already has"] = function 
     camel.remove(7);
     snake.remove(8);
     port.remove(9);
+
+    /* Nothing to adapt: GLib's own main loop, which is what every production
+     * caller gets. A zero delay is armed and released without ever firing, so
+     * the case does not wait on a clock. */
+    let fallback = OwnerWatch.timerPort();
+    let msId = fallback.add(0, () => false);
+    Harness.ok(msId > 0, "the millisecond timer is GLib's");
+    fallback.remove(msId);
+    let slow = OwnerWatch.timerPort(null, { seconds: true });
+    let secondsId = slow.add(0, () => false);
+    Harness.ok(secondsId > 0, "and a delay counted in seconds is its second-resolution one");
+    Harness.ok(secondsId !== msId, "which is a timer of its own");
+    slow.remove(secondsId);
     Harness.deepEqual(calls.map(call => call[0]), [
         "camel", "snake", "port", "camel-remove", "snake-remove", "port-remove",
     ], "each convention reaches its own timer");

@@ -427,11 +427,12 @@ const UPowerMonitor = class UPowerMonitor {
     _requestDevice(path, onDone) {
         let cancellable = this._bus.cancellable ? this._bus.cancellable() : null;
         let operation = { path: path, cancellable: cancellable, finish: null };
+        /* The request stops being outstanding at the moment it answers,
+         * whichever route it answered by. It cannot answer twice - the once
+         * wrapper closes it - and a cancellation settles it here as well, so
+         * there is one place the set is written and one answer per request. */
         let finish = Once.once((proxy, error) => {
-            /* A request the teardown already dropped has no caller left to
-             * answer, and the once wrapper closes the route either way. */
-            if (!this._proxyRequests.delete(operation))
-                return;
+            this._proxyRequests.delete(operation);
             onDone(proxy, error);
         });
         operation.finish = finish;

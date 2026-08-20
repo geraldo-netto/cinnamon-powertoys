@@ -588,10 +588,6 @@ const ProfileWriteQueue = class ProfileWriteQueue {
         return this._drain();
     }
 
-    get busy() {
-        return this._current !== null;
-    }
-
     _drain() {
         if (this._destroyed || this._current || !this._queued)
             return false;

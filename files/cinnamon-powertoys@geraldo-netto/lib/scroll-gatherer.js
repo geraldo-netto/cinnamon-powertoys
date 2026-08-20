@@ -19,6 +19,8 @@
 
 const GLib = imports.gi.GLib;
 
+const Backoff = require("./lib/backoff.js");
+
 /* Long enough to gather a flick, short enough that the change still feels
  * immediate. */
 const SETTLE_MS = 250;
@@ -38,11 +40,7 @@ const ScrollGatherer = class ScrollGatherer {
         options = options || {};
         this._apply = options.apply || function () {};
         this._settleMs = options.settleMs || SETTLE_MS;
-        this._timers = options.timers || {
-            add: (delay, callback) =>
-                GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, callback),
-            remove: id => GLib.source_remove(id),
-        };
+        this._timers = Backoff.timerPort(options.timers);
         this._pending = 0;
         this._timerId = 0;
     }
