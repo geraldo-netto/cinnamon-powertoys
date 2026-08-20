@@ -14,6 +14,8 @@
  * shell's, so it is handed in.
  */
 
+const Log = require("./lib/log.js");
+
 /*
  * A wheel event, as a number.
  *
@@ -133,10 +135,18 @@ const Hotkeys = class Hotkeys {
         }
     }
 
-    /* Teardown, and the first half of every apply. */
+    /*
+     * Teardown, and the first half of every apply.
+     *
+     * One name the manager refuses must not leave the shortcuts after it
+     * bound to a destroyed applet's action - and because apply() begins here,
+     * a throw would also leave `_names` holding the old bindings, so the next
+     * settings change would rebind nothing.
+     */
     release() {
-        for (let name of this._names)
-            this._manager.removeHotKey(name);
+        let names = this._names;
         this._names = [];
+        for (let name of names)
+            Log.release("the shortcut " + name, () => this._manager.removeHotKey(name));
     }
 };

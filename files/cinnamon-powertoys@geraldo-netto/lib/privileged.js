@@ -412,7 +412,7 @@ const PrivilegedHelper = class PrivilegedHelper {
                 Log.error("could not settle a queued privileged job: " + error);
             }
         }
-        this._locator.destroy();
+        Log.release("the helper locator", () => this._locator.destroy());
     }
 
     /*

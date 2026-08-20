@@ -764,12 +764,12 @@ const UPowerMonitor = class UPowerMonitor {
 
     destroy() {
         this.destroyed = true;
-        this._cancelRetry();
+        Log.release("the UPower retry", () => this._cancelRetry());
         if (this._ownerWatch)
-            this._ownerWatch.stop();
+            Log.release("the UPower owner watch", () => this._ownerWatch.stop());
         /* Every other backend here lowers this on the way out, and a reading
          * taken from a torn down monitor would otherwise say UPower is
          * available and hand back no devices at all. */
-        this._disconnectManager();
+        Log.release("the UPower manager", () => this._disconnectManager());
     }
 };

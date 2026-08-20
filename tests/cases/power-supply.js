@@ -15,6 +15,7 @@ const Fuzz = imports.fuzz;
 
 const PowerSupply = Harness.requireXlet("./lib/power-supply.js");
 const IO = Harness.requireXlet("./lib/io.js");
+const Log = Harness.requireXlet("./lib/log.js");
 
 /*
  * A control over batteries that answer whatever this case says, without a
@@ -352,6 +353,30 @@ function firmware(active, choices) {
     };
     return client;
 }
+
+cases["a sample waiter that throws at teardown does not strand the next"] = function () {
+    /* Teardown owes every waiting sample its unsuccessful answer, and one
+     * caller that throws on being given it must not be why the caller behind
+     * it waits for the rest of the session. */
+    let client = firmware("balanced", ["balanced", "performance"]);
+    let answers = [];
+    client._sampleWaiters.push(() => { throw new Error("waiter exploded"); });
+    client._sampleWaiters.push(value => answers.push(value));
+
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    try {
+        client.release();
+    } finally {
+        Log.setSink(null);
+    }
+
+    Harness.deepEqual(answers, [false],
+                      "the waiter behind the throwing one is still settled");
+    Harness.equal(lines.length, 1, "and the failure is reported once");
+    Harness.equal(lines[0].indexOf("waiter exploded") >= 0, true,
+                  "naming what went wrong");
+};
 
 cases["a firmware offering one profile is a firmware with a profile"] = function () {
     /*

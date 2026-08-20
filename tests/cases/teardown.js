@@ -188,3 +188,51 @@ cases["a release that throws does not strand the ones after it"] = function () {
     Harness.deepEqual(direct, [],
                       "every release goes through the helper that contains a failure");
 };
+
+/*
+ * The same property, one level below the applet.
+ *
+ * `_teardown` is contained, and every backend `destroy()` it calls was a bare
+ * statement run - so a release the applet had safely reached went on to strand
+ * every release inside that backend, which is the same failure the applet's
+ * own containment exists to prevent, one frame down. The helper was made
+ * shared for this; what was missing after that is anything holding the next
+ * teardown to using it.
+ *
+ * What counts as unguarded is where the line sits, as in the case above: a
+ * statement of the method's own, eight spaces in, letting go of a
+ * collaborator. Deeper than that is already inside a callback - the helper's,
+ * or a `try` the method wrote itself, which lib/poll.js and lib/privileged.js
+ * do and which contains a failure just as well.
+ */
+cases["a library teardown does not strand the releases behind a throw"] = function () {
+    let opens = /^ {4}(destroy|release)\(\) \{$/;
+    let releases = /^ {8}this\.[\w.]*\.(destroy|release|cancel|stop|finalize)\(/;
+    let unguarded = [];
+    let checked = 0;
+
+    for (let name of Harness.libraryModules()) {
+        let lines = Harness.readFile(Harness.xletDir() + "/lib/" + name).split("\n");
+        let inside = false;
+        for (let index = 0; index < lines.length; index++) {
+            if (!inside) {
+                inside = opens.test(lines[index]);
+                if (inside)
+                    checked++;
+                continue;
+            }
+            if (lines[index] === "    }") {
+                inside = false;
+                continue;
+            }
+            if (releases.test(lines[index]))
+                unguarded.push("lib/" + name + ":" + (index + 1) + ": " +
+                               lines[index].trim());
+        }
+    }
+
+    Harness.deepEqual(unguarded, [],
+                      "a release a teardown runs bare is one a throw can strand");
+    Harness.ok(checked > 10,
+               "only " + checked + " library teardowns found, which is too few");
+};

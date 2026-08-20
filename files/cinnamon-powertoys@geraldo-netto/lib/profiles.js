@@ -518,12 +518,16 @@ const ProfileBackendConnection = class ProfileBackendConnection {
          * wanted, the same way a probe in flight is disowned in lib/ddc.js. */
         this.destroyed = true;
         this._connectPending = false;
-        this._cancelRetry();
-        this._cancelConnect();
-        this._disconnectProxy(null);
-        for (let watcher of this._ownerWatches)
-            watcher.stop();
+        /* The bus name watches are behind the proxy, and a proxy that will
+         * not disconnect must not leave them watching for a backend that has
+         * gone. */
+        Log.release("the profile retry", () => this._cancelRetry());
+        Log.release("the profile connection attempt", () => this._cancelConnect());
+        Log.release("the profile proxy", () => this._disconnectProxy(null));
+        let watches = this._ownerWatches;
         this._ownerWatches = [];
+        for (let watcher of watches)
+            Log.release("a profile owner watch", () => watcher.stop());
     }
 };
 
@@ -767,7 +771,8 @@ const PowerProfilesClient = class PowerProfilesClient {
 
     destroy() {
         this.destroyed = true;
-        this._writes.destroy();
-        this._connection.destroy();
+        /* The whole D-Bus connection is behind the write queue. */
+        Log.release("the profile writes", () => this._writes.destroy());
+        Log.release("the profile connection", () => this._connection.destroy());
     }
 };

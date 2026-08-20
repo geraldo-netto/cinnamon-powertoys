@@ -669,17 +669,29 @@ const BluezBatteries = class BluezBatteries {
         return this.devices.filter(device => !device.address || !seen[device.address]);
     }
 
+    /*
+     * Teardown, one release at a time.
+     *
+     * The unsubscribe loop below has always contained what it throws, and
+     * everything in front of it did not - so a timer cancellation the main
+     * loop refused ended the list before it, and every org.bluez subscription
+     * stayed on the system bus holding a closure over a backend that no
+     * longer existed, for the rest of the session. Each of these is now
+     * independent of the ones before it; lib/log.js owns the containment.
+     */
     destroy() {
         this.destroyed = true;
-        this._cancelRead();
-        this._cancelRetry();
-        this._cancelDegradedPoll();
+        Log.release("the BlueZ object read", () => this._cancelRead());
+        Log.release("the BlueZ retry", () => this._cancelRetry());
+        Log.release("the BlueZ degraded poll", () => this._cancelDegradedPoll());
         if (this._refreshTimerId) {
-            this._timers.source_remove(this._refreshTimerId);
+            let id = this._refreshTimerId;
             this._refreshTimerId = 0;
+            Log.release("the BlueZ refresh timer",
+                        () => this._timers.source_remove(id));
         }
         if (this._ownerWatch)
-            this._ownerWatch.stop();
+            Log.release("the BlueZ owner watch", () => this._ownerWatch.stop());
         for (let id of this._signalIds) {
             try {
                 let connection = this._signalBus || Gio.DBus.system;

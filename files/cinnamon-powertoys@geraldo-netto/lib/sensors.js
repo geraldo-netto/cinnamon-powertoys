@@ -17,6 +17,7 @@ const Energy = require("./lib/energy.js");
 const Format = require("./lib/format.js");
 const IO = require("./lib/io.js");
 const Kinds = require("./lib/sensor-kinds.js");
+const Log = require("./lib/log.js");
 const Once = require("./lib/once.js");
 const Refresh = require("./lib/refresh.js");
 const Scan = require("./lib/sensor-scan.js");
@@ -584,7 +585,10 @@ const SensorSet = class SensorSet {
         if (this._destroyed)
             return;
         this._destroyed = true;
-        this._ioScope.cancel();
+        /* The inventory - and every caller still waiting on a discovery it
+         * owes an answer to - is behind the cancellation, so a scope that
+         * will not cancel must not be what leaves them waiting. */
+        Log.release("the sensor filesystem scope", () => this._ioScope.cancel());
         let firstError = this._inventory.destroy();
         if (firstError)
             throw firstError;

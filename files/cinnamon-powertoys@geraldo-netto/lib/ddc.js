@@ -489,8 +489,7 @@ const DdcBacklight = class DdcBacklight {
         this._started = false;
         this._startPending = false;
         this._probe = null;
-        for (let monitor of this.monitors)
-            monitor.destroy();
+        let monitors = this.monitors;
         this.monitors = [];
         this.hidden = 0;
         this.available = false;
@@ -500,11 +499,15 @@ const DdcBacklight = class DdcBacklight {
         this._missingConfirmations = 0;
         this._redetectPending = false;
         this._commandFailures.clear();
+        /* One monitor that will not let go must not keep the others, nor the
+         * ddcutil still holding the bus below. */
+        for (let monitor of monitors)
+            Log.release("a monitor control", () => monitor.destroy());
         /* Nothing still waiting has touched a bus yet, so settle those jobs
          * before ending the one that has: obsolete reads must not run after
          * DDC was disabled, and the active ddcutil must let the bus go. */
-        this._commands.cancelQueued();
-        this._commands.cancelActive();
+        Log.release("the queued ddcutil work", () => this._commands.cancelQueued());
+        Log.release("the running ddcutil", () => this._commands.cancelActive());
         /* Emptying the list is a change like any other; see lib/bluez.js,
          * where the same silence kept dead rows in the menu. */
         this._onChanged();
@@ -849,9 +852,10 @@ const DdcBacklight = class DdcBacklight {
         this._redetectPending = false;
         this._nameLoad = null;
         this._commandFailures.clear();
-        for (let monitor of this.monitors)
-            monitor.destroy();
+        let monitors = this.monitors;
         this.monitors = [];
-        this._commands.destroy();
+        for (let monitor of monitors)
+            Log.release("a monitor control", () => monitor.destroy());
+        Log.release("the ddcutil queue", () => this._commands.destroy());
     }
 };

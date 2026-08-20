@@ -15,6 +15,7 @@
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 
+const Log = require("./lib/log.js");
 const Once = require("./lib/once.js");
 
 let _root = "";
@@ -48,6 +49,16 @@ const AsyncScope = class AsyncScope {
         this._operations.delete(operation);
     }
 
+    /*
+     * Every operation in the scope, independently of the ones before it.
+     *
+     * An operation's cancel ends with the owner's own onCancel, which is a
+     * callback into a backend that is being torn down and can throw like any
+     * other. Run bare, one of those ended the loop and left every operation
+     * after it tracked and uncancelled - and, because a backend's destroy()
+     * calls this first, stranded everything that destroy() had left to
+     * release as well.
+     */
     cancel() {
         if (this._cancelled)
             return;
@@ -55,7 +66,7 @@ const AsyncScope = class AsyncScope {
         let operations = Array.from(this._operations);
         this._operations.clear();
         for (let operation of operations)
-            operation.cancel();
+            Log.release("a filesystem operation", () => operation.cancel());
     }
 };
 

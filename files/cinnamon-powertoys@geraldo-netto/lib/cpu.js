@@ -374,7 +374,7 @@ const CpuControl = class CpuControl {
         if (this._destroyed)
             return;
         this._destroyed = true;
-        this._ioScope.cancel();
+        Log.release("the cpu filesystem scope", () => this._ioScope.cancel());
         this._stateGeneration++;
         /* Refresh was accepted while this backend still existed. Teardown is
          * its final, unsuccessful answer; a cancelled filesystem callback is

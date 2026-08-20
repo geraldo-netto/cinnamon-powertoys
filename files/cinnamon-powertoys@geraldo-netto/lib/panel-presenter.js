@@ -16,6 +16,7 @@ const Gio = imports.gi.Gio;
 
 const CinnamonPanel = require("./lib/cinnamon-panel.js");
 const Format = require("./lib/format.js");
+const Log = require("./lib/log.js");
 const PanelText = require("./lib/panel-text.js");
 const Reading = require("./lib/reading.js");
 
@@ -134,8 +135,8 @@ class PanelPresenter {
     }
 
     destroy() {
-        this._shell.destroy();
         this._reading = null;
         this._readingOptions = null;
+        Log.release("the panel actors", () => this._shell.destroy());
     }
 }

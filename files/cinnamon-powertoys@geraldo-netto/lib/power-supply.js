@@ -9,6 +9,7 @@
 
 const Backends = require("./lib/backends.js");
 const IO = require("./lib/io.js");
+const Log = require("./lib/log.js");
 const Refresh = require("./lib/refresh.js");
 
 const POWER_SUPPLY_DIR = "/sys/class/power_supply";
@@ -183,8 +184,13 @@ const ChargeControl = class ChargeControl {
         if (this._destroyed)
             return;
         this._destroyed = true;
-        this._scope.cancel();
-        this._refresh.stop();
+        Log.release("the battery filesystem scope", () => this._scope.cancel());
+        /* A waiter that throws is reported and not propagated, as in
+         * lib/cpu.js: teardown goes on to release other backends, and a
+         * refresh this one owed an answer to must not be what strands them. */
+        let error = this._refresh.stop();
+        if (error)
+            Log.error("battery teardown waiter failed: " + error);
         this._onChanged = function () {};
     }
 };
@@ -396,10 +402,14 @@ const PlatformProfileClient = class PlatformProfileClient {
             return;
         this._destroyed = true;
         ++this._readGeneration;
-        this._scope.cancel();
+        Log.release("the platform profile filesystem scope",
+                    () => this._scope.cancel());
+        /* Each waiter is owed the same unsuccessful answer, and one that
+         * throws on being given it must not be why the next one waits for
+         * ever. */
         let waiters = this._sampleWaiters.splice(0);
         for (let waiter of waiters)
-            waiter(false);
+            Log.release("a platform profile sample", () => waiter(false));
         this._onChanged = function () {};
     }
 };

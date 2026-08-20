@@ -738,10 +738,10 @@ const BacklightControl = class BacklightControl {
         /* Nothing accepted before teardown speaks to the applet afterwards,
          * the way SensorSet.destroy neutralises its own handler. */
         this._onChanged = function () {};
-        this._cancelRetry();
+        Log.release("the backlight retry", () => this._cancelRetry());
         if (this._ownerWatch)
-            this._ownerWatch.stop();
-        this._dropProxy();
+            Log.release("the backlight owner watch", () => this._ownerWatch.stop());
+        Log.release("the backlight proxy", () => this._dropProxy());
         this.available = false;
     }
 };

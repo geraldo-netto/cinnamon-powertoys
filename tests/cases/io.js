@@ -19,6 +19,7 @@ const Harness = imports.harness;
 const Fuzz = imports.fuzz;
 
 const IO = Harness.requireXlet("./lib/io.js");
+const Log = Harness.requireXlet("./lib/log.js");
 
 /* Somewhere to put files that are not in a fixture: nodes that are empty,
  * unreadable, or full of something no sysfs node would ever hold. */
@@ -385,6 +386,42 @@ cases["an asynchronous scope cancels all owned work and rejects later work"] = f
     Harness.equal(started, false, "a cancelled owner starts no new filesystem work");
     Harness.deepEqual(answers[2], { "/later": null }, "later work is rejected coherently");
     Harness.equal(cancelled, 3, "the rejected operation's token is cancelled too");
+};
+
+cases["one operation that refuses to be cancelled does not keep the others"] = function () {
+    /* An operation's cancellation ends in its owner's callback, which is a
+     * backend being torn down and can throw like anything else. Run bare, the
+     * loop stopped there and left every operation after it uncancelled - and
+     * with it everything the owning destroy() had not reached yet. */
+    let scope = new IO.AsyncScope();
+    let cancelled = 0;
+    let answers = [];
+    let options = () => ({
+        scope: scope,
+        cancellable: { cancel: () => cancelled++ },
+        addTimeout: () => 9,
+        removeTimeout: () => {},
+    });
+    let stalled = () => ({ load_contents_async: () => {} });
+
+    IO.readStringsAsync(["/one"], () => { throw new Error("owner exploded"); },
+                        1, stalled, options());
+    IO.readStringsAsync(["/two"], value => answers.push(value), 1, stalled, options());
+
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    try {
+        scope.cancel();
+    } finally {
+        Log.setSink(null);
+    }
+
+    Harness.equal(cancelled, 2, "every operation is cancelled, the throwing one included");
+    Harness.deepEqual(answers, [{ "/two": null }],
+                      "the operation behind the throwing one is settled");
+    Harness.equal(lines.length, 1, "and the failure is reported once");
+    Harness.equal(lines[0].indexOf("owner exploded") >= 0, true,
+                  "naming what went wrong");
 };
 
 cases["a completed asynchronous batch disarms its deadline"] = function () {
