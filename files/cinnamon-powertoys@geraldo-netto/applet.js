@@ -40,6 +40,7 @@ const SensorRows = require("./lib/sensor-rows.js");
 const Log = require("./lib/log.js");
 const MonitorWatch = require("./lib/monitor-watch.js");
 const Notifications = require("./lib/notifications.js");
+const Once = require("./lib/once.js");
 const PanelText = require("./lib/panel-text.js");
 const PendingProfile = require("./lib/pending-profile.js");
 const PowerSupply = require("./lib/power-supply.js");
@@ -1077,11 +1078,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
             return;
         }
 
-        let settled = false;
-        let finished = data => {
-            if (settled)
-                return;
-            settled = true;
+        /* _collect promises one answer and the in-flight flag rides on that
+         * promise, so the promise is held rather than trusted; lib/once.js is
+         * where that rule lives. */
+        let finished = Once.once(data => {
             this._collecting = false;
 
             if (this._destroyed)
@@ -1099,7 +1099,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
                 this._collectAgain = false;
                 this._update();
             }
-        };
+        });
 
         this._collecting = true;
         try {
