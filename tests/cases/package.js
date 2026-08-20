@@ -60,7 +60,13 @@ function Gio_children(directory) {
 }
 
 /* Reads the archive's member names and their recorded modes with the unzip
- * the runner already has, so nothing here has to implement the format. */
+ * the runner already has, so nothing here has to implement the format.
+ *
+ * A missing unzip is a failure and not a skip, for the reason the Makefile
+ * gives about shellcheck and flake8: everything below - what the archive
+ * carries, what it leaves out, which entry is executable - is read through
+ * this one call, so a skip here retires the release gate entirely and says
+ * "ok" while doing it. */
 function entries(archive) {
     let result = Harness.settle(done => Privileged._spawn(
         ["unzip", "-Z", "-l", archive],
@@ -68,7 +74,7 @@ function entries(archive) {
                                            stdout: stdout || "" })),
         "the archive listing");
     if (result.status !== 0)
-        Harness.skip("unzip is not available to read the archive");
+        Harness.fail("unzip is needed to read the archive: " + (result.stderr || ""));
     return result.stdout.split("\n")
         .map(line => line.trim())
         .filter(line => line !== "" && line.indexOf(UUID + "/") >= 0)

@@ -53,12 +53,18 @@ jobs:
       # shellcheck and flake8 are the two lint gates `make check` runs, and it
       # fails rather than skips when either is absent - so they are installed
       # here for the same reason the interpreter is.
-      - name: Install cjs, its UPower typelib, gettext and the lint gates
+      #
+      # unzip is named for that reason too. tests/cases/package.js reads the
+      # built archive through it - what it carries, what it leaves out, which
+      # entry is executable - and used to skip when it was absent, which made
+      # the release gate depend on a package nothing in this file asked for.
+      # It is on the image today; a step that says so is not.
+      - name: Install cjs, its UPower typelib, gettext, unzip and the lint gates
         timeout-minutes: 10
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
-            cjs gir1.2-upowerglib-1.0 gettext shellcheck python3-flake8
+            cjs gir1.2-upowerglib-1.0 gettext unzip shellcheck python3-flake8
 
       - name: Check
         timeout-minutes: 10
