@@ -207,6 +207,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * A backend can call back from inside its own constructor - a bus it
      * cannot reach, a control that already knows it is absent - so every
      * counter, flag and policy those callbacks touch exists first.
+     *
+     * What this step needs of the environment it reads off `this`, which
+     * _adoptEnvironment has already written: this method takes no arguments,
+     * and a constructor parameter named here is a name in nobody's scope.
      */
     _buildState() {
         /*
@@ -295,8 +299,8 @@ class PowerToysApplet extends Applet.TextIconApplet {
         });
         /* A hover gets one prefetch so a later menu is ready; only an open
          * menu keeps probing. The tooltip itself names no monitor. */
-        this._panel = new Panel.PanelPresenter(this, metadata.path + "/icons",
-                                         shown => this._onTooltipChanged(shown));
+        this._panel = new Panel.PanelPresenter(this, this.metadata.path + "/icons",
+                                               shown => this._onTooltipChanged(shown));
         /* A shortcut the manager refuses is somebody else's already, and the
          * only thing to do about it is say so. lib/input.js reports the
          * conflict; the tray to say it in is the applet's. */
