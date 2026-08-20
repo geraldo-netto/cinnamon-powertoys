@@ -182,7 +182,7 @@ cases["disabling privileged writes keeps the charge limit readable"] = function 
     Harness.ok(read.indexOf("enablePrivilegedControls") < 0,
                "the read is not gated by write permission");
 
-    let updateStart = source.indexOf("    _updateCharge(data, options) {");
+    let updateStart = source.indexOf("    updateChargeLimit(data, options) {");
     let updateEnd = source.indexOf("\n    }", updateStart);
     let update = source.slice(updateStart, updateEnd);
     Harness.ok(update.indexOf("let show = data.chargeLimitAvailable") >= 0,

@@ -196,3 +196,46 @@ function exposeHeading(item, text) {
     item.actor.set_accessible_role(Atk.Role.HEADING);
     item.actor.set_accessible_name(text || "");
 }
+
+/*
+ * A heading over the rows it names.
+ *
+ * Not a menu item that does anything, and deliberately not the same weight as
+ * the rows it heads: a heading is furniture, and what is read in this menu is
+ * the numbers. The size goes on the label and the padding and the opacity on
+ * the row; see the stylesheet for what putting both on the row cost.
+ *
+ * Two of these were written out, one for a group and one for a subgroup inside
+ * it, differing in a style class and in whether the text could be changed
+ * afterwards - which is a difference between two headings and not between two
+ * kinds of thing.
+ */
+function _heading(text, name, relabel) {
+    let heading = new PopupMenu.PopupMenuItem(text, { reactive: false });
+    exposeHeading(heading, text);
+    heading.actor.add_style_class_name("powertoys-" + name + "-title");
+    heading.label.add_style_class_name("powertoys-" + name + "-title-text");
+    if (relabel) {
+        heading.setLabel = value => {
+            heading.label.set_text(value || "");
+            heading.actor.set_accessible_name(value || "");
+        };
+    }
+    return heading;
+}
+
+/* The heading over one group of rows. */
+function headingItem(text) {
+    return _heading(text, "group", false);
+}
+
+/*
+ * A heading inside a group, over some of its rows.
+ *
+ * These are named from a reading, so unlike a group heading the text changes:
+ * which chips a machine has, and what they are called, is not known when the
+ * menu is built.
+ */
+function subheadingItem(text) {
+    return _heading(text, "subgroup", true);
+}

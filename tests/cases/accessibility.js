@@ -76,9 +76,12 @@ cases["visual group titles expose heading semantics"] = function () {
     Harness.ok(helper.indexOf("set_accessible_name(text || \"\")") >= 0,
                "the role has an explicit name");
 
+    /* The helper, the one builder both group and subgroup headings are made
+     * by, and the radio group's own header. Two of the three builders were the
+     * same function written twice. */
     let uses = source.match(/\bexposeHeading\(/g) || [];
-    Harness.equal(uses.length, 4,
-                  "the helper and all three heading factories use the same boundary");
+    Harness.equal(uses.length, 3,
+                  "every heading in the menu goes through the same boundary");
     Harness.ok(source.indexOf("heading.actor.set_accessible_name(value || \"\")") >= 0,
                "renamed sensor headings synchronize their accessible name");
 };
