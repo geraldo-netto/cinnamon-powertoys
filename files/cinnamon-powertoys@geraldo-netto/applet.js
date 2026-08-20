@@ -36,6 +36,7 @@ const Cpu = require("./lib/cpu.js");
 const Ddc = require("./lib/ddc.js");
 const Device = require("./lib/device.js");
 const Input = require("./lib/input.js");
+const InputRouting = require("./lib/input-routing.js");
 const SettingsTable = require("./lib/settings.js");
 const Log = require("./lib/log.js");
 const MonitorWatch = require("./lib/monitor-watch.js");
@@ -45,7 +46,6 @@ const PanelText = require("./lib/panel-text.js");
 const Poll = require("./lib/poll.js");
 const PendingProfile = require("./lib/pending-profile.js");
 const PowerSupply = require("./lib/power-supply.js");
-const ScrollGatherer = require("./lib/scroll-gatherer.js");
 const ShellMetrics = require("./lib/shell-metrics.js");
 const Privileged = require("./lib/privileged.js");
 const ProfileSelection = require("./lib/profile-selection.js");
@@ -162,6 +162,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._iconThemeId = 0;
         this._monitorsId = 0;
         this._monitors = null;
+        this._input = null;
         this._failures = new Log.FailureLog();
 
         try {
@@ -249,25 +250,36 @@ class PowerToysApplet extends Applet.TextIconApplet {
         /* A reading is in flight; another was asked for while it was. */
         this._collecting = false;
         this._collectAgain = false;
-        /* The wheel counts, and the count is applied once it settles - see
-         * lib/scroll-gatherer.js for why a flick is one write and not five.
-         * What to do with the settled count is decided when it settles, so
-         * the gatherer is handed the notches and the handler the action.
+        /* What a wheel notch or a middle click over the panel icon amounts to
+         * - lib/input-routing.js, which owns the gathering that makes a flick
+         * one write instead of five (lib/scroll-gatherer.js) as well.
          *
-         * No timers, unlike the poll above: the gatherer builds its port
-         * through lib/backoff.js, whose default is GLib's own main loop -
-         * which is what the shell wants and what an adapter written here
-         * would only have restated. The same is true of the monitor watch
-         * below. The poll is the one that genuinely differs: it carries the
-         * idle callbacks that port has no notion of. */
-        this._scroll = new ScrollGatherer.ScrollGatherer({
-            settleMs: ScrollGatherer.SETTLE_MS,
-            apply: steps => {
-                if (this._scrollApply)
-                    this._scrollApply(steps);
-            },
+         * Clutter's two handler return values and its direction enumeration
+         * are passed in rather than reached for, which is what lets a case
+         * drive a notch without a stage under it. No timers, unlike the poll
+         * above: the gatherer builds its port through lib/backoff.js, whose
+         * default is GLib's own main loop - which is what the shell wants and
+         * what an adapter written here would only have restated. The same is
+         * true of the monitor watch below. The poll is the one that genuinely
+         * differs: it carries the idle callbacks that port has no notion of.
+         *
+         * The backends it routes into do not exist yet, so every one of them
+         * is a port read at the moment of the event - which is what they had
+         * to be anyway: a monitor can be unplugged and a profile daemon can go
+         * away while the applet is on the panel. */
+        this._input = new InputRouting.InputRouter({
+            stop: Clutter.EVENT_STOP,
+            propagate: Clutter.EVENT_PROPAGATE,
+            scrollDirection: Clutter.ScrollDirection,
+            scrollAction: () => this.scrollAction,
+            middleClickAction: () => this.middleClickAction,
+            backlights: () => this._backlights,
+            externalDisplayMode: () => this._externalDisplayMode(),
+            onBacklightChanged: () => this._onBacklightChanged(),
+            profileSteppable: () => !!this._profileStep?.state(),
+            stepProfile: notches => this._profileStep.step(notches, false, true),
+            cycleProfile: () => this._profileStep.cycle(),
         });
-        this._scrollApply = null;
         /* When a monitor on a cable is worth looking for, and how often - the
          * setting, the built-in panel, the lid and the reasons somebody is
          * looking at the applet, all in lib/monitor-watch.js. What that cannot
@@ -441,9 +453,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
         this._createMenu(orientation);
 
         this._actorSignalIds.push(
-            this.actor.connect("scroll-event", (actor, event) => this._onScroll(actor, event)),
+            this.actor.connect("scroll-event",
+                               (actor, event) => this._input.onScroll(actor, event)),
             this.actor.connect("button-press-event",
-                               (actor, event) => this._onButtonPress(actor, event)));
+                               (actor, event) => this._input.onButtonPress(actor, event)));
 
         /*
          * Which icon names exist is a fact about the current theme, and both
@@ -597,7 +610,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
          *
          * This is the one moment the question is honestly answered: the daemon
          * has been asked and has replied. Which control the wheel moves is a
-         * different question about the moment, and _brightnessControl still
+         * different question about the moment, and lib/input-routing.js still
          * asks `available` for it. Reading it off the control that is
          * answering rather than off the field holding it is what lets this be
          * called from inside that control's own constructor; see where the
@@ -1290,100 +1303,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
             this.menu.close(false);
     }
 
-    /*
-     * The wheel counts, and the count is applied once it settles.
-     *
-     * Three clicks in one direction means three steps, clamped at the ends -
-     * the wheel should stop at performance rather than come round again at
-     * power saver - and it reaches the daemon as one write instead of three.
-     */
-    _onScroll(actor, event) {
-        let amount = Input.scrollAmount(event, Clutter.ScrollDirection);
-        if (amount === 0)
-            return Clutter.EVENT_PROPAGATE;
-
-        /* Which of the two the setting asks for, and whether this machine can
-         * do it, is lib/input.js. The brightness notch is the control's own,
-         * so on a kernel backlight this moves by the same amount the
-         * brightness keys do; the profile step is announced, because the panel
-         * is not necessarily showing the profile and otherwise nothing would
-         * say it had changed. */
-        switch (Input.wheelAction(this.scrollAction, this._inputCapabilities())) {
-            case "brightness":
-                this._gatherScroll(amount, notches => this._stepBrightness(notches));
-                return Clutter.EVENT_STOP;
-            case "profile":
-                this._gatherScroll(amount,
-                                   notches => this._profileStep.step(notches, false, true));
-                return Clutter.EVENT_STOP;
-            default:
-                return Clutter.EVENT_PROPAGATE;
-        }
-    }
-
-    /* What this machine can actually be asked to do with a wheel or a middle
-     * click, at this moment: a monitor can be unplugged and a profile daemon
-     * can go away while the applet is on the panel. */
-    _inputCapabilities() {
-        return {
-            brightness: !!this._brightnessControl(),
-            keyboardBacklight: !!(this._backlights.keyboard &&
-                                  this._backlights.keyboard.available),
-            profile: !!this._profileStep.state(),
-        };
-    }
-
-    /*
-     * A gathered flick, on whichever screen this machine has.
-     *
-     * Resolved when the flick settles rather than when it started: a monitor
-     * can be unplugged, or a probe can finish, in the quarter second between.
-     */
-    _stepBrightness(notches) {
-        let control = this._brightnessControl();
-        if (control)
-            control.stepBy(notches, () => this._onBacklightChanged());
-    }
-
-    /* Whichever screen this machine actually has: its own visible panel, or a
-     * monitor on a cable. A closed panel can still report a working kernel
-     * backlight, so topology takes precedence over availability here. */
-    _brightnessControl() {
-        return Backlight.visibleBacklightControl(
-            this._backlights.screen, this._backlights.monitor,
-            this._externalDisplayMode());
-    }
-
-    /* Middle click. The stock applet toggles the keyboard backlight, which is
-     * the sort of thing nobody discovers but everybody who knew about it
-     * misses; what the setting means is lib/input.js. */
-    _onButtonPress(actor, event) {
-        if (event.get_button() !== 2)
-            return Clutter.EVENT_PROPAGATE;
-
-        switch (Input.middleClickAction(this.middleClickAction,
-                                        this._inputCapabilities())) {
-            case "keyboard-backlight":
-                this._backlights.keyboard.toggle(() => this._onBacklightChanged());
-                return Clutter.EVENT_STOP;
-            case "profile":
-                this._profileStep.cycle();
-                return Clutter.EVENT_STOP;
-            default:
-                return Clutter.EVENT_PROPAGATE;
-        }
-    }
-
-    _gatherScroll(step, apply) {
-        this._scrollApply = apply;
-        this._scroll.gather(step);
-    }
-
-    _cancelPendingScroll() {
-        this._scroll.cancel();
-        this._scrollApply = null;
-    }
-
     /* The two accelerators, named per applet instance so two copies on the
      * panel do not fight over one keybinding name. */
     _registerHotkeys() {
@@ -1460,7 +1379,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
 
         release("poll timer", () => this._poll.destroy());
         release("monitor watch", () => this._monitors?.destroy());
-        release("scroll timer", () => this._cancelPendingScroll());
+        release("scroll timer", () => this._input?.cancel());
         release("hotkeys", () => {
             if (this._hotkeys)
                 this._hotkeys.release();
