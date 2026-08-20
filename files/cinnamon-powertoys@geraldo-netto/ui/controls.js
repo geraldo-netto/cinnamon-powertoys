@@ -14,7 +14,6 @@
 const Atk = imports.gi.Atk;
 const Clutter = imports.gi.Clutter;
 const GLib = imports.gi.GLib;
-const Mainloop = imports.mainloop;
 const Pango = imports.gi.Pango;
 const PopupMenu = imports.ui.popupMenu;
 const St = imports.gi.St;
@@ -364,10 +363,6 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
         this._seeking = false;
         this._scroll = new ScrollGatherer.ScrollGatherer({
             settleMs: ScrollGatherer.SETTLE_MS,
-            timers: {
-                add: (delay, callback) => Mainloop.timeout_add(delay, callback),
-                remove: id => Mainloop.source_remove(id),
-            },
             apply: steps => this._control.stepBy(steps, () => this.sync()),
         });
         this.actor.hide();

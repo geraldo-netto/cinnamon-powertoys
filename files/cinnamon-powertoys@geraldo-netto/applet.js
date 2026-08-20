@@ -248,13 +248,16 @@ class PowerToysApplet extends Applet.TextIconApplet {
         /* The wheel counts, and the count is applied once it settles - see
          * lib/scroll-gatherer.js for why a flick is one write and not five.
          * What to do with the settled count is decided when it settles, so
-         * the gatherer is handed the notches and the handler the action. */
+         * the gatherer is handed the notches and the handler the action.
+         *
+         * No timers, unlike the poll above: the gatherer builds its port
+         * through lib/backoff.js, whose default is GLib's own main loop -
+         * which is what the shell wants and what an adapter written here
+         * would only have restated. The same is true of the monitor watch
+         * below. The poll is the one that genuinely differs: it carries the
+         * idle callbacks that port has no notion of. */
         this._scroll = new ScrollGatherer.ScrollGatherer({
             settleMs: ScrollGatherer.SETTLE_MS,
-            timers: {
-                add: (delay, callback) => Mainloop.timeout_add(delay, callback),
-                remove: id => Mainloop.source_remove(id),
-            },
             apply: steps => {
                 if (this._scrollApply)
                     this._scrollApply(steps);
@@ -274,11 +277,6 @@ class PowerToysApplet extends Applet.TextIconApplet {
                     this._backlights.monitor.start();
                 else
                     this._backlights.monitor.stop();
-            },
-            timers: {
-                add: (seconds, callback) =>
-                    Mainloop.timeout_add_seconds(seconds, callback),
-                remove: id => Mainloop.source_remove(id),
             },
         });
         /* A profile asked for and not yet arrived, which the panel and the
