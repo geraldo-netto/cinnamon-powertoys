@@ -53,21 +53,48 @@ for (let name of MODULES) {
     };
 }
 
-cases["runtime D-Bus constructors forward lifecycle cancellables"] = function () {
-    /* The forwarding is lib/bus.js's now - one proxy builder for the four
-     * modules that used to write their own - so what is held here is that each
-     * of them still hands its own cancellable over rather than dropping it on
-     * the way. bluez builds no proxy; it calls the bus directly. */
+/*
+ * Every daemon this applet talks to is watched through lib/bus.js.
+ *
+ * What used to be here was a count: four modules, a regular expression for a
+ * forwarded cancellable, and the number of matches each was expected to have.
+ * The number was the trouble. It said nothing a reader could check, it went
+ * red when a forwarding was spelled differently and stayed green when one was
+ * spelled the same and did the wrong thing, and it had to be edited by hand
+ * every time a caller was added - which is a list of what the code does,
+ * maintained beside the code that does it.
+ *
+ * The property it was reaching for is that a module talking to a daemon uses
+ * the one port rather than writing its own, because the port is where the
+ * cancellable, the bus choice and the watcher flags were unified. That needs
+ * no counting: either a library names the bus functions itself or it does not.
+ *
+ * That each module then cancels the work it owns is a behaviour, and is held
+ * as one, in the case file for that module - "owner loss cancels every pending
+ * UPower proxy", "the obsolete bus work is stopped" in backlight, "BlueZ retry
+ * is cancelled on owner loss and teardown", and the profiles operations.
+ */
+cases["no library watches a bus name except through the one port"] = function () {
     let bus = Harness.readFile(Harness.xletDir() + "/lib/bus.js");
     Harness.ok(bus.indexOf("options.cancellable || null") >= 0,
                "the one proxy builder forwards the cancellable it was given");
-    let expected = { bluez: 1, backlight: 1, profiles: 1, upower: 2 };
-    for (let name in expected) {
-        let source = Harness.readFile(Harness.xletDir() + "/lib/" + name + ".js");
-        let forwards = source.match(/cancellable \|\| null|cancellable: cancellable \}\)/g) || [];
-        Harness.equal(forwards.length, expected[name],
-                      name + " forwards every owned cancellable");
+
+    let offenders = [];
+    let checked = 0;
+    for (let name of MODULES) {
+        if (name === "bus")
+            continue;
+        let source = Harness.readFile(Harness.xletDir() + "/lib/" + name + ".js")
+            .replace(/\/\*[\s\S]*?\*\//g, " ")
+            .replace(/^\s*\/\/.*$/gm, " ");
+        checked++;
+        for (let own of ["bus_watch_name", "bus_unwatch_name"]) {
+            if (source.indexOf(own) >= 0)
+                offenders.push("lib/" + name + ".js calls " + own + " itself");
+        }
     }
+    Harness.deepEqual(offenders, [], "the port is the only caller of the bus watcher");
+    Harness.ok(checked > 20, "only " + checked + " libraries checked, which is too few");
 };
 
 /*
