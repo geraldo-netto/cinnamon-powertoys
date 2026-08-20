@@ -20,6 +20,11 @@ const Once = require("./lib/once.js");
 let _root = "";
 const ASYNC_TIMEOUT_MS = 5000;
 
+/* How many directory entries one asynchronous read asks for. Enough that a
+ * crowded hwmon tree is a handful of reads rather than hundreds, small enough
+ * that the main loop gets a turn between them. */
+const LIST_BATCH = 64;
+
 /* A backend owns one scope and gives it to every asynchronous filesystem
  * operation it starts. Destroying the backend can then cancel the complete
  * tree of work, including operations started by discovery helpers. */
@@ -411,60 +416,131 @@ function listDir(path) {
 }
 
 /*
+ * The enumerator's life, which is not the listing.
+ *
+ * A directory read asynchronously has two ways to end and they close the
+ * handle differently. On the ordinary one the caller is still waiting, so the
+ * close is asynchronous too and the answer is delivered from its callback. On
+ * the cancelled one the deadline has already answered the caller, and an
+ * asynchronous close against a cancelled cancellable is a call that may never
+ * come back - so that one closes in place and delivers nothing.
+ *
+ * Both of them, and the "did anybody close this already" flag between them,
+ * used to sit inside the listing along with the batching, which made that one
+ * function the most tangled thing in this repository and left the close paths
+ * reachable only through a real Gio enumerator.
+ */
+const _Enumeration = class _Enumeration {
+    /* `settle` is what a finished listing does. It goes through the
+     * operation, which holds it to one arrival. */
+    constructor(operation, settle) {
+        this._operation = operation;
+        this._settle = settle;
+        this._handle = null;
+        this._closing = false;
+    }
+
+    get handle() {
+        return this._handle;
+    }
+
+    adopt(handle) {
+        this._handle = handle;
+    }
+
+    _forget(handle) {
+        if (this._handle === handle)
+            this._handle = null;
+    }
+
+    /* The cancelled path: close what is open and answer nobody. */
+    closeCancelled() {
+        let handle = this._handle;
+        if (!handle || this._closing)
+            return;
+        this._closing = true;
+        try {
+            handle.close(null);
+        } catch (e) {
+            /* already closed, or cancellation made the provider fail */
+        }
+        this._forget(handle);
+    }
+
+    /* The ordinary path: close, then settle either way. A listing is still a
+     * listing when the directory will not shut. */
+    close() {
+        let handle = this._handle;
+        if (!handle || this._closing) {
+            this._settle();
+            return;
+        }
+        this._closing = true;
+        try {
+            handle.close_async(GLib.PRIORITY_DEFAULT, this._operation.cancellable,
+                (source, result) => {
+                    try {
+                        source.close_finish(result);
+                    } catch (e) {
+                        /* The listing is still useful when closing reports an error. */
+                    }
+                    this._forget(handle);
+                    this._settle();
+                });
+        } catch (e) {
+            this._forget(handle);
+            this._settle();
+        }
+    }
+};
+
+/*
  * The same directory listing without making Cinnamon's main loop wait for the
  * filesystem. Entries arrive in bounded batches: a machine with a crowded
  * hwmon tree yields between batches instead of monopolising the compositor.
  */
 function listDirAsync(path, onDone, fileFactory, options) {
     let names = [];
-    let enumerator = null;
-    let closeStarted = false;
-    let closeCancelled = handle => {
-        if (!handle || closeStarted)
-            return;
-        closeStarted = true;
-        try {
-            handle.close(null);
-        } catch (e) {
-            /* already closed, or cancellation made the provider fail */
-        }
-        if (enumerator === handle)
-            enumerator = null;
-    };
-    let operation = _asyncOperation(() => {
-        closeCancelled(enumerator);
+    let enumeration = null;
+    let deliver = () => {
         names.sort(naturalCompare);
         onDone(names);
-    }, options);
-
-    let finish = () => {
-        if (operation.finish()) {
-            names.sort(naturalCompare);
-            onDone(names);
-        }
     };
-    let close = handle => {
-        if (!handle || closeStarted) {
-            finish();
-            return;
-        }
-        closeStarted = true;
+    let operation = _asyncOperation(() => {
+        enumeration.closeCancelled();
+        deliver();
+    }, options);
+    let finish = () => {
+        if (operation.finish())
+            deliver();
+    };
+    enumeration = new _Enumeration(operation, finish);
+
+    /* One batch after another until the directory is out of them, each from
+     * the previous one's callback so the main loop runs in between. */
+    let readBatch = () => {
         try {
-            handle.close_async(GLib.PRIORITY_DEFAULT, operation.cancellable,
-                (source, result) => {
-                try {
-                    source.close_finish(result);
-                } catch (e) {
-                    /* The listing is still useful when closing reports an error. */
-                }
-                if (enumerator === handle)
-                    enumerator = null;
-                finish();
-            });
+            enumeration.handle.next_files_async(LIST_BATCH, GLib.PRIORITY_DEFAULT,
+                operation.cancellable, (files, result) => {
+                    if (!operation.active)
+                        return;
+                    let entries;
+                    try {
+                        entries = files.next_files_finish(result);
+                    } catch (e) {
+                        enumeration.close();
+                        return;
+                    }
+                    if (!entries || entries.length === 0) {
+                        enumeration.close();
+                        return;
+                    }
+                    for (let info of entries)
+                        names.push(info.get_name());
+                    readBatch();
+                });
         } catch (e) {
-            if (enumerator === handle)
-                enumerator = null;
-            finish();
+            enumeration.close();
         }
     };
 
@@ -476,45 +552,23 @@ function listDirAsync(path, onDone, fileFactory, options) {
         directory.enumerate_children_async(
             "standard::name", Gio.FileQueryInfoFlags.NONE,
             GLib.PRIORITY_DEFAULT, operation.cancellable, (source, result) => {
+                let handle;
                 try {
-                    enumerator = source.enumerate_children_finish(result);
+                    handle = source.enumerate_children_finish(result);
                 } catch (e) {
                     if (operation.active)
                         finish();
                     return;
                 }
+                enumeration.adopt(handle);
+                /* The deadline can have passed while the directory was being
+                 * opened, in which case there is a handle owed and nobody
+                 * left to answer. */
                 if (!operation.active) {
-                    closeCancelled(enumerator);
+                    enumeration.closeCancelled();
                     return;
                 }
-
-                let next = () => {
-                    try {
-                        enumerator.next_files_async(64, GLib.PRIORITY_DEFAULT,
-                            operation.cancellable,
-                            (files, nextResult) => {
-                                if (!operation.active)
-                                    return;
-                                let entries;
-                                try {
-                                    entries = files.next_files_finish(nextResult);
-                                } catch (e) {
-                                    close(enumerator);
-                                    return;
-                                }
-                                if (!entries || entries.length === 0) {
-                                    close(enumerator);
-                                    return;
-                                }
-                                for (let info of entries)
-                                    names.push(info.get_name());
-                                next();
-                            });
-                    } catch (e) {
-                        close(enumerator);
-                    }
-                };
-                next();
+                readBatch();
             });
     } catch (e) {
         finish();

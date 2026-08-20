@@ -529,6 +529,20 @@ cases["asynchronous listings settle across every filesystem failure boundary"] =
                       "a directory factory failure settles too");
 };
 
+cases["a directory that answers with no enumerator still settles"] = function () {
+    /* A provider that reports success and hands back nothing leaves the
+     * listing with a handle it cannot read and nothing to close. */
+    let directory = {
+        enumerate_children_async: function (attributes, flags, priority, token, onDone) {
+            onDone(this, {});
+        },
+        enumerate_children_finish: () => null,
+    };
+    Harness.deepEqual(Harness.settle(done => IO.listDirAsync("/empty", done, () => directory),
+                                     "enumerator-less directory"), [],
+                      "there is nothing to list and nothing to close");
+};
+
 cases["an asynchronous listing deadline settles an unresponsive directory"] = function () {
     let timeout = null;
     let cancelled = 0;
