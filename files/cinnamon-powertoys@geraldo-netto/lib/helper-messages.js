@@ -76,6 +76,13 @@ function errorMessage(outcome) {
         return outdatedHelperMessage();
     case "helper-incompatible":
         return _("The privileged helper is incompatible with this applet version.");
+    /* Not the helper's; this applet's own refusal, from disabledOutcome below.
+     * It is the one refusal here that knows exactly why and what to do about
+     * it, and it used to be the one that said the least: the sentence was
+     * built into the outcome and then replaced by the general one, because
+     * this table answers a code and there was no code on it. */
+    case "privileged-controls-off":
+        return _("Privileged controls are turned off");
     default:
         return _("The change could not be applied.");
     }
@@ -97,7 +104,11 @@ function warningMessage(outcome) {
 /* The outcome of a change nobody allowed: the setting is off, so there is
  * nothing to authorise and nothing to report from the helper. */
 function disabledOutcome() {
-    return { applied: false, error: _("Privileged controls are turned off") };
+    return {
+        applied: false,
+        code: "privileged-controls-off",
+        error: errorMessage({ code: "privileged-controls-off" }),
+    };
 }
 
 /*

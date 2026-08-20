@@ -66,6 +66,21 @@ cases["a call nobody has allowed answers without reaching the helper"] = functio
     Harness.ok(seen[0].error, "with a reason in words");
 };
 
+cases["a refusal the setting caused names the setting"] = function () {
+    let it = rig({ allowed: false });
+    it.calls.run(["governor", "powersave"]);
+    Harness.equal(it.log.errors.length, 1, "the refusal was reported");
+    Harness.equal(it.log.errors[0][1], "Privileged controls are turned off",
+                  "in the words of the one refusal that knows exactly why, rather than " +
+                  "the general sentence: " + it.log.errors[0][1]);
+
+    let quiet = rig({ allowed: false });
+    let seen = null;
+    quiet.calls.quietly(["platform-profile", "balanced"], outcome => { seen = outcome; });
+    Harness.equal(seen.error, "Privileged controls are turned off",
+                  "and the caller reporting in its own words gets the same sentence");
+};
+
 cases["a call the gate allows drops the menu before the password dialog"] = function () {
     let it = rig({ outcome: { applied: true } });
     it.calls.call(["boost", "1"], {});

@@ -70,8 +70,15 @@ const HelperCalls = class HelperCalls {
                 onDone(outcome);
         };
 
+        /* The gate is an outcome like any other, and it goes through the
+         * caller's `report` like any other. It used to go straight to `onDone`
+         * instead, which meant the one refusal in this applet that knows
+         * exactly why the change did not happen was also the only one nobody
+         * was ever told about: `run` says what an unapplied outcome was, and
+         * `run` was not being asked. */
         if (!this._allowed()) {
-            settle(HelperMessages.disabledOutcome());
+            let refused = HelperMessages.disabledOutcome();
+            settle(handlers.report ? handlers.report(refused) : refused);
             return;
         }
 

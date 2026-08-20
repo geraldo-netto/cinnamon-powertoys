@@ -44,9 +44,13 @@ function helperCodes() {
  */
 function appletCodes() {
     let found = {};
+    /* Including this table's own file, which produces one: the applet's
+     * refusal to make a privileged change nobody has allowed is not a helper
+     * outcome and there is no helper in it, so it is written where the
+     * sentence for it is. Skipping the file meant that code was answered by
+     * the table and produced, as far as this case could see, by nothing. The
+     * `case` labels below are not assignments and are not counted as one. */
     for (let relative of Sources.jsFiles(Harness.xletDir(), "")) {
-        if (relative === "lib/helper-messages.js")
-            continue;
         let source = Harness.readFile(Harness.xletDir() + "/" + relative);
         let written = Scan.literals(source);
         let assignments = /\bcode:[^,;}\n]*/g;
