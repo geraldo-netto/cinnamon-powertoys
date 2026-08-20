@@ -43,6 +43,7 @@ const MonitorWatch = require("./lib/monitor-watch.js");
 const Notifications = require("./lib/notifications.js");
 const Once = require("./lib/once.js");
 const PanelText = require("./lib/panel-text.js");
+const Poll = require("./lib/poll.js");
 const PendingProfile = require("./lib/pending-profile.js");
 const PowerSupply = require("./lib/power-supply.js");
 const ScrollGatherer = require("./lib/scroll-gatherer.js");
@@ -81,16 +82,6 @@ Format.setIconLookup(function (name) {
  * never elevated: its owner could replace it between validation and use.
  */
 const SYSTEM_HELPER = "/usr/local/lib/cinnamon-powertoys/powertoys-helper";
-
-/*
- * How often the set of sensors is looked at again.
- *
- * Discovery is expensive - every hwmon directory listed, every label read -
- * and hardware does not come and go often, so this is deliberately slow. The
- * check itself is three directory listings and only leads to a sweep when
- * something has actually changed.
- */
-const REDISCOVER_SECONDS = 60;
 
 /*
  * Everything the applet reads the machine through, gathered in one bag. The
@@ -226,8 +217,29 @@ class PowerToysApplet extends Applet.TextIconApplet {
          */
         this._destroyed = false;
 
-        this._timerId = 0;
-        this._idleId = 0;
+        /*
+         * The clock: the interval that takes a reading, the slower count
+         * inside it that looks for hardware that has come or gone, and the
+         * idle callback that turns several reasons to redraw into one.
+         *
+         * Discovery is expensive - every hwmon directory listed, every label
+         * read - and hardware does not come and go often, so the rediscovery
+         * is deliberately slow; the check itself is three directory listings
+         * and only leads to a sweep when something has actually changed.
+         */
+        this._poll = new Poll.Poll({
+            timers: {
+                add: (seconds, callback) =>
+                    Mainloop.timeout_add_seconds(seconds, callback),
+                remove: id => Mainloop.source_remove(id),
+                idle: callback => Mainloop.idle_add(callback),
+                cancelIdle: id => Mainloop.source_remove(id),
+            },
+            repeat: GLib.SOURCE_CONTINUE,
+            once: GLib.SOURCE_REMOVE,
+            onTick: () => this._update(),
+            onRediscover: () => this._rediscover(),
+        });
         /* A reading is in flight; another was asked for while it was. */
         this._collecting = false;
         this._collectAgain = false;
@@ -939,41 +951,17 @@ class PowerToysApplet extends Applet.TextIconApplet {
     /* update                                                              */
 
     _scheduleUpdate() {
-        if (this._destroyed || this._idleId)
+        if (this._destroyed)
             return;
-        this._idleId = Mainloop.idle_add(() => {
-            this._idleId = 0;
-            this._update();
-            return GLib.SOURCE_REMOVE;
-        });
+        this._poll.schedule();
     }
 
     _startPolling() {
-        this._stopPolling();
-        let interval = Math.max(1, this.refreshInterval || 4);
-        this._sinceRediscover = 0;
-        this._timerId = Mainloop.timeout_add_seconds(interval, () => {
-            /*
-             * A card that wakes up, a USB sensor plugged in, a driver loaded.
-             * Opening the menu used to be the only thing that noticed, which
-             * since the menu stopped updating while shut meant the panel
-             * could go the whole session without seeing new hardware.
-             */
-            this._sinceRediscover += interval;
-            if (this._sinceRediscover >= REDISCOVER_SECONDS) {
-                this._sinceRediscover = 0;
-                this._rediscover();
-            }
-            this._update();
-            return GLib.SOURCE_CONTINUE;
-        });
+        this._poll.start(this.refreshInterval || 4);
     }
 
     _stopPolling() {
-        if (this._timerId) {
-            Mainloop.source_remove(this._timerId);
-            this._timerId = 0;
-        }
+        this._poll.stop();
     }
 
     _onMenuOpened() {
@@ -987,7 +975,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * too, on a much slower cadence; here it is because someone opening
          * the menu wants what is true now. */
         this._rediscover();
-        this._sinceRediscover = 0;
+        this._poll.seen();
         /* Screen and keyboard brightness arrive through Changed, just as
          * battery properties arrive through UPower signals, so their cached
          * values are already current. Retry only a control which has no valid
@@ -1622,14 +1610,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
                 release(name, () => resource.destroy());
         };
 
-        release("poll timer", () => this._stopPolling());
+        release("poll timer", () => this._poll.destroy());
         release("monitor watch", () => this._monitors?.destroy());
         release("scroll timer", () => this._cancelPendingScroll());
-        if (this._idleId) {
-            let id = this._idleId;
-            this._idleId = 0;
-            release("update callback", () => Mainloop.source_remove(id));
-        }
         release("hotkeys", () => {
             if (this._hotkeys)
                 this._hotkeys.release();
