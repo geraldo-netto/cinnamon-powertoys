@@ -9,23 +9,110 @@ const Harness = imports.harness;
 
 const Messages = Harness.requireXlet("./lib/helper-messages.js");
 
-/* Every code the helper can report, and the applet's own two. */
-const CODES = [
-    "invalid-invocation", "invalid-value", "unsupported", "unavailable",
-    "write-failed", "change-failed-restored", "rollback-failed",
-    "helper-not-found", "unsafe-system-helper", "not-authorised",
-    "helper-unavailable", "stale-system-helper", "helper-incompatible",
-];
+const Scan = imports.scan;
+const Sources = imports.sources;
+
+/*
+ * Every code that can reach this table, read off the two things that produce
+ * one rather than written out here.
+ *
+ * It was written out here - thirteen of them, in a list beside the table they
+ * were about - which is the list a person editing the table is the most
+ * likely to update and the least likely to be corrected by. The helper is a
+ * shell script that `die`s with a code, and the applet's own failure paths
+ * write one into an outcome; both are enumerated, so a code added to either
+ * arrives here whether or not anybody remembered this file.
+ */
+function helperCodes() {
+    let script = Harness.readFile(Harness.xletDir() + "/powertoys-helper")
+        .split("\n").filter(line => !/^\s*#/.test(line)).join("\n");
+    let found = {};
+    let pattern = /(?:\bdie|powertoys-helper-error)\s+([a-z][a-z-]*)/g;
+    let match;
+    while ((match = pattern.exec(script)) !== null)
+        found[match[1]] = true;
+    return Object.keys(found).sort();
+}
+
+/*
+ * The applet's own: a code written into an outcome by one of the modules that
+ * report a privileged change.
+ *
+ * The name is taken from the assignment and then checked against the file's
+ * string literals, so a code named in the comment that explains it - and
+ * every one of them is named there - is not counted as one that can happen.
+ */
+function appletCodes() {
+    let found = {};
+    for (let relative of Sources.jsFiles(Harness.xletDir(), "")) {
+        if (relative === "lib/helper-messages.js")
+            continue;
+        let source = Harness.readFile(Harness.xletDir() + "/" + relative);
+        let written = Scan.literals(source);
+        let assignments = /\bcode:[^,;}\n]*/g;
+        let assignment;
+        while ((assignment = assignments.exec(source)) !== null) {
+            let names = /"([a-z][a-z-]*)"/g;
+            let name;
+            while ((name = names.exec(assignment[0])) !== null) {
+                if (written.indexOf(name[1]) >= 0)
+                    found[name[1]] = true;
+            }
+        }
+    }
+    return Object.keys(found).sort();
+}
+
+/* Every code the table answers, from the switch itself. */
+function answeredCodes() {
+    let source = Harness.readFile(Harness.xletDir() + "/lib/helper-messages.js")
+        .replace(/\/\*[\s\S]*?\*\//g, " ");
+    let found = {};
+    let pattern = /case "([a-z][a-z-]*)":/g;
+    let match;
+    while ((match = pattern.exec(source)) !== null)
+        found[match[1]] = true;
+    return Object.keys(found).sort();
+}
 
 var cases = {};
 
-cases["every code the helper reports has a sentence of its own"] = function () {
+cases["every code that can happen is answered, or says why it is not"] = function () {
     let fallback = Messages.errorMessage({ code: "no such code" });
-    for (let code of CODES) {
+    let produced = helperCodes().concat(appletCodes());
+    Harness.ok(produced.length > 10,
+               "only " + produced.length + " codes found, which is too few to be the whole of them");
+    let unanswered = [];
+    for (let code of produced) {
         let message = Messages.errorMessage({ code: code });
         Harness.ok(message, code + " says nothing");
-        Harness.ok(message !== fallback,
-                   code + " falls through to the general message");
+        if (message !== fallback)
+            continue;
+        if (Messages.GENERIC_CODES.indexOf(code) < 0)
+            unanswered.push(code);
+    }
+    Harness.deepEqual(unanswered, [],
+                      "a code with no sentence of its own and no reason for having none");
+};
+
+cases["nothing is answered that cannot happen"] = function () {
+    /* The other direction. A case for a code nothing produces is a sentence
+     * in the catalogue that no translator's work will ever be read, and the
+     * usual reason for one is a code that was renamed on the side that
+     * reports it. */
+    let produced = helperCodes().concat(appletCodes());
+    let dead = answeredCodes().filter(code => produced.indexOf(code) < 0);
+    Harness.deepEqual(dead, [], "answered by the table and produced by nothing");
+    let unproduced = Messages.GENERIC_CODES.filter(code => produced.indexOf(code) < 0);
+    Harness.deepEqual(unproduced, [],
+                      "and excused by name and produced by nothing");
+};
+
+cases["the codes excused from a sentence get the general one"] = function () {
+    let fallback = Messages.errorMessage({ code: "no such code" });
+    for (let code of Messages.GENERIC_CODES) {
+        Harness.equal(Messages.errorMessage({ code: code }), fallback,
+                      code + " is excused a sentence, so it has to be getting the general one");
     }
 };
 

@@ -23,6 +23,23 @@ function outdatedHelperMessage() {
     return _("The installed privileged helper is outdated. Re-run the policy installation.");
 }
 
+/*
+ * The outcomes that are meant to get the general sentence, and why.
+ *
+ * Every other code below is answered with words about that code. These two
+ * are not, and saying so here is what makes the difference deliberate: the
+ * codes are read off the helper and off the applet's own failure paths by
+ * tests/cases/helper-messages.js, and anything produced that is neither
+ * answered nor named here is a failure the user is told nothing specific
+ * about because somebody forgot, rather than because there is nothing to say.
+ *
+ * `helper-failed` is the helper exiting without the structured report - the
+ * diagnostic is whatever it printed last, which is not a sentence for a
+ * notification. `shutting-down` is every path answering at once because the
+ * applet is going away, and there is nobody left to read it.
+ */
+var GENERIC_CODES = ["helper-failed", "shutting-down"];
+
 /* Why a change did not happen, in the words of somebody who has to fix it. */
 function errorMessage(outcome) {
     switch (outcome?.code) {
