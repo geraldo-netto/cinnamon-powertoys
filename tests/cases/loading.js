@@ -54,12 +54,19 @@ for (let name of MODULES) {
 }
 
 cases["runtime D-Bus constructors forward lifecycle cancellables"] = function () {
+    /* The forwarding is lib/bus.js's now - one proxy builder for the four
+     * modules that used to write their own - so what is held here is that each
+     * of them still hands its own cancellable over rather than dropping it on
+     * the way. bluez builds no proxy; it calls the bus directly. */
+    let bus = Harness.readFile(Harness.xletDir() + "/lib/bus.js");
+    Harness.ok(bus.indexOf("options.cancellable || null") >= 0,
+               "the one proxy builder forwards the cancellable it was given");
     let expected = { bluez: 1, backlight: 1, profiles: 1, upower: 2 };
     for (let name in expected) {
         let source = Harness.readFile(Harness.xletDir() + "/lib/" + name + ".js");
-        let forwards = source.match(/cancellable \|\| null/g) || [];
+        let forwards = source.match(/cancellable \|\| null|cancellable: cancellable \}\)/g) || [];
         Harness.equal(forwards.length, expected[name],
-                      name + " forwards every owned cancellable to Gio");
+                      name + " forwards every owned cancellable");
     }
 };
 

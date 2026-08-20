@@ -11,6 +11,7 @@
 
 const Gio = imports.gi.Gio;
 
+const Bus = require("./lib/bus.js");
 const Log = require("./lib/log.js");
 const Once = require("./lib/once.js");
 const OwnerWatch = require("./lib/owner-watch.js");
@@ -106,23 +107,20 @@ INTERFACES[KEYBOARD] = KEYBOARD_XML;
  */
 function connectProxy(xml, onDone, cancellable) {
     try {
-        let wrapper = Gio.DBusProxy.makeProxyWrapper(xml);
-        new wrapper(Gio.DBus.session, BUS_NAME, OBJECT_PATH, onDone,
-                    cancellable || null);
+        Bus.proxy(Bus.wrapperFor(xml), BUS_NAME, OBJECT_PATH, onDone,
+                  { session: true, cancellable: cancellable });
     } catch (error) {
         onDone(null, error);
     }
 }
 
 function watchOwner(onAppeared, onVanished, bus) {
-    let adapter = bus || Gio;
-    return adapter.bus_watch_name(Gio.BusType.SESSION, BUS_NAME,
-                                  Gio.BusNameWatcherFlags.NONE,
-                                  onAppeared, onVanished);
+    return Bus.watch(BUS_NAME, onAppeared, onVanished,
+                     { gio: bus, session: true });
 }
 
 function unwatchOwner(id, bus) {
-    (bus || Gio).bus_unwatch_name(id);
+    Bus.release(id, bus);
 }
 
 const BacklightControl = class BacklightControl {
@@ -248,12 +246,8 @@ const BacklightControl = class BacklightControl {
 
         this._connecting = true;
         let generation = ++this._generation;
-        let cancellable = null;
-        try {
-            cancellable = new Gio.Cancellable();
-        } catch (e) {
-            /* Generation guards retain correctness without cancellation. */
-        }
+        /* Generation guards retain correctness without cancellation. */
+        let cancellable = Bus.cancellable();
         this._connectCancellable = cancellable;
         this._connect(this._xml, (proxy, error) => {
             if (this.destroyed || generation !== this._generation)

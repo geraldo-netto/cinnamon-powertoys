@@ -11,6 +11,7 @@
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 
+const Bus = require("./lib/bus.js");
 const Log = require("./lib/log.js");
 const Once = require("./lib/once.js");
 const OwnerWatch = require("./lib/owner-watch.js");
@@ -195,19 +196,18 @@ function systemBus(gio) {
          * nothing blocks the shell. This was the one place that did.
          */
         proxy: function (backend, onDone, cancellable) {
-            let wrapper = gio.DBusProxy.makeProxyWrapper(_interfaceXml(backend.name));
-            return new wrapper(gio.DBus.system, backend.name, backend.path,
-                               (proxy, error) => onDone(proxy, error), cancellable || null);
+            return Bus.proxy(Bus.wrapperFor(_interfaceXml(backend.name), gio),
+                             backend.name, backend.path, onDone,
+                             { gio: gio, cancellable: cancellable });
         },
         watch: function (name, onAppeared, onVanished) {
-            return gio.bus_watch_name(gio.BusType.SYSTEM, name,
-                                      gio.BusNameWatcherFlags.NONE, onAppeared, onVanished);
+            return Bus.watch(name, onAppeared, onVanished, { gio: gio });
         },
         unwatch: function (id) {
-            gio.bus_unwatch_name(id);
+            Bus.release(id, gio);
         },
         cancellable: function () {
-            return new gio.Cancellable();
+            return Bus.cancellable(gio);
         },
         setProperty: function (name, path, property, value, cancellable, onDone) {
             /* Keep the direct helper useful to callers that do not need

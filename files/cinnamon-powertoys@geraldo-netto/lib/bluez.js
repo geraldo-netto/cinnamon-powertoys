@@ -15,6 +15,7 @@ const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 const UPowerGlib = imports.gi.UPowerGlib;
 
+const Bus = require("./lib/bus.js");
 const Log = require("./lib/log.js");
 const OwnerWatch = require("./lib/owner-watch.js");
 const Backoff = require("./lib/backoff.js");
@@ -179,14 +180,12 @@ function parseObjects(objects) {
  * cannot report an abrupt daemon exit, because the process that would emit
  * them has already gone. The returned function releases the watch. */
 function systemNameWatcher(onAppeared, onVanished, bus) {
-    let adapter = bus || Gio;
-    let id = adapter.bus_watch_name(
-        Gio.BusType.SYSTEM, BUS_NAME, Gio.BusNameWatcherFlags.NONE,
-        () => onAppeared(), () => onVanished());
+    let id = Bus.watch(BUS_NAME, () => onAppeared(), () => onVanished(),
+                       { gio: bus });
     if (!id)
         throw new Error("BlueZ ownership watch returned no id");
     return function () {
-        adapter.bus_unwatch_name(id);
+        Bus.release(id, bus);
     };
 }
 /* Gio's name watcher always reports the current owner after registration.
@@ -324,13 +323,9 @@ const BluezBatteries = class BluezBatteries {
             this._readAgain = true;
             return;
         }
-        let cancellable = null;
-        try {
-            cancellable = new Gio.Cancellable();
-        } catch (error) {
-            /* An injected runtime without cancellables still has generation
-             * guards; cancellation is an optimization, not correctness. */
-        }
+        /* An injected runtime without cancellables still has generation
+         * guards; cancellation is an optimisation, not correctness. */
+        let cancellable = Bus.cancellable();
         let operation = { epoch: this._ownerEpoch, cancellable: cancellable };
         this._read = operation;
         let finish = (objects, error) => this._finishRefresh(operation, objects, error);

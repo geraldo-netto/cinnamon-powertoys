@@ -18,16 +18,16 @@ msgstr ""
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
 #. metadata.json->name
-#: applet.js:291 applet.js:512 applet.js:1334 applet.js:1339 applet.js:1401
+#: applet.js:292 applet.js:513 applet.js:1334 applet.js:1339 applet.js:1401
 #: applet.js:1443 applet.js:1449
 msgid "Power Toys"
 msgstr ""
 
-#: applet.js:292
+#: applet.js:293
 msgid "Shortcut is already in use: %{shortcut}"
 msgstr ""
 
-#: applet.js:513
+#: applet.js:514
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "

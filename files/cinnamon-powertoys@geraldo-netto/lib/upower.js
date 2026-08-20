@@ -9,6 +9,7 @@
 const Gio = imports.gi.Gio;
 const UPowerGlib = imports.gi.UPowerGlib;
 
+const Bus = require("./lib/bus.js");
 const Device = require("./lib/device.js");
 const Log = require("./lib/log.js");
 const Once = require("./lib/once.js");
@@ -95,25 +96,22 @@ function systemBus(gio, managerProxy, deviceProxy) {
     deviceProxy = deviceProxy || DeviceProxy;
     return {
         watch: function (onAppeared, onVanished) {
-            return gio.bus_watch_name(gio.BusType.SYSTEM, BUS_NAME,
-                                      gio.BusNameWatcherFlags.AUTO_START,
-                                      onAppeared, onVanished);
+            return Bus.watch(BUS_NAME, onAppeared, onVanished,
+                             { gio: gio, autoStart: true });
         },
         unwatch: function (id) {
-            gio.bus_unwatch_name(id);
+            Bus.release(id, gio);
         },
         cancellable: function () {
-            return new gio.Cancellable();
+            return Bus.cancellable(gio);
         },
         manager: function (onDone, cancellable) {
-            return new managerProxy(gio.DBus.system, BUS_NAME, MANAGER_PATH,
-                                    (proxy, error) => onDone(proxy, error),
-                                    cancellable || null);
+            return Bus.proxy(managerProxy, BUS_NAME, MANAGER_PATH, onDone,
+                             { gio: gio, cancellable: cancellable });
         },
         device: function (path, onDone, cancellable) {
-            return new deviceProxy(gio.DBus.system, BUS_NAME, path,
-                                   (proxy, error) => onDone(proxy, error),
-                                   cancellable || null);
+            return Bus.proxy(deviceProxy, BUS_NAME, path, onDone,
+                             { gio: gio, cancellable: cancellable });
         },
     };
 }
