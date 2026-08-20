@@ -66,6 +66,12 @@ cases["the production owner adapter preserves edges and cleanup"] = function () 
             bus_watch_name: () => { throw new Error("watch failed"); },
         });
     }, "the transport preserves setup failures for the resilient boundary");
+
+    /* A bus that answers no id has not installed a watch, and a cleanup
+     * function over nothing would report success at releasing it. */
+    Harness.throws(() => {
+        Bluez.systemNameWatcher(() => {}, () => {}, { bus_watch_name: () => 0 });
+    }, "a watch that was never installed is a failure, not a quiet nothing");
 };
 
 function signalBus() {

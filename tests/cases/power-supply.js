@@ -590,3 +590,23 @@ cases["firmware refreshes reject superseded and teardown replies"] = function ()
         IO.readStringsAsync = real;
     }
 };
+
+cases["a topology sweep that lands after teardown adopts nothing"] = function () {
+    /*
+     * The listing and the sample behind a refresh are cancelled at teardown,
+     * but a cancelled read may still call back. Adopting what it found would
+     * publish a battery set on a control the applet has already let go of.
+     */
+    let client = new PowerSupply.ChargeControl(null, function () {});
+    let sweeps = [];
+    let answered = [];
+    client._sweep = done => sweeps.push(done);
+    client.refresh(value => answered.push(value));
+    client.destroy();
+
+    client._adoptRefresh([{ name: "BAT0", path: "/late" }], [80], function () {
+        throw new Error("a destroyed control assembled a reading");
+    });
+    Harness.deepEqual(client.batteries, [], "no late topology is adopted");
+    Harness.deepEqual(answered, [false], "and the caller was settled at teardown");
+};
