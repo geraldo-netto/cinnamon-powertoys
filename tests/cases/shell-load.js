@@ -72,3 +72,39 @@ cases["the shell load covers applet.js and every widget module"] = function () {
     Harness.ok(outcome.stdout.indexOf("shell ok     " + expected + " sources") >= 0,
                "all " + expected + " shell sources were loaded: " + outcome.stdout);
 };
+
+/*
+ * The skip, held to what it is allowed to mean.
+ *
+ * A gate that answers "not applicable here" is worth exactly the narrowness
+ * of the condition it says that under. This one said it whenever anything it
+ * needed was missing, so a Cinnamon whose typelibs are not where the search
+ * expects - a distribution laying them out differently, a partial install -
+ * reported no Cinnamon at all, and the applet's shell sources went unevaluated
+ * on the only kind of machine that can evaluate them, with a green run to show
+ * for it.
+ *
+ * Pointed at a directory that looks like a Cinnamon JavaScript tree and is
+ * not one, the loader must answer something - loaded or failed - rather than
+ * excuse itself. Runs the same way on a runner, where the typelibs really are
+ * absent and that too is now an answer.
+ */
+cases["a directory that claims to be Cinnamon is never a skip"] = function () {
+    let directory = GLib.dir_make_tmp("powertoys-shell-load-case-XXXXXX");
+    try {
+        GLib.mkdir_with_parents(directory + "/ui", 0o755);
+        let outcome = Harness.settle(done => Privileged._spawn(
+            ["env", "POWERTOYS_CINNAMON_JS=" + directory,
+             "sh", Harness.testsDir() + "/../tools/shell-load.sh"],
+            (status, stderr, stdout) => done({
+                status: status, output: (stdout || "") + (stderr || ""),
+            })), "the shell load");
+
+        Harness.ok(outcome.status !== UNAVAILABLE,
+                   "a Cinnamon that is there is answered, not skipped: " +
+                   outcome.output);
+    } finally {
+        GLib.spawn_sync(null, ["rm", "-rf", directory], null,
+                        GLib.SpawnFlags.SEARCH_PATH, null);
+    }
+};

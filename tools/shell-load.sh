@@ -22,6 +22,12 @@
 # So this finds them and hands the rest to tools/shell-load.js. Exit 0 is
 # loaded, 1 is a load failure, and 2 is a machine with no Cinnamon on it,
 # which the caller reports as a skip rather than as an answer.
+#
+# Exit 2 is spent carefully, because it is the status that buys silence. It
+# means Cinnamon is not installed here and nothing else: once the JavaScript
+# directory has been found, a missing typelib or a shell that will not load
+# is exit 1, so this gate cannot go quiet on the one kind of machine it was
+# written for.
 
 set -eu
 
@@ -53,10 +59,27 @@ unavailable() {
     exit 2
 }
 
+# Cinnamon is here and something it needs is not.
+#
+# The two are one exit status apart and the difference is the whole worth of
+# this gate. A skip is answered by "there is no Cinnamon on this machine",
+# which is true of the runner and is why the suite is allowed to go green
+# without this. Anything after the JavaScript directory has been found is a
+# machine that does have Cinnamon, so a typelib that is not where this looks
+# is an installation this does not understand - and reporting that as "no
+# Cinnamon" is how the one check that evaluates applet.js turns into a green
+# skip on the only machine that could have run it.
+broken() {
+    echo "shell FAIL   $*" >&2
+    exit 1
+}
+
 command -v cjs >/dev/null 2>&1 || unavailable "cjs is not installed"
 [ -d "$CINNAMON_JS/ui" ] || unavailable "no Cinnamon JavaScript at $CINNAMON_JS"
-st_dir=$(directory_holding St-1.0.typelib) || unavailable "no St typelib installed"
-meta_dir=$(directory_holding Meta-0.typelib) || unavailable "no Meta typelib installed"
+st_dir=$(directory_holding St-1.0.typelib) ||
+    broken "Cinnamon is installed at $CINNAMON_JS but no St typelib is beside it"
+meta_dir=$(directory_holding Meta-0.typelib) ||
+    broken "Cinnamon is installed at $CINNAMON_JS but no Meta typelib is beside it"
 
 GI_TYPELIB_PATH="$st_dir:$meta_dir${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
 LD_LIBRARY_PATH="$st_dir:$meta_dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"

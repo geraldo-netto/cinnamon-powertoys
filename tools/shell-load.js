@@ -169,15 +169,20 @@ try {
      * modules are circular around it: popupMenu.js reaches ui/panel.js, which
      * reads back out of popupMenu.js before popupMenu.js has finished. In a
      * session that resolves because main.js got there first. Asking for it
-     * here puts the modules in the same order, and asking for it at all is
-     * the first thing that would fail if this machine's Cinnamon were not
-     * loadable - which is a skip, not an applet failure.
+     * here puts the modules in the same order.
+     *
+     * A failure here is a failure and not a skip. The caller only reaches
+     * this file once it has found a Cinnamon JavaScript directory and both
+     * private typelibs, so Cinnamon is installed; its own modules refusing to
+     * load is something to be told about rather than a reason to report that
+     * the gate did not apply.
      */
     let shellMain = imports.ui.main;
     if (!shellMain) {
-        print("shell skip   Cinnamon's own modules did not load");
+        printerr("shell FAIL   Cinnamon's own modules did not load from " +
+                 CINNAMON_JS);
         remove(dataDir);
-        System.exit(2);
+        System.exit(1);
     }
 
     for (let name of widgetModules().concat(["./applet.js"])) {
