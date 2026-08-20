@@ -36,13 +36,25 @@ function sameOwner(state, backend, generation) {
     return !!state && state.source === backend && state.generation === generation;
 }
 
-/* The holds one line, as "Firefox → Performance, Steam → Performance". */
+/*
+ * The holds one line, as "Firefox → Performance, Steam → Performance".
+ *
+ * A hold that names no profile is left out rather than drawn. The daemon's
+ * entries are read as `hold.Profile || ""` because the field can be absent,
+ * and an absent one came through here as `Firefox → ` - an arrow pointing at
+ * nothing, on the row whose whole subject is which profile is being held. The
+ * application half already had a fallback for the same reason; this half has
+ * nothing to fall back to, because the profile is the thing being reported.
+ */
 function holdsText(holds) {
     let lines = [];
     for (let hold of holds || []) {
+        let profile = Format.profileLabel(hold.profile);
+        if (!profile)
+            continue;
         lines.push(Translate.interpolate(_("%{application} → %{profile}"), {
             application: hold.application || _("an application"),
-            profile: Format.profileLabel(hold.profile),
+            profile: profile,
         }));
     }
     return lines.join(", ");

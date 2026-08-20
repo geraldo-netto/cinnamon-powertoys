@@ -135,6 +135,23 @@ cases["every hold is named, and an anonymous one still counts"] = function () {
                "and the one that did not is still described: " + view.holdsText);
 };
 
+cases["a hold that names no profile takes no line"] = function () {
+    let view = ProfileView.menuView(reading({ holds: [
+        { application: "Firefox", profile: "performance" },
+        { application: "Steam", profile: "" },
+    ] }), options());
+    Harness.equal(view.holdsText.split(", ").length, 1,
+                  "the one with a profile in it is the only line: " + view.holdsText);
+    Harness.equal(view.holdsText.indexOf("Steam"), -1,
+                  "an arrow pointing at nothing is not a hold worth drawing");
+
+    let none = ProfileView.menuView(reading({ holds: [
+        { application: "Steam", profile: "" },
+    ] }), options());
+    Harness.equal(none.holdsText, "",
+                  "and a machine whose only hold names no profile shows no holds row");
+};
+
 cases["a machine with nothing degraded and nothing held says neither"] = function () {
     let view = ProfileView.menuView(reading(), options());
     Harness.equal(view.degradedText, "", "no degradation line");
