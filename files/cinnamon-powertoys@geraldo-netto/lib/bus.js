@@ -88,3 +88,32 @@ function proxy(wrapper, name, path, onDone, options) {
                        name, path, (built, error) => onDone(built, error),
                        options.cancellable || null);
 }
+
+/*
+ * What came back off a proxy, without the variant around it.
+ *
+ * A GVariant property read off a proxy is sometimes already the value and
+ * sometimes the box - which of the two depends on the interface, on the
+ * wrapper, and on the runtime a case substitutes - so every caller ends up
+ * asking the same question of it. Three of them asked it separately: BlueZ of
+ * a device's properties, and power-profiles-daemon twice, once for a name and
+ * once for a whole dictionary.
+ *
+ * `unpack` is the shallow form, for a value that is one scalar in a box.
+ */
+function unpack(value) {
+    return value && typeof value.unpack === "function" ? value.unpack() : value;
+}
+
+/* And the recursive one, for a value that may hold others. */
+function deepUnpack(value) {
+    return value && typeof value.deepUnpack === "function" ? value.deepUnpack() : value;
+}
+
+/* One dictionary of them: every value unpacked, the keys left alone. */
+function unpackDict(entry) {
+    let result = {};
+    for (let key in entry)
+        result[key] = deepUnpack(entry[key]);
+    return result;
+}

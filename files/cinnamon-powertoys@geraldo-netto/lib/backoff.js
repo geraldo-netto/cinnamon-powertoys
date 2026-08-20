@@ -20,6 +20,21 @@ const INITIAL_MS = 1000;
 const MAX_MS = 30000;
 
 /*
+ * What a backend that talks to a daemon by name waits, which is not the
+ * general default above.
+ *
+ * A daemon that has just gone is usually a daemon that is coming straight
+ * back - a package upgrade restarting it, a session service started late - so
+ * the first retry is soon enough that the applet has it again before anybody
+ * looks, and the ceiling is low enough that a machine which will never run
+ * that daemon still costs one wakeup every eight seconds and no more. All
+ * four of the bus backends had settled on the same pair separately, which is
+ * one decision written four times rather than four decisions.
+ */
+const BUS_INITIAL_MS = 500;
+const BUS_MAX_MS = 8000;
+
+/*
  * The timer conventions a backend may already hold: an already-shaped port
  * (`add`/`remove`), a bus (`timeoutAdd`/`removeTimer`) or a GLib-shaped object
  * (`timeout_add`/`source_remove`). Anything unanswered falls back to GLib's

@@ -26,8 +26,6 @@ const BACKENDS = [
  * distinct from both the pending initial edge (null) and confirmed absence
  * (false), so direct discovery can cover the missing observation. */
 const OWNER_WATCH_FAILED = "watch-failed";
-const RETRY_INITIAL_MS = 500;
-const RETRY_MAX_MS = 8000;
 
 /* A queued write that is replaced by a newer choice was not refused and did
  * not reach the daemon. Keep that normal coalescing outcome out of Error so a
@@ -142,19 +140,8 @@ function _profileNames(proxy) {
     let entries = proxy ? proxy.Profiles : null;
     if (!entries)
         return [];
-    return entries.map(entry => {
-        let value = entry.Profile;
-        return (value && typeof value.unpack === "function") ? value.unpack() : value;
-    }).filter(name => typeof name === "string" && name !== "");
-}
-
-function _unpackVariantDict(entry) {
-    let result = {};
-    for (let key in entry) {
-        let value = entry[key];
-        result[key] = (value && typeof value.deepUnpack === "function") ? value.deepUnpack() : value;
-    }
-    return result;
+    return entries.map(entry => Bus.unpack(entry.Profile))
+        .filter(name => typeof name === "string" && name !== "");
 }
 
 /*
@@ -268,8 +255,8 @@ const ProfileBackendConnection = class ProfileBackendConnection {
         this._connectCall = null;
         this._retry = new Backoff.Backoff({
             timers: this._bus,
-            initialMs: RETRY_INITIAL_MS,
-            maxMs: RETRY_MAX_MS,
+            initialMs: Backoff.BUS_INITIAL_MS,
+            maxMs: Backoff.BUS_MAX_MS,
             allow: () => !this.destroyed && this._ownerAware &&
                 this._ownedBackends().length > 0,
             run: () => this._connect(),
@@ -762,7 +749,7 @@ const PowerProfilesClient = class PowerProfilesClient {
         let entries = this._proxy ? this._proxy.ActiveProfileHolds : null;
         if (!entries)
             return [];
-        return entries.map(_unpackVariantDict).map(hold => ({
+        return entries.map(Bus.unpackDict).map(hold => ({
             application: hold.ApplicationId || "",
             profile: hold.Profile || "",
             reason: hold.Reason || "",

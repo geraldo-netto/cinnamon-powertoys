@@ -49,8 +49,6 @@ const WATCHED_PROPERTIES = {
  * watching the menu sees the wait.
  */
 const REFRESH_SETTLE_MS = 250;
-const RETRY_INITIAL_MS = 500;
-const RETRY_MAX_MS = 8000;
 const DEGRADED_INITIAL_MS = 1000;
 const DEGRADED_MAX_MS = 30000;
 
@@ -93,10 +91,6 @@ function addressOf(path) {
     return match ? match[1].toUpperCase() : null;
 }
 
-function _unpack(value) {
-    return value && typeof value.deepUnpack === "function" ? value.deepUnpack() : value;
-}
-
 /*
  * Turns one entry of BlueZ's object tree into a device, or null when it is
  * not one we can say anything about: not connected, or no battery.
@@ -106,22 +100,22 @@ function describe(path, interfaces) {
     let battery = interfaces["org.bluez.Battery1"];
     if (!device || !battery)
         return null;
-    if (_unpack(device.Connected) !== true)
+    if (Bus.deepUnpack(device.Connected) !== true)
         return null;
 
-    let percentage = _unpack(battery.Percentage);
+    let percentage = Bus.deepUnpack(battery.Percentage);
     if (typeof percentage !== "number")
         return null;
 
     return {
         path: path,
         address: addressOf(path),
-        kind: _kind(_unpack(device.Icon)),
+        kind: _kind(Bus.deepUnpack(device.Icon)),
         /* BlueZ says nothing about charging, and a device that is charging is
          * usually on a cable and off bluetooth anyway. */
         state: UPDeviceState.UNKNOWN,
         vendor: "",
-        model: _unpack(device.Alias) || _unpack(device.Name) || "",
+        model: Bus.deepUnpack(device.Alias) || Bus.deepUnpack(device.Name) || "",
         icon: "",
         powerSupply: false,
         online: true,
@@ -221,8 +215,8 @@ const BluezBatteries = class BluezBatteries {
         this._refreshTimerId = 0;
         this._retry = new Backoff.Backoff({
             timers: this._timers,
-            initialMs: RETRY_INITIAL_MS,
-            maxMs: RETRY_MAX_MS,
+            initialMs: Backoff.BUS_INITIAL_MS,
+            maxMs: Backoff.BUS_MAX_MS,
             allow: () => !this.destroyed && this._ownerPresent === true,
             run: () => this._refresh(),
         });

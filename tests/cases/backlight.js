@@ -17,6 +17,7 @@ const Gio = imports.gi.Gio;
 const Harness = imports.harness;
 
 const Backlight = Harness.requireXlet("./lib/backlight.js");
+const Backoff = Harness.requireXlet("./lib/backoff.js");
 const Log = Harness.requireXlet("./lib/log.js");
 
 /*
@@ -316,7 +317,7 @@ cases["degraded backlight discovery retries without ownership edges"] = function
     Harness.equal(screen.hardwareState, "degraded",
                   "one fallback read failure is not hardware absence");
     Harness.equal(ready, 1, "degraded startup still settles readiness");
-    Harness.deepEqual(timers.delays, [1000, Backlight.RETRY_INITIAL_MS],
+    Harness.deepEqual(timers.delays, [1000, Backoff.BUS_INITIAL_MS],
                       "ownership and direct discovery retain recovery paths");
 
     let pending = Object.keys(timers.pending).map(Number);
@@ -403,7 +404,7 @@ cases["owned degraded backlight discovery retries until recovery"] = function ()
         }, owner);
 
     Harness.equal(screen.hardwareState, "degraded", "the failed startup remains unknown");
-    Harness.deepEqual(timers.delays, [Backlight.RETRY_INITIAL_MS], "retry starts at its floor");
+    Harness.deepEqual(timers.delays, [Backoff.BUS_INITIAL_MS], "retry starts at its floor");
     timers.fire();
     Harness.equal(screen.hardwareState, "degraded", "another connection failure stays degraded");
     Harness.deepEqual(timers.delays, [500, 1000], "retry backs off while ownership persists");
@@ -425,7 +426,7 @@ cases["retry cancellation releases injected and fallback timers"] = function () 
     owner.vanished();
     Harness.deepEqual(timers.removed, [1], "owner loss releases the injected timer");
     Harness.equal(injected._retry.pending, false, "and clears its token");
-    Harness.equal(injected._retry.delay, Backlight.RETRY_INITIAL_MS,
+    Harness.equal(injected._retry.delay, Backoff.BUS_INITIAL_MS,
                   "cancellation resets backoff for a future owner");
     injected.destroy();
 
@@ -562,7 +563,7 @@ cases["one owned startup read failure does not claim hardware is absent"] = func
     Harness.equal(screen.hardwareState, "degraded",
                   "a transient owned failure keeps monitor probing gated");
     Harness.equal(ready, 1, "startup still settles while confirmation continues");
-    Harness.deepEqual(timers.delays, [Backlight.RETRY_INITIAL_MS],
+    Harness.deepEqual(timers.delays, [Backoff.BUS_INITIAL_MS],
                       "confirmation starts with the bounded retry delay");
     timers.fire();
     Harness.equal(screen.hardwareState, "present", "the replacement read confirms hardware");

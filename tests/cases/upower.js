@@ -24,6 +24,7 @@ const Format = Harness.requireXlet("./lib/format.js");
 const Log = Harness.requireXlet("./lib/log.js");
 const Sensors = Harness.requireXlet("./lib/sensors.js");
 const UPower = Harness.requireXlet("./lib/upower.js");
+const Backoff = Harness.requireXlet("./lib/backoff.js");
 const Device = Harness.requireXlet("./lib/device.js");
 const SensorRows = Harness.requireXlet("./lib/sensor-rows.js");
 
@@ -564,7 +565,7 @@ cases["owned UPower manager failures retry with capped backoff"] = function () {
         Harness.equal(lines.length, 1, "the continuous manager failure is logged once");
         Harness.equal(monitor.available, true, "the recovered manager is adopted");
         Harness.equal(Object.keys(timers.pending).length, 0, "success cancels further retry");
-        Harness.equal(monitor._retry.delay, UPower.RETRY_INITIAL_MS,
+        Harness.equal(monitor._retry.delay, Backoff.BUS_INITIAL_MS,
                       "success resets backoff for a later incident");
     } finally {
         Log.setSink(null);

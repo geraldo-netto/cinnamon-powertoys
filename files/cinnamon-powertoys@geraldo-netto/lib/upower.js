@@ -19,8 +19,6 @@ const Backoff = require("./lib/backoff.js");
 const BUS_NAME = "org.freedesktop.UPower";
 const MANAGER_PATH = "/org/freedesktop/UPower";
 const DISPLAY_DEVICE_PATH = "/org/freedesktop/UPower/devices/DisplayDevice";
-const RETRY_INITIAL_MS = 500;
-const RETRY_MAX_MS = 8000;
 
 const MANAGER_XML = '<node>' +
     '<interface name="org.freedesktop.UPower">' +
@@ -143,8 +141,8 @@ const UPowerMonitor = class UPowerMonitor {
         this._proxyRequests = new Set();
         this._retry = new Backoff.Backoff({
             timers: this._bus,
-            initialMs: RETRY_INITIAL_MS,
-            maxMs: RETRY_MAX_MS,
+            initialMs: Backoff.BUS_INITIAL_MS,
+            maxMs: Backoff.BUS_MAX_MS,
             allow: () => !this.destroyed &&
                 (this._ownerPresent === true || this._watchDegraded),
             run: () => {

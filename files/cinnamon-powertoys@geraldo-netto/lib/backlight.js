@@ -52,8 +52,6 @@ const KEYBOARD_XML = '<node>' +
 
 const SCREEN = "screen";
 const KEYBOARD = "keyboard";
-const RETRY_INITIAL_MS = 500;
-const RETRY_MAX_MS = 8000;
 const ABSENCE_CONFIRMATIONS = 3;
 
 /*
@@ -172,8 +170,8 @@ const BacklightControl = class BacklightControl {
         this._ownerPresent = false;
         this._retry = new Backoff.Backoff({
             timers: owner,
-            initialMs: RETRY_INITIAL_MS,
-            maxMs: RETRY_MAX_MS,
+            initialMs: Backoff.BUS_INITIAL_MS,
+            maxMs: Backoff.BUS_MAX_MS,
             allow: () => !this.destroyed && this._ownerPresent !== false,
             run: () => this.refresh(() => {
                 if (!this.destroyed) {
