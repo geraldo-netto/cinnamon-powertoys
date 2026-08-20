@@ -71,18 +71,31 @@ PACKAGE_TOOL := tools/build-package.py
 # Every script this repository ships or runs, and every Python tool beside
 # them, named once. The list used to be written out by hand in the one place
 # that parsed it, so a script added under tools/ was checked by nothing until
-# somebody noticed. A wildcard cannot forget.
-SHELL_SOURCES := $(XLET_DIR)/powertoys-helper install.sh $(wildcard tools/*.sh)
-PYTHON_SOURCES := $(wildcard tools/*.py)
+# somebody noticed.
+#
+# Found rather than matched. `$(wildcard tools/*.sh)` cannot forget a script
+# and cannot see one a directory further down either, which is the same hole
+# with a longer fuse: the payload lists below were wildcards over lib/ and ui/
+# exactly, and a file at lib/anything/x.js was parsed by nothing, resolved by
+# nothing, read for strings by nothing and listed by no coverage report - and
+# was still packaged by `make dist`, which walks the payload with rglob and so
+# ships whatever is in it. Sorted, so the lists are a function of the tree and
+# not of the order a directory happens to be read in.
+SHELL_SOURCES := $(XLET_DIR)/powertoys-helper install.sh \
+	$(shell find tools -name '*.sh' | sort)
+PYTHON_SOURCES := $(shell find tools -name '*.py' | sort)
 
 # The JavaScript the gates read, split by what may be assumed about it. The
 # runtime sources are what Cinnamon evaluates; the rest is developer tooling
 # and the cases, which run under cjs directly. Both are resolved, because a
 # name that does not exist is the same mistake wherever it is written.
-JS_SOURCES := $(XLET_DIR)/applet.js $(wildcard $(XLET_DIR)/lib/*.js) \
-	$(wildcard $(XLET_DIR)/ui/*.js)
-JS_TOOL_SOURCES := $(wildcard tools/*.js) $(wildcard tests/*.js) \
-	$(wildcard tests/cases/*.js)
+#
+# applet.js is named first and then filtered out of the walk, because it is
+# the file the whole applet hangs off and a reader of a failure list should
+# meet it before the libraries it requires.
+JS_SOURCES := $(XLET_DIR)/applet.js \
+	$(filter-out $(XLET_DIR)/applet.js,$(shell find $(XLET_DIR) -name '*.js' | sort))
+JS_TOOL_SOURCES := $(shell find tools tests -name '*.js' | sort)
 
 # What the lint gates are allowed to let past, stated here so the reason is
 # next to the exception rather than repeated on forty lines.
@@ -184,8 +197,9 @@ uninstall-rapl:
 # the file; the scope check says every name written in it exists, which is the
 # mistake a parse cannot see and is the one a machine without Cinnamon can
 # still find in applet.js - the suite's shell load evaluates it for real, but
-# only where there is a Cinnamon to evaluate it against. `sh -n` says a script
-# is syntactically a script;
+# only where there is a Cinnamon to evaluate it against. tools/shell-syntax.sh
+# says each script is syntactically a script - one at a time, because `sh -n`
+# given several files parses the first and takes the rest as its arguments;
 # ShellCheck says whether it means what it looks like, which is the class of
 # mistake a shell only reports at the moment it goes wrong on somebody's
 # machine. flake8 does the same for the Python tools beside them.
@@ -204,8 +218,7 @@ check:
 	@cjs tools/parse-check.js $(JS_SOURCES)
 	@cjs tools/scope-check.js $(JS_SOURCES) $(JS_TOOL_SOURCES)
 	@cjs tests/run.js
-	@sh -n $(SHELL_SOURCES) \
-		&& echo "shell ok     helper and install scripts"
+	@sh tools/shell-syntax.sh $(SHELL_SOURCES)
 	@command -v shellcheck >/dev/null 2>&1 || \
 		{ echo "shellcheck not found, install the shellcheck package"; exit 1; }
 	@shellcheck --shell=sh --severity=style --external-sources \

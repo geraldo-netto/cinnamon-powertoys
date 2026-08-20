@@ -309,8 +309,9 @@ parse check run under, so they fail for the same reasons the shell would.
 `python3` checks the JSON and policy metadata, `gettext` is for the
 translations, and the typelib is the runtime dependency for modules that
 consume UPower device data or enums. `shellcheck` reads the shipped helper and
-every installation script, and `flake8` the Python tools beside them: `sh -n`
-says a script parses, those two say whether it means what it looks like.
+every installation script, and `flake8` the Python tools beside them:
+`tools/shell-syntax.sh` says each script parses, one script per `sh -n` call,
+and those two say whether it means what it looks like.
 `make check` fails when either is missing rather than skipping the gate, so
 neither is optional. `cinnamon-xlet-makepot`, which `make pot`
 calls, ships in the `cinnamon` package itself and so is already there on the
