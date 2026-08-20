@@ -14,6 +14,7 @@
 
 const Harness = imports.harness;
 
+const Scan = Harness.requireXlet("./lib/sensor-scan.js");
 const Energy = Harness.requireXlet("./lib/energy.js");
 const SensorKinds = Harness.requireXlet("./lib/sensor-kinds.js");
 const Hardware = Harness.requireXlet("./lib/hardware.js");
@@ -77,7 +78,7 @@ var cases = {};
 
 cases["finds every hwmon and thermal sensor"] = function () {
     on("machine", function () {
-        let found = Sensors.discoverSensors();
+        let found = Scan.discoverSensors();
         Harness.equal(found.temperatures.length, 8, "temperatures");
         Harness.equal(found.fans.length, 1, "fans");
         Harness.equal(found.powerMeters.length, 3, "power meters");
@@ -86,7 +87,7 @@ cases["finds every hwmon and thermal sensor"] = function () {
 
 cases["a label is used as it stands when it already names its chip"] = function () {
     on("machine", function () {
-        let found = Sensors.discoverSensors();
+        let found = Scan.discoverSensors();
         Harness.equal(byId(found.temperatures, "hwmon:hwmon0:temp1").display,
                       "k10temp Tctl", "a label that does not repeat the chip is prefixed");
         Harness.equal(byId(found.powerMeters, "hwmon:hwmon3:power1").display,
@@ -96,7 +97,7 @@ cases["a label is used as it stands when it already names its chip"] = function 
 
 cases["two chips of the same name are told apart"] = function () {
     on("machine", function () {
-        let found = Sensors.discoverSensors();
+        let found = Scan.discoverSensors();
         Harness.equal(byId(found.temperatures, "hwmon:hwmon2:temp1").display,
                       "drivetemp (sda)", "first disk");
         Harness.equal(byId(found.temperatures, "hwmon:hwmon10:temp1").display,
@@ -106,7 +107,7 @@ cases["two chips of the same name are told apart"] = function () {
 
 cases["a PCI slot loses its leading domain"] = function () {
     on("machine", function () {
-        let found = Sensors.discoverSensors();
+        let found = Scan.discoverSensors();
         Harness.equal(byId(found.temperatures, "hwmon:hwmon3:temp1").identity,
                       "03:00.0", "0000:03:00.0 reads better without the domain");
     });
@@ -114,7 +115,7 @@ cases["a PCI slot loses its leading domain"] = function () {
 
 cases["a group is named after the hardware, not after where it is plugged in"] = function () {
     on("machine", function () {
-        let found = Sensors.discoverSensors();
+        let found = Scan.discoverSensors();
         Harness.equal(byId(found.temperatures, "hwmon:hwmon0:temp1").groupLabel,
                       "AMD Ryzen 7 5800X", "the processor comes from /proc/cpuinfo");
         Harness.equal(byId(found.temperatures, "hwmon:hwmon3:temp1").groupLabel,
@@ -127,7 +128,7 @@ cases["a group is named after the hardware, not after where it is plugged in"] =
 
 cases["two chips with the same name make two groups, told apart"] = function () {
     on("machine", function () {
-        let found = Sensors.discoverSensors();
+        let found = Scan.discoverSensors();
         Harness.equal(byId(found.temperatures, "hwmon:hwmon2:temp1").group,
                       "hwmon:hwmon2", "one group per chip");
         Harness.equal(byId(found.temperatures, "hwmon:hwmon2:temp1").groupLabel,
@@ -139,7 +140,7 @@ cases["two chips with the same name make two groups, told apart"] = function () 
 
 cases["a row under a named group drops the chip and the address"] = function () {
     on("machine", function () {
-        let found = Sensors.discoverSensors();
+        let found = Scan.discoverSensors();
         Harness.equal(byId(found.temperatures, "hwmon:hwmon0:temp1").short,
                       "Cooling control (Tctl)",
                       "a control value, said in words, with the driver's word to match on");
@@ -156,7 +157,7 @@ cases["a row under a named group drops the chip and the address"] = function () 
 
 cases["a tidied label is text, not a replacement pattern"] = function () {
     on("machine", function () {
-        let found = Sensors.discoverSensors();
+        let found = Scan.discoverSensors();
         /* Tccd1 uses both what the pattern matched and the number in it. If
          * these were replacement strings a translation containing $ would be
          * eaten by String.replace, so the table answers with a name instead. */
@@ -181,7 +182,7 @@ cases["die sensor tokens keep their complete translated labels"] = function () {
 
 cases["everything one chip says stays together, in kind order"] = function () {
     on("machine", function () {
-        let found = Sensors.discoverSensors();
+        let found = Scan.discoverSensors();
         let sorted = found.temperatures.concat(found.fans, found.powerMeters)
             .sort(SensorKinds.bySensorOrder)
             .map(entry => entry.group);
@@ -208,7 +209,7 @@ cases["hwmon10 sorts after hwmon2, not before it"] = function () {
 
 cases["a chip is classified by its name"] = function () {
     on("machine", function () {
-        let found = Sensors.discoverSensors();
+        let found = Scan.discoverSensors();
         Harness.equal(byId(found.temperatures, "hwmon:hwmon0:temp1").kind, "cpu", "k10temp");
         Harness.equal(byId(found.temperatures, "hwmon:hwmon3:temp1").kind, "gpu", "amdgpu");
         Harness.equal(byId(found.temperatures, "hwmon:hwmon2:temp1").kind, "disk", "drivetemp");
@@ -218,7 +219,7 @@ cases["a chip is classified by its name"] = function () {
 
 cases["a critical point is read from crit, then from emergency"] = function () {
     on("machine", function () {
-        let found = Sensors.discoverSensors();
+        let found = Scan.discoverSensors();
         Harness.equal(byId(found.temperatures, "hwmon:hwmon0:temp1").critical, 95, "temp1_crit");
         Harness.equal(byId(found.temperatures, "hwmon:hwmon0:temp3").critical, 100,
                       "temp3 has only an emergency point");
@@ -229,7 +230,7 @@ cases["a critical point is read from crit, then from emergency"] = function () {
 
 cases["a thermal zone is not deduplicated by its display name"] = function () {
     on("machine", function () {
-        let found = Sensors.discoverSensors();
+        let found = Scan.discoverSensors();
         Harness.ok(byId(found.temperatures, "thermal:thermal_zone0"),
                    "acpitz is not a hwmon chip here, so it is kept");
         Harness.ok(byId(found.temperatures, "thermal:thermal_zone1"),
@@ -253,7 +254,7 @@ cases["a shared thermal zone is retained as its hwmon device fallback"] = functi
     strings[hwmon + "/hwmon0/name"] = "coretemp";
     strings[thermal + "/thermal_zone0/type"] = "x86_pkg_temp";
     let link = path => /\/device$/.test(path) ? "/sys/devices/platform/package0" : null;
-    let scanned = Sensors._scanSensors(
+    let scanned = Scan.scanSensors(
         directories, path => strings[path] || null, link).found.temperatures;
 
     Harness.equal(scanned.length, 2, "both class interfaces survive discovery");
@@ -268,7 +269,7 @@ cases["class links compare as canonical device identities"] = function () {
     IO.readLink = () => "../../../devices/platform/coretemp.0";
     IO.resolve = path => "/capture" + path;
     try {
-        Harness.equal(Sensors.deviceIdentity("/sys/class/hwmon/hwmon0"),
+        Harness.equal(Scan.deviceIdentity("/sys/class/hwmon/hwmon0"),
                       "/capture/sys/devices/platform/coretemp.0",
                       "relative class links name their backing device");
     } finally {
@@ -279,7 +280,7 @@ cases["class links compare as canonical device identities"] = function () {
 
 cases["a thermal zone takes its limit from the critical trip point"] = function () {
     on("machine", function () {
-        let found = Sensors.discoverSensors();
+        let found = Scan.discoverSensors();
         Harness.equal(byId(found.temperatures, "thermal:thermal_zone0").critical, 105,
                       "the passive trip point at 80 is not the critical one");
     });
@@ -287,7 +288,7 @@ cases["a thermal zone takes its limit from the critical trip point"] = function 
 
 cases["the averaged power node wins over the instantaneous one"] = function () {
     on("machine", function () {
-        let found = Sensors.discoverSensors();
+        let found = Scan.discoverSensors();
         let meters = found.powerMeters.filter(m => m.id.indexOf("hwmon4") >= 0);
         Harness.equal(meters.length, 2, "power1 counted once, plus power2");
         Harness.equal(meters[0].path, "/sys/class/hwmon/hwmon4/power1_average",
@@ -370,24 +371,24 @@ cases["an unreadable hwmon temperature falls back to its thermal zone"] = functi
 
 cases["only an unambiguous GPU total is aggregatable"] = function () {
     let lone = { rawLabel: null };
-    Harness.equal(Sensors.gpuDeviceTotal([lone]), lone,
+    Harness.equal(Scan.gpuDeviceTotal([lone]), lone,
                   "the common lone unlabelled device meter");
 
     let total = { rawLabel: "PPT" };
     let core = { rawLabel: "VDDGFX" };
     let memory = { rawLabel: "Memory rail" };
-    Harness.equal(Sensors.gpuDeviceTotal([total, core, memory]), total,
+    Harness.equal(Scan.gpuDeviceTotal([total, core, memory]), total,
                   "an explicit whole-device channel is selected among rails");
-    Harness.equal(Sensors.gpuDeviceTotal([core, memory]), null,
+    Harness.equal(Scan.gpuDeviceTotal([core, memory]), null,
                   "rails with no declared total remain individual readings");
-    Harness.equal(Sensors.gpuDeviceTotal([{ rawLabel: "Total" },
+    Harness.equal(Scan.gpuDeviceTotal([{ rawLabel: "Total" },
                                           { rawLabel: "Board power" }]), null,
                   "two competing totals are ambiguous rather than additive");
 };
 
 cases["a sensor carries no field nothing reads"] = function () {
     on("machine", function () {
-        let sensor = byId(Sensors.discoverSensors().powerMeters, "hwmon:hwmon3:power1");
+        let sensor = byId(Scan.discoverSensors().powerMeters, "hwmon:hwmon3:power1");
         Harness.equal(sensor.capPath, undefined,
                       "the cap node was discovered for a feature that was never written");
     });
@@ -790,7 +791,7 @@ cases["a machine with none of it answers null rather than throwing"] = function 
         let cpu = cpuControl();
         Harness.equal(cpu.available, false, "cpufreq");
         cpu.destroy();
-        let found = Sensors.discoverSensors();
+        let found = Scan.discoverSensors();
         Harness.equal(found.temperatures.length, 0, "temperatures");
     } finally {
         IO.setRoot("");
@@ -812,7 +813,7 @@ cases["naming leaves the entries it was given alone"] = function () {
 
 cases["a fan and a meter on one chip are not disambiguated against each other"] = function () {
     on("machine", function () {
-        let found = Sensors.discoverSensors();
+        let found = Scan.discoverSensors();
         Harness.equal(byId(found.fans, "hwmon:hwmon3:fan1").display, "amdgpu",
                       "the card's only fan");
         Harness.equal(byId(found.powerMeters, "hwmon:hwmon3:power1").display, "amdgpu",
@@ -890,9 +891,9 @@ cases["a filter that says no to everything reads nothing"] = function () {
 
 cases["asynchronous discovery produces the synchronous snapshot"] = function () {
     on("machine", function () {
-        let expected = Sensors.discoverSensors();
+        let expected = Scan.discoverSensors();
         Hardware.forget();
-        let actual = Harness.settle(done => Sensors.discoverSensorsAsync(done),
+        let actual = Harness.settle(done => Scan.discoverSensorsAsync(done),
                                     "discoverSensorsAsync");
         Harness.deepEqual(actual, expected,
                           "directory and metadata reads do not change discovery semantics");
@@ -905,7 +906,7 @@ cases["asynchronous discovery performs no synchronous link reads"] = function ()
         IO.readLink = () => { throw new Error("synchronous link read"); };
         try {
             Hardware.forget();
-            let found = Harness.settle(done => Sensors.discoverSensorsAsync(done),
+            let found = Harness.settle(done => Scan.discoverSensorsAsync(done),
                                        "asynchronous sensor links");
             Harness.equal(found.temperatures.length, 8, "the complete snapshot still arrives");
             Harness.equal(byId(found.temperatures, "hwmon:hwmon3:temp1").identity,
@@ -1016,8 +1017,8 @@ cases["overlapping asynchronous refreshes settle after a newer topology check"] 
         let holding = true;
         let rootListings = 0;
         IO.listDirsAsync = function (paths, done) {
-            rootListings += paths.filter(path => path === Sensors.HWMON_DIR ||
-                path === Sensors.THERMAL_DIR || path === Sensors.POWERCAP_DIR).length;
+            rootListings += paths.filter(path => path === Scan.HWMON_DIR ||
+                path === Scan.THERMAL_DIR || path === Scan.POWERCAP_DIR).length;
             if (holding)
                 held.push(() => real(paths, done));
             else
