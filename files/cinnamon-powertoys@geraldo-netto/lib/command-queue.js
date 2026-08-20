@@ -29,9 +29,10 @@ const Log = require("./lib/log.js");
  * write must not overtake the write that caused it.
  *
  * A job answers exactly once. A runner that throws, a runner that calls back
- * twice, and a cancelled job all arrive at the caller as one settled answer,
- * because a caller counting outstanding work cannot survive either a missing
- * reply or a second one.
+ * twice, a cancelled job and one handed to a queue that has already been
+ * destroyed all arrive at the caller as one settled answer, because a caller
+ * counting outstanding work cannot survive either a missing reply or a second
+ * one.
  */
 const CommandQueue = class CommandQueue {
     /* `run(argv, onDone)` may answer with a handle carrying cancel(); an
@@ -57,6 +58,16 @@ const CommandQueue = class CommandQueue {
 
     run(argv, onDone, kind) {
         let job = { argv: argv, onDone: onDone, kind: kind || "read" };
+        /* A stopped queue dispatches nothing, so a job taken onto it is a job
+         * that is never answered and an in-flight count that never comes back
+         * down - and `busy` is the one ownership invariant callers read. It is
+         * answered here the same way cancelQueued answers the jobs that were
+         * already waiting when destroy() arrived: as the failure the command
+         * that will not run amounts to. */
+        if (this._destroyed) {
+            this._settle(job);
+            return;
+        }
         this._inFlight++;
         if (job.kind === "write") {
             let before = this._queue.findIndex(queued => queued.kind !== "write");
@@ -119,11 +130,18 @@ const CommandQueue = class CommandQueue {
         let queued = this._queue.splice(0);
         for (let job of queued) {
             this._inFlight--;
-            try {
-                job.onDone("", -1);
-            } catch (error) {
-                Log.error("could not settle cancelled ddcutil work: " + error);
-            }
+            this._settle(job);
+        }
+    }
+
+    /* One answer for a job that never reached the transport. A caller that
+     * throws is reported rather than propagated: it must not stop the rest of
+     * the queue being settled, nor escape into a Gio callback. */
+    _settle(job) {
+        try {
+            job.onDone("", -1);
+        } catch (error) {
+            Log.error("could not settle cancelled ddcutil work: " + error);
         }
     }
 

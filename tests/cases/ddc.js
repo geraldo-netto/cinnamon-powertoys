@@ -224,6 +224,30 @@ cases["the command queue runs one job and lets writes past the rest"] = function
     Harness.equal(idle, 5, "and the owner heard about every quiet moment");
 };
 
+cases["the command queue answers a job handed to it after it was destroyed"] = function () {
+    /*
+     * A queue that has been stopped still has to answer. Accepting a job it
+     * will never dispatch counts it as outstanding for ever, so `busy` never
+     * comes back down and a caller counting its own work waits for a callback
+     * that is not coming - which is exactly what lib/privileged.js answers
+     * with SHUTTING_DOWN rather than leave to the order teardown happens in.
+     */
+    let started = [];
+    let queue = new CommandQueue.CommandQueue((argv, onDone) => {
+        started.push(argv[0]);
+        return { cancel: () => onDone("", -1) };
+    });
+
+    queue.destroy();
+
+    let answered = [];
+    queue.run(["late"], (output, status) => answered.push([output, status]));
+
+    Harness.deepEqual(started, [], "nothing reached the transport after destroy");
+    Harness.deepEqual(answered, [["", -1]], "the late caller was answered, not left waiting");
+    Harness.equal(queue.busy, false, "and a destroyed queue is never busy again");
+};
+
 cases["the shared DDC command boundary settles throws and duplicate replies"] = function () {
     let lines = [];
     Log.setSink(line => lines.push(line));
