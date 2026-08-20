@@ -593,3 +593,37 @@ cases["check resolves every name in the runtime sources"] = function () {
     Harness.ok(source.indexOf("cjs tools/strings-check.js $(POT) $(JS_SOURCES)") >= 0,
                "and so does the strings check, over the template it ships");
 };
+
+/*
+ * Every target is declared phony, and nothing is declared that is not a
+ * target.
+ *
+ * Both lists are in the same file and both are written by hand, which is the
+ * arrangement that drifts. A target left out of .PHONY stops running the day
+ * a file of its name appears in the tree - `make check` beside a directory
+ * called check is make deciding there is nothing to do - and a name in .PHONY
+ * that is no longer a target is the trace of a rename that only happened on
+ * one of the two lines.
+ */
+cases["the phony list and the targets are the same set"] = function () {
+    let makefile = Harness.readFile(Harness.testsDir() + "/../Makefile");
+    let declared = /^\.PHONY:((?:[^\n\\]*\\\n)*[^\n]*)/m.exec(makefile);
+    Harness.ok(declared !== null, "the Makefile declares its phony targets");
+    let phony = declared[1].replace(/\\\n/g, " ").split(/\s+/)
+        .filter(name => name !== "").sort();
+
+    /* A target is a name at the start of a line with a colon after it, and
+     * not a variable assignment - `POLICY_DIR := ...` has a colon too. */
+    let targets = {};
+    let pattern = /^([a-z][a-z0-9-]*):(?!=)/gm;
+    let match;
+    while ((match = pattern.exec(makefile)) !== null)
+        targets[match[1]] = true;
+    let names = Object.keys(targets).sort();
+
+    Harness.ok(names.length > 5, "there are " + names.length + " targets");
+    Harness.deepEqual(names.filter(name => phony.indexOf(name) < 0), [],
+                      "a target that is not phony stops working the day a file takes its name");
+    Harness.deepEqual(phony.filter(name => names.indexOf(name) < 0), [],
+                      "and a phony name that is no longer a target is half a rename");
+};

@@ -346,3 +346,71 @@ cases["a machine with no firmware profile says so"] = function () {
                       "there is nothing to write to");
     });
 };
+
+/*
+ * The helper's vocabulary, from both sides.
+ *
+ * The helper dispatches on a command word and refuses anything else; the
+ * applet's libraries write those words into argument vectors. Nothing held
+ * the two sets together, and neither end fails on its own: a command the
+ * helper stopped implementing is refused as an invalid invocation at the
+ * moment somebody moves a slider, and a command the helper implements that no
+ * module sends is privileged code that ships and runs on nobody's machine.
+ *
+ * The prose in lib/reading.js says "the helper takes five commands"; this is
+ * what makes that sentence true rather than remembered.
+ */
+cases["the helper implements what the applet sends, and only that"] = function () {
+    const Scan = imports.scan;
+    const Sources = imports.sources;
+
+    let script = Harness.readFile(Harness.xletDir() + "/powertoys-helper");
+    let dispatch = /case "\$command" in([\s\S]*?)\nesac/.exec(script);
+    Harness.ok(dispatch !== null, "the helper dispatches on a command word");
+    let implemented = {};
+    let branch = /^\s*([a-z][a-z-]*)\)/gm;
+    let match;
+    while ((match = branch.exec(dispatch[1])) !== null)
+        implemented[match[1]] = true;
+
+    let sent = {};
+    for (let relative of Sources.jsFiles(Harness.xletDir(), "")) {
+        let source = Harness.readFile(Harness.xletDir() + "/" + relative);
+        let written = Scan.literals(source);
+        let calls = /_runner\(\s*\[\s*"([a-z][a-z-]*)"/g;
+        while ((match = calls.exec(source)) !== null) {
+            if (written.indexOf(match[1]) >= 0)
+                sent[match[1]] = relative;
+        }
+    }
+
+    let names = Object.keys(implemented).sort();
+    Harness.ok(names.length > 3, "there are " + names.length + " commands to check");
+    Harness.deepEqual(names.filter(name => sent[name] === undefined), [],
+                      "a privileged command nothing sends is privileged code nobody runs");
+    Harness.deepEqual(Object.keys(sent).sort().filter(name => !implemented[name]), [],
+                      "and a command the helper does not implement is refused at the slider");
+};
+
+cases["every change the menu describes is one the helper takes"] = function () {
+    /* lib/reading.js turns an argument vector back into a sentence for the
+     * notification. A branch for a word the helper does not take is a
+     * sentence nobody will ever be shown, which is what a rename on the
+     * helper's side leaves behind. */
+    const Reading = Harness.requireXlet("./lib/reading.js");
+    let described = /switch \(args\[0\]\) \{([\s\S]*?)\n\}/
+        .exec(Harness.readFile(Harness.xletDir() + "/lib/reading.js"));
+    Harness.ok(described !== null, "the descriptions are a switch on the command");
+    let script = Harness.readFile(Harness.xletDir() + "/powertoys-helper");
+    let branch = /case "([a-z][a-z-]*)":/g;
+    let match;
+    let checked = 0;
+    while ((match = branch.exec(described[1])) !== null) {
+        checked++;
+        Harness.ok(new RegExp("^\\s*" + match[1] + "\\)", "m").test(script),
+                   match[1] + " is described by the menu and taken by the helper");
+        Harness.ok(Reading.describeChange([match[1], "1"]) !== "",
+                   match[1] + " describes into something");
+    }
+    Harness.ok(checked > 2, "only " + checked + " descriptions checked, which is too few");
+};
