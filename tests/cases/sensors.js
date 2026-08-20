@@ -14,6 +14,7 @@
 
 const Harness = imports.harness;
 
+const Energy = Harness.requireXlet("./lib/energy.js");
 const SensorKinds = Harness.requireXlet("./lib/sensor-kinds.js");
 const Hardware = Harness.requireXlet("./lib/hardware.js");
 const IO = Harness.requireXlet("./lib/io.js");
@@ -470,7 +471,7 @@ cases["an unlabelled fan that has run survives a rediscovery"] = function () {
 
 cases["only the top level RAPL domains may be summed"] = function () {
     on("machine", function () {
-        let counters = Sensors.discoverEnergyCounters();
+        let counters = Energy.discoverEnergyCounters();
         Harness.equal(counters.length, 3, "two packages and a sub-domain");
         Harness.equal(byId(counters, "rapl:intel-rapl:0").topLevel, true, "a package");
         Harness.equal(byId(counters, "rapl:intel-rapl:1").topLevel, true, "the other package");
@@ -483,7 +484,7 @@ cases["only the top level RAPL domains may be summed"] = function () {
 
 cases["a RAPL domain is named after what it measures"] = function () {
     on("machine", function () {
-        let counters = Sensors.discoverEnergyCounters();
+        let counters = Energy.discoverEnergyCounters();
         Harness.equal(byId(counters, "rapl:intel-rapl:0").label, "Package 0",
                       "two sockets, so each says which it is");
         Harness.equal(byId(counters, "rapl:intel-rapl:1").label, "Package 1", "the other");
@@ -520,8 +521,8 @@ cases["powercap discovery depends on access rather than a moving sample"] = func
     let readable = path => /intel-rapl:0\/energy_uj$/.test(path) ||
                             /dtpm:0\/power_uw$/.test(path);
 
-    let counters = Sensors._energyCounters(entries, read, readable);
-    let direct = Sensors._directPowercapSensors(entries, read, readable);
+    let counters = Energy.energyCounters(entries, read, readable);
+    let direct = Energy.directPowercapSensors(entries, read, readable);
     Harness.ok(byId(counters, "rapl:intel-rapl:0"),
                "a readable energy interface survives a failed first value");
     Harness.ok(byId(direct, "dtpm-power:dtpm:0"),
@@ -532,7 +533,7 @@ cases["powercap discovery depends on access rather than a moving sample"] = func
 
 cases["one socket has no number to say"] = function () {
     on("one-socket", function () {
-        let counters = Sensors.discoverEnergyCounters();
+        let counters = Energy.discoverEnergyCounters();
         Harness.equal(byId(counters, "rapl:intel-rapl:0").label, "Package",
                       "nothing to tell it apart from");
         Harness.equal(byId(counters, "rapl:intel-rapl:0:0").label, "Cores", "and its cores");
@@ -541,7 +542,7 @@ cases["one socket has no number to say"] = function () {
 
 cases["one energy reading is not enough for a rate"] = function () {
     on("machine", function () {
-        let meter = new Sensors.EnergyMeter(Sensors.discoverEnergyCounters()[0]);
+        let meter = new Energy.EnergyMeter(Energy.discoverEnergyCounters()[0]);
         meter.sample(0);
         Harness.equal(meter.watts, null, "nothing to subtract from yet");
     });
@@ -549,8 +550,8 @@ cases["one energy reading is not enough for a rate"] = function () {
 
 cases["microjoules over microseconds is watts"] = function () {
     on("machine", function () {
-        let counter = byId(Sensors.discoverEnergyCounters(), "rapl:intel-rapl:0");
-        let meter = new Sensors.EnergyMeter(counter);
+        let counter = byId(Energy.discoverEnergyCounters(), "rapl:intel-rapl:0");
+        let meter = new Energy.EnergyMeter(counter);
         /* The fixture reads 1000000 uJ. Pretend a second passed and the
          * counter advanced by 45 J: that is 45 W. */
         meter.sample(0);
@@ -562,8 +563,8 @@ cases["microjoules over microseconds is watts"] = function () {
 
 cases["a counter that wraps does not read as a negative"] = function () {
     on("machine", function () {
-        let counter = byId(Sensors.discoverEnergyCounters(), "rapl:intel-rapl:0");
-        let meter = new Sensors.EnergyMeter(counter);
+        let counter = byId(Energy.discoverEnergyCounters(), "rapl:intel-rapl:0");
+        let meter = new Energy.EnergyMeter(counter);
         meter.sample(0);
         /* Just under the maximum, so the fixture's 1000000 is past the wrap. */
         meter._lastValue = counter.maxRange - 1000000;
@@ -574,8 +575,8 @@ cases["a counter that wraps does not read as a negative"] = function () {
 
 cases["a reset energy counter is rebaselined, not treated as a wrap"] = function () {
     on("machine", function () {
-        let counter = byId(Sensors.discoverEnergyCounters(), "rapl:intel-rapl:0");
-        let meter = new Sensors.EnergyMeter(counter);
+        let counter = byId(Energy.discoverEnergyCounters(), "rapl:intel-rapl:0");
+        let meter = new Energy.EnergyMeter(counter);
         meter.sample(0);
         meter._lastValue = counter.maxRange / 2;
         meter.sample(1000000);
@@ -590,7 +591,7 @@ cases["a reset energy counter is rebaselined, not treated as a wrap"] = function
 
 cases["no time between two readings gives no rate"] = function () {
     on("machine", function () {
-        let meter = new Sensors.EnergyMeter(Sensors.discoverEnergyCounters()[0]);
+        let meter = new Energy.EnergyMeter(Energy.discoverEnergyCounters()[0]);
         meter.sample(5000);
         meter.sample(5000);
         Harness.equal(meter.watts, null, "the same instant twice says nothing");
@@ -598,8 +599,8 @@ cases["no time between two readings gives no rate"] = function () {
 };
 
 cases["an unreadable counter forgets what it knew"] = function () {
-    let counter = on("machine", () => Sensors.discoverEnergyCounters()[0]);
-    let meter = new Sensors.EnergyMeter(counter);
+    let counter = on("machine", () => Energy.discoverEnergyCounters()[0]);
+    let meter = new Energy.EnergyMeter(counter);
     /* The root is back to the real machine, where that path does not exist. */
     IO.setRoot("/nonexistent");
     try {

@@ -206,6 +206,34 @@ msgstr ""
 msgid "%{device}  %{charge}"
 msgstr ""
 
+#: lib/energy.js:45
+msgid "Cores"
+msgstr ""
+
+#: lib/energy.js:46
+msgid "Uncore"
+msgstr ""
+
+#: lib/energy.js:47 lib/sensor-kinds.js:186
+msgid "Memory"
+msgstr ""
+
+#: lib/energy.js:48
+msgid "Whole board"
+msgstr ""
+
+#: lib/energy.js:55
+msgid "Package %{number}"
+msgstr ""
+
+#: lib/energy.js:55 lib/sensor-kinds.js:43
+msgid "Package"
+msgstr ""
+
+#: lib/energy.js:126
+msgid "Total"
+msgstr ""
+
 #: lib/format.js:33
 msgid "%{label}: %{value}"
 msgstr ""
@@ -722,10 +750,6 @@ msgstr ""
 msgid "Charge limit: %{limit}"
 msgstr ""
 
-#: lib/sensor-kinds.js:43 lib/sensors.js:434
-msgid "Package"
-msgstr ""
-
 #: lib/sensor-kinds.js:46
 msgid "Mainboard"
 msgstr ""
@@ -766,10 +790,6 @@ msgstr ""
 msgid "Hotspot"
 msgstr ""
 
-#: lib/sensor-kinds.js:186 lib/sensors.js:426
-msgid "Memory"
-msgstr ""
-
 #: lib/sensor-kinds.js:187
 msgid "Core voltage"
 msgstr ""
@@ -800,26 +820,6 @@ msgstr ""
 
 #: lib/sensor-rows.js:285
 msgid "No sensors found"
-msgstr ""
-
-#: lib/sensors.js:424
-msgid "Cores"
-msgstr ""
-
-#: lib/sensors.js:425
-msgid "Uncore"
-msgstr ""
-
-#: lib/sensors.js:427
-msgid "Whole board"
-msgstr ""
-
-#: lib/sensors.js:434
-msgid "Package %{number}"
-msgstr ""
-
-#: lib/sensors.js:505
-msgid "Total"
 msgstr ""
 
 #. metadata.json->description
