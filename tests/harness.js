@@ -237,7 +237,6 @@ function libraryModules() {
 }
 
 function _modulesIn(subdirectory) {
-    const Gio = imports.gi.Gio;
     let names = [];
     let directory = Gio.File.new_for_path(xletDir() + "/" + subdirectory);
     if (!directory.query_exists(null))
@@ -327,8 +326,4 @@ function settle(start, what) {
 /* A captured /sys tree the IO layer can be pointed at. */
 function fixture(name) {
     return testsDir() + "/fixtures/" + name;
-}
-
-function fixtureExists(name) {
-    return Gio.File.new_for_path(fixture(name)).query_exists(null);
 }
