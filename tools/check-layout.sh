@@ -29,19 +29,26 @@ for wrapper in README.md info.json screenshot.png; do
     [ -f "$wrapper" ] || fail "missing Spices wrapper asset $wrapper"
 done
 
-for required in applet.js metadata.json settings-schema.json stylesheet.css \
-        icon.png powertoys-helper lib ui icons po; do
+# The payload's top level, said once. It used to be written twice - once as
+# what has to be there and once as what is allowed to be - so the two lists
+# could come apart, and the way they come apart is silent: an asset added to
+# the allowed list and not to the required one is optional without anybody
+# deciding that, and one added the other way round can never be shipped.
+RUNTIME_ENTRIES="applet.js metadata.json settings-schema.json stylesheet.css
+icon.png powertoys-helper lib ui icons po"
+
+for required in $RUNTIME_ENTRIES; do
     [ -e "$XLET_DIR/$required" ] || fail "missing runtime asset $required"
 done
 
 for entry in "$XLET_DIR"/* "$XLET_DIR"/.[!.]* "$XLET_DIR"/..?*; do
     [ -e "$entry" ] || [ -L "$entry" ] || continue
     name=${entry##*/}
-    case "$name" in
-        applet.js|metadata.json|settings-schema.json|stylesheet.css|icon.png|powertoys-helper|lib|ui|icons|po)
-            ;;
-        *) fail "unexpected top-level runtime entry $name" ;;
-    esac
+    allowed=no
+    for candidate in $RUNTIME_ENTRIES; do
+        [ "$name" = "$candidate" ] && allowed=yes
+    done
+    [ "$allowed" = yes ] || fail "unexpected top-level runtime entry $name"
 done
 
 unwanted=$(find "$XLET_DIR" \
