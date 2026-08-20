@@ -142,12 +142,17 @@ function jsFilesIn(directory, prefix) {
     let folder = Gio.File.new_for_path(directory);
     if (!folder.query_exists(null))
         return names;
-    let entries = folder.enumerate_children("standard::name",
+    let entries = folder.enumerate_children("standard::name,standard::type",
                                             Gio.FileQueryInfoFlags.NONE, null);
     let info;
     while ((info = entries.next_file(null)) !== null) {
         let name = info.get_name();
-        if (name.slice(-3) === ".js")
+        /* Down as well as across. A wildcard over lib/ and ui/ was what this
+         * used to be, and a file one directory further down was listed by no
+         * report while `make dist` packaged it all the same. */
+        if (info.get_file_type() === Gio.FileType.DIRECTORY)
+            names = names.concat(jsFilesIn(directory + "/" + name, prefix + name + "/"));
+        else if (name.slice(-3) === ".js")
             names.push(prefix + name);
     }
     entries.close(null);
@@ -176,8 +181,7 @@ function unmeasuredFiles(sources) {
 
     let all = [];
     let reached = [];
-    for (let relative of jsFilesIn(xlet, "").concat(jsFilesIn(xlet + "/lib", "lib/"))
-                                            .concat(jsFilesIn(xlet + "/ui", "ui/"))) {
+    for (let relative of jsFilesIn(xlet, "")) {
         let path = xlet + "/" + relative;
         let source;
         try {
@@ -359,6 +363,25 @@ if (!quiet && missing.length > 0) {
     for (let entry of Sources.lines(missing))
         print("            " + entry);
     print("");
+}
+
+/*
+ * The listing above is captioned, and the caption is checked.
+ *
+ * "They build Cinnamon widgets and cannot be loaded here" is true of applet.js
+ * and of the modules under ui/. A library that arrives in the same list is a
+ * file the whole suite executes not one line of, and printing it under that
+ * heading would say the measurement chose to leave it out. See tools/
+ * sources.js for the rule.
+ */
+let unexplained = Sources.unexpected(missing);
+if (unexplained.length > 0) {
+    printerr("coverage FAIL " + unexplained.length +
+             " files were executed by nothing and are not shell sources:");
+    for (let entry of Sources.lines(unexplained))
+        printerr("  " + entry);
+    printerr("every file under lib/ has to be loaded by some case");
+    System.exit(1);
 }
 
 if (below.length > 0) {

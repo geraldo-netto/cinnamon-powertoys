@@ -65,6 +65,25 @@ cases["the sizes add up and the share is of the whole applet"] = function () {
                   "an empty applet is not a division by zero");
 };
 
+cases["only the shell sources may be unreached"] = function () {
+    /* The listing carries a reason, and the reason is true of two kinds of
+     * file. Anything else in it is a library nothing executes wearing that
+     * reason as a disguise. */
+    let missed = entries([["applet.js", 1673], ["ui/menu.js", 576],
+                          ["lib/io.js", 588]]);
+    Harness.deepEqual(Sources.unexpected(missed).map(entry => entry.name),
+                      ["lib/io.js"],
+                      "the library is the one that has to be explained");
+    Harness.deepEqual(Sources.unexpected(entries([["applet.js", 1673],
+                                                  ["ui/rows.js", 242]])), [],
+                      "the shell sources are the whole of what the caption covers");
+    Harness.deepEqual(Sources.unexpected([]), [], "nothing unreached is nothing to explain");
+    Harness.deepEqual(
+        Sources.unexpected(entries([["lib/sub/hidden.js", 4]])).map(entry => entry.name),
+        ["lib/sub/hidden.js"],
+        "a file a directory further down is not exempt for being hard to find");
+};
+
 cases["each unreached file is one aligned line naming its size"] = function () {
     Harness.deepEqual(Sources.lines(entries([["ui/menu.js", 808], ["applet.js", 2085]])),
                       ["  2085  applet.js", "   808  ui/menu.js"],
@@ -87,6 +106,12 @@ cases["both gates ask what they did not reach"] = function () {
         Harness.ok(source.indexOf("Sources.totalLines(") >= 0,
                    tool + " reports how much that was");
     }
+
+    /* And the coverage run does something about it rather than only printing
+     * it: an unreached library is a failure there, not a footnote. */
+    let coverage = Harness.readFile(Harness.ROOT + "/tools/coverage-report.js");
+    Harness.ok(coverage.indexOf("Sources.unexpected(") >= 0,
+               "coverage-report.js checks the caption it prints");
 };
 
 cases["neither report can claim to be about the whole applet"] = function () {

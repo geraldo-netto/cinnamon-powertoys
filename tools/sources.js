@@ -52,6 +52,26 @@ function share(reachedLines, unreachedLines) {
     return total === 0 ? 100 : Math.round(reachedLines / total * 1000) / 10;
 }
 
+/*
+ * Which of the unreached files have no business being unreached.
+ *
+ * The listing above is a statement about a boundary, and a statement nobody
+ * checks becomes a place to hide. Every entry in it is printed under "they
+ * build Cinnamon widgets and cannot be loaded here", and exactly two kinds of
+ * file that is true of: applet.js, and the modules under ui/. Anything else
+ * arriving in that list is a library that no case loads, printed with a
+ * reason that is not its reason and counted as a known limit rather than as
+ * the hole it is.
+ *
+ * So the caption is a rule. What comes back is the entries the caption does
+ * not cover, and a tool that gets a non-empty answer has found something to
+ * fail over rather than something to print.
+ */
+function unexpected(entries) {
+    return (entries || []).filter(entry => entry &&
+        entry.name !== "applet.js" && entry.name.indexOf("ui/") !== 0);
+}
+
 /* One line per file, aligned, for a tool to print under a heading of its own. */
 function lines(entries) {
     return unreached(entries, []).map(entry =>
