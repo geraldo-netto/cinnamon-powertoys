@@ -1188,9 +1188,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
             return false;
         let backend = state.source;
         let generation = state.generation;
-        let shown = Reading.shownProfile(this._latest,
-                                         { pendingProfile: this._pending.value });
-        if (name === shown)
+        if (name === this._shownProfile())
             return false;
         let accepted = this._pending.request(name,
             done => backend.setProfile(name, done), (outcome, matching) => {
@@ -1376,23 +1374,36 @@ class PowerToysApplet extends Applet.TextIconApplet {
         if (!state)
             return false;
 
-        let from = Reading.shownProfile(this._latest, { pendingProfile: this._pending.value });
-        let name = Profiles.nextProfile(state.list, from, step, wrap);
+        /* Stepped from the profile being shown rather than the one the machine
+         * has got round to, and null where the step lands where it already
+         * was; both rules are lib/profiles.js. */
+        let name = Profiles.nextProfile(state.list, this._shownProfile(), step, wrap);
         if (!name)
             return false;
 
         /* Acceptance means a write is in progress, not that it happened.
          * Announce only when this exact request answers successfully; the
          * pending panel state is the feedback while it is in flight. */
-        if (!this._setProfile(name, error => {
+        return this._setProfile(name, error => {
             if (announce && !error)
-                this._notifications.notify(
-                    _("Power Toys"),
-                    Translate.interpolate(_("Power profile: %{profile}"),
-                        { profile: Format.profileLabel(name) }));
-        }))
-            return false;
-        return true;
+                this._notifications.notify(_("Power Toys"),
+                                           ProfileView.announcement(name));
+        });
+    }
+
+    /*
+     * The profile that has been asked for, rather than the one the machine has
+     * got round to.
+     *
+     * Those are the same value except while a change is in flight, and that
+     * window is not always short: on the firmware path it is as long as a
+     * password dialog is on screen. Every caller here wants the same one, and
+     * it is the same question the panel gauge, the panel label and the filled
+     * segment ask.
+     */
+    _shownProfile() {
+        return Reading.shownProfile(this._latest,
+                                    { pendingProfile: this._pending.value });
     }
 
     _cycleProfile() {

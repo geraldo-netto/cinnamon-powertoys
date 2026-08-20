@@ -37,4 +37,3 @@ categories.
 | PT-406a | Architecture and SOLID | open | S | low | Move the charge-limit group out of `MenuPresenter`: `CHARGE_LIMITS`, its share of `_build`, and `_updateCharge`. |
 | PT-406b | Architecture and SOLID | open | S | low | Move the sensor group out of `MenuPresenter`: `_buildSensorGroup` and `_updateSensors`. |
 | PT-406c | Architecture and SOLID | open | S | low | Move the device group out of `MenuPresenter`: `_buildDeviceGroup` and `_updateDevices`. |
-| PT-408 | Architecture and SOLID | open | S | low | Profile stepping is decided in `applet.js`: `_setProfile` drops a request for the profile already in flight and answers whether it took, `_stepProfile` steps from the profile asked for rather than the one the machine reached and decides whether to announce, and `_cycleProfile` wraps. The rule is `lib/profile-view.js`'s subject and the announcement is a notification; what is in between is neither, and it is only reachable through the shell. |

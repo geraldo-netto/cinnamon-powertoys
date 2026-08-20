@@ -469,12 +469,10 @@ cases["profile collections and controls reject a backend transition"] = function
 
 cases["a profile write stays with the backend that produced its control"] = function () {
     let source = Harness.shellSource();
-    let match = /    _setProfile\(name, onResult\) \{([\s\S]*?)\n    \}\n\n    \/\*\n     \* A password dialog/.exec(source);
+    let match = /    _setProfile\(name, onResult\) \{([\s\S]*?)\n    \}\n/.exec(source);
     Harness.ok(match, "the profile action can be isolated");
     let setProfile = Function(
-        "Reading", "Profiles", "return function (name, onResult) {" + match[1] + "\n};")({
-        shownProfile: () => "balanced",
-    }, {
+        "Profiles", "return function (name, onResult) {" + match[1] + "\n};")({
         profileWriteError: outcome => outcome,
     });
 
@@ -501,6 +499,7 @@ cases["a profile write stays with the backend that produced its control"] = func
     let applet = {
         _profileSelection: selection,
         _profileState: () => profile,
+        _shownProfile: () => "balanced",
         _latest: { profile: profile },
         _pending: {
             value: null,
@@ -527,25 +526,20 @@ cases["a profile write stays with the backend that produced its control"] = func
 
 cases["profile announcements wait for matching success"] = function () {
     let source = Harness.shellSource();
-    let match = /    _stepProfile\(step, wrap, announce\) \{([\s\S]*?)\n    \}\n\n    _cycleProfile/.exec(source);
+    let match = /    _stepProfile\(step, wrap, announce\) \{([\s\S]*?)\n    \}\n/.exec(source);
     Harness.ok(match, "the profile step can be isolated");
     let notices = [];
     let callbacks = [];
     let stepProfile = Function(
-        "Reading", "Profiles", "Main", "_", "Format", "Translate",
+        "Profiles", "ProfileView", "_",
         "return function (step, wrap, announce) {" + match[1] + "\n};")({
-        shownProfile: () => "balanced",
-    }, {
         nextProfile: () => "performance",
     }, {
-        notify: (title, body) => notices.push([title, body]),
-    }, text => text, {
-        profileLabel: name => name,
-    }, Translate);
+        announcement: name => "Power profile: " + name,
+    }, text => text);
     let applet = {
         _profileState: () => ({ list: ["balanced", "performance"] }),
-        _latest: {},
-        _pending: { value: null },
+        _shownProfile: () => "balanced",
         _setProfile: (name, done) => {
             callbacks.push(done);
             return true;

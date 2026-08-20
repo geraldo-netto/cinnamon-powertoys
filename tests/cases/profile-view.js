@@ -225,3 +225,9 @@ cases["a control the user has not allowed cannot be stepped"] = function () {
         backend: firmware, generation: 5, platformProfiles: firmware, privileged: false,
     })), null, "the wheel stops at the same gate as the menu segment");
 };
+
+cases["a profile changed where nobody was looking says so"] = function () {
+    Harness.equal(ProfileView.announcement("performance"),
+                  "Power profile: Performance",
+                  "the wheel, the hotkey and the middle click leave no other trace");
+};

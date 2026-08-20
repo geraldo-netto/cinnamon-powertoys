@@ -114,3 +114,16 @@ function steppableState(data, context) {
         return null;
     return state;
 }
+
+/*
+ * What a profile change that nobody was watching is announced as.
+ *
+ * The wheel over the icon, the hotkey and the middle click can all change the
+ * profile while the menu is shut and the panel is showing something else, so
+ * the change leaves no trace of itself anywhere. The menu's own segments do
+ * not need this: filling under the click is the announcement.
+ */
+function announcement(name) {
+    return Translate.interpolate(_("Power profile: %{profile}"),
+                                 { profile: Format.profileLabel(name) });
+}
