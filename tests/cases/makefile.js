@@ -590,4 +590,6 @@ cases["check resolves every name in the runtime sources"] = function () {
                "and applet.js is the first thing in that list");
     Harness.ok(source.indexOf("cjs tools/parse-check.js $(JS_SOURCES)") >= 0,
                "the parse check reads the same list rather than its own glob");
+    Harness.ok(source.indexOf("cjs tools/strings-check.js $(POT) $(JS_SOURCES)") >= 0,
+               "and so does the strings check, over the template it ships");
 };

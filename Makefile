@@ -190,6 +190,11 @@ uninstall-rapl:
 # mistake a shell only reports at the moment it goes wrong on somebody's
 # machine. flake8 does the same for the Python tools beside them.
 #
+# The strings check is the half of the translation question that needs no
+# extractor: every literal the sources ask to have translated is one the
+# template offers. The workflow's `make pot` diff is the whole of it and stays;
+# this is the part a contributor gets before pushing rather than after.
+#
 # A missing tool fails rather than skips. A gate that prints "not available,
 # skipping" reports success for as long as nobody installs it, which is
 # indistinguishable from having no gate at all.
@@ -212,6 +217,7 @@ check:
 		&& echo "lint ok      python developer tooling"
 	@python3 -c "import json; [json.load(open(f)) for f in ['$(XLET_DIR)/metadata.json','$(XLET_DIR)/settings-schema.json','info.json']]" \
 		&& echo "json ok      runtime metadata, settings and Spices info"
+	@cjs tools/strings-check.js $(POT) $(JS_SOURCES)
 	@python3 $(POLICY_CHECKER) polkit/$(POLICY) $(HELPER_PATH)
 	@grep -q '"$(HELPER_PATH)"' $(XLET_DIR)/applet.js \
 		&& grep -q '>$(HELPER_PATH)<' polkit/$(POLICY) \
