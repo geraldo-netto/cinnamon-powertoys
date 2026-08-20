@@ -577,3 +577,17 @@ cases["a staged RAPL rule rejects an option-shaped group"] = function () {
     let outcome = stagedRapl("-R");
     Harness.ok(outcome.status !== 0, "a group cannot become a chgrp option");
 };
+
+/* The gate that would have caught PT-412, held to the sources it is worth
+ * anything over. applet.js is the file no case can evaluate, so a check it is
+ * not run against is a check that does not cover the one place it is needed. */
+cases["check resolves every name in the runtime sources"] = function () {
+    let source = Harness.readFile(Harness.testsDir() + "/../Makefile");
+    Harness.ok(source.indexOf(
+        "cjs tools/scope-check.js $(JS_SOURCES) $(JS_TOOL_SOURCES)") >= 0,
+        "the scope check runs over the runtime sources and the tooling");
+    Harness.ok(source.indexOf("JS_SOURCES := $(XLET_DIR)/applet.js") >= 0,
+               "and applet.js is the first thing in that list");
+    Harness.ok(source.indexOf("cjs tools/parse-check.js $(JS_SOURCES)") >= 0,
+               "the parse check reads the same list rather than its own glob");
+};

@@ -75,6 +75,15 @@ PACKAGE_TOOL := tools/build-package.py
 SHELL_SOURCES := $(XLET_DIR)/powertoys-helper install.sh $(wildcard tools/*.sh)
 PYTHON_SOURCES := $(wildcard tools/*.py)
 
+# The JavaScript the gates read, split by what may be assumed about it. The
+# runtime sources are what Cinnamon evaluates; the rest is developer tooling
+# and the cases, which run under cjs directly. Both are resolved, because a
+# name that does not exist is the same mistake wherever it is written.
+JS_SOURCES := $(XLET_DIR)/applet.js $(wildcard $(XLET_DIR)/lib/*.js) \
+	$(wildcard $(XLET_DIR)/ui/*.js)
+JS_TOOL_SOURCES := $(wildcard tools/*.js) $(wildcard tests/*.js) \
+	$(wildcard tests/cases/*.js)
+
 # What the lint gates are allowed to let past, stated here so the reason is
 # next to the exception rather than repeated on forty lines.
 #
@@ -171,7 +180,11 @@ uninstall-rapl:
 	@echo "removed $(RAPL_DIR)/$(RAPL_RULE)"
 	@echo "reapplied the remaining udev policy (root only when no other rule grants access)"
 
-# Parse, run, and read. `sh -n` says a script is syntactically a script;
+# Parse, resolve, run, and read. The parse check says the engine will accept
+# the file; the scope check says every name written in it exists, which is the
+# mistake a parse cannot see and applet.js has no other way to find - nothing
+# here can evaluate it, because it imports the shell. `sh -n` says a script is
+# syntactically a script;
 # ShellCheck says whether it means what it looks like, which is the class of
 # mistake a shell only reports at the moment it goes wrong on somebody's
 # machine. flake8 does the same for the Python tools beside them.
@@ -182,8 +195,8 @@ uninstall-rapl:
 check:
 	@command -v cjs >/dev/null 2>&1 || { echo "cjs not found, install the cjs package"; exit 1; }
 	@sh tools/check-layout.sh "$(UUID)" "$(FILES_DIR)"
-	@cjs tools/parse-check.js $(XLET_DIR)/applet.js $(XLET_DIR)/lib/*.js \
-		$(XLET_DIR)/ui/*.js
+	@cjs tools/parse-check.js $(JS_SOURCES)
+	@cjs tools/scope-check.js $(JS_SOURCES) $(JS_TOOL_SOURCES)
 	@cjs tests/run.js
 	@sh -n $(SHELL_SOURCES) \
 		&& echo "shell ok     helper and install scripts"
