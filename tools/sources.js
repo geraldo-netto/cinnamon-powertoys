@@ -3,9 +3,12 @@
  *
  * Both gates measure less than the applet. `make coverage` can only measure
  * what a case loaded, and `make mutants` only enumerates lib/ - because
- * applet.js and the modules under ui/ build Cinnamon widgets, so nothing
- * outside the shell can load them, no case can kill a mutant in them, and
- * they never appear in an lcov at all.
+ * applet.js and the modules under ui/ build Cinnamon widgets, so neither the
+ * suite's own process nor the mutation runner can load them, no case can kill
+ * a mutant in them, and they never appear in an lcov at all. They are loaded,
+ * in a process of their own and only where Cinnamon is installed, by
+ * tools/shell-load.sh; that says they load, which is not the same as either
+ * report having reached them.
  *
  * That boundary is real and this file does not move it. What it does is stop
  * the boundary being invisible: a report that lists only what it reached reads

@@ -3,7 +3,8 @@
  *
  * `make coverage` measures only what a case loaded and `make mutants` only
  * enumerates lib/, because applet.js and the modules under ui/ build Cinnamon
- * widgets and nothing outside the shell can load them. That is a real limit
+ * widgets and neither run can load them - tools/shell-load.sh can, in a
+ * process of its own, but loading is not measuring. That is a real limit
  * and tools/sources.js does not move it - what it does is stop either report
  * reading as though it had covered the whole applet.
  *

@@ -651,9 +651,10 @@ cases["a monitor overflow note cannot create an empty brightness group"] = funct
  * The line between the two directories.
  *
  * lib/ is loaded, measured and mutated by this suite; ui/ cannot be loaded
- * here at all. So a decision that moves from lib/ into ui/ leaves the suite
- * without noticing, which is exactly the direction this repository has drifted
- * before. Two rules keep the boundary readable: nothing in lib/ may touch
+ * into this process at all, and what tests/cases/shell-load.js proves about it
+ * elsewhere is that it loads. So a decision that moves from lib/ into ui/
+ * leaves almost every gate here without noticing, which is exactly the
+ * direction this repository has drifted before. Two rules keep the boundary readable: nothing in lib/ may touch
  * Cinnamon's UI modules or its widget toolkit, and nothing in lib/ may require
  * a module out of ui/.
  */

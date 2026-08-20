@@ -7,10 +7,15 @@
  * nothing about whether a name written in it exists, and a name that does not
  * is not a syntax error - it is a ReferenceError at the moment that line runs,
  * which for applet.js is on a user's panel and nowhere else. Nothing in this
- * repository can evaluate applet.js: it imports the shell. So a method reading
- * a parameter belonging to a different method parsed, linted, packaged and
- * shipped through 1118 green cases, and took the applet off the panel of every
- * machine that installed it.
+ * repository evaluated applet.js at the time: it imports the shell. So a
+ * method reading a parameter belonging to a different method parsed, linted,
+ * packaged and shipped through 1118 green cases, and took the applet off the
+ * panel of every machine that installed it.
+ *
+ * tools/shell-load.sh evaluates it now, wherever Cinnamon is installed, which
+ * catches more than this does - and only there. This runs on every machine and
+ * needs nothing but cjs, so it stays: the two answer the same question at
+ * different costs, and this is the one a runner without a desktop can ask.
  *
  * Reflect.parse is the same engine's parser, which is the whole reason this
  * needs no toolchain: the tree already depends on cjs. What is done with the

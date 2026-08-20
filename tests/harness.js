@@ -205,9 +205,11 @@ function _show(value) {
 
 /*
  * A source file as text, for the cases that check what the code says rather
- * than what it does. applet.js cannot be loaded outside Cinnamon - it imports
- * the shell's own modules at the top - so reading it is the only way to hold
- * it to anything.
+ * than what it does. applet.js imports the shell's own modules at its first
+ * lines, so it cannot be loaded into this process at all; tests/cases/
+ * shell-load.js loads it in one of its own, against a real Cinnamon, which
+ * says that it loads and nothing about what it then does. Reading it is still
+ * how anything else is held.
  */
 function readFile(path) {
     return Loader.read(path);

@@ -182,9 +182,10 @@ uninstall-rapl:
 
 # Parse, resolve, run, and read. The parse check says the engine will accept
 # the file; the scope check says every name written in it exists, which is the
-# mistake a parse cannot see and applet.js has no other way to find - nothing
-# here can evaluate it, because it imports the shell. `sh -n` says a script is
-# syntactically a script;
+# mistake a parse cannot see and is the one a machine without Cinnamon can
+# still find in applet.js - the suite's shell load evaluates it for real, but
+# only where there is a Cinnamon to evaluate it against. `sh -n` says a script
+# is syntactically a script;
 # ShellCheck says whether it means what it looks like, which is the class of
 # mistake a shell only reports at the moment it goes wrong on somebody's
 # machine. flake8 does the same for the Python tools beside them.
