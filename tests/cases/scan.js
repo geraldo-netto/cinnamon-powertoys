@@ -166,3 +166,44 @@ cases["the applet's own sources balance under the mask"] = function () {
     }
     Harness.ok(checked > 0, "there were sources to check");
 };
+
+/*
+ * The other half of the same walk.
+ *
+ * A gate that asks whether the sources name something - an icon, a style
+ * class, a settings key - is asking about literals, and the raw text answers
+ * yes to a name that is only written in a comment explaining it. The mask
+ * cannot answer it either: a mask blanks a string and a comment alike.
+ */
+cases["the literals are the strings and not the prose"] = function () {
+    let source = [
+        'let a = "one";',
+        '/* "a comment naming two" */',
+        'let b = `two`;',
+        "// \"and a line comment\"",
+        'let c = \'three\';',
+    ].join("\n");
+    Harness.deepEqual(Scan.literals(source), ["one", "two", "three"],
+                      "every quote is a literal and no comment is");
+};
+
+cases["a literal is the text between the quotes"] = function () {
+    Harness.deepEqual(Scan.literals('let a = "x" + "y";'), ["x", "y"],
+                      "two literals rather than the expression they are in");
+    Harness.deepEqual(Scan.literals('let a = "an escaped \\" quote";'),
+                      ['an escaped \\" quote'],
+                      "an escaped quote does not end the literal");
+    Harness.deepEqual(Scan.literals('let a = "";'), [""],
+                      "an empty literal is a literal");
+    Harness.deepEqual(Scan.literals("let a = /\"not a string\"/.test(b);"), [],
+                      "and a pattern is not one");
+    Harness.deepEqual(Scan.literals("let a = 1;"), [],
+                      "a file with no strings in it has none");
+};
+
+cases["a literal written across lines comes back whole"] = function () {
+    /* The interface XML in lib/upower.js is written this way. */
+    let source = "const XML = \"<node>\" +\n    \"<interface/>\" +\n    \"</node>\";\n";
+    Harness.deepEqual(Scan.literals(source), ["<node>", "<interface/>", "</node>"],
+                      "each piece is its own literal, in the order written");
+};

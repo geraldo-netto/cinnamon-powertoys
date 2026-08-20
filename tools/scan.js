@@ -47,7 +47,31 @@ function _dividesAfter(code) {
  * every line number after it out by thirty.
  */
 function mask(source) {
+    return _walk(source).mask;
+}
+
+/*
+ * The string literals in a source, in the order they are written.
+ *
+ * The other half of the same walk, and here rather than in whichever caller
+ * wanted it: a gate that asks whether the sources name an icon, a style class
+ * or a settings key is asking about literals, and asking it of the raw text
+ * answers yes to a name that appears only in a comment - which is a gate a
+ * sentence can satisfy. The mask is no use for it either, since the mask
+ * blanks a string and a comment alike.
+ *
+ * Escapes are not resolved: what comes back is the text between the quotes as
+ * it is written, which is what a name written in one piece is. A name
+ * assembled out of several - "powertoys-" + kind - is several literals here,
+ * and a caller that cares has to say so itself.
+ */
+function literals(source) {
+    return _walk(source).literals;
+}
+
+function _walk(source) {
     let out = "";
+    let found = [];
 
     for (let i = 0; i < source.length; i++) {
         let c = source[i];
@@ -73,22 +97,27 @@ function mask(source) {
 
         if (c === '"' || c === "'" || c === "`") {
             let quote = c;
+            let text = "";
             out += " ";
             i++;
             while (i < source.length && source[i] !== quote) {
                 /* A backslash takes the next character with it, and where that
                  * is a newline it is still a newline: the XML strings are
                  * written across lines exactly that way. */
+                text += source[i];
                 if (source[i] === "\\") {
                     out += " ";
                     i++;
-                    if (i < source.length)
+                    if (i < source.length) {
+                        text += source[i];
                         out += source[i] === "\n" ? "\n" : " ";
+                    }
                 } else {
                     out += source[i] === "\n" ? "\n" : " ";
                 }
                 i++;
             }
+            found.push(text);
             out += " ";
             continue;
         }
@@ -118,7 +147,7 @@ function mask(source) {
         out += c;
     }
 
-    return out;
+    return { mask: out, literals: found };
 }
 
 /* Which line a position is on, counting from one. */
