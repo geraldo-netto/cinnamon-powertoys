@@ -60,9 +60,6 @@ const DEVICE_XML = '<node>' +
     '</interface>' +
     '</node>';
 
-const ManagerProxy = Gio.DBusProxy.makeProxyWrapper(MANAGER_XML);
-const DeviceProxy = Gio.DBusProxy.makeProxyWrapper(DEVICE_XML);
-
 const UPDeviceKind = UPowerGlib.DeviceKind;
 const UPDeviceState = UPowerGlib.DeviceState;
 const UPDeviceLevel = UPowerGlib.DeviceLevel;
@@ -90,8 +87,16 @@ function _number(value) {
  */
 function systemBus(gio, managerProxy, deviceProxy) {
     gio = gio || Gio;
-    managerProxy = managerProxy || ManagerProxy;
-    deviceProxy = deviceProxy || DeviceProxy;
+    /* Built here rather than at the top of the file, and through lib/bus.js
+     * rather than beside it. The two classes used to be module level
+     * constants, which ran `Gio.DBusProxy.makeProxyWrapper` at import time -
+     * before any caller had said which runtime it meant, so the one line that
+     * had to honour an injected Gio could not, and the port that says it is
+     * the only way this applet reaches a daemon had an exception in it. A
+     * wrapper is a class built from a string; building it when a bus is asked
+     * for costs one construction per monitor. */
+    managerProxy = managerProxy || Bus.wrapperFor(MANAGER_XML, gio);
+    deviceProxy = deviceProxy || Bus.wrapperFor(DEVICE_XML, gio);
     return {
         watch: function (onAppeared, onVanished) {
             return Bus.watch(BUS_NAME, onAppeared, onVanished,

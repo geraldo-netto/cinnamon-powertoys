@@ -102,3 +102,55 @@ cases["a proxy class is made from an interface description"] = function () {
     Harness.equal(Bus.wrapperFor("<node/>", gio), "wrapper", "the class comes back");
     Harness.equal(made, "<node/>", "built from the description it was given");
 };
+
+/*
+ * The port's own claim, held to the tree rather than to a memory of it.
+ *
+ * lib/bus.js opens by saying it is the one place this applet reaches a daemon
+ * through, and lib/upower.js built both of its proxy classes with
+ * Gio.DBusProxy.makeProxyWrapper at module top level - so the sentence was
+ * false, and false in the way that matters: a wrapper built before any caller
+ * has said which runtime it means cannot honour an injected one, which is why
+ * that module's cases had to hand the classes in from outside.
+ *
+ * A list of the modules that may would be a list somebody has to remember to
+ * add to. This walks what is there.
+ */
+cases["nothing but the port builds a proxy class"] = function () {
+    const Scan = imports.scan;
+    const Sources = imports.sources;
+    let offenders = [];
+    let checked = 0;
+    for (let relative of Sources.jsFiles(Harness.xletDir(), "")) {
+        if (relative === "lib/bus.js")
+            continue;
+        /* Masked rather than searched as text: every module names the call in
+         * its comments, and a gate a comment can satisfy - or that a comment
+         * can fail - is not reading the code. */
+        let code = Scan.mask(Harness.readFile(Harness.xletDir() + "/" + relative));
+        checked++;
+        if (code.indexOf("makeProxyWrapper") >= 0)
+            offenders.push(relative + " builds a proxy class of its own");
+        if (/\bnew\s+Gio\.DBusProxy\b/.test(code))
+            offenders.push(relative + " constructs a proxy of its own");
+    }
+    Harness.deepEqual(offenders, [],
+                      "every proxy class is built through Bus.wrapperFor");
+    Harness.ok(checked > 20, "only " + checked + " sources checked, which is too few");
+};
+
+cases["the UPower bus builds its proxies from the runtime it was given"] = function () {
+    /* The other half: not only that the port is used, but that using it means
+     * the injected Gio is the one the classes come from. */
+    let built = [];
+    let gio = {
+        DBusProxy: { makeProxyWrapper: xml => { built.push(xml); return function () {}; } },
+    };
+    const UPower = Harness.requireXlet("./lib/upower.js");
+    UPower.systemBus(gio);
+    Harness.equal(built.length, 2, "the manager and the device class, and no more");
+    Harness.ok(built[0].indexOf('interface name="org.freedesktop.UPower"') >= 0,
+               "the manager interface is the manager's");
+    Harness.ok(built[1].indexOf('interface name="org.freedesktop.UPower.Device"') >= 0,
+               "and the device interface the device's");
+};
