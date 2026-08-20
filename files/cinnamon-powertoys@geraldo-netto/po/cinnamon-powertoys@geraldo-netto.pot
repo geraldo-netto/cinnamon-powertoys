@@ -168,7 +168,7 @@ msgstr ""
 msgid "High temperature"
 msgstr ""
 
-#: lib/ddc.js:238
+#: lib/ddc-parse.js:96
 msgid "Display %{number}"
 msgstr ""
 

@@ -16,6 +16,8 @@ const GLib = imports.gi.GLib;
 const Fuzz = imports.fuzz;
 const Harness = imports.harness;
 
+const CommandQueue = Harness.requireXlet("./lib/command-queue.js");
+const DdcParse = Harness.requireXlet("./lib/ddc-parse.js");
 const Ddc = Harness.requireXlet("./lib/ddc.js");
 const Hardware = Harness.requireXlet("./lib/hardware.js");
 const IO = Harness.requireXlet("./lib/io.js");
@@ -197,7 +199,7 @@ cases["the command queue runs one job and lets writes past the rest"] = function
     let started = [];
     let replies = [];
     let idle = 0;
-    let queue = new Ddc.CommandQueue((argv, onDone) => {
+    let queue = new CommandQueue.CommandQueue((argv, onDone) => {
         started.push(argv[0]);
         replies.push(onDone);
         return { cancel: () => onDone("", -1) };
@@ -275,7 +277,7 @@ cases["destroying the DDC boundary settles work that has not started"] = functio
 };
 
 cases["what detect says about each display is picked out of it"] = function () {
-    let displays = Ddc.parseDisplays(DETECT_TWO);
+    let displays = DdcParse.parseDisplays(DETECT_TWO);
     Harness.equal(displays.length, 2, "two monitors");
     Harness.equal(displays[0].number, "1", "the number --display wants");
     Harness.equal(displays[0].bus, "/dev/i2c-4", "which bus it is on");
@@ -286,14 +288,14 @@ cases["what detect says about each display is picked out of it"] = function () {
 };
 
 cases["a display that cannot talk DDC is not one of ours"] = function () {
-    Harness.deepEqual(Ddc.parseDisplays(DETECT_NONE), [],
+    Harness.deepEqual(DdcParse.parseDisplays(DETECT_NONE), [],
                       "an Invalid display block is not a display");
-    Harness.deepEqual(Ddc.parseDisplays(""), [], "nothing at all");
+    Harness.deepEqual(DdcParse.parseDisplays(""), [], "nothing at all");
 };
 
 cases["a monitor is named after the monitor"] = function () {
     named(function () {
-        let displays = Ddc.nameDisplays(Ddc.parseDisplays(DETECT_TWO));
+        let displays = DdcParse.nameDisplays(DdcParse.parseDisplays(DETECT_TWO));
         Harness.equal(displays[0].name, "Dell U2415", "make and model");
         Harness.equal(displays[1].name, "LG HDR 4K", "and the other one");
         Harness.equal(displays[0].name.indexOf("7MT0184N0LTL"), -1,
@@ -303,7 +305,7 @@ cases["a monitor is named after the monitor"] = function () {
 
 cases["two of the same monitor are told apart by where they are plugged in"] = function () {
     named(function () {
-        let displays = Ddc.nameDisplays(Ddc.parseDisplays(DETECT_TWINS));
+        let displays = DdcParse.nameDisplays(DdcParse.parseDisplays(DETECT_TWINS));
         Harness.equal(displays[0].name, "Dell U2415 (DP-1)", "the socket, not the serial");
         Harness.equal(displays[1].name, "Dell U2415 (DP-2)", "and the other socket");
     });
@@ -338,15 +340,15 @@ cases["monitor names refresh when asynchronous PNP metadata arrives"] = function
 };
 
 cases["brightness is a fraction of whatever the monitor's maximum is"] = function () {
-    Harness.equal(Ddc.parseBrightness("VCP 10 C 40 100\n"), 40, "a maximum of 100");
-    Harness.equal(Ddc.parseBrightness("VCP 10 C 32 64\n"), 50,
+    Harness.equal(DdcParse.parseBrightness("VCP 10 C 40 100\n"), 40, "a maximum of 100");
+    Harness.equal(DdcParse.parseBrightness("VCP 10 C 32 64\n"), 50,
                   "a monitor whose scale is not percent");
-    Harness.equal(Ddc.parseBrightness("VCP 10 C 0 100\n"), 0, "off");
-    Harness.equal(Ddc.parseBrightness("VCP 12 C 40 100\n"), null, "a different feature");
-    Harness.equal(Ddc.parseBrightness("VCP 10 ERR\n"), null, "an error");
-    Harness.equal(Ddc.parseBrightness(""), null, "nothing");
-    Harness.equal(Ddc.parseBrightness("VCP 10 C 40 0\n"), null, "a nonsense maximum");
-    Harness.deepEqual(Ddc.parseBrightnessReading("VCP 10 C 32 64\n"),
+    Harness.equal(DdcParse.parseBrightness("VCP 10 C 0 100\n"), 0, "off");
+    Harness.equal(DdcParse.parseBrightness("VCP 12 C 40 100\n"), null, "a different feature");
+    Harness.equal(DdcParse.parseBrightness("VCP 10 ERR\n"), null, "an error");
+    Harness.equal(DdcParse.parseBrightness(""), null, "nothing");
+    Harness.equal(DdcParse.parseBrightness("VCP 10 C 40 0\n"), null, "a nonsense maximum");
+    Harness.deepEqual(DdcParse.parseBrightnessReading("VCP 10 C 32 64\n"),
                       { percentage: 50, maximum: 64 },
                       "the raw range is retained for writes");
 };
@@ -1350,7 +1352,7 @@ cases["a display that says nothing about itself is named by its number"] = funct
     ].join("\n");
 
     named(function () {
-        let displays = Ddc.nameDisplays(Ddc.parseDisplays(anonymous));
+        let displays = DdcParse.nameDisplays(DdcParse.parseDisplays(anonymous));
         Harness.equal(displays[0].name, "Display 1", "no maker, no model, no socket");
         Harness.equal(displays[1].name, "Display 2", "and the other one is not the same row");
     });
@@ -1375,13 +1377,13 @@ cases["two of the same monitor with no socket to name are told apart by number"]
     ].join("\n");
 
     named(function () {
-        let displays = Ddc.nameDisplays(Ddc.parseDisplays(twins));
+        let displays = DdcParse.nameDisplays(DdcParse.parseDisplays(twins));
         Harness.equal(displays[0].name, "Dell U2415 (1)", "the number stands in for the socket");
         Harness.equal(displays[1].name, "Dell U2415 (2)", "and the second is the second");
     });
 
-    Harness.equal(Ddc._connectorName(null), null, "no socket is no name for one");
-    Harness.equal(Ddc._connectorName("card2-HDMI-A-2"), "HDMI-A-2", "and a socket is the socket");
+    Harness.equal(DdcParse._connectorName(null), null, "no socket is no name for one");
+    Harness.equal(DdcParse._connectorName("card2-HDMI-A-2"), "HDMI-A-2", "and a socket is the socket");
 };
 
 /* ---------------------------------------------------------------- */
@@ -1639,7 +1641,7 @@ function detectText(random) {
 
 cases["whatever ddcutil says about the displays is parsed or refused"] = function () {
     Fuzz.forAll({ what: "the detect parsing", runs: 400 }, detectText, function (input) {
-        let displays = Fuzz.answers(() => Ddc.parseDisplays(input));
+        let displays = Fuzz.answers(() => DdcParse.parseDisplays(input));
 
         for (let display of displays) {
             Fuzz.isString(display.number, "the display number");
@@ -1663,8 +1665,8 @@ cases["every display that is parsed can be given a row title"] = function () {
      */
     named(function () {
         Fuzz.forAll({ what: "the naming", runs: 150 }, detectText, function (input) {
-            let displays = Ddc.parseDisplays(input);
-            let names = Fuzz.answers(() => Ddc.nameDisplays(displays));
+            let displays = DdcParse.parseDisplays(input);
+            let names = Fuzz.answers(() => DdcParse.nameDisplays(displays));
 
             Harness.equal(names.length, displays.length, "one name per display");
             for (let display of names) {
@@ -1690,7 +1692,7 @@ cases["a brightness reply is a percentage or nothing"] = function () {
                    random.between(0, 300) + " " + random.between(0, 300);
         return Fuzz.text(random, 8);
     }, function (input) {
-        let value = Fuzz.answers(() => Ddc.parseBrightness(input));
+        let value = Fuzz.answers(() => DdcParse.parseBrightness(input));
         Fuzz.inRange(value, 0, 100, "the brightness");
     });
 };

@@ -20,9 +20,10 @@
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 
+const CommandQueue = require("./lib/command-queue.js");
+const DdcParse = require("./lib/ddc-parse.js");
 const Hardware = require("./lib/hardware.js");
 const Log = require("./lib/log.js");
-const Naming = require("./lib/naming.js");
 const Once = require("./lib/once.js");
 const Translate = require("./lib/gettext.js");
 
@@ -161,133 +162,6 @@ function runCommand(argv, onDone, failureLog) {
 }
 
 /*
- * What "ddcutil --brief detect" says about one display, per display.
- *
- * The number is what --display wants. The rest is what makes a slider mean
- * something to whoever is looking at it: the monitor line is the EDID
- * manufacturer code, model and serial, and the DRM connector is which socket
- * on which card it is plugged into - the fallback for two identical monitors,
- * which report identical everything else.
- *
- * "Invalid display" blocks are a display the tool can see and cannot talk
- * DDC/CI to. They carry the same fields, so they have to be recognised rather
- * than parsed hopefully.
- */
-function parseDisplays(output) {
-    let displays = [];
-    let current = null;
-
-    for (let line of String(output || "").split("\n")) {
-        let start = /^Display\s+(\d+)\s*$/.exec(line);
-        if (start) {
-            current = { number: start[1], bus: null, connector: null,
-                        manufacturer: "", model: "", serial: "" };
-            displays.push(current);
-            continue;
-        }
-        /* Anything that is not indented ends the block, which is how an
-         * "Invalid display" heading stops the fields under it being read as
-         * the previous display's. */
-        if (!/^\s/.test(line)) {
-            current = null;
-            continue;
-        }
-        if (!current)
-            continue;
-
-        let separator = line.indexOf(":");
-        if (separator < 0)
-            continue;
-        let field = line.slice(0, separator).trim();
-        let value = line.slice(separator + 1).trim();
-        if (field === "I2C bus")
-            current.bus = value;
-        else if (field === "DRM connector")
-            current.connector = value;
-        else if (field === "Monitor") {
-            let parts = value.split(":");
-            current.manufacturer = (parts[0] || "").trim();
-            current.model = (parts[1] || "").trim();
-            current.serial = (parts[2] || "").trim();
-        }
-    }
-
-    return displays;
-}
-
-/* card2-HDMI-A-2 is the kernel's name for a socket; HDMI-A-2 is the socket. */
-function _connectorName(connector) {
-    if (!connector)
-        return null;
-    return connector.replace(/^card\d+-/, "");
-}
-
-/*
- * A name for each display, and a way of telling two of the same apart.
- *
- * The serial number would do it and is deliberately not used: it identifies a
- * particular piece of hardware, it is in every screenshot of the menu anyone
- * ever posts, and it is no help at all in working out which of the two
- * monitors on the desk is which. Which socket it is plugged into is.
- */
-function nameDisplays(displays) {
-    let names = Naming.disambiguate(displays, {
-        name: display =>
-            Hardware.monitorName(display.manufacturer, display.model) ||
-            _connectorName(display.connector) ||
-            Translate.interpolate(_("Display %{number}"), { number: display.number }),
-        identity: display => _connectorName(display.connector) || display.number,
-    });
-    return displays.map((display, index) => ({ ...display, name: names[index] }));
-}
-
-/*
- * "VCP 10 C 40 100" - feature, type, current, maximum. The maximum is not
- * always 100, so the percentage has to be worked out rather than assumed.
- */
-function parseBrightnessReading(output) {
-    let match = /^VCP\s+10\s+\S+\s+(\d+)\s+(\d+)/m.exec(output || "");
-    if (!match)
-        return null;
-    let current = Number(match[1]);
-    let maximum = Number(match[2]);
-    if (!Number.isFinite(current) || !Number.isFinite(maximum) || maximum <= 0)
-        return null;
-    /* A monitor that reports a current above its own maximum - which is a
-     * monitor whose firmware counts the two in different units, and there are
-     * some - would otherwise put a slider past its end and a figure that is
-     * not a percentage of anything on screen. */
-    return {
-        percentage: Math.min(100, Math.round(current / maximum * 100)),
-        maximum: maximum,
-    };
-}
-
-function parseBrightness(output) {
-    let reading = parseBrightnessReading(output);
-    return reading ? reading.percentage : null;
-}
-
-/* EDID identity stays private: a serial belongs in a comparison, not in a
- * menu or a screenshot. Missing fields are unknown rather than different,
- * because a marginal DDC reply can omit one field for the same monitor. */
-function _displayIdentity(display) {
-    let clean = value => String(value || "").trim().toLowerCase();
-    return {
-        manufacturer: clean(display.manufacturer),
-        model: clean(display.model),
-        serial: clean(display.serial),
-    };
-}
-
-function _sameDisplay(first, second) {
-    for (let field of ["manufacturer", "model", "serial"])
-        if (first[field] && second[field] && first[field] !== second[field])
-            return false;
-    return true;
-}
-
-/*
  * One monitor.
  *
  * It answers to the same handful of members a kernel backlight does -
@@ -306,7 +180,7 @@ const DdcMonitor = class DdcMonitor {
         this.destroyed = false;
         /* Whether this monitor has ever answered. See refresh(). */
         this.known = false;
-        this._identity = _displayIdentity(display);
+        this._identity = DdcParse.displayIdentity(display);
 
         this._run = run;
         this._onIdle = onIdle || function () {};
@@ -321,8 +195,8 @@ const DdcMonitor = class DdcMonitor {
      * moves when something else is unplugged. The bus locates the socket; EDID
      * fields decide whether the hardware occupying that socket also survived. */
     adopt(display) {
-        let identity = _displayIdentity(display);
-        if (!_sameDisplay(this._identity, identity))
+        let identity = DdcParse.displayIdentity(display);
+        if (!DdcParse.sameDisplay(this._identity, identity))
             return false;
         for (let field of ["manufacturer", "model", "serial"])
             if (identity[field])
@@ -367,7 +241,7 @@ const DdcMonitor = class DdcMonitor {
                 done();
                 return;
             }
-            let reading = status === 0 ? parseBrightnessReading(output) : null;
+            let reading = status === 0 ? DdcParse.parseBrightnessReading(output) : null;
             if (reading) {
                 this.known = true;
                 this.available = true;
@@ -512,125 +386,6 @@ const DdcMonitor = class DdcMonitor {
     }
 };
 
-/*
- * One external command at a time, with writes ahead of everything else.
- *
- * Nothing here knows what ddcutil is. It takes a runner, accepts jobs, keeps
- * exactly one of them talking to the world, and answers `busy` for as long as
- * anything is accepted but unfinished - which is the single ownership
- * invariant a caller needs in order to know that no independent path is using
- * the transport.
- *
- * Writes are inserted before the reads and probes already waiting, preserving
- * order within each class: a drag on a slider must not sit behind a
- * whole-machine probe that will take seconds, and a read taken because of a
- * write must not overtake the write that caused it.
- *
- * A job answers exactly once. A runner that throws, a runner that calls back
- * twice, and a cancelled job all arrive at the caller as one settled answer,
- * because a caller counting outstanding work cannot survive either a missing
- * reply or a second one.
- */
-const CommandQueue = class CommandQueue {
-    /* `run(argv, onDone)` may answer with a handle carrying cancel(); an
-     * injected runner need not, so it stays optional. `onIdle` is called after
-     * every completed job, once the queue has had its chance to start the
-     * next. */
-    constructor(run, onIdle) {
-        this._run = run;
-        this._onIdle = onIdle || function () {};
-        /* The count includes the active job and everything queued. */
-        this._inFlight = 0;
-        this._active = null;
-        /* What the transport gave back for the active job, when it gave
-         * anything: the handle cancelActive() ends a running command with. */
-        this._activeCancel = null;
-        this._queue = [];
-        this._destroyed = false;
-    }
-
-    get busy() {
-        return this._inFlight > 0;
-    }
-
-    run(argv, onDone, kind) {
-        let job = { argv: argv, onDone: onDone, kind: kind || "read" };
-        this._inFlight++;
-        if (job.kind === "write") {
-            let before = this._queue.findIndex(queued => queued.kind !== "write");
-            if (before < 0)
-                this._queue.push(job);
-            else
-                this._queue.splice(before, 0, job);
-        } else {
-            this._queue.push(job);
-        }
-        this._drain();
-    }
-
-    _drain() {
-        if (this._destroyed || this._active || this._queue.length === 0)
-            return;
-        let job = this._queue.shift();
-        this._active = job;
-        let answered = false;
-        let finish = (output, status) => {
-            if (answered)
-                return;
-            answered = true;
-            try {
-                job.onDone(output, status);
-            } finally {
-                this._activeCancel = null;
-                this._active = null;
-                this._inFlight--;
-                this._drain();
-                this._onIdle();
-            }
-        };
-        try {
-            this._activeCancel = this._run(job.argv, finish) || null;
-        } catch (error) {
-            Log.error("could not run ddcutil: " + error);
-            finish("", -1);
-        }
-    }
-
-    /* End the command that is already talking to the world. The transport
-     * settles it as a failure, which returns it through _drain's finish and so
-     * keeps the in-flight count and the queue honest. */
-    cancelActive() {
-        let handle = this._activeCancel;
-        this._activeCancel = null;
-        if (!handle || typeof handle.cancel !== "function")
-            return;
-        try {
-            handle.cancel();
-        } catch (error) {
-            Log.error("could not stop the running ddcutil: " + error);
-        }
-    }
-
-    /* Nothing waiting has reached the transport, so each is answered as a
-     * failure without anything being cancelled. */
-    cancelQueued() {
-        let queued = this._queue.splice(0);
-        for (let job of queued) {
-            this._inFlight--;
-            try {
-                job.onDone("", -1);
-            } catch (error) {
-                Log.error("could not settle cancelled ddcutil work: " + error);
-            }
-        }
-    }
-
-    destroy() {
-        this._destroyed = true;
-        this.cancelQueued();
-        this.cancelActive();
-    }
-};
 
 /*
  * Every monitor on this machine, and the one control that stands for all of
@@ -683,7 +438,7 @@ const DdcBacklight = class DdcBacklight {
         /* The scheduler owns every accepted command, independently of monitor
          * lifetimes; _drainWork is what this control does with the moment the
          * bus falls quiet. */
-        this._commands = new CommandQueue(this._runCommand, () => this._drainWork());
+        this._commands = new CommandQueue.CommandQueue(this._runCommand, () => this._drainWork());
         this._run = (argv, onDone, kind) => this._commands.run(argv, onDone, kind);
         this._started = false;
         this._startPending = false;
@@ -826,7 +581,7 @@ const DdcBacklight = class DdcBacklight {
             if (this.destroyed || this.monitors.length === 0)
                 return;
 
-            let displays = nameDisplays(this.monitors.map(monitor => monitor.display));
+            let displays = DdcParse.nameDisplays(this.monitors.map(monitor => monitor.display));
             let changed = false;
             for (let i = 0; i < this.monitors.length; i++) {
                 if (this.monitors[i].name !== displays[i].name)
@@ -957,7 +712,7 @@ const DdcBacklight = class DdcBacklight {
             return;
         }
 
-        let found = nameDisplays(parseDisplays(output));
+        let found = DdcParse.nameDisplays(DdcParse.parseDisplays(output));
         this._detectFailures = 0;
         let visible = found.slice(0, MAX_DISPLAYS);
         if (!this._missingTopologyIsConfirmed(visible)) {
