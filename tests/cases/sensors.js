@@ -1075,9 +1075,12 @@ cases["destroyed sensor sets reject synchronous and asynchronous discovery"] = f
     let answered = 0;
     set.discover();
     set.discoverAsync(() => answered++);
-    set._inventory._startRefresh();
     Harness.equal(answered, 0, "no work or callbacks begin after teardown");
-    Harness.equal(set._inventory._refreshing, false, "no topology check begins after teardown");
+    let rejected = null;
+    Harness.equal(set._inventory._refresh.request(result => { rejected = result; }), false,
+                  "no topology check begins after teardown");
+    Harness.equal(rejected, false, "and the caller that asked for one is settled");
+    Harness.equal(set._inventory._refresh.running, false, "with none in flight");
     Harness.deepEqual(set.temperatureSensors, [], "the destroyed snapshot remains empty");
 };
 

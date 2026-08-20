@@ -9,6 +9,7 @@
 
 const Backends = require("./lib/backends.js");
 const IO = require("./lib/io.js");
+const Refresh = require("./lib/refresh.js");
 
 const POWER_SUPPLY_DIR = "/sys/class/power_supply";
 const PLATFORM_PROFILE = "/sys/firmware/acpi/platform_profile";
@@ -71,10 +72,12 @@ const ChargeControl = class ChargeControl {
         this._reading = _chargeReading([]);
         this._scope = new IO.AsyncScope();
         this._ioOptions = { scope: this._scope };
-        this._refreshing = false;
-        this._refreshPending = false;
-        this._refreshChanged = false;
-        this._refreshWaiters = [];
+        /* One sweep at a time and one replay however many callers asked;
+         * lib/refresh.js owns that, and what is here is the sweep itself. */
+        this._refresh = new Refresh.Coalescer({
+            sweep: done => this._sweep(done),
+            onChanged: () => this._onChanged(),
+        });
         this._stateGeneration = 0;
         this._destroyed = false;
     }
@@ -92,22 +95,12 @@ const ChargeControl = class ChargeControl {
     }
 
     refresh(onDone) {
-        if (this._destroyed) {
-            if (onDone)
-                onDone(false);
-            return;
-        }
-        if (onDone)
-            this._refreshWaiters.push(onDone);
-        if (this._refreshing) {
-            this._refreshPending = true;
-            return;
-        }
-        this._startRefresh();
+        this._refresh.request(onDone);
     }
 
-    _startRefresh() {
-        this._refreshing = true;
+    /* One walk of /sys/class/power_supply, and whether what it found differs
+     * from what was there before. */
+    _sweep(done) {
         IO.listDirAsync(POWER_SUPPLY_DIR, entries => {
             let typePaths = entries.map(name => POWER_SUPPLY_DIR + "/" + name + "/type");
             let thresholdPaths = entries.map(name =>
@@ -125,7 +118,7 @@ const ChargeControl = class ChargeControl {
                         batteries.push({ name: name, path: path });
                 }
                 this._sampleBatteries(batteries, values =>
-                    this._finishRefresh(batteries, values));
+                    this._adoptRefresh(batteries, values, done));
             };
             IO.readStringsAsync(typePaths, answer => {
                 types = answer;
@@ -145,27 +138,14 @@ const ChargeControl = class ChargeControl {
         }, 16, null, this._ioOptions);
     }
 
-    _finishRefresh(batteries, values) {
+    _adoptRefresh(batteries, values, done) {
         if (this._destroyed)
             return;
         ++this._stateGeneration;
         let previous = JSON.stringify([this.batteries, this._reading]);
         this.batteries = batteries;
         this._reading = _chargeReading(values);
-        let changed = previous !== JSON.stringify([this.batteries, this._reading]);
-        this._refreshChanged = this._refreshChanged || changed;
-        if (this._refreshPending) {
-            this._refreshPending = false;
-            this._startRefresh();
-            return;
-        }
-        this._refreshing = false;
-        let waiters = this._refreshWaiters.splice(0);
-        for (let waiter of waiters)
-            waiter(true);
-        if (this._refreshChanged)
-            this._onChanged();
-        this._refreshChanged = false;
+        done(previous !== JSON.stringify([this.batteries, this._reading]));
     }
 
     sample(onDone) {
@@ -204,9 +184,7 @@ const ChargeControl = class ChargeControl {
             return;
         this._destroyed = true;
         this._scope.cancel();
-        let waiters = this._refreshWaiters.splice(0);
-        for (let waiter of waiters)
-            waiter(false);
+        this._refresh.stop();
         this._onChanged = function () {};
     }
 };

@@ -267,20 +267,18 @@ cases["runtime charge work coalesces and rejects stale lifecycle replies"] = fun
     let commands = [];
     let client = new PowerSupply.ChargeControl(
         (args, done) => { commands.push(args); if (done) done(true); });
-    let starts = 0;
+    /* The coalescing itself is lib/refresh.js and has its own cases; what is
+     * held here is that this backend's sweep is the thing being coalesced. */
+    let sweeps = [];
     let results = [];
-    client._startRefresh = function () {
-        starts++;
-        this._refreshing = true;
-    };
+    client._sweep = done => sweeps.push(done);
     client.refresh(value => results.push(value));
     client.refresh(value => results.push(value));
-    Harness.equal(starts, 1, "overlapping topology requests start one sweep");
-    Harness.equal(client._refreshPending, true, "one newer sweep is retained");
+    Harness.equal(sweeps.length, 1, "overlapping topology requests start one sweep");
 
-    client._finishRefresh([], []);
-    Harness.equal(starts, 2, "the retained sweep starts after the first snapshot");
-    client._finishRefresh([], []);
+    sweeps.shift()(false);
+    Harness.equal(sweeps.length, 1, "the retained sweep starts after the first snapshot");
+    sweeps.shift()(true);
     Harness.deepEqual(results, [true, true], "both callers settle after the newer sweep");
 
     client.batteries = [{ name: "BAT0", path: "/old" }];
@@ -294,7 +292,7 @@ cases["runtime charge work coalesces and rejects stale lifecycle replies"] = fun
     client.batteries = [{ name: "BAT0", path: "/same" }];
     client._reading = { limit: 60 };
     client.sample(value => results.push(value));
-    client._finishRefresh([{ name: "BAT0", path: "/same" }], [75]);
+    client._adoptRefresh([{ name: "BAT0", path: "/same" }], [75], function () {});
     sampleDone([50]);
     Harness.equal(results[3], false,
                   "a sample cannot overwrite a newer same-topology refresh");

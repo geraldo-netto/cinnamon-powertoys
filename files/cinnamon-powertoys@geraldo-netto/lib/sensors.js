@@ -13,6 +13,7 @@ const Hardware = require("./lib/hardware.js");
 const IO = require("./lib/io.js");
 const Naming = require("./lib/naming.js");
 const Once = require("./lib/once.js");
+const Refresh = require("./lib/refresh.js");
 const Translate = require("./lib/gettext.js");
 
 const _ = Translate._;
@@ -1022,10 +1023,15 @@ const SensorInventory = class SensorInventory {
         this._discoverAgain = false;
         this._discoverWaiters = [];
         this._discoverNextWaiters = [];
-        this._refreshing = false;
-        this._refreshPending = false;
-        this._refreshChanged = false;
-        this._refreshWaiters = [];
+        /* One topology check at a time and one replay however many callers
+         * asked; lib/refresh.js owns that. It also holds a check requested
+         * during the first full discovery, which is what `defer` is for: that
+         * discovery establishes the topology the check would compare against,
+         * so there is nothing to compare until it lands. */
+        this._refresh = new Refresh.Coalescer({
+            sweep: done => this._sweep(done),
+            defer: () => this._discovering,
+        });
         this._destroyed = false;
     }
 
@@ -1094,12 +1100,11 @@ const SensorInventory = class SensorInventory {
                 this._discoverAgain = false;
                 this._discoverWaiters = this._discoverNextWaiters.splice(0);
                 this.discoverAsync();
-            } else if (this._refreshPending && !this._refreshing) {
+            } else {
                 /* A refresh requested during discovery checks the completed
                  * snapshot instead of queuing another complete sweep before
                  * that snapshot has even established its topology. */
-                this._refreshPending = false;
-                this._startRefresh();
+                this._refresh.resume();
             }
         };
         if (inventory)
@@ -1155,54 +1160,25 @@ const SensorInventory = class SensorInventory {
             return swept;
         }
 
-        if (onDone)
-            this._refreshWaiters.push(onDone);
-        if (this._refreshing) {
-            /* The inventory in flight may have begun before this request.
-             * One later check is enough to cover every overlapping caller. */
-            this._refreshPending = true;
-            return true;
-        }
-        if (this._discovering) {
-            this._refreshPending = true;
-            return true;
-        }
-        this._startRefresh();
-        return true;
+        /* The inventory in flight may have begun before this request, so one
+         * later check covers every overlapping caller; see lib/refresh.js. */
+        return this._refresh.request(onDone);
     }
 
-    _startRefresh() {
-        if (this._destroyed)
-            return;
-        this._refreshing = true;
+    /* One shallow walk of the three roots, and a full sweep only where it
+     * shows the machine has changed. */
+    _sweep(done) {
         _loadInventoryAsync(inventory => {
             if (this._destroyed)
                 return;
             if (_inventoryTopology(inventory) === this._topology) {
-                this._finishRefresh(false);
+                done(false);
                 return;
             }
             /* The machine changed, and this sweep already holds everything
              * the snapshot is built from. */
-            this.discoverAsync(() => this._finishRefresh(true), inventory);
+            this.discoverAsync(() => done(true), inventory);
         }, this._io);
-    }
-
-    _finishRefresh(changed) {
-        if (this._destroyed)
-            return;
-        this._refreshChanged = this._refreshChanged || changed;
-        if (this._refreshPending) {
-            this._refreshPending = false;
-            this._startRefresh();
-            return;
-        }
-        this._refreshing = false;
-        let result = this._refreshChanged;
-        this._refreshChanged = false;
-        let waiters = this._refreshWaiters.splice(0);
-        for (let waiter of waiters)
-            waiter(result);
     }
 
     /* Every caller accepted before teardown is answered once, unsuccessfully:
@@ -1216,10 +1192,7 @@ const SensorInventory = class SensorInventory {
         this._discovering = false;
         this._discoverAgain = false;
         let waiters = this._discoverWaiters.splice(0)
-            .concat(this._discoverNextWaiters.splice(0), this._refreshWaiters.splice(0));
-        this._refreshing = false;
-        this._refreshPending = false;
-        this._refreshChanged = false;
+            .concat(this._discoverNextWaiters.splice(0));
         let firstError = null;
         for (let waiter of waiters) {
             try {
@@ -1228,6 +1201,10 @@ const SensorInventory = class SensorInventory {
                 firstError = firstError || error;
             }
         }
+        /* After the discoveries, in the order they were accepted in: a
+         * topology check is asked for behind a discovery, never in front of
+         * one. */
+        firstError = firstError || this._refresh.stop();
         this.temperatureSensors = [];
         this.fanSensors = [];
         this.powerSensors = [];

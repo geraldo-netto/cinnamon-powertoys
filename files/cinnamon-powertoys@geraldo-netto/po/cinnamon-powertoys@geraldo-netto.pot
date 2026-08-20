@@ -82,7 +82,7 @@ msgstr ""
 msgid "Profile holds"
 msgstr ""
 
-#: ui/menu.js:325 lib/panel-text.js:242 lib/sensors.js:39
+#: ui/menu.js:325 lib/panel-text.js:242 lib/sensors.js:40
 msgid "Processor"
 msgstr ""
 
@@ -262,7 +262,7 @@ msgstr ""
 msgid "AC adapter"
 msgstr ""
 
-#: lib/format.js:178 lib/panel-text.js:157 lib/sensors.js:44
+#: lib/format.js:178 lib/panel-text.js:157 lib/sensors.js:45
 msgid "Battery"
 msgstr ""
 
@@ -550,7 +550,7 @@ msgstr ""
 msgid "Fan"
 msgstr ""
 
-#: lib/format.js:535 lib/sensors.js:226
+#: lib/format.js:535 lib/sensors.js:227
 msgid "Power"
 msgstr ""
 
@@ -650,7 +650,7 @@ msgstr ""
 msgid "Processor package total: %{power}"
 msgstr ""
 
-#: lib/panel-text.js:242 lib/sensors.js:41
+#: lib/panel-text.js:242 lib/sensors.js:42
 msgid "Graphics"
 msgstr ""
 
@@ -746,79 +746,79 @@ msgstr ""
 msgid "No sensors found"
 msgstr ""
 
-#: lib/sensors.js:43 lib/sensors.js:698
+#: lib/sensors.js:44 lib/sensors.js:699
 msgid "Package"
 msgstr ""
 
-#: lib/sensors.js:46
+#: lib/sensors.js:47
 msgid "Mainboard"
 msgstr ""
 
-#: lib/sensors.js:48
+#: lib/sensors.js:49
 msgid "Storage"
 msgstr ""
 
-#: lib/sensors.js:50
+#: lib/sensors.js:51
 msgid "Network"
 msgstr ""
 
-#: lib/sensors.js:52
+#: lib/sensors.js:53
 msgid "Other"
 msgstr ""
 
-#: lib/sensors.js:214
+#: lib/sensors.js:215
 msgid "Core die %{number} (%{token})"
 msgstr ""
 
-#: lib/sensors.js:216
+#: lib/sensors.js:217
 msgid "Core die (%{token})"
 msgstr ""
 
-#: lib/sensors.js:218
+#: lib/sensors.js:219
 msgid "Measured die (%{token})"
 msgstr ""
 
-#: lib/sensors.js:220
+#: lib/sensors.js:221
 msgid "Cooling control (%{token})"
 msgstr ""
 
-#: lib/sensors.js:221
+#: lib/sensors.js:222
 msgid "Die edge"
 msgstr ""
 
-#: lib/sensors.js:222
+#: lib/sensors.js:223
 msgid "Hotspot"
 msgstr ""
 
-#: lib/sensors.js:223 lib/sensors.js:690
+#: lib/sensors.js:224 lib/sensors.js:691
 msgid "Memory"
 msgstr ""
 
-#: lib/sensors.js:224
+#: lib/sensors.js:225
 msgid "Core voltage"
 msgstr ""
 
-#: lib/sensors.js:225
+#: lib/sensors.js:226
 msgid "SoC voltage"
 msgstr ""
 
-#: lib/sensors.js:688
+#: lib/sensors.js:689
 msgid "Cores"
 msgstr ""
 
-#: lib/sensors.js:689
+#: lib/sensors.js:690
 msgid "Uncore"
 msgstr ""
 
-#: lib/sensors.js:691
+#: lib/sensors.js:692
 msgid "Whole board"
 msgstr ""
 
-#: lib/sensors.js:698
+#: lib/sensors.js:699
 msgid "Package %{number}"
 msgstr ""
 
-#: lib/sensors.js:769
+#: lib/sensors.js:770
 msgid "Total"
 msgstr ""
 

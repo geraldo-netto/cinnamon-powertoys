@@ -16,6 +16,7 @@
 const Hardware = require("./lib/hardware.js");
 const IO = require("./lib/io.js");
 const Log = require("./lib/log.js");
+const Refresh = require("./lib/refresh.js");
 
 const CPU_DIR = "/sys/devices/system/cpu";
 const CPUFREQ_DIR = CPU_DIR + "/cpufreq";
@@ -43,9 +44,13 @@ const CpuControl = class CpuControl {
         let configuration = options || {};
         this._runner = runner || function () {};
         this._onChanged = configuration.onChanged || function () {};
-        this._refreshing = false;
-        this._refreshPending = false;
-        this._refreshWaiters = [];
+        /* One sweep at a time and one replay however many callers asked;
+         * lib/refresh.js owns that, and what is here is the sweep itself. */
+        this._refresh = new Refresh.Coalescer({
+            sweep: done => this._sweep(done),
+            onChanged: () => this._onChanged(),
+        });
+        this._lastState = null;
         this._stateGeneration = 0;
         this._destroyed = false;
         this._ioScope = new IO.AsyncScope();
@@ -71,41 +76,31 @@ const CpuControl = class CpuControl {
         this.refresh();
     }
 
+    /* The current discovery may have begun before a request and therefore
+     * cannot prove what is true after it, so an overlapping caller is answered
+     * by a replay rather than by the sweep it arrived during; see
+     * lib/refresh.js. */
     refresh(onDone) {
-        if (this._destroyed) {
-            if (onDone)
-                onDone(false);
-            return false;
-        }
-        if (onDone)
-            this._refreshWaiters.push(onDone);
-        if (this._refreshing) {
-            /* The current discovery may have begun before this request and
-             * therefore cannot prove what is true after it. Keep one replay;
-             * any number of overlapping requests need only one newer sweep. */
-            this._refreshPending = true;
-            return true;
-        }
-        this._startRefresh();
-        return true;
+        return this._refresh.request(onDone);
     }
 
-    _startRefresh() {
-        this._refreshing = true;
+    /*
+     * One discovery, adopted, and whether it found a different processor.
+     *
+     * Compared against the state the last sweep adopted rather than against the
+     * snapshot, because the snapshot also carries the four values sample()
+     * reads and _adopt deliberately clears those: comparing them would report a
+     * change every time a poll had happened since the last sweep.
+     */
+    _sweep(done) {
         this._discoverAsync(state => {
             if (this._destroyed)
                 return;
+            let seen = JSON.stringify(state);
+            let changed = seen !== this._lastState;
+            this._lastState = seen;
             this._adopt(state);
-            if (this._refreshPending) {
-                this._refreshPending = false;
-                this._startRefresh();
-                return;
-            }
-            this._refreshing = false;
-            let waiters = this._refreshWaiters.splice(0);
-            for (let waiter of waiters)
-                waiter(true);
-            this._onChanged();
+            done(changed);
         });
     }
 
@@ -381,20 +376,15 @@ const CpuControl = class CpuControl {
         this._destroyed = true;
         this._ioScope.cancel();
         this._stateGeneration++;
-        this._refreshPending = false;
-        let waiters = this._refreshWaiters.splice(0);
         /* Refresh was accepted while this backend still existed. Teardown is
          * its final, unsuccessful answer; a cancelled filesystem callback is
-         * deliberately not required to arrive in order to release callers. */
-        /* A waiter that throws is reported and not propagated: destroy() is
+         * deliberately not required to arrive in order to release callers.
+         *
+         * A waiter that throws is reported and not propagated: destroy() is
          * called from a teardown that goes on to release other backends, and
          * a throw here would strand every one of them. */
-        for (let waiter of waiters) {
-            try {
-                waiter(false);
-            } catch (error) {
-                Log.error("cpu teardown waiter failed: " + error);
-            }
-        }
+        let error = this._refresh.stop();
+        if (error)
+            Log.error("cpu teardown waiter failed: " + error);
     }
 };
