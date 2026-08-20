@@ -1273,24 +1273,32 @@ cases["an asynchronous reading with nothing to read still answers"] = function (
     });
 };
 
-cases["destroyed sensor reads reject new work and settle in-flight work"] = function () {
+cases["destroyed sensor reads settle, whether asked before teardown or after"] = function () {
     let set = new Sensors.SensorSet();
     set.destroy();
-    let answered = 0;
-    set.readAsync(null, () => answered++);
-    Harness.equal(answered, 0, "new reads are rejected after teardown");
-
-    set = new Sensors.SensorSet();
-    let original = IO.readStringsAsync;
-    let finish = null;
     let answers = [];
-    IO.readStringsAsync = (paths, done) => { finish = done; };
+    let paths = null;
+    let original = IO.readStringsAsync;
+    IO.readStringsAsync = read => { paths = read; };
     try {
         set.readAsync(null, answer => answers.push(answer));
+    } finally {
+        IO.readStringsAsync = original;
+    }
+    Harness.equal(paths, null, "a destroyed set reads nothing");
+    Harness.deepEqual(answers, [null],
+                      "and still answers, because the caller's in-flight flag rides on it");
+
+    set = new Sensors.SensorSet();
+    let finish = null;
+    let inFlight = [];
+    IO.readStringsAsync = (read, done) => { finish = done; };
+    try {
+        set.readAsync(null, answer => inFlight.push(answer));
         set.destroy();
         finish({});
         finish({});
-        Harness.deepEqual(answers, [null],
+        Harness.deepEqual(inFlight, [null],
                           "an in-flight read settles once as unsuccessful after teardown");
     } finally {
         IO.readStringsAsync = original;

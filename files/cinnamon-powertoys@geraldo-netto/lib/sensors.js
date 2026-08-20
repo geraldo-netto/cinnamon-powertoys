@@ -538,9 +538,21 @@ const SensorSet = class SensorSet {
      * notice.
      */
     readAsync(wanted, onDone) {
-        if (this._destroyed)
-            return;
         let keep = wanted || (() => true);
+        /* Answers exactly once, including here. A destroyed set has no reading
+         * to give, which is not the same as having no answer to give: the
+         * applet's collection holds an in-flight flag that only the answer
+         * lowers, so a promise dropped rather than kept leaves the panel on
+         * its last picture and every later poll returning at that guard. This
+         * used to return, and only the order of teardown - _destroyed raised
+         * before the backends are taken apart - kept it from happening. That
+         * is a fact about today's callers rather than about this method; every
+         * other backend here settles the same path on the way out. */
+        if (this._destroyed) {
+            if (onDone)
+                onDone(null);
+            return;
+        }
         /*
          * The lists are taken now, not when the answer comes back.
          *
