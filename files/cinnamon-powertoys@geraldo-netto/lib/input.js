@@ -15,6 +15,40 @@
  */
 
 /*
+ * A wheel event, as a number.
+ *
+ * A positive amount means the same thing as scrolling up everywhere. The
+ * discrete directions are one notch each; a smooth-scrolling device sends
+ * fractions of one on an axis whose sign runs the other way, and a runtime
+ * that will not answer for the delta at all is no movement rather than a
+ * throw out of an event handler.
+ *
+ * It is here rather than beside the widgets because it is the same question
+ * the panel's own wheel handler asks, and that handler has no other reason to
+ * know a menu module. `directions` is Clutter.ScrollDirection, handed in for
+ * the reason every other shell interface in lib/ is handed in: this file is
+ * one a case can load, and imports.gi.Clutter is not. A caller that passes
+ * none has described no direction, and no direction is no movement.
+ */
+function scrollAmount(event, directions) {
+    directions = directions || {};
+    let direction = event.get_scroll_direction();
+    if (direction === directions.UP)
+        return 1;
+    if (direction === directions.DOWN)
+        return -1;
+    if (direction !== directions.SMOOTH)
+        return 0;
+    try {
+        let delta = event.get_scroll_delta();
+        let vertical = delta && delta.length > 1 ? delta[1] : 0;
+        return typeof vertical === "number" && Number.isFinite(vertical) ? -vertical : 0;
+    } catch (e) {
+        return 0;
+    }
+}
+
+/*
  * The wheel.
  *
  * "brightness" is what the applet this one replaces does with the wheel, and it

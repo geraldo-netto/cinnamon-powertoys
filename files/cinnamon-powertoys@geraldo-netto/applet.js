@@ -58,7 +58,6 @@ const Profiles = require("./lib/profiles.js");
 const Reading = require("./lib/reading.js");
 const Format = require("./lib/format.js");
 const HelperMessages = require("./lib/helper-messages.js");
-const Controls = require("./ui/controls.js");
 const Menu = require("./ui/menu.js");
 
 const UUID = Translate.UUID;
@@ -251,7 +250,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * What to do with the settled count is decided when it settles, so
          * the gatherer is handed the notches and the handler the action. */
         this._scroll = new ScrollGatherer.ScrollGatherer({
-            settleMs: Controls.SCROLL_SETTLE_MS,
+            settleMs: ScrollGatherer.SETTLE_MS,
             timers: {
                 add: (delay, callback) => Mainloop.timeout_add(delay, callback),
                 remove: id => Mainloop.source_remove(id),
@@ -1464,7 +1463,7 @@ class PowerToysApplet extends Applet.TextIconApplet {
      * power saver - and it reaches the daemon as one write instead of three.
      */
     _onScroll(actor, event) {
-        let amount = Controls.scrollAmount(event);
+        let amount = Input.scrollAmount(event, Clutter.ScrollDirection);
         if (amount === 0)
             return Clutter.EVENT_PROPAGATE;
 

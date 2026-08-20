@@ -21,6 +21,7 @@ const St = imports.gi.St;
 const Tooltips = imports.ui.tooltips;
 
 const Format = require("./lib/format.js");
+const Input = require("./lib/input.js");
 const KeyedList = require("./lib/keyed-list.js");
 const ScrollGatherer = require("./lib/scroll-gatherer.js");
 const Translate = require("./lib/gettext.js");
@@ -32,30 +33,6 @@ const InfoRow = Rows.InfoRow;
 const NoteRow = Rows.NoteRow;
 const SelectorItem = Rows.SelectorItem;
 const exposeHeading = Rows.exposeHeading;
-
-/* The gathering, its settle window and its rounding are
- * lib/scroll-gatherer.js; the applet's own wheel handler uses the same
- * one. Re-exported here because this module is what the presentation
- * side reaches for. */
-const SCROLL_SETTLE_MS = ScrollGatherer.SETTLE_MS;
-
-/* A positive amount means the same thing as scrolling up everywhere. */
-function scrollAmount(event) {
-    let direction = event.get_scroll_direction();
-    if (direction === Clutter.ScrollDirection.UP)
-        return 1;
-    if (direction === Clutter.ScrollDirection.DOWN)
-        return -1;
-    if (direction !== Clutter.ScrollDirection.SMOOTH)
-        return 0;
-    try {
-        let delta = event.get_scroll_delta();
-        let vertical = delta && delta.length > 1 ? delta[1] : 0;
-        return typeof vertical === "number" && Number.isFinite(vertical) ? -vertical : 0;
-    } catch (e) {
-        return 0;
-    }
-}
 
 /*
  * A radio group: a heading carrying the current value, then one dot item per
@@ -386,7 +363,7 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
         this._name = label;
         this._seeking = false;
         this._scroll = new ScrollGatherer.ScrollGatherer({
-            settleMs: SCROLL_SETTLE_MS,
+            settleMs: ScrollGatherer.SETTLE_MS,
             timers: {
                 add: (delay, callback) => Mainloop.timeout_add(delay, callback),
                 remove: id => Mainloop.source_remove(id),
@@ -504,7 +481,7 @@ class BacklightSlider extends PopupMenu.PopupSliderMenuItem {
     /* The daemon owns the notch size, and it is the one the brightness keys
      * use, so the wheel and the keyboard agree. */
     _onScrollEvent(actor, event) {
-        let amount = scrollAmount(event);
+        let amount = Input.scrollAmount(event, Clutter.ScrollDirection);
         if (amount === 0)
             return Clutter.EVENT_PROPAGATE;
 

@@ -114,3 +114,57 @@ cases["nothing to apply is not an error"] = function () {
     hotkeys.apply();
     Harness.equal(keys.added.length, 0, "an absent list registers nothing");
 };
+
+/* Clutter's own enumeration, handed in the way the applet and the slider hand
+ * it in. The values are Clutter's; what matters here is only that they are
+ * distinct and that SMOOTH is the one carrying a delta. */
+const DIRECTIONS = { UP: 0, DOWN: 1, LEFT: 2, RIGHT: 3, SMOOTH: 4 };
+
+function wheel(direction, delta) {
+    return {
+        get_scroll_direction: function () { return direction; },
+        get_scroll_delta: function () {
+            if (delta === "throws")
+                throw new Error("no delta on this event");
+            return delta;
+        },
+    };
+}
+
+cases["a notch up is one step and a notch down is one back"] = function () {
+    Harness.equal(Input.scrollAmount(wheel(DIRECTIONS.UP), DIRECTIONS), 1,
+                  "up is positive everywhere");
+    Harness.equal(Input.scrollAmount(wheel(DIRECTIONS.DOWN), DIRECTIONS), -1,
+                  "and down is the same size the other way");
+};
+
+cases["a sideways wheel moves nothing"] = function () {
+    Harness.equal(Input.scrollAmount(wheel(DIRECTIONS.LEFT), DIRECTIONS), 0,
+                  "a horizontal wheel is not this applet's");
+};
+
+cases["a smooth device is read off its vertical delta"] = function () {
+    Harness.equal(Input.scrollAmount(wheel(DIRECTIONS.SMOOTH, [0, -0.5]), DIRECTIONS), 0.5,
+                  "the axis runs the other way from the notches");
+    Harness.equal(Input.scrollAmount(wheel(DIRECTIONS.SMOOTH, [0, 2]), DIRECTIONS), -2,
+                  "and a push the other way is negative");
+};
+
+cases["a delta that is not a number is no movement"] = function () {
+    Harness.equal(Input.scrollAmount(wheel(DIRECTIONS.SMOOTH, [0]), DIRECTIONS), 0,
+                  "an axis that is not there has not moved");
+    Harness.equal(Input.scrollAmount(wheel(DIRECTIONS.SMOOTH, [0, NaN]), DIRECTIONS), 0,
+                  "and neither has one that will not say");
+    Harness.equal(Input.scrollAmount(wheel(DIRECTIONS.SMOOTH, null), DIRECTIONS), 0,
+                  "nor one with no delta at all");
+};
+
+cases["a runtime that throws for the delta is no movement"] = function () {
+    Harness.equal(Input.scrollAmount(wheel(DIRECTIONS.SMOOTH, "throws"), DIRECTIONS), 0,
+                  "an event handler must not throw over a wheel");
+};
+
+cases["an event described by no enumeration is no movement"] = function () {
+    Harness.equal(Input.scrollAmount(wheel(DIRECTIONS.UP)), 0,
+                  "with no directions handed in there is no direction to match");
+};
