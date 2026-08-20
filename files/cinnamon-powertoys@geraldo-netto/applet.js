@@ -37,7 +37,6 @@ const Ddc = require("./lib/ddc.js");
 const Device = require("./lib/device.js");
 const Input = require("./lib/input.js");
 const SettingsTable = require("./lib/settings.js");
-const SensorRows = require("./lib/sensor-rows.js");
 const Log = require("./lib/log.js");
 const MonitorWatch = require("./lib/monitor-watch.js");
 const Notifications = require("./lib/notifications.js");

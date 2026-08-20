@@ -16,7 +16,6 @@
 const GLib = imports.gi.GLib;
 
 const Energy = require("./lib/energy.js");
-const Format = require("./lib/format.js");
 const Hardware = require("./lib/hardware.js");
 const IO = require("./lib/io.js");
 const Kinds = require("./lib/sensor-kinds.js");

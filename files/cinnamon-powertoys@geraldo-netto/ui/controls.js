@@ -57,8 +57,6 @@ function scrollAmount(event) {
     }
 }
 
-const settledScrollSteps = ScrollGatherer.settledSteps;
-
 /*
  * A radio group: a heading carrying the current value, then one dot item per
  * value.
