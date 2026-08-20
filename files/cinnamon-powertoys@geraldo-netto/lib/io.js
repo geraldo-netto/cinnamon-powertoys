@@ -197,6 +197,55 @@ function readNumber(path) {
 }
 
 /*
+ * The part every asynchronous batch below has in common.
+ *
+ * Each of them resolves a path, builds a Gio.File from it - through the
+ * caller's factory where there is one, which is how a case substitutes a file
+ * that fails - starts one asynchronous call on it, and reads the result. Both
+ * halves can throw, and in every one of them the answer to a throw is the same
+ * fallback the batch already uses for a node that is missing, root-only or
+ * busy: none of that is a failure here, it is an ordinary state of sysfs.
+ *
+ * So the fallback is stated once and the four readers say only what call to
+ * make and what its answer means. Written out four times, the two try blocks
+ * were four chances to catch one and not the other.
+ */
+function _perPath(fallback, fileFactory, begin) {
+    return (path, cancellable, settle) => {
+        let answer = Once.once(settle);
+        /* The reading of a finished call, not its result: what throws is
+         * finish(), inside the completion callback, where a throw has nowhere
+         * to go and would strand this path instead of settling it. */
+        let attempt = produce => {
+            try {
+                answer(produce());
+            } catch (e) {
+                answer(fallback);
+            }
+        };
+        try {
+            let file = fileFactory ? fileFactory(resolve(path))
+                                   : Gio.File.new_for_path(resolve(path));
+            begin(file, cancellable, attempt);
+        } catch (e) {
+            answer(fallback);
+        }
+    };
+}
+
+/*
+ * The three of them that ask for metadata rather than contents, which differ
+ * only in the attributes they ask for, the flags they ask with, and what the
+ * answer means.
+ */
+function _queryInfo(attributes, flags, fallback, fileFactory, interpret) {
+    return _perPath(fallback, fileFactory, (file, cancellable, attempt) => {
+        file.query_info_async(attributes, flags, GLib.PRIORITY_DEFAULT, cancellable,
+            (file, result) => attempt(() => interpret(file.query_info_finish(result))));
+    });
+}
+
+/*
  * Several nodes at once, off the calling thread.
  *
  * GLib has no asynchronous file_get_contents - the async read of a whole file
@@ -213,22 +262,12 @@ function readNumber(path) {
  */
 function readStringsAsync(paths, onDone, concurrency, fileFactory, options) {
     return _batchAsync(paths, onDone, concurrency, null,
-        (path, cancellable, settle) => {
-        try {
-            let file = fileFactory ? fileFactory(resolve(path))
-                                   : Gio.File.new_for_path(resolve(path));
-            file.load_contents_async(cancellable, (file, result) => {
-                try {
-                    let [ok, contents] = file.load_contents_finish(result);
-                    settle(ok ? _decode(contents).trim() : null);
-                } catch (e) {
-                    settle(null);
-                }
-            });
-        } catch (e) {
-            settle(null);
-        }
-    }, options);
+        _perPath(null, fileFactory, (file, cancellable, attempt) => {
+            file.load_contents_async(cancellable, (file, result) => attempt(() => {
+                let [ok, contents] = file.load_contents_finish(result);
+                return ok ? _decode(contents).trim() : null;
+            }));
+        }), options);
 }
 
 /*
@@ -267,72 +306,27 @@ function readLink(path) {
  * readStringsAsync does for node contents. */
 function readLinksAsync(paths, onDone, concurrency, fileFactory, options) {
     return _batchAsync(paths, onDone, concurrency, null,
-        (path, cancellable, settle) => {
-        try {
-            let file = fileFactory ? fileFactory(resolve(path))
-                                   : Gio.File.new_for_path(resolve(path));
-            file.query_info_async(
-                "standard::is-symlink,standard::symlink-target",
-                Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS,
-                GLib.PRIORITY_DEFAULT, cancellable, (file, result) => {
-                    try {
-                        let info = file.query_info_finish(result);
-                        settle(info.get_is_symlink() ? info.get_symlink_target() : null);
-                    } catch (e) {
-                        settle(null);
-                    }
-                });
-        } catch (e) {
-            settle(null);
-        }
-    }, options);
+        _queryInfo("standard::is-symlink,standard::symlink-target",
+                   Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null, fileFactory,
+                   info => info.get_is_symlink() ? info.get_symlink_target() : null),
+        options);
 }
 
 /* Existence for a bounded batch, without opening any of the nodes and without
  * making the shell thread wait on sysfs metadata. */
 function pathsExistAsync(paths, onDone, concurrency, fileFactory, options) {
     return _batchAsync(paths, onDone, concurrency, false,
-        (path, cancellable, settle) => {
-        try {
-            let file = fileFactory ? fileFactory(resolve(path))
-                                   : Gio.File.new_for_path(resolve(path));
-            file.query_info_async(
-                "standard::type", Gio.FileQueryInfoFlags.NONE,
-                GLib.PRIORITY_DEFAULT, cancellable, (file, result) => {
-                    try {
-                        file.query_info_finish(result);
-                        settle(true);
-                    } catch (e) {
-                        settle(false);
-                    }
-                });
-        } catch (e) {
-            settle(false);
-        }
-    }, options);
+        _queryInfo("standard::type", Gio.FileQueryInfoFlags.NONE, false, fileFactory,
+                   () => true),
+        options);
 }
 
 /* Readability for a bounded batch, without sampling the nodes themselves. */
 function pathsReadableAsync(paths, onDone, concurrency, fileFactory, options) {
     return _batchAsync(paths, onDone, concurrency, false,
-        (path, cancellable, settle) => {
-        try {
-            let file = fileFactory ? fileFactory(resolve(path))
-                                   : Gio.File.new_for_path(resolve(path));
-            file.query_info_async(
-                "access::can-read", Gio.FileQueryInfoFlags.NONE,
-                GLib.PRIORITY_DEFAULT, cancellable, (file, result) => {
-                    try {
-                        let info = file.query_info_finish(result);
-                        settle(info.get_attribute_boolean("access::can-read"));
-                    } catch (e) {
-                        settle(false);
-                    }
-                });
-        } catch (e) {
-            settle(false);
-        }
-    }, options);
+        _queryInfo("access::can-read", Gio.FileQueryInfoFlags.NONE, false, fileFactory,
+                   info => info.get_attribute_boolean("access::can-read")),
+        options);
 }
 
 function exists(path) {
