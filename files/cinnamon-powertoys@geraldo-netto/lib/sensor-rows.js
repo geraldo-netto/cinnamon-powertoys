@@ -15,8 +15,8 @@
  * asked about.
  */
 
+const SensorKinds = require("./lib/sensor-kinds.js");
 const Format = require("./lib/format.js");
-const Sensors = require("./lib/sensors.js");
 const Translate = require("./lib/gettext.js");
 
 const _ = Translate._;
@@ -148,7 +148,7 @@ function powerEntry(meter) {
 function entriesOf(readings, showAll, isReadable, toEntry) {
     let usable = readings.filter(isReadable);
     if (!showAll)
-        usable = usable.filter(reading => Sensors.isPrimaryKind(reading.kind));
+        usable = usable.filter(reading => SensorKinds.isPrimaryKind(reading.kind));
     return usable.map(toEntry);
 }
 
@@ -175,7 +175,7 @@ function withHeadings(entries, leadIn) {
         if (entry.group !== group) {
             group = entry.group;
             out.push({ key: "heading:" + group, heading: true,
-                       label: entry.groupLabel || Sensors.kindLabel(entry.kind) });
+                       label: entry.groupLabel || SensorKinds.kindLabel(entry.kind) });
             if (!placed && group === leadIn.group) {
                 for (let row of leadIn.rows)
                     out.push(row);
@@ -252,7 +252,7 @@ function cpuReadingRows(data) {
 
     return {
         group: host ? host.group : "cpu:processor",
-        groupLabel: host ? host.groupLabel : (data.cpu.model || Sensors.kindLabel("cpu")),
+        groupLabel: host ? host.groupLabel : (data.cpu.model || SensorKinds.kindLabel("cpu")),
         rows: rows,
     };
 }
@@ -285,6 +285,6 @@ function rows(data, options) {
         return [{ key: "empty", label: _("No sensors found"), value: "", warning: false }];
     }
 
-    entries.sort(Sensors.bySensorOrder);
+    entries.sort(SensorKinds.bySensorOrder);
     return withHeadings(entries, leadIn);
 }

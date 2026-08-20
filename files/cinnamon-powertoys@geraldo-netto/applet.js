@@ -27,6 +27,7 @@ const St = imports.gi.St;
  * drops the cached modules for the directory when the xlet is unloaded, while
  * the legacy importer caches them for the life of the process.
  */
+const SensorKinds = require("./lib/sensor-kinds.js");
 const Alerts = require("./lib/alerts.js");
 const Backlight = require("./lib/backlight.js");
 const Bluez = require("./lib/bluez.js");
@@ -910,9 +911,9 @@ class PowerToysApplet extends Applet.TextIconApplet {
                   this.menu?.isOpen;
         let hint = (this.cpuSensorHint || "").trim();
         return function (sensor) {
-            if (all || Sensors.isPrimaryKind(sensor.kind))
+            if (all || SensorKinds.isPrimaryKind(sensor.kind))
                 return true;
-            return hint !== "" && Sensors.sensorMatches(sensor, hint);
+            return hint !== "" && SensorKinds.sensorMatches(sensor, hint);
         };
     }
 

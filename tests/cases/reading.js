@@ -11,13 +11,14 @@ const Harness = imports.harness;
 const Fuzz = imports.fuzz;
 const UPowerGlib = imports.gi.UPowerGlib;
 
+const SensorKinds = Harness.requireXlet("./lib/sensor-kinds.js");
 const Backends = Harness.requireXlet("./lib/backends.js");
 const Reading = Harness.requireXlet("./lib/reading.js");
 const Sensors = Harness.requireXlet("./lib/sensors.js");
 
 /* The matcher is the caller's to supply; the applet supplies this one. */
 function pickTemperature(temperatures, hint) {
-    return Reading.pickTemperature(temperatures, hint, Sensors.sensorMatches);
+    return Reading.pickTemperature(temperatures, hint, SensorKinds.sensorMatches);
 }
 
 const State = UPowerGlib.DeviceState;

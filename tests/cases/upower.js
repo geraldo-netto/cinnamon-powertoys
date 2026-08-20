@@ -19,6 +19,7 @@ const Fuzz = imports.fuzz;
 const Harness = imports.harness;
 const UPowerGlib = imports.gi.UPowerGlib;
 
+const SensorKinds = Harness.requireXlet("./lib/sensor-kinds.js");
 const Format = Harness.requireXlet("./lib/format.js");
 const Log = Harness.requireXlet("./lib/log.js");
 const Sensors = Harness.requireXlet("./lib/sensors.js");
@@ -187,7 +188,7 @@ cases["the machine's own batteries come before what is plugged into it"] = funct
 cases["their kind is one the menu knows and keeps"] = function () {
     let readings = SensorRows.batteryReadings([device()]);
     Harness.equal(readings.temperatures[0].kind, "battery", "battery");
-    Harness.equal(Sensors.isPrimaryKind("battery"), true,
+    Harness.equal(SensorKinds.isPrimaryKind("battery"), true,
                   "which survives the menu's default filter, or a laptop would never see it");
     Harness.equal(Format.measureName("temperature"), readings.temperatures[0].shortLabel,
                   "and the word is the one lib/sensors.js uses for the same thing");

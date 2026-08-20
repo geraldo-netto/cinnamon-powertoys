@@ -18,23 +18,23 @@ msgstr ""
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
 #. metadata.json->name
-#: applet.js:292 applet.js:513 applet.js:1334 applet.js:1339 applet.js:1401
-#: applet.js:1443 applet.js:1449
+#: applet.js:293 applet.js:514 applet.js:1335 applet.js:1340 applet.js:1402
+#: applet.js:1444 applet.js:1450
 msgid "Power Toys"
 msgstr ""
 
-#: applet.js:293
+#: applet.js:294
 msgid "Shortcut is already in use: %{shortcut}"
 msgstr ""
 
-#: applet.js:514
+#: applet.js:515
 msgid ""
 "Power profiles, processor settings, batteries and sensors are in this menu. "
 "The wheel over the icon changes screen brightness, a middle click toggles "
 "the keyboard backlight. Right click to configure those, and to set shortcuts."
 msgstr ""
 
-#: applet.js:1402
+#: applet.js:1403
 msgid "Power profile: %{profile}"
 msgstr ""
 
@@ -82,7 +82,7 @@ msgstr ""
 msgid "Profile holds"
 msgstr ""
 
-#: ui/menu.js:325 lib/panel-text.js:242 lib/sensors.js:40
+#: ui/menu.js:325 lib/panel-text.js:242 lib/sensor-kinds.js:39
 msgid "Processor"
 msgstr ""
 
@@ -262,7 +262,7 @@ msgstr ""
 msgid "AC adapter"
 msgstr ""
 
-#: lib/format.js:178 lib/panel-text.js:157 lib/sensors.js:45
+#: lib/format.js:178 lib/panel-text.js:157 lib/sensor-kinds.js:44
 msgid "Battery"
 msgstr ""
 
@@ -550,7 +550,7 @@ msgstr ""
 msgid "Fan"
 msgstr ""
 
-#: lib/format.js:535 lib/sensors.js:227
+#: lib/format.js:535 lib/sensor-kinds.js:189
 msgid "Power"
 msgstr ""
 
@@ -650,7 +650,7 @@ msgstr ""
 msgid "Processor package total: %{power}"
 msgstr ""
 
-#: lib/panel-text.js:242 lib/sensors.js:42
+#: lib/panel-text.js:242 lib/sensor-kinds.js:41
 msgid "Graphics"
 msgstr ""
 
@@ -722,6 +722,62 @@ msgstr ""
 msgid "Charge limit: %{limit}"
 msgstr ""
 
+#: lib/sensor-kinds.js:43 lib/sensors.js:434
+msgid "Package"
+msgstr ""
+
+#: lib/sensor-kinds.js:46
+msgid "Mainboard"
+msgstr ""
+
+#: lib/sensor-kinds.js:48
+msgid "Storage"
+msgstr ""
+
+#: lib/sensor-kinds.js:50
+msgid "Network"
+msgstr ""
+
+#: lib/sensor-kinds.js:52
+msgid "Other"
+msgstr ""
+
+#: lib/sensor-kinds.js:177
+msgid "Core die %{number} (%{token})"
+msgstr ""
+
+#: lib/sensor-kinds.js:179
+msgid "Core die (%{token})"
+msgstr ""
+
+#: lib/sensor-kinds.js:181
+msgid "Measured die (%{token})"
+msgstr ""
+
+#: lib/sensor-kinds.js:183
+msgid "Cooling control (%{token})"
+msgstr ""
+
+#: lib/sensor-kinds.js:184
+msgid "Die edge"
+msgstr ""
+
+#: lib/sensor-kinds.js:185
+msgid "Hotspot"
+msgstr ""
+
+#: lib/sensor-kinds.js:186 lib/sensors.js:426
+msgid "Memory"
+msgstr ""
+
+#: lib/sensor-kinds.js:187
+msgid "Core voltage"
+msgstr ""
+
+#: lib/sensor-kinds.js:188
+msgid "SoC voltage"
+msgstr ""
+
 #: lib/sensor-rows.js:229
 msgid "Frequency"
 msgstr ""
@@ -746,79 +802,23 @@ msgstr ""
 msgid "No sensors found"
 msgstr ""
 
-#: lib/sensors.js:44 lib/sensors.js:699
-msgid "Package"
-msgstr ""
-
-#: lib/sensors.js:47
-msgid "Mainboard"
-msgstr ""
-
-#: lib/sensors.js:49
-msgid "Storage"
-msgstr ""
-
-#: lib/sensors.js:51
-msgid "Network"
-msgstr ""
-
-#: lib/sensors.js:53
-msgid "Other"
-msgstr ""
-
-#: lib/sensors.js:215
-msgid "Core die %{number} (%{token})"
-msgstr ""
-
-#: lib/sensors.js:217
-msgid "Core die (%{token})"
-msgstr ""
-
-#: lib/sensors.js:219
-msgid "Measured die (%{token})"
-msgstr ""
-
-#: lib/sensors.js:221
-msgid "Cooling control (%{token})"
-msgstr ""
-
-#: lib/sensors.js:222
-msgid "Die edge"
-msgstr ""
-
-#: lib/sensors.js:223
-msgid "Hotspot"
-msgstr ""
-
-#: lib/sensors.js:224 lib/sensors.js:691
-msgid "Memory"
-msgstr ""
-
-#: lib/sensors.js:225
-msgid "Core voltage"
-msgstr ""
-
-#: lib/sensors.js:226
-msgid "SoC voltage"
-msgstr ""
-
-#: lib/sensors.js:689
+#: lib/sensors.js:424
 msgid "Cores"
 msgstr ""
 
-#: lib/sensors.js:690
+#: lib/sensors.js:425
 msgid "Uncore"
 msgstr ""
 
-#: lib/sensors.js:692
+#: lib/sensors.js:427
 msgid "Whole board"
 msgstr ""
 
-#: lib/sensors.js:699
+#: lib/sensors.js:434
 msgid "Package %{number}"
 msgstr ""
 
-#: lib/sensors.js:770
+#: lib/sensors.js:505
 msgid "Total"
 msgstr ""
 

@@ -12,11 +12,11 @@
  * against, or to ask what happens when one part settles twice.
  */
 
+const SensorKinds = require("./lib/sensor-kinds.js");
 const Device = require("./lib/device.js");
 const Once = require("./lib/once.js");
 const Reading = require("./lib/reading.js");
 const SensorRows = require("./lib/sensor-rows.js");
-const Sensors = require("./lib/sensors.js");
 
 /*
  * Several answers, and the one moment they are all in.
@@ -76,7 +76,7 @@ function assemble(sources) {
     let powers = readings.powers.concat(battery.powers);
     let power = Reading.pickPower(upower.primary, readings.packageWatts, powers);
     let picked = Reading.pickTemperature(temperatures, sources.sensorHint,
-                                         Sensors.sensorMatches);
+                                         SensorKinds.sensorMatches);
 
     return {
         upowerAvailable: upower.available,

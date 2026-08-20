@@ -14,6 +14,7 @@
 
 const Harness = imports.harness;
 
+const SensorKinds = Harness.requireXlet("./lib/sensor-kinds.js");
 const Hardware = Harness.requireXlet("./lib/hardware.js");
 const IO = Harness.requireXlet("./lib/io.js");
 const Sensors = Harness.requireXlet("./lib/sensors.js");
@@ -166,7 +167,7 @@ cases["a tidied label is text, not a replacement pattern"] = function () {
 };
 
 cases["die sensor tokens keep their complete translated labels"] = function () {
-    let entries = Sensors._finalizeNames([
+    let entries = SensorKinds.finalizeNames([
         { rawLabel: "Tccd", chip: "k10temp", measure: "temperature", siblings: 1, index: 1 },
         { rawLabel: "Tdie", chip: "k10temp", measure: "temperature", siblings: 1, index: 2 },
     ]);
@@ -181,7 +182,7 @@ cases["everything one chip says stays together, in kind order"] = function () {
     on("machine", function () {
         let found = Sensors.discoverSensors();
         let sorted = found.temperatures.concat(found.fans, found.powerMeters)
-            .sort(Sensors.bySensorOrder)
+            .sort(SensorKinds.bySensorOrder)
             .map(entry => entry.group);
         let seen = [];
         for (let group of sorted) {
@@ -614,24 +615,24 @@ cases["an unreadable counter forgets what it knew"] = function () {
 /* the kind table                                                    */
 
 cases["every kind has a label, and only two have no pattern"] = function () {
-    let withoutPattern = Sensors.KINDS.filter(entry => !entry.pattern).map(entry => entry.kind);
+    let withoutPattern = SensorKinds.KINDS.filter(entry => !entry.pattern).map(entry => entry.kind);
     Harness.deepEqual(withoutPattern, ["package", "other"],
                       "package comes from the counters, other is the fallback");
-    for (let entry of Sensors.KINDS)
+    for (let entry of SensorKinds.KINDS)
         Harness.ok(entry.label, entry.kind + " has no label");
 };
 
 cases["the interesting kinds are the ones the menu keeps"] = function () {
     for (let kind of ["cpu", "gpu", "package", "battery"])
-        Harness.equal(Sensors.isPrimaryKind(kind), true, kind);
+        Harness.equal(SensorKinds.isPrimaryKind(kind), true, kind);
     for (let kind of ["board", "disk", "network", "other", "nonsense"])
-        Harness.equal(Sensors.isPrimaryKind(kind), false, kind);
+        Harness.equal(SensorKinds.isPrimaryKind(kind), false, kind);
 };
 
 cases["sensors sort by kind, then by measure, then by name"] = function () {
     let list = [{ kind: "disk", label: "b" }, { kind: "cpu", label: "z" },
                 { kind: "cpu", label: "a" }, { kind: "nonsense", label: "a" }];
-    list.sort(Sensors.bySensorOrder);
+    list.sort(SensorKinds.bySensorOrder);
     Harness.deepEqual(list.map(e => e.kind + ":" + e.label),
                       ["cpu:a", "cpu:z", "disk:b", "nonsense:a"],
                       "with no measure to compare, kind then name");
@@ -642,7 +643,7 @@ cases["sensors sort by kind, then by measure, then by name"] = function () {
                 { kind: "gpu", measure: "fan", label: "amdgpu" },
                 { kind: "cpu", measure: "temperature", label: "k10temp Tctl" },
                 { kind: "gpu", measure: "temperature", label: "amdgpu edge" }];
-    card.sort(Sensors.bySensorOrder);
+    card.sort(SensorKinds.bySensorOrder);
     Harness.deepEqual(card.map(e => e.measure + ":" + e.label),
                       ["temperature:k10temp Tctl", "temperature:amdgpu edge",
                        "fan:amdgpu", "power:amdgpu PPT"],
@@ -801,7 +802,7 @@ cases["naming leaves the entries it was given alone"] = function () {
                      identity: "sda", measure: "temperature" },
                    { chip: "drivetemp", rawLabel: null, siblings: 1, index: "1",
                      identity: "sdb", measure: "temperature" }];
-        let named = Sensors._finalizeNames(raw);
+        let named = SensorKinds.finalizeNames(raw);
         Harness.equal(raw[0].display, undefined, "the input was mutated");
         Harness.equal(named[0].display, "drivetemp (sda)", "first");
         Harness.equal(named[1].display, "drivetemp (sdb)", "second");
@@ -821,12 +822,12 @@ cases["a fan and a meter on one chip are not disambiguated against each other"] 
 cases["a sensor is matched on what the driver calls it"] = function () {
     let tctl = { chip: "k10temp", rawLabel: "Tctl", display: "k10temp Tctl" };
     let zone = { chip: "cpu_thermal", rawLabel: null, display: "cpu_thermal" };
-    Harness.equal(Sensors.sensorMatches(tctl, "tctl"), true, "its label");
-    Harness.equal(Sensors.sensorMatches(tctl, "K10TEMP"), true, "its chip, any case");
-    Harness.equal(Sensors.sensorMatches(zone, "cpu"), true, "a zone has only a type");
-    Harness.equal(Sensors.sensorMatches(tctl, "k10temp tctl"), false,
+    Harness.equal(SensorKinds.sensorMatches(tctl, "tctl"), true, "its label");
+    Harness.equal(SensorKinds.sensorMatches(tctl, "K10TEMP"), true, "its chip, any case");
+    Harness.equal(SensorKinds.sensorMatches(zone, "cpu"), true, "a zone has only a type");
+    Harness.equal(SensorKinds.sensorMatches(tctl, "k10temp tctl"), false,
                   "the composed menu name is not what is compared");
-    Harness.equal(Sensors.sensorMatches(tctl, ""), false, "an empty hint matches nothing");
+    Harness.equal(SensorKinds.sensorMatches(tctl, ""), false, "an empty hint matches nothing");
 };
 
 cases["a reading carries the driver's own label"] = function () {
@@ -864,7 +865,7 @@ cases["a reading only touches the sensors it was asked for"] = function () {
     on("machine", function () {
         let set = new Sensors.SensorSet();
         let all = set.read();
-        let primary = set.read(sensor => Sensors.isPrimaryKind(sensor.kind));
+        let primary = set.read(sensor => SensorKinds.isPrimaryKind(sensor.kind));
         Harness.equal(all.temperatures.length, 8, "everything");
         Harness.equal(primary.temperatures.length, 5, "the cpu and gpu ones only");
         Harness.equal(primary.temperatures.every(t => t.kind === "cpu" || t.kind === "gpu"), true,
@@ -1250,7 +1251,7 @@ cases["an asynchronous reading reads only what it was asked for"] = function () 
     on("machine", function () {
         let set = new Sensors.SensorSet();
         let readings = Harness.settle(
-            done => set.readAsync(sensor => Sensors.isPrimaryKind(sensor.kind), done),
+            done => set.readAsync(sensor => SensorKinds.isPrimaryKind(sensor.kind), done),
             "readAsync");
         Harness.equal(readings.temperatures.length, 5, "the cpu and gpu ones only");
         Harness.equal(readings.temperatures.every(t => t.kind === "cpu" || t.kind === "gpu"), true,
