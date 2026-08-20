@@ -117,28 +117,55 @@ cases["the checksum describes the archive beside it"] = function () {
     });
 };
 
-cases["the archive carries the payload and the wrapper assets only"] = function () {
+/* Every file under a directory, as a relative name. What the packaging tool
+ * walks, walked again from the other side. */
+function filesUnder(directory, prefix) {
+    let names = [];
+    let folder = imports.gi.Gio.File.new_for_path(directory);
+    if (!folder.query_exists(null))
+        return names;
+    let listing = folder.enumerate_children("standard::name,standard::type",
+        imports.gi.Gio.FileQueryInfoFlags.NONE, null);
+    let info;
+    while ((info = listing.next_file(null)) !== null) {
+        let name = info.get_name();
+        if (info.get_file_type() === imports.gi.Gio.FileType.DIRECTORY)
+            names = names.concat(filesUnder(directory + "/" + name, prefix + name + "/"));
+        else
+            names.push(prefix + name);
+    }
+    listing.close(null);
+    return names.sort();
+}
+
+cases["the archive is the payload, all of it and nothing else"] = function () {
+    /* Both directions, and derived on both sides.
+     *
+     * What was here was a handful of names somebody expected to find - one
+     * library, the template, applet.js - which says nothing about the file
+     * beside them. A payload file left out of the archive ships an applet
+     * that loads until it reaches the missing module; a file in the archive
+     * that is in no tree is something that travelled with a release nobody
+     * chose to publish. Neither shows up in a spot check. */
     temporary(directory => {
         let output = directory + "/dist";
         Harness.equal(build(output).status, 0, "the archive was built");
-        let members = entries(output + "/" + UUID + "-1.0.0.zip");
-        let names = members.map(member => member.name);
+        let names = entries(output + "/" + UUID + "-1.0.0.zip").map(member => member.name);
 
-        for (let expected of [UUID + "/info.json", UUID + "/README.md",
-                              UUID + "/screenshot.png",
-                              UUID + "/files/" + UUID + "/applet.js",
-                              UUID + "/files/" + UUID + "/metadata.json",
-                              UUID + "/files/" + UUID + "/lib/sensors.js",
-                              UUID + "/files/" + UUID + "/po/" + UUID + ".pot"])
-            Harness.ok(names.indexOf(expected) >= 0, "the archive ships " + expected);
+        let payload = filesUnder(root() + "/files/" + UUID, "");
+        Harness.ok(payload.length > 40, "there is a payload to compare against");
+        Harness.deepEqual(names.filter(name => name.indexOf(UUID + "/files/") === 0).sort(),
+                          payload.map(name => UUID + "/files/" + UUID + "/" + name),
+                          "every payload file is in the archive and every archived one is a payload file");
+
+        Harness.deepEqual(names.filter(name => name.indexOf(UUID + "/files/") !== 0).sort(),
+                          [UUID + "/README.md", UUID + "/info.json",
+                           UUID + "/screenshot.png"],
+                          "and the three wrapper assets are the whole of the rest");
 
         for (let name of names) {
             Harness.ok(name.indexOf(UUID + "/") === 0,
                        name + " is under the single top-level directory");
-            for (let development of ["/tools/", "/tests/", "/polkit/", "/udev/",
-                                     "todo.md", "AGENTS.md", "Makefile", ".coverage"])
-                Harness.ok(name.indexOf(development) < 0,
-                           name + " is not a development artifact");
         }
     });
 };

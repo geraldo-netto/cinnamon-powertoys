@@ -11,7 +11,6 @@
  * reports. That is the whole contract.
  */
 
-const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 
 /* The loader emulation the parse check uses as well, so the two cannot come
@@ -236,21 +235,18 @@ function libraryModules() {
     return _modulesIn("lib");
 }
 
+/*
+ * Down as well as across, and through the walk both tools already share.
+ *
+ * This listed one level. A module at lib/anything/x.js was therefore not a
+ * library as far as every case that asks something of every library was
+ * concerned - it did not have to load, or export what its callers reach for,
+ * or stay off the shell - while `make dist` packaged it and applet.js could
+ * require it. That is the same blind spot the Makefile's wildcards had, in
+ * the one place where the answer decides what gets checked at all.
+ */
 function _modulesIn(subdirectory) {
-    let names = [];
-    let directory = Gio.File.new_for_path(xletDir() + "/" + subdirectory);
-    if (!directory.query_exists(null))
-        return names;
-    let entries = directory.enumerate_children("standard::name",
-                                               Gio.FileQueryInfoFlags.NONE, null);
-    let info;
-    while ((info = entries.next_file(null)) !== null) {
-        let name = info.get_name();
-        if (name.substr(-3) === ".js")
-            names.push(name);
-    }
-    entries.close(null);
-    return names.sort();
+    return imports.sources.jsFiles(xletDir() + "/" + subdirectory, "");
 }
 
 /*

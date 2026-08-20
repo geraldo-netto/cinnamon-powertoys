@@ -782,3 +782,48 @@ cases["bytes become text on either interpreter"] = function () {
     Harness.equal(Loader.decode(bytes, { decode: () => "substituted" }), "substituted",
                   "whatever the interpreter offers is what is used");
 };
+
+/*
+ * Every require names a file this applet ships.
+ *
+ * The case above reads requires through a pattern that only matches
+ * `require("./lib/x.js")` and `require("./ui/x.js")`, which means a require of
+ * anything else is not checked - it is not even seen. `require("fs")` is what
+ * that looks like when it happens: valid JavaScript, a name the scope check
+ * resolves because `require` is one of the six the loader binds, and a module
+ * that throws the moment Cinnamon evaluates it on somebody's desktop. A
+ * mistyped path, or a path into a directory that was renamed, reads exactly
+ * the same.
+ *
+ * So every require in the payload is resolved the way Cinnamon resolves one -
+ * relative to the xlet directory, never to the file doing the requiring - and
+ * the file it names has to be there.
+ */
+cases["every require names a file the applet ships"] = function () {
+    const Scan = imports.scan;
+    const Sources = imports.sources;
+    let broken = [];
+    let checked = 0;
+    for (let relative of Sources.jsFiles(Harness.xletDir(), "")) {
+        let source = Harness.readFile(Harness.xletDir() + "/" + relative);
+        let written = Scan.literals(source);
+        let pattern = /\brequire\(\s*"([^"]*)"\s*\)/g;
+        let match;
+        while ((match = pattern.exec(source)) !== null) {
+            let target = match[1];
+            if (written.indexOf(target) < 0)
+                continue;
+            checked++;
+            if (target.indexOf("./") !== 0) {
+                broken.push(relative + " requires " + target +
+                            ", which is not a path into this applet");
+                continue;
+            }
+            let path = Harness.xletDir() + "/" + target.replace(/\.\//g, "");
+            if (!GLib.file_test(path, GLib.FileTest.EXISTS))
+                broken.push(relative + " requires " + target + ", which is not there");
+        }
+    }
+    Harness.deepEqual(broken, [], "a require that names nothing is a module that will not load");
+    Harness.ok(checked > 30, "only " + checked + " requires checked, which is too few");
+};
