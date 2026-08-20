@@ -13,6 +13,7 @@
  */
 
 const Harness = imports.harness;
+const Scan = imports.scan;
 const Sources = imports.sources;
 
 var cases = {};
@@ -97,34 +98,51 @@ cases["each unreached file is one aligned line naming its size"] = function () {
  * the maintainer's to run and this suite never executes it.
  */
 cases["both gates ask what they did not reach"] = function () {
+    /* Read as code rather than as text. Every one of these calls is also
+     * named in the comment that explains it, in this file and in both tools,
+     * so a search over the raw source is answered by the prose - and would go
+     * on being answered by it after the call itself was commented out.
+     * tools/scan.js blanks everything that is not code. */
     for (let tool of ["coverage-report.js", "mutate.js"]) {
-        let source = Harness.readFile(Harness.ROOT + "/tools/" + tool);
-        Harness.ok(source.indexOf("imports.sources") >= 0,
+        let code = Scan.mask(Harness.readFile(Harness.ROOT + "/tools/" + tool));
+        Harness.ok(code.indexOf("imports.sources") >= 0,
                    tool + " loads the shared rule");
-        Harness.ok(source.indexOf("Sources.unreached(") >= 0,
+        Harness.ok(code.indexOf("Sources.unreached(") >= 0,
                    tool + " asks what it did not reach");
-        Harness.ok(source.indexOf("Sources.totalLines(") >= 0,
+        Harness.ok(code.indexOf("Sources.totalLines(") >= 0,
                    tool + " reports how much that was");
     }
 
     /* And the coverage run does something about it rather than only printing
      * it: an unreached library is a failure there, not a footnote. */
-    let coverage = Harness.readFile(Harness.ROOT + "/tools/coverage-report.js");
+    let coverage = Scan.mask(Harness.readFile(Harness.ROOT + "/tools/coverage-report.js"));
     Harness.ok(coverage.indexOf("Sources.unexpected(") >= 0,
                "coverage-report.js checks the caption it prints");
+    Harness.ok(coverage.indexOf("Sources.unexpectedTools(") >= 0,
+               "and the one it prints over the tooling");
 };
 
 cases["neither report can claim to be about the whole applet"] = function () {
     /* The closing line is the one most people read. It has to carry the
-     * qualification, not only the listing above it. */
-    let coverage = Harness.readFile(Harness.ROOT + "/tools/coverage-report.js");
+     * qualification, not only the listing above it.
+     *
+     * These are the words the tool prints, so they are looked for among its
+     * string literals: a phrase in a comment is not a phrase in a report, and
+     * this file's own prose would otherwise be able to satisfy the check it
+     * is explaining. */
+    function printed(tool) {
+        return Scan.literals(Harness.readFile(Harness.ROOT + "/tools/" + tool)).join("\u0000");
+    }
+    let coverage = printed("coverage-report.js");
     Harness.ok(coverage.indexOf("measured lines") >= 0,
                "the coverage figure says the lines it is of are the measured ones");
-    Harness.ok(coverage.indexOf("are the applet") >= 0 &&
-               coverage.indexOf("Sources.share(appletLines") >= 0,
-               "how many of them are the applet, and what share of it that is");
+    Harness.ok(coverage.indexOf("are the applet") >= 0,
+               "and how many of them are the applet");
+    Harness.ok(Scan.mask(Harness.readFile(Harness.ROOT + "/tools/coverage-report.js"))
+               .indexOf("Sources.share(appletLines") >= 0,
+               "with the share worked out over the applet alone");
 
-    let mutants = Harness.readFile(Harness.ROOT + "/tools/mutate.js");
+    let mutants = printed("mutate.js");
     Harness.ok(mutants.indexOf("not mutated") >= 0,
                "the mutation report heads its unenumerated list");
     Harness.ok(mutants.indexOf("were not mutated, listed above") >= 0,
