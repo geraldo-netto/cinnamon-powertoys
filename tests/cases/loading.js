@@ -720,3 +720,65 @@ cases["every widget module is one of the shell sources"] = function () {
         Harness.ok(source.indexOf(text) >= 0, "ui/" + name + " is part of the shell source");
     }
 };
+
+/*
+ * The emulation's own two answers.
+ *
+ * `compile` is what the parse check hands a file to, and `giNames` is what
+ * decides whether a top level `const Gio` is an export or an import
+ * namespace - and both were reached only from processes of their own, so the
+ * suite executed neither. The repository lookup has three outcomes and one of
+ * them is an interpreter that will not answer at all, which is why the
+ * fallback list exists.
+ */
+cases["the compiler is the one the shell would use"] = function () {
+    let body = Loader.moduleBody("var value = 7;");
+    let built = Loader.compile(body);
+    Harness.equal(typeof built, "function", "a body compiles to a function");
+    Harness.deepEqual(built.length, Loader.PARAMETERS.length,
+                      "taking the parameters Cinnamon binds");
+    let module = { exports: {} };
+    Harness.equal(built(null, module.exports, module).value, 7,
+                  "and running it exports what the file declared");
+    let threw = false;
+    try {
+        Loader.compile("function main( {");
+    } catch (error) {
+        threw = true;
+    }
+    Harness.ok(threw, "what the engine cannot parse throws rather than compiles");
+};
+
+cases["the GI namespaces come from the repository, however it answers"] = function () {
+    let modern = Loader.giNames({
+        dup_default: () => ({ get_loaded_namespaces: () => ["Gio", "St"] }),
+        get_default: () => Harness.fail("dup_default is preferred where it exists"),
+    });
+    Harness.deepEqual(modern, ["Gio", "St"], "the current call is used where there is one");
+
+    let older = Loader.giNames({
+        get_default: () => ({ get_loaded_namespaces: () => ["GLib"] }),
+    });
+    Harness.deepEqual(older, ["GLib"], "and the older one where there is not");
+
+    let refused = Loader.giNames({ get_default: () => { throw new Error("no repository"); } });
+    Harness.ok(refused.indexOf("Gio") >= 0 && refused.indexOf("St") >= 0,
+               "an interpreter that will not answer gets the written out list");
+
+    /* Not a guess: whatever the fallback says, the loader must not re-export
+     * a name that is one of these. */
+    let assignments = Loader.exportAssignments(
+        Loader.PREAMBLE + "const Gio = imports.gi.Gio;\nconst Value = 1;\n", refused);
+    Harness.ok(assignments.indexOf("exports.Value") >= 0, "a declaration is exported");
+    Harness.ok(assignments.indexOf("exports.Gio") < 0,
+               "and an import namespace is not, on the fallback list as on the real one");
+};
+
+cases["bytes become text on either interpreter"] = function () {
+    let bytes = new TextEncoder().encode("a sentence\n");
+    Harness.equal(Loader.decode(bytes), "a sentence\n", "the current decoder answers");
+    Harness.equal(Loader.decode(bytes, null), "a sentence\n",
+                  "and so does the one Mozilla JavaScript 78 has instead");
+    Harness.equal(Loader.decode(bytes, { decode: () => "substituted" }), "substituted",
+                  "whatever the interpreter offers is what is used");
+};

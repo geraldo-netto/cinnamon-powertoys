@@ -41,12 +41,28 @@ var IMPORT_NAMES = ["mainloop", "jsUnit", "format", "signals", "lang", "tweener"
                     "overrides", "gettext", "coverage", "package", "cairo",
                     "byteArray", "cairoNative"];
 
-function decode(bytes) {
-    try {
-        return new TextDecoder().decode(bytes);
-    } catch (e) {
-        return imports.byteArray.toString(bytes);
-    }
+/*
+ * Bytes to text, on an interpreter that has TextDecoder and on one that does
+ * not - the Cinnamon 5.4 floor is Mozilla JavaScript 78, where it is
+ * imports.byteArray that answers.
+ *
+ * Asked of the runtime rather than attempted and caught. A try/catch here
+ * also swallowed a decode that failed for its own reasons and handed the same
+ * bytes to a second decoder that failed again, so the error the caller saw
+ * named neither the file nor the real fault.
+ *
+ * The decoder is a parameter, and passing null is what an interpreter without
+ * one looks like: the older path is then exercised on the machine that has
+ * the newer one, which is the only way anything here was ever going to run
+ * it. Every caller passes nothing.
+ */
+function _textDecoder() {
+    return typeof TextDecoder !== "undefined" ? new TextDecoder() : null;
+}
+
+function decode(bytes, decoder) {
+    let text = decoder === undefined ? _textDecoder() : decoder;
+    return text ? text.decode(bytes) : imports.byteArray.toString(bytes);
 }
 
 function read(path) {
@@ -61,11 +77,15 @@ function read(path) {
  * `const Gio = imports.gi.Gio` has not defined Gio. Asking the repository is
  * how the loader knows, and the list is only a fallback for an interpreter
  * that will not answer.
+ *
+ * The repository is a parameter so that both answers - the older
+ * `get_default`, and an interpreter that refuses - can be exercised without
+ * one; every caller passes nothing.
  */
-function giNames() {
+function giNames(repository) {
     try {
-        let repository = imports.gi.GIRepository.Repository;
-        let instance = repository.dup_default ? repository.dup_default() : repository.get_default();
+        let source = repository || imports.gi.GIRepository.Repository;
+        let instance = source.dup_default ? source.dup_default() : source.get_default();
         return instance.get_loaded_namespaces();
     } catch (e) {
         return ["Gio", "GLib", "St", "Clutter", "UPowerGlib", "GObject", "Gtk", "Gdk"];

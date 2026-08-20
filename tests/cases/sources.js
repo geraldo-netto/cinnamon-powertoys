@@ -120,12 +120,51 @@ cases["neither report can claim to be about the whole applet"] = function () {
     let coverage = Harness.readFile(Harness.ROOT + "/tools/coverage-report.js");
     Harness.ok(coverage.indexOf("measured lines") >= 0,
                "the coverage figure says the lines it is of are the measured ones");
-    Harness.ok(coverage.indexOf("% of the applet") >= 0,
-               "and what share of the applet that is");
+    Harness.ok(coverage.indexOf("are the applet") >= 0 &&
+               coverage.indexOf("Sources.share(appletLines") >= 0,
+               "how many of them are the applet, and what share of it that is");
 
     let mutants = Harness.readFile(Harness.ROOT + "/tools/mutate.js");
     Harness.ok(mutants.indexOf("not mutated") >= 0,
                "the mutation report heads its unenumerated list");
     Harness.ok(mutants.indexOf("were not mutated, listed above") >= 0,
                "and its closing line points at that list");
+};
+
+cases["a tool is a module the suite has to load or a program it invokes"] = function () {
+    /* The coverage run measures tools/ as well as the applet now, so the same
+     * question is asked of it: what did the run not reach, and may it not
+     * have. The answer is read off the file's first line rather than off a
+     * list of names, because a list is the thing a new tool gets left out of. */
+    let program = { name: "mutate.js", lines: 500, source: "#!/usr/bin/env cjs\n/* ... */" };
+    let module = { name: "scan.js", lines: 160, source: "/*\n * a tokeniser\n */" };
+    Harness.deepEqual(Sources.unexpectedTools([program]), [],
+                      "a program a run invokes is not expected in an lcov");
+    Harness.deepEqual(Sources.unexpectedTools([module, program]).map(entry => entry.name),
+                      ["scan.js"],
+                      "a module no case loaded is the one to answer for");
+    Harness.deepEqual(Sources.unexpectedTools([]), [], "nothing unreached is nothing to explain");
+    Harness.deepEqual(Sources.unexpectedTools([{ name: "empty.js", lines: 0 }])
+                      .map(entry => entry.name), ["empty.js"],
+                      "a file with no first line is not exempt for having none");
+};
+
+cases["a listing goes down as well as across"] = function () {
+    /* The walk both tools share. A single level was what the mutation runner
+     * had, and a module in a subdirectory of lib/ would have been enumerated
+     * by nothing while `make dist` shipped it. */
+    let names = Sources.jsFiles(Harness.xletDir(), "");
+    Harness.ok(names.indexOf("applet.js") >= 0, "the file at the top is listed");
+    Harness.ok(names.indexOf("lib/io.js") >= 0, "and one a directory down, with its prefix");
+    Harness.ok(names.indexOf("ui/menu.js") >= 0, "in every directory, not one of them");
+    for (let name of names)
+        Harness.equal(name.slice(-3), ".js", name + " is JavaScript");
+    Harness.deepEqual(names.slice().sort(), names, "sorted, so the answer is of the tree");
+    Harness.ok(names.indexOf("metadata.json") < 0, "and nothing that is not JavaScript");
+
+    Harness.deepEqual(Sources.jsFiles(Harness.xletDir() + "/nowhere", ""), [],
+                      "a directory that does not exist is no files rather than a throw");
+    Harness.ok(Sources.jsFiles(Harness.xletDir() + "/lib", "lib/")
+               .every(name => name.indexOf("lib/") === 0),
+               "the prefix given is the one every name carries");
 };

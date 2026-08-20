@@ -204,10 +204,7 @@ function environmentWith(xletDir) {
 }
 
 function sourceFiles() {
-    let names = [];
-    for (let name of _listDir(XLET + "/lib"))
-        names.push("lib/" + name);
-    return names.filter(name => name.substr(-3) === ".js").sort();
+    return Sources.jsFiles(XLET + "/lib", "lib/");
 }
 
 /*
@@ -219,12 +216,7 @@ function sourceFiles() {
  */
 function allSources() {
     let entries = [];
-    let names = _listDir(XLET).filter(name => name.substr(-3) === ".js")
-        .concat(_listDir(XLET + "/lib")
-            .filter(name => name.substr(-3) === ".js").map(name => "lib/" + name))
-        .concat(_listDir(XLET + "/ui")
-            .filter(name => name.substr(-3) === ".js").map(name => "ui/" + name));
-    for (let name of names) {
+    for (let name of Sources.jsFiles(XLET, "")) {
         try {
             entries.push({ name: name,
                            lines: Loader.read(XLET + "/" + name).split("\n").length });
@@ -233,20 +225,6 @@ function allSources() {
         }
     }
     return entries;
-}
-
-function _listDir(path) {
-    const Gio = imports.gi.Gio;
-    let names = [];
-    let directory = Gio.File.new_for_path(path);
-    if (!directory.query_exists(null))
-        return names;
-    let entries = directory.enumerate_children("standard::name", Gio.FileQueryInfoFlags.NONE, null);
-    let info;
-    while ((info = entries.next_file(null)) !== null)
-        names.push(info.get_name());
-    entries.close(null);
-    return names;
 }
 
 /* ---------------------------------------------------------------- */
@@ -315,10 +293,8 @@ function sourcesIn(directory, names, prefix) {
     return sources;
 }
 
-let libraryNames = _listDir(copy + "/lib")
-    .filter(name => name.substr(-3) === ".js").sort();
-let caseNames = _listDir(work + "/tests/cases")
-    .filter(name => name.substr(-3) === ".js").sort();
+let libraryNames = Sources.jsFiles(copy + "/lib", "");
+let caseNames = Sources.jsFiles(work + "/tests/cases", "");
 let librarySources = sourcesIn(copy + "/lib", libraryNames, "lib/");
 let caseSources = sourcesIn(work + "/tests/cases", caseNames, "");
 let namedCaseSources = {};

@@ -245,6 +245,14 @@ check:
 # again, one file per library, and loads those instead; the body is the same
 # text the ordinary run evaluates, wrapped so that line one stays line one.
 #
+# Two prefixes, because the applet is not all the code a run executes. The
+# four modules under tools/ that the suite loads into its own process - the
+# loader emulation, the tokeniser every extent above is worked out with, the
+# mutation plan and the unreached-source rule - used to be measured by
+# nothing, listed by nothing and mentioned by nothing, which made every figure
+# here rest on code no case had run a line of. tests/ is deliberately not a
+# prefix: the cases are the measurement, not the measured.
+#
 # Separate from check because it runs the whole suite a second time and needs
 # the interpreter's coverage machinery, which the parse check and the tests do
 # not. The gate is COVERAGE_MIN, per function.
@@ -254,6 +262,7 @@ coverage:
 	@mkdir -p $(COVERAGE_DIR)/modules
 	@POWERTOYS_COVERAGE_DIR=$(abspath $(COVERAGE_DIR))/modules \
 		cjs --coverage-prefix=$(abspath $(COVERAGE_DIR))/modules \
+		    --coverage-prefix=$(abspath tools) \
 		    --coverage-output=$(abspath $(COVERAGE_DIR)) \
 		    tests/run.js > $(COVERAGE_DIR)/run.log 2>&1 || \
 		{ cat $(COVERAGE_DIR)/run.log; exit 1; }

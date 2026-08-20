@@ -29,7 +29,12 @@ function scriptDir() {
     return GLib.path_get_dirname(invoked);
 }
 
-imports.searchPath.unshift(scriptDir());
+/* This file lives in tools/, so the tooling the run also measures is beside
+ * it; asked of the tree rather than written out, for the reason the Makefile's
+ * source lists give. */
+const TOOLS = scriptDir();
+
+imports.searchPath.unshift(TOOLS);
 const Loader = imports.loader;
 const Scan = imports.scan;
 const Sources = imports.sources;
@@ -132,34 +137,6 @@ function percentage(covered, total) {
 /* what was not measured                                             */
 
 /*
- * The applet's source no case can load, named rather than omitted. Why a
- * report has to say so, and the rule itself, are in tools/sources.js; what is
- * here is the listing that rule needs.
- */
-function jsFilesIn(directory, prefix) {
-    const Gio = imports.gi.Gio;
-    let names = [];
-    let folder = Gio.File.new_for_path(directory);
-    if (!folder.query_exists(null))
-        return names;
-    let entries = folder.enumerate_children("standard::name,standard::type",
-                                            Gio.FileQueryInfoFlags.NONE, null);
-    let info;
-    while ((info = entries.next_file(null)) !== null) {
-        let name = info.get_name();
-        /* Down as well as across. A wildcard over lib/ and ui/ was what this
-         * used to be, and a file one directory further down was listed by no
-         * report while `make dist` packaged it all the same. */
-        if (info.get_file_type() === Gio.FileType.DIRECTORY)
-            names = names.concat(jsFilesIn(directory + "/" + name, prefix + name + "/"));
-        else if (name.slice(-3) === ".js")
-            names.push(prefix + name);
-    }
-    entries.close(null);
-    return names.sort();
-}
-
-/*
  * Where the applet is, worked out from a measured source rather than passed
  * in: every entry in the manifest is <xlet>/lib/<name>.js, so the xlet is two
  * directories above any of them. A second copy of that path would be a second
@@ -181,7 +158,7 @@ function unmeasuredFiles(sources) {
 
     let all = [];
     let reached = [];
-    for (let relative of jsFilesIn(xlet, "")) {
+    for (let relative of Sources.jsFiles(xlet, "")) {
         let path = xlet + "/" + relative;
         let source;
         try {
@@ -191,6 +168,36 @@ function unmeasuredFiles(sources) {
         }
         all.push({ name: relative, lines: source.split("\n").length });
         if (measured[path])
+            reached.push(relative);
+    }
+    return Sources.unreached(all, reached);
+}
+
+/*
+ * The same question of the tooling, which the run also measures.
+ *
+ * `scan.js` is what works out where a function ends, so every figure printed
+ * above rests on it; `loader.js` is the wrapper the whole suite compiles its
+ * modules with. Both run inside the suite's own process on every run, and
+ * neither was measured, listed, or mentioned - the report spoke for the
+ * applet as though the tools that produce the report were not code.
+ *
+ * What may be unreached here is a program rather than a module, and the first
+ * line says which: see tools/sources.js.
+ */
+function unmeasuredTools(measuredPaths) {
+    let all = [];
+    let reached = [];
+    for (let relative of Sources.jsFiles(TOOLS, "")) {
+        let path = TOOLS + "/" + relative;
+        let source;
+        try {
+            source = Loader.read(path);
+        } catch (error) {
+            continue;
+        }
+        all.push({ name: relative, lines: source.split("\n").length, source: source });
+        if (measuredPaths[path])
             reached.push(relative);
     }
     return Sources.unreached(all, reached);
@@ -246,6 +253,19 @@ let byName = {};
 for (let name in sources)
     byName[name] = sources[name];
 
+/* The applet's modules are measured through copies the manifest names; the
+ * tools are measured where they are, so each one stands for itself. Registered
+ * under the same basename key the lcov is read through, and only where the
+ * manifest has not already claimed it. */
+let toolPaths = {};
+for (let relative of Sources.jsFiles(TOOLS, "")) {
+    let path = TOOLS + "/" + relative;
+    let key = GLib.path_get_basename(path).replace(/\.js$/, "");
+    toolPaths[path] = true;
+    if (byName[key] === undefined)
+        byName[key] = path;
+}
+
 /*
  * The lcov names the copies, not the sources.
  *
@@ -290,12 +310,14 @@ for (let name in sources)
 
 let below = [];
 let reports = [];
+let measuredPaths = {};
 
 for (let file of lcov) {
     let name = GLib.path_get_basename(file.path).replace(/\.js$/, "");
     let source = byName[name];
     if (!source)
         continue;
+    measuredPaths[source] = true;
 
     let closes = Scan.blocks(Loader.read(source));
 
@@ -315,7 +337,8 @@ for (let file of lcov) {
     }
 
     let short = source.slice(source.lastIndexOf("/", source.lastIndexOf("/") - 1) + 1);
-    reports.push({ source: short, functions: functions, totals: totals });
+    reports.push({ source: short, path: source, tool: toolPaths[source] === true,
+                   functions: functions, totals: totals });
 
     for (let entry of functions) {
         if (percentage(entry.covered, entry.lines) < minimum)
@@ -350,12 +373,26 @@ if (remapped !== null) {
     }
 }
 
-let functions = reports.reduce((total, report) => total + report.functions.length, 0);
-let lines = reports.reduce((total, report) => total + report.totals.lines, 0);
-let covered = reports.reduce((total, report) => total + report.totals.covered, 0);
+function sum(entries, of) {
+    return entries.reduce((total, report) => total + of(report), 0);
+}
+
+let functions = sum(reports, report => report.functions.length);
+let lines = sum(reports, report => report.totals.lines);
+let covered = sum(reports, report => report.totals.covered);
+
+/* The share is of the applet, so it is counted over the applet alone. The
+ * tools are measured by the same run and reported by the same gate, but a
+ * line of tools/scan.js is not a line of the applet and adding it to this
+ * figure would move the one number that is supposed to say how much of the
+ * applet a report speaks for. */
+let appletLines = sum(reports.filter(report => !report.tool),
+                      report => report.totals.lines);
 
 let missing = unmeasuredFiles(sources);
 let missingLines = Sources.totalLines(missing);
+
+let missingTools = unmeasuredTools(measuredPaths);
 
 if (!quiet && missing.length > 0) {
     print("not measured  " + missing.length + " files, " + missingLines +
@@ -363,6 +400,30 @@ if (!quiet && missing.length > 0) {
     for (let entry of Sources.lines(missing))
         print("            " + entry);
     print("");
+}
+
+if (!quiet && missingTools.length > 0) {
+    print("not measured  " + missingTools.length + " tools, " +
+          Sources.totalLines(missingTools) +
+          " lines: they are programs a run invokes, not modules it loads");
+    for (let entry of Sources.lines(missingTools))
+        print("            " + entry);
+    print("");
+}
+
+/*
+ * And that caption is a rule too. A module under tools/ that the suite loads
+ * nothing of is a file every gate's answer may depend on and no case has ever
+ * executed - which is what scan.js was.
+ */
+let unloaded = Sources.unexpectedTools(missingTools);
+if (unloaded.length > 0) {
+    printerr("coverage FAIL " + unloaded.length +
+             " tools were loaded by nothing and are not programs:");
+    for (let entry of Sources.lines(unloaded))
+        printerr("  " + entry);
+    printerr("a module under tools/ has to be loaded by some case");
+    System.exit(1);
 }
 
 /*
@@ -399,5 +460,6 @@ print("coverage ok  " + functions + " functions, every one at " + minimum +
       "% or better; " + percentage(covered, lines) + "% of " + lines +
       " measured lines" +
       (missing.length === 0 ? " overall"
-          : ", which is " + Sources.share(lines, missingLines) +
-            "% of the applet; " + missingLines + " unmeasured lines listed above"));
+          : ", of which " + appletLines + " are the applet, " +
+            Sources.share(appletLines, missingLines) + "% of it; " +
+            missingLines + " unmeasured lines listed above"));
