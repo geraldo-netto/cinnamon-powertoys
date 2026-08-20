@@ -316,6 +316,14 @@ neither is optional. `cinnamon-xlet-makepot`, which `make pot`
 calls, ships in the `cinnamon` package itself and so is already there on the
 desktop this is written for.
 
+One case needs the desktop rather than a package. `applet.js` and the modules
+under `ui/` build Cinnamon widgets, so the suite cannot load them into its own
+process; `tools/shell-load.sh` loads them in one of its own, against the
+installed Cinnamon's JavaScript and typelibs, which is what says they will load
+when the shell evaluates them. Run on a machine with Cinnamon it is a gate; run
+anywhere else it prints itself as a skip, with the reason, at the end of the
+run.
+
 ## Permissions
 
 Reading is entirely unprivileged. Changing the CPU governor, energy preference,
@@ -637,7 +645,8 @@ while they are stale.
 ## Tests
 
 ```sh
-make check            # layout, parse, tests, shell and Python lint, JSON, policy, paths
+make check            # layout, parse, tests, shell and Python lint, JSON,
+                      # translated strings, policy, paths
 make coverage         # tests plus the per-function coverage gate
 cjs tests/run.js      # tests only
 cjs tests/run.js io   # only cases whose name contains "io"
