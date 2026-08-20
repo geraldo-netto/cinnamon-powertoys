@@ -155,6 +155,66 @@ cases["setting the sink back to nothing puts the old route back"] = function () 
     });
 };
 
+cases["a release that throws is contained, named and answered"] = function () {
+    /*
+     * The helper every teardown in this applet is written around.
+     *
+     * A release is a call to a collaborator, and the collaborators teardown
+     * calls are the ones most likely to refuse: a disconnect on a handler the
+     * display has already dropped, a source_remove on an id GLib has already
+     * retired, a proxy something else has finalized. One of those throwing
+     * used to end the list it was in - so the timer after it stayed armed and
+     * the bus after that went on holding a destroyed backend for the session.
+     */
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    try {
+        let ran = [];
+        let failure = new Error("already disconnected");
+        Harness.equal(Log.release("first", () => ran.push("first")), null,
+                      "a release that works answers no failure");
+        let answered = Log.release("the signal", () => { throw failure; });
+        Harness.equal(answered, failure,
+                      "one that throws answers what it caught rather than raising it");
+        Harness.equal(Log.release("last", () => ran.push("last")), null,
+                      "and the next one still runs");
+        Harness.deepEqual(ran, ["first", "last"],
+                          "nothing behind the failure was stranded");
+    } finally {
+        Log.setSink(null);
+    }
+    Harness.deepEqual(lines,
+                      ["[powertoys] could not release the signal: Error: already disconnected"],
+                      "the log names the resource, not just the error");
+};
+
+cases["a release names what it could not let go of, whatever was thrown"] = function () {
+    /*
+     * Not everything thrown is an Error. GLib raises its own, a callback can
+     * throw a string, and a message that reads "could not release: undefined"
+     * identifies nothing at all - the name is the whole value of the line.
+     */
+    let lines = [];
+    Log.setSink(line => lines.push(line));
+    try {
+        Fuzz.forAll({ what: "a thrown value", runs: 200 },
+                    random => Fuzz.value(random),
+                    thrown => {
+                        lines.length = 0;
+                        let answered = Fuzz.answers(
+                            () => Log.release("the poll timer", () => { throw thrown; }));
+                        if (!Object.is(answered, thrown))
+                            throw new Error("did not answer what was thrown");
+                        if (lines.length !== 1)
+                            throw new Error("said " + lines.length + " things");
+                        if (lines[0].indexOf("could not release the poll timer: ") < 0)
+                            throw new Error("unnamed: " + JSON.stringify(lines[0]));
+                    });
+    } finally {
+        Log.setSink(null);
+    }
+};
+
 cases["a continuous keyed failure is reported once until recovery"] = function () {
     let lines = [];
     let failures = new Log.FailureLog();

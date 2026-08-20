@@ -35,6 +35,34 @@ function error(message) {
 }
 
 /*
+ * One release of one resource, with whatever it throws contained.
+ *
+ * Teardown is a list, and a list runs from the top: a throw at the third line
+ * strands the fourth onwards for the rest of the session - a timer still
+ * armed, a signal still on a destroyed actor, a bus connection still holding
+ * the closure that was written to let go of it. Every collaborator a release
+ * calls can throw, and the ones teardown calls are exactly the ones most
+ * likely to: a disconnect on a handler the shell has already dropped, a
+ * source_remove on an id GLib has already retired, a proxy finalized twice.
+ *
+ * The applet had this as a closure private to its own _teardown, and every
+ * backend destroy() one level below it was a bare statement run. It is here so
+ * there is one of it, and so a case can watch it contain a throw.
+ *
+ * Answers the failure it contained, or null - a caller that wants to know
+ * whether anything went wrong can ask without the failure escaping.
+ */
+function release(name, action) {
+    try {
+        action();
+        return null;
+    } catch (failure) {
+        error("could not release " + name + ": " + failure);
+        return failure;
+    }
+}
+
+/*
  * One line for one continuous failure.
  *
  * Backoff keeps a broken service from being called in a tight loop; it does

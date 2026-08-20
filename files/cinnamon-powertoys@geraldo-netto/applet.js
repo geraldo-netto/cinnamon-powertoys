@@ -797,16 +797,28 @@ class PowerToysApplet extends Applet.TextIconApplet {
         };
     }
 
+    /*
+     * The menu, let go of one part at a time.
+     *
+     * This is called from teardown, where a throw here would strand every
+     * backend after it, and from an orientation change, where a throw would
+     * leave the applet holding a menu it believes it has destroyed and then
+     * build a second one beside it. Neither is worth the actor and the
+     * manager registration that the failing line was in front of, so each
+     * part is released on its own - the same rule the list in _teardown is
+     * written to.
+     */
     _destroyMenu() {
         if (!this.menu)
             return;
-        /* An orientation change throws the menu away wholesale, and a menu
-         * that is gone never says it shut. */
-        this._monitors.watch("menu", false);
-        this.menuManager.removeMenu(this.menu);
-        this.menu.destroy();
+        let menu = this.menu;
         this.menu = null;
         this._menuPresenter = null;
+        /* An orientation change throws the menu away wholesale, and a menu
+         * that is gone never says it shut. */
+        Log.release("menu watch", () => this._monitors?.watch("menu", false));
+        Log.release("menu registration", () => this.menuManager.removeMenu(menu));
+        Log.release("menu actor", () => menu.destroy());
     }
 
     /* ------------------------------------------------------------------ */
@@ -1362,14 +1374,10 @@ class PowerToysApplet extends Applet.TextIconApplet {
             return;
         this._destroyed = true;
 
-        /* One failed release must not strand everything acquired before it. */
-        let release = (name, action) => {
-            try {
-                action();
-            } catch (error) {
-                Log.error("could not release " + name + ": " + error);
-            }
-        };
+        /* One failed release must not strand everything acquired before it.
+         * lib/log.js owns the containment; every backend's own destroy()
+         * below this list reaches for the same helper. */
+        let release = Log.release;
         let destroy = (field, name) => {
             let resource = this[field];
             this[field] = null;

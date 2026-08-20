@@ -21,6 +21,8 @@
 
 const Harness = imports.harness;
 
+const Log = Harness.requireXlet("./lib/log.js");
+
 const BUILDERS = ["_buildState", "_buildBackends"];
 
 /* One method of the applet class, from its signature to the closing brace at
@@ -148,12 +150,24 @@ cases["a release that throws does not strand the ones after it"] = function () {
      * keeps every later one alive - which is the failure mode a teardown
      * exists to prevent, arriving through the teardown itself. */
     let teardown = methodBody(Harness.shellSource(), "_teardown");
-    let helper = /let release = \([^)]*\) => \{([\s\S]*?)\n        \};/.exec(teardown);
-    Harness.ok(helper !== null, "the releases go through one helper");
-    Harness.ok(helper[1].indexOf("try {") >= 0 && helper[1].indexOf("catch") >= 0,
-               "which contains what one release throws");
-    Harness.ok(helper[1].indexOf("Log.error") >= 0,
-               "and says so rather than swallowing it");
+    Harness.ok(/let release = Log\.release;/.test(teardown),
+               "the releases go through one helper");
+    /* And that helper is the one lib/log.js exports, which the cases in
+     * tests/cases/log.js drive with an action that throws. Reading the text
+     * here says only which helper; whether it contains a throw is a property
+     * of a library and is checked as one. */
+    Harness.equal(typeof Log.release, "function", "which is the library's");
+    let said = [];
+    Log.setSink(line => said.push(line));
+    let contained;
+    try {
+        contained = Log.release("a thing", () => { throw new Error("no"); });
+    } finally {
+        Log.setSink(null);
+    }
+    Harness.equal(contained instanceof Error, true,
+                  "and it answers what it contained rather than raising it");
+    Harness.equal(said.length, 1, "having said so");
 
     /*
      * A statement of _teardown's own - eight spaces in, since anything deeper
