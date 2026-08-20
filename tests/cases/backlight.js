@@ -1192,3 +1192,14 @@ cases["the interfaces this module declares are ones a proxy can be built for"] =
         Harness.ok(built.proxy, "and a proxy for it was built");
     }
 };
+
+cases["what a control says about the machine is not what it says about its last call"] = function () {
+    Harness.equal(Backlight.hardwareStateOf({ hardwareState: "degraded", available: false }),
+                  "degraded", "the honest answer wins over the last call");
+    Harness.equal(Backlight.hardwareStateOf({ available: true }), "present",
+                  "a control that publishes none is read from availability");
+    Harness.equal(Backlight.hardwareStateOf({ available: false }), "absent",
+                  "and an unavailable one of those has no backlight behind it");
+    Harness.equal(Backlight.hardwareStateOf(null), "unknown",
+                  "no control has answered nothing, which is not an absence");
+};

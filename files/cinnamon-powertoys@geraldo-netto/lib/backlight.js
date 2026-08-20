@@ -76,6 +76,22 @@ function shouldUseMonitorBacklight(enabled, hasKernelBacklight, lidIsClosed) {
     return !hasKernelBacklight || !!lidIsClosed;
 }
 
+/*
+ * What a control says about the machine, as against about its last call.
+ *
+ * `hardwareState` is the honest answer - "present", "absent", "degraded" or
+ * "unknown" - and a control old enough not to publish one is read from
+ * `available` instead, which is the same answer for a control that has just
+ * been asked. Asked of the control rather than of the field holding it: the
+ * daemon can reply from inside the control's own constructor, before there is
+ * a field to look in.
+ */
+function hardwareStateOf(control) {
+    if (!control)
+        return "unknown";
+    return control.hardwareState || (control.available ? "present" : "absent");
+}
+
 /* The panel wheel has no row to identify its target, so it must follow the
  * display topology as strictly as the menu does. In closed-lid mode, no DDC
  * answer means no brightness control—not a silent write to the hidden panel. */

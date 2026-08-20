@@ -563,23 +563,18 @@ class PowerToysApplet extends Applet.TextIconApplet {
          * This is the one moment the question is honestly answered: the daemon
          * has been asked and has replied. Which control the wheel moves is a
          * different question about the moment, and _brightnessControl still
-         * asks `available` for it.
-         *
-         * Asked of the control that is answering rather than of the field
-         * holding it: this can be called from inside that control's own
-         * constructor, before there is a field. See where the backlights are
-         * built.
+         * asks `available` for it. Reading it off the control that is
+         * answering rather than off the field holding it is what lets this be
+         * called from inside that control's own constructor; see where the
+         * backlights are built, and lib/backlight.js for the reading itself.
          */
-        this._monitors.setKernelBacklightState(control.hardwareState ||
-            (control.available ? "present" : "absent"));
+        this._monitors.setKernelBacklightState(Backlight.hardwareStateOf(control));
         this._monitors.syncScope();
         this._onBacklightChanged();
     }
 
     _onScreenBacklightChanged() {
-        let control = this._backlights.screen;
-        let state = control.hardwareState ||
-            (control.available ? "present" : "absent");
+        let state = Backlight.hardwareStateOf(this._backlights.screen);
         if (this._monitors.setKernelBacklightState(state))
             this._monitors.syncScope();
         this._onBacklightChanged();
