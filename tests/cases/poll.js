@@ -146,6 +146,52 @@ cases["teardown drops the timer and the redraw that never fired"] = function () 
     Harness.deepEqual(state.removed, [1, 2], "and a second teardown releases nothing twice");
 };
 
+cases["a stop the main loop refuses is still the last tick that timer takes"] = function () {
+    /*
+     * The two halves of stopping a repeating source, and only one of them is
+     * ours. `remove` is a call to a collaborator: GLib raises on an id it has
+     * already retired, and a caller's own port can refuse for its own reasons.
+     * The id is cleared before the call, so once it has refused there is
+     * nothing left to reach the source with - and the callback used to answer
+     * `repeat` whatever had happened since, which is a source calling _update
+     * on a destroyed applet once a second for the rest of the session.
+     */
+    let state = loop();
+    let refusing = state.poll;
+    refusing._timers.remove = () => { throw new Error("no such source"); };
+    refusing.start(4);
+    Harness.equal(tick(state), "continue", "a live timer asks to be called again");
+
+    refusing.destroy();
+    Harness.equal(refusing.running, false, "the loop reports itself stopped");
+    Harness.equal(tick(state), "remove",
+                  "and the source that outlived the removal takes itself off");
+    Harness.equal(state.ticks, 1, "without a reading behind it");
+};
+
+cases["a redraw the main loop will not cancel is dropped when it fires"] = function () {
+    let state = loop();
+    state.poll._timers.cancelIdle = () => { throw new Error("no such source"); };
+    state.poll.schedule();
+    state.poll.destroy();
+    Harness.equal(state.idles[0].fire(), "remove",
+                  "the idle that survived cancellation takes itself off");
+    Harness.equal(state.ticks, 0, "and redraws nothing for an applet that has gone");
+};
+
+cases["a restarted loop retires the timer it replaced"] = function () {
+    /* The generation is what ends a timer, so it has to end exactly the one
+     * being replaced: a changed interval setting restarts the loop, and the
+     * new timer must go on ticking. */
+    let state = loop();
+    state.poll.start(4);
+    let first = state.timers[0];
+    state.poll.start(8);
+    Harness.equal(first.fire(), "remove", "the replaced timer takes itself off");
+    Harness.equal(tick(state), "continue", "the one that replaced it keeps going");
+    Harness.equal(state.ticks, 1, "and only the live one took a reading");
+};
+
 cases["a loop with nothing to call is not an error"] = function () {
     let poll = new Poll.Poll();
     poll.start(4);

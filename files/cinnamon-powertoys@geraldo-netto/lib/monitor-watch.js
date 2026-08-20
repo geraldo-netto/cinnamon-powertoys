@@ -57,6 +57,16 @@ const MonitorWatch = class MonitorWatch {
          * the applet. */
         this._reasons = new Set();
         this._timerId = 0;
+        /*
+         * Which probe timer is the current one; see lib/poll.js, which has
+         * the same pair of problems and the same answer. Clearing `_timerId`
+         * and then asking the main loop to remove it is one half of stopping
+         * a repeating source, and it is the half a collaborator can refuse -
+         * at which point the id is already gone and a callback that answers
+         * SOURCE_CONTINUE whatever has happened keeps the source, and the
+         * closure over this watch, for the rest of the session.
+         */
+        this._generation = 0;
         this._destroyed = false;
         /* Whether this machine has a backlight of its own, as the settings
          * daemon answered it - "unknown" until it has. */
@@ -172,7 +182,10 @@ const MonitorWatch = class MonitorWatch {
             return;
 
         this.probeNow();
+        let generation = this._generation;
         this._timerId = this._timers.add(this._intervalSeconds, () => {
+            if (this._destroyed || this._generation !== generation)
+                return GLib.SOURCE_REMOVE;
             this.probeNow();
             return GLib.SOURCE_CONTINUE;
         });
@@ -192,10 +205,18 @@ const MonitorWatch = class MonitorWatch {
     }
 
     stopProbing() {
+        /* Before the removal, and whether or not there is anything to remove:
+         * this is the half of stopping that cannot be refused. */
+        this._generation++;
         if (this._timerId) {
             let id = this._timerId;
             this._timerId = 0;
-            this._timers.remove(id);
+            try {
+                this._timers.remove(id);
+            } catch (error) {
+                /* An id the main loop has already retired. The generation
+                 * above has already ended this timer. */
+            }
         }
     }
 

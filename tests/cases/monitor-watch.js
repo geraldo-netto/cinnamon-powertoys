@@ -7,6 +7,7 @@
  * Cinnamon with a monitor on it.
  */
 
+const GLib = imports.gi.GLib;
 const Harness = imports.harness;
 
 const MonitorWatch = Harness.requireXlet("./lib/monitor-watch.js");
@@ -151,6 +152,42 @@ cases["a fact that has not moved is not reported as a move"] = function () {
     Harness.equal(state.watch.setKernelBacklightState("absent"), false,
                   "and saying so again changes nothing");
     Harness.equal(state.watch.lidClosed, false, "a lid nobody has spoken about is open");
+};
+
+cases["a probe timer the main loop will not remove takes itself off"] = function () {
+    /*
+     * As in lib/poll.js: `remove` is a collaborator's call and the id is gone
+     * before it is made, so the callback's own answer is the only thing left
+     * that can end the source. It used to be SOURCE_CONTINUE whatever had
+     * happened, which kept the source - and the closure over a destroyed
+     * watch it holds - for the rest of the session.
+     */
+    let state = watcher({ kernelBacklight: "absent" });
+    state.clock.remove = () => { throw new Error("no such source"); };
+    state.watch.watch("menu", true);
+    let fire = state.clock.pending[Object.keys(state.clock.pending)[0]];
+    Harness.equal(state.probes, 1, "the first look goes out at once");
+    Harness.equal(fire(), GLib.SOURCE_CONTINUE, "a live timer asks to be called again");
+    Harness.equal(state.probes, 2, "having probed");
+
+    state.watch.destroy();
+    Harness.equal(fire(), GLib.SOURCE_REMOVE,
+                  "the source that outlived the removal takes itself off");
+    Harness.equal(state.probes, 2, "without touching the bus on the way out");
+};
+
+cases["closing the menu retires the timer it armed"] = function () {
+    /* The generation ends exactly the timer being stopped, so a menu opened
+     * again gets one that runs. */
+    let state = watcher({ kernelBacklight: "absent" });
+    state.watch.watch("menu", true);
+    let first = state.clock.pending[Object.keys(state.clock.pending)[0]];
+    state.watch.watch("menu", false);
+    Harness.equal(first(), GLib.SOURCE_REMOVE, "the stopped timer takes itself off");
+
+    state.watch.watch("menu", true);
+    let second = state.clock.pending[Object.keys(state.clock.pending)[0]];
+    Harness.equal(second(), GLib.SOURCE_CONTINUE, "the one that replaced it keeps going");
 };
 
 cases["teardown ends the probing"] = function () {

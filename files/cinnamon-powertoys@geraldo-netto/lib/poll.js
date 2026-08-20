@@ -52,6 +52,24 @@ const Poll = class Poll {
         this._timerId = 0;
         this._idleId = 0;
         this._elapsed = 0;
+        /*
+         * Which timer is the current one.
+         *
+         * Stopping a repeating source is two things that can each fail on
+         * their own: the main loop has to accept the removal, and the
+         * callback has to stop asking to be called again. Only the second is
+         * ours. `remove` is a call to a collaborator - GLib refuses an id it
+         * has already retired, and a caller's own port may refuse for its own
+         * reasons - and the id is gone by the time it refuses, so a callback
+         * that answers `repeat` whatever has happened is a source calling a
+         * destroyed applet once a second with nothing left to reach it.
+         *
+         * So every stop retires a generation, and the callback answers `once`
+         * for any generation but the current one. The removal is then how a
+         * timer is ended promptly rather than how it is ended at all.
+         */
+        this._generation = 0;
+        this._stopped = false;
     }
 
     get running() {
@@ -64,7 +82,11 @@ const Poll = class Poll {
         this.stop();
         let interval = Math.max(1, seconds || 1);
         this._elapsed = 0;
+        this._stopped = false;
+        let generation = this._generation;
         this._timerId = this._timers.add(interval, () => {
+            if (this._generation !== generation)
+                return this._once;
             this._elapsed += interval;
             if (this._elapsed >= this._rediscoverSeconds) {
                 this._elapsed = 0;
@@ -76,11 +98,19 @@ const Poll = class Poll {
     }
 
     stop() {
+        /* Before the removal, and whether or not there is anything to remove:
+         * this is the half of stopping that cannot be refused. */
+        this._generation++;
         if (!this._timerId)
             return;
         let id = this._timerId;
         this._timerId = 0;
-        this._timers.remove(id);
+        try {
+            this._timers.remove(id);
+        } catch (error) {
+            /* An id the main loop has already retired. The generation above
+             * has already ended this timer. */
+        }
     }
 
     /*
@@ -95,6 +125,8 @@ const Poll = class Poll {
             return false;
         this._idleId = this._timers.idle(() => {
             this._idleId = 0;
+            if (this._stopped)
+                return this._once;
             this._onTick();
             return this._once;
         });
@@ -110,11 +142,17 @@ const Poll = class Poll {
     /* Teardown. A scheduled tick that has not fired is dropped rather than
      * delivered to an applet that has left the panel. */
     destroy() {
+        this._stopped = true;
         this.stop();
         if (!this._idleId)
             return;
         let id = this._idleId;
         this._idleId = 0;
-        this._timers.cancelIdle(id);
+        try {
+            this._timers.cancelIdle(id);
+        } catch (error) {
+            /* As in stop(): a cancellation the main loop refuses is a
+             * scheduled tick that _stopped drops when it fires. */
+        }
     }
 };
