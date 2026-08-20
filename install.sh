@@ -218,8 +218,16 @@ if [ -z "${DESTDIR:-}" ] &&
 fi
 
 cp -R "$SOURCE_DIR/." "$STAGING/"
-chmod 0755 "$STAGING"
-chmod +x "$STAGING/powertoys-helper"
+# The modes are stated, not inherited. `cp -R` hands on the working tree's own
+# permissions under the caller's umask, so what got installed depended on the
+# machine that ran this: a checkout with group-writable files published an
+# applet Cinnamon executes that its owner's group could rewrite, and `chmod +x`
+# is itself masked, so the helper came out 0700, 0711 or 0775 and never 0755.
+# tools/build-package.py states 0644 and 0755 for the same files, for the same
+# reason - a mode read off the build machine is not a property of what is being
+# published - and these are those modes.
+chmod -R a=rX,u+w "$STAGING"
+chmod 0755 "$STAGING/powertoys-helper"
 
 # These are the minimum files Cinnamon and the settings loader need. Check the
 # staged tree before the first rename, while the old installation is intact.
@@ -280,6 +288,12 @@ if [ -n "${DESTDIR:-}" ]; then
     rm -rf -- "$TRANSLATION_BACKUP"
     TRANSLATION_BACKUP=
     TRANSLATION_BACKUP_READY=no
+    # A staged tree is a package payload and has no live applet in it, so the
+    # lock excludes nothing once this run has committed - and it is the one
+    # thing an install leaves in the staging root that the archive would never
+    # carry. Removed last, so every concurrent run was already excluded; the
+    # open descriptor keeps this one's hold until the process ends.
+    rm -f -- "$TARGET_PARENT/.${UUID}.deployment.lock"
     trap - EXIT HUP INT TERM
     echo "Installed to $TARGET_DIR"
     exit 0

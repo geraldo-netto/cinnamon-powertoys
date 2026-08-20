@@ -62,8 +62,13 @@ function scratch(options, body) {
                           "powertoys-helper"])
             GLib.file_set_contents(applet + "/" + name, "new " + name + "\n");
         GLib.chmod(applet + "/powertoys-helper", 0o600);
+        /* A working tree carries whatever modes its checkout and its owner's
+         * umask gave it, which is exactly what an install must not hand on.
+         * See the mode case below. */
+        GLib.chmod(applet + "/applet.js", 0o666);
+        GLib.chmod(applet + "/metadata.json", 0o600);
         if (!options.incomplete) {
-            GLib.mkdir_with_parents(applet + "/lib", 0o755);
+            GLib.mkdir_with_parents(applet + "/lib", 0o700);
             GLib.mkdir_with_parents(applet + "/ui", 0o755);
         }
 
@@ -467,6 +472,56 @@ cases["a complete staged applet replaces the previous tree"] = function () {
         Harness.equal(read(options.translationState), "new translation",
                       "the new catalogue is retained after commit");
         Harness.deepEqual(temporaryEntries(tree), [], "the backup was removed after commit");
+    });
+};
+
+cases["an installed tree carries stated modes rather than the builder's"] = function () {
+    /*
+     * tools/build-package.py writes every archive entry at 0644, and the
+     * helper at 0755, on the stated ground that a mode read off the machine
+     * that happened to do the build is not a property of the release. The
+     * installer is the other way the same files reach a machine, and it was
+     * handing on whatever `cp -R` and the caller's umask produced: on this
+     * tree that is 0664 files and 0775 directories, so a DESTDIR payload
+     * built for a package and unpacked under /usr/share left every source
+     * file of an applet group-writable. The helper was worse than that in
+     * both directions - `chmod +x` is masked, so a restrictive umask made it
+     * 0700 and a lax one 0775, and neither is 0755.
+     */
+    scratch({}, tree => {
+        Harness.equal(install(tree).status, 0, "the install completed");
+        let mode = path => {
+            let info = imports.gi.Gio.File.new_for_path(path).query_info(
+                "unix::mode", imports.gi.Gio.FileQueryInfoFlags.NONE, null);
+            return info.get_attribute_uint32("unix::mode") & 0o7777;
+        };
+        Harness.equal(mode(tree.target + "/powertoys-helper"), 0o755,
+                      "the helper is executable and writable by nobody else");
+        Harness.equal(mode(tree.target + "/applet.js"), 0o644,
+                      "a source file the working tree left group-writable is not");
+        Harness.equal(mode(tree.target + "/metadata.json"), 0o644,
+                      "and one it left unreadable is readable");
+        Harness.equal(mode(tree.target + "/lib"), 0o755,
+                      "a directory is traversable whatever the source's was");
+        Harness.equal(mode(tree.target), 0o755, "as is the applet directory itself");
+    });
+};
+
+cases["a staged payload keeps no deployment state"] = function () {
+    /*
+     * The deployment lock is how two installers touching one live applet
+     * directory exclude each other. A DESTDIR tree is a package payload with
+     * no live applet in it and nothing to exclude anything from, so the lock
+     * file was the one thing an install put in the staging root that the
+     * archive would never contain - shipped to every machine that unpacked
+     * the package. It is released and removed once a staged install has
+     * committed, which is after every other run has already been excluded.
+     */
+    scratch({}, tree => {
+        Harness.equal(install(tree).status, 0, "the staged install completed");
+        Harness.equal(GLib.file_test(tree.parent + "/." + UUID + ".deployment.lock",
+                                    GLib.FileTest.EXISTS), false,
+                      "no lock file was left in the payload");
     });
 };
 
