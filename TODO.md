@@ -4,7 +4,6 @@
 
 | id | status | severity | effort | description |
 | --- | --- | --- | --- | --- |
-| PT-448 | open | low | xs | Make tools/build-package.py emit explicit directory entries and modes. It fixes file modes but omits directories, so extraction creates lib, ui, icons, and po with the recipient's umask instead of the release's intended mode. |
 
 ## Blocked / Deferred
 

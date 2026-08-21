@@ -34,6 +34,7 @@ WRAPPER_ASSETS = ("info.json", "README.md", "screenshot.png")
 # program the user's session runs.
 FILE_MODE = 0o644
 EXECUTABLE_MODE = 0o755
+DIRECTORY_MODE = 0o755
 EXECUTABLES = ("powertoys-helper",)
 
 
@@ -79,11 +80,17 @@ def check_paths(root: Path, uuid: str, policy: Path, helper: str) -> None:
 
 
 def payload(root: Path, uuid: str) -> list[tuple[str, Path]]:
-    """Every shipped file, as the name it takes in the archive."""
-    entries = []
+    """Every shipped file and directory, as named in the archive."""
     base = root / "files" / uuid
+    entries = [
+        (f"{uuid}/", root),
+        (f"{uuid}/files/", root / "files"),
+        (f"{uuid}/files/{uuid}/", base),
+    ]
     for path in sorted(base.rglob("*")):
         if path.is_dir():
+            if not path.is_symlink():
+                entries.append((f"{uuid}/files/{uuid}/{path.relative_to(base)}/", path))
             continue
         if not path.is_file() or path.is_symlink():
             fail(f"{path} is not a regular file")
@@ -100,6 +107,12 @@ def write_archive(entries: list[tuple[str, Path]], destination: Path) -> None:
     with zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for name, source in entries:
             info = zipfile.ZipInfo(name, date_time=EPOCH)
+            info.create_system = 3
+            if source.is_dir() and not source.is_symlink():
+                info.external_attr = ((stat.S_IFDIR | DIRECTORY_MODE) << 16) | 0x10
+                info.compress_type = zipfile.ZIP_STORED
+                archive.writestr(info, b"")
+                continue
             executable = source.name in EXECUTABLES
             mode = EXECUTABLE_MODE if executable else FILE_MODE
             info.external_attr = (stat.S_IFREG | mode) << 16

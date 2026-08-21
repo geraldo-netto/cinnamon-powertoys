@@ -138,6 +138,26 @@ function filesUnder(directory, prefix) {
     return names.sort();
 }
 
+function directoriesUnder(directory, prefix) {
+    let names = [];
+    let folder = imports.gi.Gio.File.new_for_path(directory);
+    if (!folder.query_exists(null))
+        return names;
+    let listing = folder.enumerate_children("standard::name,standard::type",
+        imports.gi.Gio.FileQueryInfoFlags.NONE, null);
+    let info;
+    while ((info = listing.next_file(null)) !== null) {
+        let name = info.get_name();
+        if (info.get_file_type() === imports.gi.Gio.FileType.DIRECTORY) {
+            names.push(prefix + name + "/");
+            names = names.concat(directoriesUnder(directory + "/" + name,
+                                                   prefix + name + "/"));
+        }
+    }
+    listing.close(null);
+    return names.sort();
+}
+
 cases["the archive is the payload, all of it and nothing else"] = function () {
     /* Both directions, and derived on both sides.
      *
@@ -150,7 +170,9 @@ cases["the archive is the payload, all of it and nothing else"] = function () {
     temporary(directory => {
         let output = directory + "/dist";
         Harness.equal(build(output).status, 0, "the archive was built");
-        let names = entries(output + "/" + UUID + "-1.0.0.zip").map(member => member.name);
+        let members = entries(output + "/" + UUID + "-1.0.0.zip");
+        let names = members.filter(member => member.mode[0] !== "d")
+            .map(member => member.name);
 
         let payload = filesUnder(root() + "/files/" + UUID, "");
         Harness.ok(payload.length > 40, "there is a payload to compare against");
@@ -163,21 +185,46 @@ cases["the archive is the payload, all of it and nothing else"] = function () {
                            UUID + "/screenshot.png"],
                           "and the three wrapper assets are the whole of the rest");
 
-        for (let name of names) {
+        for (let name of members.map(member => member.name)) {
             Harness.ok(name.indexOf(UUID + "/") === 0,
                        name + " is under the single top-level directory");
         }
     });
 };
 
-cases["the helper stays executable and nothing else becomes so"] = function () {
+cases["the archive records every directory in its intended mode"] = function () {
     temporary(directory => {
         let output = directory + "/dist";
         Harness.equal(build(output).status, 0, "the archive was built");
-        for (let member of entries(output + "/" + UUID + "-1.0.0.zip")) {
-            let executable = member.mode.indexOf("x") >= 0;
-            Harness.equal(executable, member.name.substr(-16) === "powertoys-helper",
-                          member.name + " is executable only if it is the helper");
+        let members = entries(output + "/" + UUID + "-1.0.0.zip");
+        let directories = members.filter(member => member.mode[0] === "d");
+        let payload = directoriesUnder(root() + "/files/" + UUID, "")
+            .map(name => UUID + "/files/" + UUID + "/" + name);
+        let expected = [UUID + "/", UUID + "/files/", UUID + "/files/" + UUID + "/"]
+            .concat(payload).sort();
+
+        Harness.deepEqual(directories.map(member => member.name).sort(), expected,
+                          "every payload directory and wrapper ancestor is explicit");
+        for (let member of directories) {
+            Harness.equal(member.mode, "drwxr-xr-x",
+                          member.name + " is a Unix directory at 0755");
+            Harness.ok(member.name.substr(-1) === "/",
+                       member.name + " uses the ZIP directory suffix");
+        }
+    });
+};
+
+cases["the archive records every file in its intended mode"] = function () {
+    temporary(directory => {
+        let output = directory + "/dist";
+        Harness.equal(build(output).status, 0, "the archive was built");
+        let members = entries(output + "/" + UUID + "-1.0.0.zip")
+            .filter(member => member.mode[0] !== "d");
+        for (let member of members) {
+            let expected = member.name.substr(-16) === "powertoys-helper" ?
+                "-rwxr-xr-x" : "-rw-r--r--";
+            Harness.equal(member.mode, expected,
+                          member.name + " carries its intended Unix file mode");
         }
     });
 };
