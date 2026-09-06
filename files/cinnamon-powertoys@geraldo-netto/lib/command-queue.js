@@ -102,7 +102,23 @@ const CommandQueue = class CommandQueue {
             }
         };
         try {
-            this._activeCancel = this._run(job.argv, finish) || null;
+            let handle = this._run(job.argv, finish) || null;
+            /* A runner may answer before it returns - a subprocess that will
+             * not spawn is settled inside the call - and an owner that starts
+             * its next command from that callback has this queue draining
+             * again before the handle arrives. By then the handle names a
+             * command that is over, while _activeCancel already holds the one
+             * for the job now talking to the world, so keeping it would arm
+             * cancelActive() against the finished job and leave the running
+             * one with nothing that can stop it.
+             *
+             * The exception is teardown reached through the same callback:
+             * destroy() looked for a handle that did not exist yet, so this is
+             * the only chance to end a command that outlived the queue. */
+            if (this._destroyed)
+                this._cancel(handle);
+            else if (this._active === job)
+                this._activeCancel = handle;
         } catch (error) {
             Log.error("could not run ddcutil: " + error);
             finish("", -1);
@@ -115,6 +131,13 @@ const CommandQueue = class CommandQueue {
     cancelActive() {
         let handle = this._activeCancel;
         this._activeCancel = null;
+        this._cancel(handle);
+    }
+
+    /* One way to end a command through whatever the transport handed back. A
+     * runner need not return a handle at all, and one that throws on the way
+     * out must not stop the teardown that asked it to stop. */
+    _cancel(handle) {
         if (!handle || typeof handle.cancel !== "function")
             return;
         try {

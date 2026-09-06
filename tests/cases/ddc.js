@@ -248,6 +248,60 @@ cases["the command queue answers a job handed to it after it was destroyed"] = f
     Harness.equal(queue.busy, false, "and a destroyed queue is never busy again");
 };
 
+cases["the command queue keeps the cancel handle of the job still running"] = function () {
+    /*
+     * A runner may answer before it returns - lib/ddc.js settles a subprocess
+     * that will not spawn inside the call and returns its handle afterwards -
+     * and an owner that starts its next command from that callback has the
+     * queue draining inside the first runner. The handle coming back then
+     * belongs to a command that is over; keeping it would leave cancelActive()
+     * ending finished work while the command holding the transport ran on with
+     * nothing able to stop it.
+     */
+    let cancelled = [];
+    let queue = new CommandQueue.CommandQueue((argv, onDone) => {
+        if (argv[0] === "first") {
+            /* Answered before the caller ever sees this handle. */
+            onDone("", -1);
+            return { cancel: () => cancelled.push("first") };
+        }
+        return { cancel: () => { cancelled.push("second"); onDone("", -1); } };
+    });
+
+    let answered = [];
+    queue.run(["first"], () => {
+        queue.run(["second"], (output, status) => answered.push(["second", status]));
+    });
+
+    Harness.equal(queue.busy, true, "the second command holds the transport");
+    queue.cancelActive();
+    Harness.deepEqual(cancelled, ["second"],
+                      "cancelActive ended the command that was actually running");
+    Harness.deepEqual(answered, [["second", -1]], "which came back as its one answer");
+    Harness.equal(queue.busy, false, "and left nothing outstanding");
+};
+
+cases["the command queue stops a command it started while being destroyed"] = function () {
+    /*
+     * Teardown reached from inside the transport: destroy() looks for the
+     * active handle before the runner has returned one, so the handle arriving
+     * afterwards is the only thing that can still end a command the stopped
+     * queue would otherwise leave talking to the world.
+     */
+    let cancelled = 0;
+    let queue = new CommandQueue.CommandQueue((argv, onDone) => {
+        queue.destroy();
+        return { cancel: () => { cancelled++; onDone("", -1); } };
+    });
+
+    let answered = [];
+    queue.run(["late"], (output, status) => answered.push(status));
+
+    Harness.equal(cancelled, 1, "the command destroy() could not see was stopped");
+    Harness.deepEqual(answered, [-1], "and settled as the failure it became");
+    Harness.equal(queue.busy, false, "so teardown leaves nothing outstanding");
+};
+
 cases["the shared DDC command boundary settles throws and duplicate replies"] = function () {
     let lines = [];
     Log.setSink(line => lines.push(line));

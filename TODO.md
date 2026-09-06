@@ -4,7 +4,6 @@
 
 | id | status | severity | effort | description |
 | --- | --- | --- | --- | --- |
-| PT-449 | open | medium | s | Preserve the active command's cancellation handle when the runner completes synchronously. `lib/command-queue.js:88-112` can drain a second command inside the first runner's callback, then overwrite its handle when the first runner returns; `lib/ddc.js:121-131` has this synchronous spawn-failure path. Reproduced with a completion callback queuing the next job: `cancelActive()` cancels the already-finished first command while the second remains busy. Assign the returned handle only if the same job is still active and cover teardown after synchronous completion. |
 
 ## Blocked / Deferred
 
