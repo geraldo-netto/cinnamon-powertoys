@@ -1,4 +1,4 @@
-# Everything `make check` does, on every push and every pull request.
+# Everything `make check` does, started by hand.
 #
 # The runner has no Cinnamon, no session bus and no /sys worth reading, which
 # is exactly why the applet's libraries take their file root, their D-Bus
@@ -7,11 +7,14 @@
 
 name: check
 
+# Automatic triggers are deliberately off: this workflow runs only when a
+# maintainer starts it. The `push` and `pull_request` triggers are kept below,
+# commented out, so restoring them is one edit rather than a rewrite.
 on:
-  push:
-    branches: ["**"]
-  pull_request:
   workflow_dispatch:
+  # push:
+  #   branches: ["**"]
+  # pull_request:
 
 # This job reads the repository and writes nothing back to it - no release, no
 # comment, no pushed tag - so its token is given the one scope it uses. Stated
